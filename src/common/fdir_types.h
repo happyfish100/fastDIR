@@ -3,4 +3,6 @@
 
 #include "fdir_server_types.h"
 
+#define FDIR_MAX_PATH_COUNT  128
+
 #endif
