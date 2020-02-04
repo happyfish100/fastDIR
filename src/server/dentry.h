@@ -3,11 +3,14 @@
 #define _FDIR_DENTRY_H
 
 #include "fastcommon/common_define.h"
+#include "fastcommon/fast_allocator.h"
 #include "fastcommon/uniq_skiplist.h"
+
+#define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
-    struct fast_mblock_man *dentry_allocator;
+    struct fast_mblock_man dentry_allocator;
 } FDIRDentryContext;
 
 typedef struct fdir_dstatus {
@@ -26,9 +29,9 @@ typedef struct fdir_dentry {
 } FDIRDentry;
 
 typedef struct fdir_dentry_array {
-    FDIRDentry **entries;
     int alloc;
     int count;
+    FDIRDentry **entries;
 } FDIRDentryArray;
 
 #ifdef __cplusplus
@@ -48,7 +51,7 @@ extern "C" {
     int dentry_find(const string_t *path, FDIRDentry **dentry);
 
     int dentry_list(const string_t *path, FDIRDentryArray *array);
-    void dentry_array_free(FDIRDentryArray *array);
+    void dentry_array_free(FDIRDentryContext *context, FDIRDentryArray *array);
 
 #ifdef __cplusplus
 }
