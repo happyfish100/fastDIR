@@ -8,6 +8,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/sched_thread.h"
 #include "common/fdir_types.h"
+#include "server_handler.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2
@@ -17,6 +18,7 @@ typedef struct fdir_manager {
     struct fast_allocator_context name_acontext;
 } FDIRManager;
 
+const int delay_free_seconds = 3600;
 static FDIRManager fdir_manager;
 
 static int dentry_strdup(string_t *dest, const char *src, const int len)
@@ -98,7 +100,6 @@ int dentry_init_context(FDIRDentryContext *context)
 {
     int result;
     const int max_level_count = 20;
-    const int delay_free_seconds = 3600;
 
     if ((result=uniq_skiplist_init_ex(&context->factory,
                     max_level_count, dentry_compare, dentry_free,
@@ -249,7 +250,7 @@ int dentry_create(FDIRDentryContext *context, const string_t *path,
     return 0;
 }
 
-int dentry_remove(const string_t *path)
+int dentry_remove(FDIRServerContext *server_context, const string_t *path)
 {
     FDIRDentry *parent;
     FDIRDentry *current;
@@ -270,11 +271,9 @@ int dentry_remove(const string_t *path)
         if (uniq_skiplist_count(current->children) > 0) {
             return ENOTEMPTY;
         }
-    }
 
-    if (current->children != NULL) {
-        uniq_skiplist_free(current->children);
-        //TODO delay free
+        server_add_to_delay_free_queue(&server_context->delay_free_context,
+                current->children, delay_free_seconds);
     }
 
     return uniq_skiplist_delete(parent->children, current);

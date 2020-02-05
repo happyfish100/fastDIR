@@ -22,9 +22,9 @@
 #include "sf/sf_nio.h"
 #include "sf/sf_global.h"
 #include "common/fdir_proto.h"
-#include "server_types.h"
 #include "server_global.h"
 #include "server_func.h"
+#include "dentry.h"
 #include "server_handler.h"
 
 int server_handler_init()
@@ -47,21 +47,6 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-int server_recv_timeout_callback(struct fast_task_info *task)
-{
-    FDIRServerTaskArg *task_arg;
-    task_arg = (FDIRServerTaskArg *)task->arg;
-    /*
-    if (g_current_time - task_arg->last_recv_pkg_time >=
-            g_server_global_vars.check_alive_interval)
-    {
-        return server_add_task_event(task, FDIR_SERVER_EVENT_TYPE_ACTIVE_TEST);
-    }
-    */
-
-    return 0;
-}
-
 int server_deal_task(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
@@ -82,26 +67,9 @@ int server_deal_task(struct fast_task_info *task)
     response.response_done = false;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
-    task_arg->last_recv_pkg_time = g_current_time;
     request.cmd = ((FDIRProtoHeader *)task->data)->cmd;
     request.body_len = task->length - sizeof(FDIRProtoHeader);
     do {
-        if (request.cmd == FDIR_PROTO_AGENT_JOIN_REQ ||
-                        request.cmd == FDIR_PROTO_ADMIN_JOIN_REQ)
-        {
-            if (task_arg->joined) {
-                response.error.length = sprintf(response.error.message,
-                        "already joined");
-                result = -EINVAL;
-                break;
-            }
-        } else if (!task_arg->joined) {
-            response.error.length = sprintf(response.error.message,
-                    "please join first");
-            result = -EINVAL;
-            break;
-        }
-
         switch (request.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
                 response.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
@@ -175,32 +143,75 @@ void *server_alloc_thread_extra_data(const int thread_index)
     }
 
     memset(thread_extra_data, 0, sizeof(FDIRServerContext));
-    common_blocked_queue_init_ex(&thread_extra_data->push_queue, 4096);
+    if ((dentry_init_context(&thread_extra_data->dentry_context)) != 0) {
+        free(thread_extra_data);
+        return NULL;
+    }
+
+    if (fast_mblock_init(&thread_extra_data->delay_free_context.allocator,
+                    sizeof(SkiplistDelayFreeNode), 16 * 1024) != 0)
+    {
+        free(thread_extra_data);
+        return NULL;
+    }
+
     return thread_extra_data;
 }
 
-static int server_send_active_test(struct fast_task_info *task)
+int server_add_to_delay_free_queue(SkiplistDelayFreeContext *pContext,
+        UniqSkiplist *skiplist, const int delay_seconds)
 {
-    FDIRProtoHeader *proto_header;
+    SkiplistDelayFreeNode *node;
 
-    logDebug("file: "__FILE__", line: %d, "
-            "client ip: %s, send_active_test",
-            __LINE__, task->client_ip);
+    node = (SkiplistDelayFreeNode *)fast_mblock_alloc_object(
+            &pContext->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
 
-    task->length = sizeof(FDIRProtoHeader);
-    proto_header = (FDIRProtoHeader *)task->data;
-    int2buff(0, proto_header->body_len);
-    proto_header->cmd = FDIR_PROTO_ACTIVE_TEST_REQ;
-    proto_header->status = 0;
-    ((FDIRServerTaskArg *)task->arg)->waiting_type |=
-        FDIR_SERVER_TASK_WAITING_ACTIVE_TEST_RESP;
-    return sf_send_add_event(task);
+    node->expires = g_current_time + delay_seconds;
+    node->skiplist = skiplist;
+    node->next = NULL;
+    if (pContext->queue.head == NULL)
+    {
+        pContext->queue.head = node;
+    }
+    else
+    {
+        pContext->queue.tail->next = node;
+    }
+    pContext->queue.tail = node;
+    return 0;
 }
 
 int server_thread_loop(struct nio_thread_data *thread_data)
 {
-    FDIRServerContext *server_context;
-    server_context = (FDIRServerContext *)thread_data->arg;
+    SkiplistDelayFreeContext *delay_context;
+    SkiplistDelayFreeNode *node;
+    SkiplistDelayFreeNode *deleted;
+
+    delay_context = &((FDIRServerContext *)thread_data->arg)->
+        delay_free_context;
+    if (delay_context->last_check_time == g_current_time ||
+            delay_context->queue.head == NULL)
+    {
+        return 0;
+    }
+
+    delay_context->last_check_time = g_current_time;
+    node = delay_context->queue.head;
+    while ((node != NULL) && (node->expires < g_current_time)) {
+        uniq_skiplist_free(node->skiplist);
+
+        deleted = node;
+        node = node->next;
+        fast_mblock_free_object(&delay_context->allocator, deleted);
+    }
+
+    delay_context->queue.head = node;
+    if (node == NULL) {
+        delay_context->queue.tail = NULL;
+    }
 
     return 0;
 }

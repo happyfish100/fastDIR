@@ -91,7 +91,7 @@ int main(int argc, char *argv[])
     r = sf_service_init(server_alloc_thread_extra_data,
             server_thread_loop,
             NULL, fdir_proto_set_body_length, server_deal_task,
-            server_task_finish_cleanup, server_recv_timeout_callback,
+            server_task_finish_cleanup, NULL,
             100, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
     gofailif(r,"service init error");
     sf_set_remove_from_ready_list(false);
