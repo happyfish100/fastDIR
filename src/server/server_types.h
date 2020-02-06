@@ -12,6 +12,7 @@
 
 #define FDIR_SERVER_DEFAULT_RELOAD_INTERVAL       500
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
+#define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;

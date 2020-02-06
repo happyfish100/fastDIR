@@ -100,16 +100,26 @@ int server_load_config(const char *filename)
         g_server_global_vars.check_alive_interval = FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL;
     }
 
+    g_server_global_vars.namespace_hashtable_capacity = iniGetIntValue(NULL,
+            "namespace_hashtable_capacity", &ini_context,
+            FDIR_NAMESPACE_HASHTABLE_CAPACITY);
+    if (g_server_global_vars.namespace_hashtable_capacity <= 0) {
+        g_server_global_vars.namespace_hashtable_capacity =
+            FDIR_NAMESPACE_HASHTABLE_CAPACITY;
+    }
+
     iniFreeContext(&ini_context);
 
     snprintf(server_config_str, sizeof(server_config_str),
             "admin config {username: %s, secret_key: %s}, "
-            "reload_interval_ms: %d ms, "
-            "check_alive_interval: %d s",
+            "reload_interval_ms = %d ms, "
+            "check_alive_interval = %d s"
+            "namespace_hashtable_capacity = %d",
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,
             g_server_global_vars.reload_interval_ms,
-            g_server_global_vars.check_alive_interval);
+            g_server_global_vars.check_alive_interval,
+            g_server_global_vars.namespace_hashtable_capacity);
     sf_log_config_ex(server_config_str);
     return 0;
 }

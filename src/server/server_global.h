@@ -10,6 +10,8 @@ typedef struct server_global_vars {
         string_t secret_key;
     } admin;
 
+    int namespace_hashtable_capacity;
+
     int reload_interval_ms;
 
     int check_alive_interval;

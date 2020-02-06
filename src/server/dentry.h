@@ -36,15 +36,18 @@ extern "C" {
 
     int dentry_init_context(FDIRDentryContext *context);
 
-    int dentry_create(FDIRDentryContext *context, const string_t *path,
-            const int flags, const mode_t mode);
+    int dentry_create(FDIRServerContext *server_context, const string_t *ns,
+            const string_t *path, const int flags, const mode_t mode);
 
-    int dentry_remove(FDIRServerContext *server_context, const string_t *path);
+    int dentry_remove(FDIRServerContext *server_context, const string_t *ns,
+            const string_t *path);
 
-    int dentry_find(const string_t *path, FDIRDentry **dentry);
+    int dentry_find(FDIRServerContext *server_context, const string_t *ns,
+            const string_t *path, FDIRDentry **dentry);
 
-    int dentry_list(const string_t *path, FDIRDentryArray *array);
-    void dentry_array_free(FDIRDentryContext *context, FDIRDentryArray *array);
+    int dentry_list(FDIRServerContext *server_context, const string_t *ns,
+            const string_t *path, FDIRDentryArray *array);
+    void dentry_array_free(FDIRDentryArray *array);
 
 #ifdef __cplusplus
 }
