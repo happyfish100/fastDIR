@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <fcntl.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
@@ -47,84 +48,117 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
+static int server_parse_dentry_info(ServerTaskContext *server_context,
+        FDIRDEntryInfo *dentry_info)
+{
+    //TODO
+    return 0;
+}
+
+static int server_deal_actvie_test(ServerTaskContext *server_context)
+{
+    return server_expect_body_length(server_context, 0);
+}
+
+int server_deal_create_dentry(ServerTaskContext *server_context)
+{
+    int result;
+    FDIRDEntryInfo dentry_info;
+
+    if ((result=server_check_body_length(server_context,
+            sizeof(FDIRProtoCreateDEntry) + 1,
+            sizeof(FDIRProtoCreateDEntry) + PATH_MAX)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_parse_dentry_info(server_context, &dentry_info)) != 0) {
+        return result;
+    }
+
+    //TODO
+    return 0;
+}
+
 int server_deal_task(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
     FDIRServerTaskArg *task_arg;
-    FDIRRequestInfo request;
-    FDIRResponseInfo response;
+    ServerTaskContext task_context;
     int result;
     int r;
     int64_t tbegin;
     int time_used;
 
-    tbegin = get_current_time_ms();
-    response.cmd = FDIR_PROTO_ACK;
-    response.body_len = 0;
-    response.log_error = true;
-    response.error.length = 0;
-    response.error.message[0] = '\0';
-    response.response_done = false;
+    tbegin = get_current_time_us();
+    task_context.task = task;
+    task_context.response.cmd = FDIR_PROTO_ACK;
+    task_context.response.body_len = 0;
+    task_context.response.error.length = 0;
+    task_context.response.error.message[0] = '\0';
+    task_context.log_error = true;
+    task_context.response_done = false;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
-    request.cmd = ((FDIRProtoHeader *)task->data)->cmd;
-    request.body_len = task->length - sizeof(FDIRProtoHeader);
+    task_context.request.cmd = ((FDIRProtoHeader *)task->data)->cmd;
+    task_context.request.body_len = task->length - sizeof(FDIRProtoHeader);
     do {
-        switch (request.cmd) {
+        switch (task_context.request.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
-                response.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
-                result = fdir_proto_deal_actvie_test(task, &request, &response);
+                task_context.response.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
+                result = server_deal_actvie_test(&task_context);
+                break;
+            case FDIR_PROTO_CREATE_DENTRY:
+                result = server_deal_create_dentry(&task_context);
                 break;
             default:
-                response.error.length = sprintf(response.error.message,
-                    "unkown cmd: %d", request.cmd);
+                task_context.response.error.length = sprintf(
+                        task_context.response.error.message,
+                        "unkown cmd: %d", task_context.request.cmd);
                 result = -EINVAL;
                 break;
         }
     } while(0);
 
-    if (response.log_error && response.error.length > 0) {
+    if (task_context.log_error && task_context.response.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d, body length: %d, %s", __LINE__,
-                task->client_ip, request.cmd, request.body_len,
-                response.error.message);
-    }
-
-    if (request.cmd == FDIR_PROTO_PUSH_RESP ||
-            request.cmd == FDIR_PROTO_ACTIVE_TEST_RESP)
-    {
-        return result > 0 ? -1 * result : result;
+                "client ip: %s, cmd: %d, body length: %d, %s",
+                __LINE__, task->client_ip, task_context.request.cmd,
+                task_context.request.body_len,
+                task_context.response.error.message);
     }
 
     proto_header = (FDIRProtoHeader *)task->data;
-    if (!response.response_done) {
-        response.body_len = response.error.length;
-        if (response.error.length > 0) {
+    if (!task_context.response_done) {
+        task_context.response.body_len = task_context.response.error.length;
+        if (task_context.response.error.length > 0) {
             memcpy(task->data + sizeof(FDIRProtoHeader),
-                    response.error.message, response.error.length);
+                    task_context.response.error.message,
+                    task_context.response.error.length);
         }
     }
 
     proto_header->status = result >= 0 ? result : -1 * result;
-    proto_header->cmd = response.cmd;
-    int2buff(response.body_len, proto_header->body_len);
-    task->length = sizeof(FDIRProtoHeader) + response.body_len;
+    proto_header->cmd = task_context.response.cmd;
+    int2buff(task_context.response.body_len, proto_header->body_len);
+    task->length = sizeof(FDIRProtoHeader) + task_context.response.body_len;
 
     r = sf_send_add_event(task);
-    time_used = (int)(get_current_time_ms() - tbegin);
-    if (time_used > 1000) {
-        lwarning("timed used to process a request is %d ms, "
+    time_used = (int)(get_current_time_us() - tbegin);
+    if (time_used > 50 * 1000) {
+        lwarning("process a request timed used: %d us, "
                 "cmd: %d, req body len: %d, resp body len: %d",
-                time_used, request.cmd,
-                request.body_len, response.body_len);
+                time_used, task_context.request.cmd,
+                task_context.request.body_len,
+                task_context.response.body_len);
     }
 
     ldebug("client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
-            "time used: %d ms",  task->client_ip,
-            request.cmd, request.body_len,
-            response.cmd, proto_header->status,
-            response.body_len, time_used);
+            "time used: %d us",  task->client_ip,
+            task_context.request.cmd, task_context.request.body_len,
+            task_context.response.cmd, proto_header->status,
+            task_context.response.body_len, time_used);
 
     return r == 0 ? result : r;
 }

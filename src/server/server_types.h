@@ -14,6 +14,15 @@
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 
+typedef struct {
+    struct fast_task_info *task;
+    FDIRRequestInfo request;
+    FDIRResponseInfo response;
+
+    bool response_done;
+    bool log_error;
+} ServerTaskContext;
+
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;

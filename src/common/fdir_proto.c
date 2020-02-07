@@ -13,14 +13,21 @@ void fdir_proto_init()
 
 int fdir_proto_set_body_length(struct fast_task_info *task)
 {
-    task->length = buff2int(((FDIRProtoHeader *)task->data)->body_len);
-    return 0;
-}
+    FDIRProtoHeader *header;
 
-int fdir_proto_deal_actvie_test(struct fast_task_info *task,
-        const FDIRRequestInfo *request, FDIRResponseInfo *response)
-{
-    return FDIR_PROTO_EXPECT_BODY_LEN(task, request, response, 0);
+    header = (FDIRProtoHeader *)task->data;
+    if (!FDIR_PROTO_CHECK_MAGIC(header->magic)) {
+        logError("file: "__FILE__", line: %d, "
+                "client ip: %s, magic "FDIR_PROTO_MAGIC_FORMAT
+                " is invalid, expect: "FDIR_PROTO_MAGIC_FORMAT,
+                __LINE__, task->client_ip,
+                FDIR_PROTO_MAGIC_PARAMS(header->magic),
+                FDIR_PROTO_MAGIC_EXPECT_PARAMS);
+        return EINVAL;
+    }
+
+    task->length = buff2int(header->body_len);
+    return 0;
 }
 
 void fdir_proto_response_extract (FDIRProtoHeader *header_pro,
@@ -38,22 +45,27 @@ void fdir_set_admin_header (FDIRProtoHeader *fdir_header_proto,
     int2buff(body_len, fdir_header_proto->body_len);
 }
 
-int fdir_check_response(ConnectionInfo *join_conn,
-        FDIRResponseInfo *resp_info, int network_timeout, unsigned char resp_cmd)
+int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *resp_info,
+        const int network_timeout, const unsigned char resp_cmd)
 {
     if (resp_info->cmd == resp_cmd && resp_info->status == 0) {
         return 0;
     } else {
-        if (resp_info->body_len) {
-            tcprecvdata_nb_ex(join_conn->sock, resp_info->error.message,
-                    resp_info->body_len, network_timeout, NULL);
-            resp_info->error.message[resp_info->body_len] = '\0';
+        if (resp_info->body_len > 0) {
+            if (resp_info->body_len >= sizeof(resp_info->error.message)) {
+                resp_info->error.length = sizeof(resp_info->error.message) - 1;
+            } else {
+                resp_info->error.length = resp_info->body_len;
+            }
+            tcprecvdata_nb_ex(conn->sock, resp_info->error.message,
+                    resp_info->error.length, network_timeout,
+                    &resp_info->error.length);
+            resp_info->error.message[resp_info->error.length] = '\0';
         } else {
             resp_info->error.message[0] = '\0';
         }
         return 1;
     }
-
 }
 
 int send_and_recv_response_header(ConnectionInfo *conn, char *data, int len,
@@ -75,7 +87,7 @@ int send_and_recv_response_header(ConnectionInfo *conn, char *data, int len,
 }
 
 int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *resp_info,
-        int network_timeout)
+        const int network_timeout)
 {
     int ret;
     FDIRProtoHeader fdir_header_proto;
