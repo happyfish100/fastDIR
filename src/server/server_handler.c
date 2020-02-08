@@ -151,21 +151,23 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
 
     server_context = (FDIRServerContext *)task_context->task->thread_data->arg;
     task_arg = (FDIRServerTaskArg *)task_context->task->arg;
+    body = task_context->task->data + sizeof(FDIRProtoHeader);
+
     if (task_context->task->nio_stage == SF_NIO_STAGE_FORWARDED) {
         task_context->task->nio_stage = SF_NIO_STAGE_SEND;
-        body = task_context->task->data + sizeof(FDIRProtoHeader);
     } else {
         if ((result=server_check_body_length(task_context,
                         sizeof(FDIRProtoCreateDEntryBody) + 1,
-                        sizeof(FDIRProtoCreateDEntryBody) + NAME_MAX + PATH_MAX)) != 0)
+                        sizeof(FDIRProtoCreateDEntryBody) +
+                        NAME_MAX + PATH_MAX)) != 0)
         {
             return result;
         }
 
-        body = task_context->task->data + sizeof(FDIRProtoHeader);
         if ((result=server_parse_dentry_info(task_context,
                         body + sizeof(FDIRProtoCreateDEntryFront),
-                        &task_arg->path_info)) != 0) {
+                        &task_arg->path_info)) != 0)
+        {
             return result;
         }
 

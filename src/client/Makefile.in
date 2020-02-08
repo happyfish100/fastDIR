@@ -1,0 +1,44 @@
+.SUFFIXES: .c .o .lo
+
+COMPILE = $(CC) $(CFLAGS)
+INC_PATH = 
+LIB_PATH = $(LIBS)
+TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
+
+FAST_SHARED_OBJS = client_func.lo client_global.lo fdir_client.lo
+
+FAST_STATIC_OBJS = client_func.o client_global.o fdir_client.o
+
+HEADER_FILES = fdir_client.h client_func.h client_global.h
+
+ALL_OBJS = $(FAST_STATIC_OBJS) $(FAST_SHARED_OBJS)
+
+ALL_PRGS = 
+SHARED_LIBS = libfdirclient.so
+STATIC_LIBS = libfdirclient.a
+ALL_LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
+
+all: $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
+libfdirclient.so: $(FAST_SHARED_OBJS)
+	$(COMPILE) -o $@ -shared $(FAST_SHARED_OBJS) $(LIB_PATH)
+libfdirclient.a: $(FAST_STATIC_OBJS)
+	ar rcs $@ $(FAST_STATIC_OBJS)
+.o:
+	$(COMPILE) -o $@ $<  $(FAST_STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c:
+	$(COMPILE) -o $@ $<  $(FAST_STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c.o:
+	$(COMPILE) -c -o $@ $<  $(INC_PATH)
+.c.lo:
+	$(COMPILE) -c -fPIC -o $@ $<  $(INC_PATH)
+install:
+	mkdir -p $(TARGET_LIB)
+	mkdir -p $(TARGET_PREFIX)/lib
+	mkdir -p $(TARGET_PREFIX)/include/fastdir
+
+	install -m 755 $(SHARED_LIBS) $(TARGET_LIB)
+	install -m 644 $(HEADER_FILES) $(TARGET_PREFIX)/include/fastdir
+	if [ ! -e $(TARGET_PREFIX)/lib/libfdirclient.so ]; then ln -s $(TARGET_LIB)/libfdirclient.so $(TARGET_PREFIX)/lib/libfdirclient.so; fi
+clean:
+	rm -f $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
+

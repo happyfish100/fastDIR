@@ -2,6 +2,7 @@
 #define _FDIR_TYPES_H
 
 #include "fastcommon/common_define.h"
+#include "fastcommon/connection_pool.h"
 
 #define FDIR_ERROR_INFO_SIZE   256
 
@@ -32,5 +33,22 @@ typedef struct fdir_dentry_info {
     string_t ns;
     string_t path;
 } FDIRDEntryInfo;
+
+typedef struct fdir_server_group {
+    int count;
+    ConnectionInfo *servers;
+} FDIRServerGroup;
+
+typedef struct fdir_follower_group {
+    int count;
+    int index;  //server index for roundrobin
+    ConnectionInfo **servers;
+} FDIRFollowerGroup;
+
+typedef struct fdir_server_cluster {
+    FDIRServerGroup server_group;
+    FDIRFollowerGroup follower_group;
+    ConnectionInfo *master;
+} FDIRServerCluster;
 
 #endif
