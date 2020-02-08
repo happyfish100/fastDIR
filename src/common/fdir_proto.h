@@ -33,6 +33,14 @@
 #define FDIR_PROTO_MAGIC_PARAMS(m) \
     m[0], m[1], m[2], m[3]
 
+#define FDIR_PROTO_SET_HEADER(header, _cmd, _body_len)  \
+    do {  \
+        FDIR_PROTO_SET_MAGIC((header)->magic);   \
+        (header)->cmd = _cmd;      \
+        (header)->status = 0;      \
+        int2buff(_body_len, (header)->body_len); \
+    } while (0)
+
 typedef struct fdir_proto_header {
     unsigned char magic[4];       //magic number
     char body_len[4];    //body length
@@ -79,16 +87,26 @@ void fdir_proto_init();
 
 int fdir_proto_set_body_length(struct fast_task_info *task);
 
-int send_and_recv_response_header(ConnectionInfo *conn, char *data, int len,
-        FDIRResponseInfo *resp_info, int network_timeout);
+int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
+        const int network_timeout, const unsigned char expect_cmd);
 
-void fdir_proto_response_extract (FDIRProtoHeader *header_pro,
-        FDIRResponseInfo *resp_info);
+int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
+        const int len, FDIRResponseInfo *response, const int network_timeout);
 
-int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *resp_info,
+int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
+        const int len, FDIRResponseInfo *response, int network_timeout,
+        const unsigned char expect_cmd);
+
+static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
+        FDIRResponseInfo *response)
+{
+    response->cmd = header_proto->cmd;
+    response->body_len = buff2int(header_proto->body_len);
+    response->status = header_proto->status;
+}
+
+int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout);
-int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *resp_info,
-        const int network_timeout, const unsigned char resp_cmd);
 
 #ifdef __cplusplus
 }

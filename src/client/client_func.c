@@ -3,6 +3,8 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
+#include "fastcommon/connection_pool.h"
+#include "client_global.h"
 #include "client_func.h"
 
 static int copy_dir_servers(FDIRServerGroup *server_group,
@@ -17,7 +19,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
     end = dir_servers + count;
     for (item=dir_servers; item<end; item++,server++) {
         if ((result=conn_pool_parse_server_info(item->value,
-                        &server, FDIR_SERVER_DEFAULT_INNER_PORT)) != 0)
+                        server, FDIR_SERVER_DEFAULT_INNER_PORT)) != 0)
         {
             return result;
         }
@@ -26,7 +28,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
 
     {
         printf("dir_server count: %d\n", server_group->count);
-        for (server=server_group->servers; server<pTrackerGroup->servers+
+        for (server=server_group->servers; server<server_group->servers+
                 server_group->count; server++)
         {
             printf("dir_server=%s:%d\n", server->ip_addr, server->port);
@@ -122,7 +124,7 @@ static int fdir_client_do_init_ex(FDIRServerCluster *server_cluster,
     }
 
 #ifdef DEBUG_FLAG
-    logDebug("FastDIR v%d.02d, "
+    logDebug("FastDIR v%d.%02d, "
             "base_path=%s, "
             "connect_timeout=%d, "
             "network_timeout=%d, "

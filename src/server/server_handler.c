@@ -140,6 +140,7 @@ static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
 static int server_deal_create_dentry(ServerTaskContext *task_context)
 {
     int result;
+    int body_len;
     char *body;
     FDIRServerContext *server_context;
     FDIRServerTaskArg *task_arg;
@@ -169,6 +170,17 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
                         &task_arg->path_info)) != 0)
         {
             return result;
+        }
+         
+        body_len = sizeof(FDIRProtoCreateDEntryBody) + task_arg->
+            path_info.ns.len + task_arg->path_info.path.len;
+        if (body_len != task_context->request.body_len)
+        {
+            task_context->response.error.length = sprintf(
+                    task_context->response.error.message,
+                    "body length: %d != expect: %d",
+                    task_context->request.body_len, body_len);
+            return EINVAL;
         }
 
         hash_code = server_get_parent_hashcode(&task_arg->path_info);
@@ -227,7 +239,7 @@ int server_deal_task(struct fast_task_info *task)
 
     if (task_context.log_error && task_context.response.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d, body length: %d, %s",
+                "client ip: %s, cmd: %d, req body length: %d, %s",
                 __LINE__, task->client_ip, task_context.request.cmd,
                 task_context.request.body_len,
                 task_context.response.error.message);

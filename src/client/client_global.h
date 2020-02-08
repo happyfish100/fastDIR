@@ -1,6 +1,6 @@
 
-#ifndef _FDIR_GLOBAL_H
-#define _FDIR_GLOBAL_H
+#ifndef _CLIENT_GLOBAL_H
+#define _CLIENT_GLOBAL_H
 
 #include "common/fdir_global.h"
 
