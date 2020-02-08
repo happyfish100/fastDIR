@@ -7,6 +7,7 @@
 #define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
 typedef struct fdir_dstatus {
+    int64_t inode;
     mode_t mode;
     int ctime;  /* create time */
     int mtime;  /* modify time */
@@ -36,17 +37,19 @@ extern "C" {
 
     int dentry_init_context(FDIRDentryContext *context);
 
-    int dentry_create(FDIRServerContext *server_context, const string_t *ns,
-            const string_t *path, const int flags, const mode_t mode);
+    int dentry_create(FDIRServerContext *server_context,
+            const FDIRPathInfo *path_info,
+            const int flags, const mode_t mode);
 
-    int dentry_remove(FDIRServerContext *server_context, const string_t *ns,
-            const string_t *path);
+    int dentry_remove(FDIRServerContext *server_context,
+            const FDIRPathInfo *path_info);
 
-    int dentry_find(FDIRServerContext *server_context, const string_t *ns,
-            const string_t *path, FDIRDentry **dentry);
+    int dentry_find(FDIRServerContext *server_context,
+            const FDIRPathInfo *path_info,
+            FDIRDentry **dentry);
 
-    int dentry_list(FDIRServerContext *server_context, const string_t *ns,
-            const string_t *path, FDIRDentryArray *array);
+    int dentry_list(FDIRServerContext *server_context,
+            const FDIRPathInfo *path_info, FDIRDentryArray *array);
     void dentry_array_free(FDIRDentryArray *array);
 
 #ifdef __cplusplus

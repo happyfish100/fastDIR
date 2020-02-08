@@ -48,36 +48,138 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-static int server_parse_dentry_info(ServerTaskContext *server_context,
-        FDIRDEntryInfo *dentry_info)
+static int server_deal_actvie_test(ServerTaskContext *task_context)
 {
-    //TODO
+    return server_expect_body_length(task_context, 0);
+}
+
+static int server_parse_dentry_info(ServerTaskContext *task_context,
+        char *start, FDIRPathInfo *path_info)
+{
+    FDIRProtoDEntryInfo *proto_dentry;
+
+    proto_dentry = (FDIRProtoDEntryInfo *)start;
+    path_info->ns.len = proto_dentry->ns_len;
+    path_info->ns.str = proto_dentry->ns_str;
+    path_info->path.len = buff2short(proto_dentry->path_len);
+    path_info->path.str = proto_dentry->ns_str + path_info->ns.len;
+
+    if (path_info->ns.len <= 0) {
+        task_context->response.error.length = sprintf(
+                task_context->response.error.message,
+                "invalid namespace length: %d <= 0",
+                path_info->ns.len);
+        return EINVAL;
+    }
+
+    if (path_info->path.len <= 0) {
+        task_context->response.error.length = sprintf(
+                task_context->response.error.message,
+                "invalid path length: %d <= 0",
+                path_info->path.len);
+        return EINVAL;
+    }
+    if (path_info->path.len > PATH_MAX) {
+        task_context->response.error.length = sprintf(
+                task_context->response.error.message,
+                "invalid path length: %d > %d",
+                path_info->path.len, PATH_MAX);
+        return EINVAL;
+    }
+
+    if (path_info->path.str[0] != '/') {
+        task_context->response.error.length = snprintf(
+                task_context->response.error.message,
+                sizeof(task_context->response.error.message),
+                "invalid path: %.*s", path_info->path.len,
+                path_info->path.str);
+        return EINVAL;
+    }
+
+    path_info->count = split_string_ex(&path_info->path, '/',
+        path_info->paths, FDIR_MAX_PATH_COUNT, true);
     return 0;
 }
 
-static int server_deal_actvie_test(ServerTaskContext *server_context)
+static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
+        const bool include_last)
 {
-    return server_expect_body_length(server_context, 0);
+    char logic_path[NAME_MAX + PATH_MAX + 2];
+    int len;
+    string_t *part;
+    string_t *end;
+    char *p;
+
+    p = logic_path;
+    memcpy(p, path_info->ns.str, path_info->ns.len);
+    p += path_info->ns.len;
+
+    if (include_last) {
+        end = path_info->paths + path_info->count;
+    } else {
+        end = path_info->paths + path_info->count - 1;
+    }
+
+    for (part=path_info->paths; part<end; part++) {
+        *p++ = '/';
+        memcpy(p, part->str, part->len);
+        p += part->len;
+    }
+
+    len = p - logic_path;
+    logInfo("logic_path for hash code: %.*s", len, logic_path);
+    return simple_hash(logic_path, len);
 }
 
-int server_deal_create_dentry(ServerTaskContext *server_context)
+#define server_get_parent_hashcode(path_info)  \
+    server_get_dentry_hashcode(path_info, false)
+
+#define server_get_my_hashcode(path_info)  \
+    server_get_dentry_hashcode(path_info, true)
+
+static int server_deal_create_dentry(ServerTaskContext *task_context)
 {
     int result;
-    FDIRDEntryInfo dentry_info;
+    char *body;
+    FDIRServerContext *server_context;
+    FDIRServerTaskArg *task_arg;
+    FDIRProtoCreateDEntryFront *proto_front;
+    unsigned int hash_code;
+    unsigned int thread_index;
+    int flags;
+    int mode;
 
-    if ((result=server_check_body_length(server_context,
-            sizeof(FDIRProtoCreateDEntry) + 1,
-            sizeof(FDIRProtoCreateDEntry) + PATH_MAX)) != 0)
-    {
-        return result;
+    server_context = (FDIRServerContext *)task_context->task->thread_data->arg;
+    task_arg = (FDIRServerTaskArg *)task_context->task->arg;
+    if (task_context->task->nio_stage == SF_NIO_STAGE_FORWARDED) {
+        task_context->task->nio_stage = SF_NIO_STAGE_SEND;
+        body = task_context->task->data + sizeof(FDIRProtoHeader);
+    } else {
+        if ((result=server_check_body_length(task_context,
+                        sizeof(FDIRProtoCreateDEntryBody) + 1,
+                        sizeof(FDIRProtoCreateDEntryBody) + NAME_MAX + PATH_MAX)) != 0)
+        {
+            return result;
+        }
+
+        body = task_context->task->data + sizeof(FDIRProtoHeader);
+        if ((result=server_parse_dentry_info(task_context,
+                        body + sizeof(FDIRProtoCreateDEntryFront),
+                        &task_arg->path_info)) != 0) {
+            return result;
+        }
+
+        hash_code = server_get_parent_hashcode(&task_arg->path_info);
+        thread_index = hash_code % g_sf_global_vars.work_threads;
+        if (thread_index != server_context->thread_index) {
+            return sf_nio_notify(task_context->task, SF_NIO_STAGE_FORWARDED);
+        }
     }
 
-    if ((result=server_parse_dentry_info(server_context, &dentry_info)) != 0) {
-        return result;
-    }
-
-    //TODO
-    return 0;
+    proto_front = (FDIRProtoCreateDEntryFront *)body;
+    flags = buff2int(proto_front->flags);
+    mode = buff2int(proto_front->mode);
+    return dentry_create(server_context, &task_arg->path_info, flags, mode);
 }
 
 int server_deal_task(struct fast_task_info *task)
@@ -87,10 +189,12 @@ int server_deal_task(struct fast_task_info *task)
     ServerTaskContext task_context;
     int result;
     int r;
-    int64_t tbegin;
     int time_used;
 
-    tbegin = get_current_time_us();
+    task_arg = (FDIRServerTaskArg *)task->arg;
+    if (task->nio_stage != SF_NIO_STAGE_FORWARDED) {
+        task_arg->req_start_time = get_current_time_us();
+    }
     task_context.task = task;
     task_context.response.cmd = FDIR_PROTO_ACK;
     task_context.response.body_len = 0;
@@ -99,7 +203,6 @@ int server_deal_task(struct fast_task_info *task)
     task_context.log_error = true;
     task_context.response_done = false;
 
-    task_arg = (FDIRServerTaskArg *)task->arg;
     task_context.request.cmd = ((FDIRProtoHeader *)task->data)->cmd;
     task_context.request.body_len = task->length - sizeof(FDIRProtoHeader);
     do {
@@ -128,6 +231,10 @@ int server_deal_task(struct fast_task_info *task)
                 task_context.response.error.message);
     }
 
+    if (task->nio_stage == SF_NIO_STAGE_FORWARDED) {
+        return result;
+    }
+
     proto_header = (FDIRProtoHeader *)task->data;
     if (!task_context.response_done) {
         task_context.response.body_len = task_context.response.error.length;
@@ -144,7 +251,7 @@ int server_deal_task(struct fast_task_info *task)
     task->length = sizeof(FDIRProtoHeader) + task_context.response.body_len;
 
     r = sf_send_add_event(task);
-    time_used = (int)(get_current_time_us() - tbegin);
+    time_used = (int)(get_current_time_us() - task_arg->req_start_time);
     if (time_used > 50 * 1000) {
         lwarning("process a request timed used: %d us, "
                 "cmd: %d, req body len: %d, resp body len: %d",
@@ -165,10 +272,10 @@ int server_deal_task(struct fast_task_info *task)
 
 void *server_alloc_thread_extra_data(const int thread_index)
 {
-    FDIRServerContext *thread_extra_data;
+    FDIRServerContext *server_context;
 
-    thread_extra_data = (FDIRServerContext *)malloc(sizeof(FDIRServerContext));
-    if (thread_extra_data == NULL) {
+    server_context = (FDIRServerContext *)malloc(sizeof(FDIRServerContext));
+    if (server_context == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail, errno: %d, error info: %s",
                 __LINE__, (int)sizeof(FDIRServerContext),
@@ -176,20 +283,21 @@ void *server_alloc_thread_extra_data(const int thread_index)
         return NULL;
     }
 
-    memset(thread_extra_data, 0, sizeof(FDIRServerContext));
-    if ((dentry_init_context(&thread_extra_data->dentry_context)) != 0) {
-        free(thread_extra_data);
+    memset(server_context, 0, sizeof(FDIRServerContext));
+    if ((dentry_init_context(&server_context->dentry_context)) != 0) {
+        free(server_context);
         return NULL;
     }
 
-    if (fast_mblock_init(&thread_extra_data->delay_free_context.allocator,
+    if (fast_mblock_init(&server_context->delay_free_context.allocator,
                     sizeof(SkiplistDelayFreeNode), 16 * 1024) != 0)
     {
-        free(thread_extra_data);
+        free(server_context);
         return NULL;
     }
 
-    return thread_extra_data;
+    server_context->thread_index = thread_index;
+    return server_context;
 }
 
 int server_add_to_delay_free_queue(SkiplistDelayFreeContext *pContext,

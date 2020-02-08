@@ -45,15 +45,19 @@ typedef struct fdir_proto_dentry_info {
     unsigned char ns_len;  //namespace length
     char path_len[2];
     char padding[5];
-    char ns[0];      //namespace
-    //char *path;    //path = namespace + ns_len
+    char ns_str[0];      //namespace string
+    //char *path_str;    //path_str = ns_str + ns_len
 } FDIRProtoDEntryInfo;
 
-typedef struct fdir_proto_create_dentry {
+typedef struct fdir_proto_create_dentry_front {
     char flags[4];
     char mode[4];
+} FDIRProtoCreateDEntryFront;
+
+typedef struct fdir_proto_create_dentry_body {
+    FDIRProtoCreateDEntryFront front;
     FDIRProtoDEntryInfo dentry;
-} FDIRProtoCreateDEntry;
+} FDIRProtoCreateDEntryBody;
 
 typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;

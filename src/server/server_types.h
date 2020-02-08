@@ -48,10 +48,20 @@ typedef struct skiplist_delay_free_context {
 typedef struct fdir_server_context {
     FDIRDentryContext dentry_context;
     SkiplistDelayFreeContext delay_free_context;
+    int thread_index;
 } FDIRServerContext;
+
+typedef struct fdir_path_info {
+    string_t ns;    //namespace
+    string_t path;  //origin path
+    string_t paths[FDIR_MAX_PATH_COUNT];   //splited path parts
+    int count;
+} FDIRPathInfo;
 
 typedef struct server_task_arg {
     volatile int64_t task_version;
+    int64_t req_start_time;
+    FDIRPathInfo path_info;
 } FDIRServerTaskArg;
 
 #endif

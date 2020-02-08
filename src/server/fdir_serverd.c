@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
     int r;
     failvars;
 
+    printf("sizeof(struct fast_task_info): %d\n", (int)sizeof(struct fast_task_info));
     stop = false;
     if (argc < 2) {
         sf_usage(argv[0]);

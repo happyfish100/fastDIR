@@ -248,29 +248,28 @@ static const FDIRDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
 }
 
 static int dentry_find_parent_and_me(FDIRDentryContext *context,
-        const string_t *ns, const string_t *path, string_t *my_name,
+        const FDIRPathInfo *path_info, string_t *my_name,
         FDIRDentry **parent, FDIRDentry **me, const bool create_ns)
 {
     FDIRDentry target;
     FDIRNamespaceEntry *ns_entry;
-    string_t paths[FDIR_MAX_PATH_COUNT];
-    int count;
     int result;
 
-    if (path->len == 0 || path->str[0] != '/') {
+    if (path_info->path.len == 0 || path_info->path.str[0] != '/') {
         *parent = *me = NULL;
         my_name->len = 0;
         my_name->str = NULL;
         return EINVAL;
     }
 
-    if ((ns_entry=get_namespace(context, ns, create_ns, &result)) == NULL) {
+    if ((ns_entry=get_namespace(context, &path_info->ns,
+                    create_ns, &result)) == NULL)
+    {
         *parent = *me = NULL;
         return result;
     }
 
-    count = split_string_ex(path, '/', paths, FDIR_MAX_PATH_COUNT, true);
-    if (count == 0) {
+    if (path_info->count == 0) {
         *parent = NULL;
         *me = &ns_entry->dentry_root;
         my_name->len = 0;
@@ -278,11 +277,12 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         return 0;
     }
 
-    *my_name = paths[count - 1];
-    if (count == 1) {
+    *my_name = path_info->paths[path_info->count - 1];
+    if (path_info->count == 1) {
         *parent = &ns_entry->dentry_root;
     } else {
-        *parent = (FDIRDentry *)dentry_find_ex(ns_entry, paths, count - 1);
+        *parent = (FDIRDentry *)dentry_find_ex(ns_entry,
+                path_info->paths, path_info->count - 1);
         if (*parent == NULL) {
             *me = NULL;
             return ENOENT;
@@ -298,8 +298,9 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     return 0;
 }
 
-int dentry_create(FDIRServerContext *server_context, const string_t *ns,
-        const string_t *path, const int flags, const mode_t mode)
+int dentry_create(FDIRServerContext *server_context,
+        const FDIRPathInfo *path_info,
+        const int flags, const mode_t mode)
 {
     FDIRDentry *parent;
     FDIRDentry *current;
@@ -313,7 +314,7 @@ int dentry_create(FDIRServerContext *server_context, const string_t *ns,
     }
 
     if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    ns, path, &my_name, &parent, &current, true)) != 0)
+                    path_info, &my_name, &parent, &current, true)) != 0)
     {
         return result;
     }
@@ -324,11 +325,12 @@ int dentry_create(FDIRServerContext *server_context, const string_t *ns,
 
     if (uniq_skiplist_count(parent->children) >= MAX_ENTRIES_PER_PATH) {
         char *parent_end;
-        parent_end = (char *)strrchr(path->str, '/');
+        parent_end = (char *)fc_memrchr(path_info->path.str, '/',
+                path_info->path.len);
         logError("file: "__FILE__", line: %d, "
                 "too many entries in path %.*s, exceed %d",
-                __LINE__, (int)(parent_end - path->str),
-                path->str, MAX_ENTRIES_PER_PATH);
+                __LINE__, (int)(parent_end - path_info->path.str),
+                path_info->path.str, MAX_ENTRIES_PER_PATH);
         return ENOSPC;
     }
     
@@ -362,8 +364,8 @@ int dentry_create(FDIRServerContext *server_context, const string_t *ns,
     return 0;
 }
 
-int dentry_remove(FDIRServerContext *server_context, const string_t *ns,
-        const string_t *path)
+int dentry_remove(FDIRServerContext *server_context,
+        const FDIRPathInfo *path_info)
 {
     FDIRDentry *parent;
     FDIRDentry *current;
@@ -371,7 +373,7 @@ int dentry_remove(FDIRServerContext *server_context, const string_t *ns,
     int result;
 
     if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    ns, path, &my_name, &parent, &current, false)) != 0)
+                    path_info, &my_name, &parent, &current, false)) != 0)
     {
         return result;
     }
@@ -392,15 +394,15 @@ int dentry_remove(FDIRServerContext *server_context, const string_t *ns,
     return uniq_skiplist_delete(parent->children, current);
 }
 
-int dentry_find(FDIRServerContext *server_context, const string_t *ns,
-        const string_t *path, FDIRDentry **dentry)
+int dentry_find(FDIRServerContext *server_context,
+        const FDIRPathInfo *path_info, FDIRDentry **dentry)
 {
     FDIRDentry *parent;
     string_t my_name;
     int result;
 
     if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    ns, path, &my_name, &parent, dentry, false)) != 0)
+                    path_info, &my_name, &parent, dentry, false)) != 0)
     {
         return result;
     }
@@ -457,8 +459,8 @@ void dentry_array_free(FDIRDentryArray *array)
     }
 }
 
-int dentry_list(FDIRServerContext *server_context, const string_t *ns,
-        const string_t *path, FDIRDentryArray *array)
+int dentry_list(FDIRServerContext *server_context,
+        const FDIRPathInfo *path_info, FDIRDentryArray *array)
 {
     FDIRDentry *dentry;
     FDIRDentry *current;
@@ -468,7 +470,7 @@ int dentry_list(FDIRServerContext *server_context, const string_t *ns,
     int count;
 
     array->count = 0;
-    if ((result=dentry_find(server_context, ns, path, &dentry)) != 0) {
+    if ((result=dentry_find(server_context, path_info, &dentry)) != 0) {
         return result;
     }
 
