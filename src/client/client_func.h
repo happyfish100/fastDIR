@@ -2,7 +2,7 @@
 #ifndef _FDIR_CLIENT_FUNC_H
 #define _FDIR_CLIENT_FUNC_H
 
-#include "common/fdir_global.h"
+#include "fdir_global.h"
 
 #ifdef __cplusplus
 extern "C" {

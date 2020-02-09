@@ -15,7 +15,8 @@
 
 #define FDIR_PROTO_CREATE_DENTRY      43
 #define FDIR_PROTO_REMOVE_DENTRY      45
-#define FDIR_PROTO_LIST_DENTRY        47
+#define FDIR_PROTO_LIST_DENTRY_REQ    47
+#define FDIR_PROTO_LIST_DENTRY_RESP   48
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
@@ -46,7 +47,8 @@ typedef struct fdir_proto_header {
     char body_len[4];    //body length
     unsigned char cmd;   //the command code
     unsigned char status;//status to store errno
-    char padding[6];
+    char flags[2];
+    char padding[4];
 } FDIRProtoHeader;
 
 typedef struct fdir_proto_dentry_info {
@@ -98,11 +100,12 @@ int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
         const unsigned char expect_cmd);
 
 static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
-        FDIRResponseInfo *response)
+        FDIRHeaderInfo *header_info)
 {
-    response->cmd = header_proto->cmd;
-    response->body_len = buff2int(header_proto->body_len);
-    response->status = header_proto->status;
+    header_info->cmd = header_proto->cmd;
+    header_info->body_len = buff2int(header_proto->body_len);
+    header_info->flags = buff2short(header_proto->flags);
+    header_info->status = header_proto->status;
 }
 
 int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,

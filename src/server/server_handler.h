@@ -27,11 +27,11 @@ static inline int server_expect_body_length(
         ServerTaskContext *server_context,
         const int expect_body_length)
 {
-    if (server_context->request.body_len != expect_body_length) {
+    if (server_context->request.header.body_len != expect_body_length) {
         server_context->response.error.length = sprintf(
                 server_context->response.error.message,
                 "request body length: %d != %d",
-                server_context->request.body_len, expect_body_length);
+                server_context->request.header.body_len, expect_body_length);
         return EINVAL;
     }
 
@@ -42,11 +42,11 @@ static inline int server_check_min_body_length(
         ServerTaskContext *server_context,
         const int min_body_length)
 {
-    if (server_context->request.body_len < min_body_length) {
+    if (server_context->request.header.body_len < min_body_length) {
         server_context->response.error.length = sprintf(
                 server_context->response.error.message,
                 "request body length: %d < %d",
-                server_context->request.body_len, min_body_length);
+                server_context->request.header.body_len, min_body_length);
         return EINVAL;
     }
 
@@ -57,11 +57,11 @@ static inline int server_check_max_body_length(
         ServerTaskContext *server_context,
         const int max_body_length)
 {
-    if (server_context->request.body_len > max_body_length) {
+    if (server_context->request.header.body_len > max_body_length) {
         server_context->response.error.length = sprintf(
                 server_context->response.error.message,
                 "request body length: %d > %d",
-                server_context->request.body_len, max_body_length);
+                server_context->request.header.body_len, max_body_length);
         return EINVAL;
     }
 

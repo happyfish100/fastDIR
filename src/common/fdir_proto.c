@@ -40,23 +40,23 @@ void fdir_set_admin_header (FDIRProtoHeader *fdir_header_proto,
 int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout, const unsigned char expect_cmd)
 {
-    if (response->cmd != expect_cmd) {
+    if (response->header.cmd != expect_cmd) {
         response->error.length = sprintf(
                 response->error.message,
                 "response cmd: %d != expect: %d",
-                response->cmd, expect_cmd);
+                response->header.cmd, expect_cmd);
         return EINVAL;
     }
 
-    if (response->status == 0) {
+    if (response->header.status == 0) {
         return 0;
     }
 
-    if (response->body_len > 0) {
-        if (response->body_len >= sizeof(response->error.message)) {
+    if (response->header.body_len > 0) {
+        if (response->header.body_len >= sizeof(response->error.message)) {
             response->error.length = sizeof(response->error.message) - 1;
         } else {
-            response->error.length = response->body_len;
+            response->error.length = response->header.body_len;
         }
         tcprecvdata_nb_ex(conn->sock, response->error.message,
                 response->error.length, network_timeout,
@@ -67,7 +67,7 @@ int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
         response->error.message[0] = '\0';
     }
 
-    return response->status;
+    return response->header.status;
 }
 
 int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
@@ -96,7 +96,7 @@ int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
         return result;
     }
 
-    fdir_proto_extract_header(&header_proto, response);
+    fdir_proto_extract_header(&header_proto, &response->header);
     return 0;
 }
 
@@ -119,11 +119,11 @@ int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
         return result;
     }
 
-    if (response->body_len > 0) {
+    if (response->header.body_len > 0) {
         snprintf(response->error.message,
                 sizeof(response->error.message),
                 "server %s:%d, response body length: %d != 0",
-                conn->ip_addr, conn->port, response->body_len);
+                conn->ip_addr, conn->port, response->header.body_len);
         return EINVAL;
     }
 

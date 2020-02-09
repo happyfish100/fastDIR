@@ -64,6 +64,8 @@ static int server_parse_dentry_info(ServerTaskContext *task_context,
     path_info->path.len = buff2short(proto_dentry->path_len);
     path_info->path.str = proto_dentry->ns_str + path_info->ns.len;
 
+    logInfo("ns.len: %d, path.len: %d", path_info->ns.len, path_info->path.len);
+
     if (path_info->ns.len <= 0) {
         task_context->response.error.length = sprintf(
                 task_context->response.error.message,
@@ -174,17 +176,21 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
          
         body_len = sizeof(FDIRProtoCreateDEntryBody) + task_arg->
             path_info.ns.len + task_arg->path_info.path.len;
-        if (body_len != task_context->request.body_len)
+        if (body_len != task_context->request.header.body_len)
         {
             task_context->response.error.length = sprintf(
                     task_context->response.error.message,
                     "body length: %d != expect: %d",
-                    task_context->request.body_len, body_len);
+                    task_context->request.header.body_len, body_len);
             return EINVAL;
         }
 
         hash_code = server_get_parent_hashcode(&task_arg->path_info);
         thread_index = hash_code % g_sf_global_vars.work_threads;
+
+        logInfo("hash_code: %u, thread_index: %d, current thread_index: %d",
+                hash_code, thread_index, server_context->thread_index);
+
         if (thread_index != server_context->thread_index) {
             return sf_nio_notify(task_context->task, SF_NIO_STAGE_FORWARDED);
         }
@@ -210,19 +216,19 @@ int server_deal_task(struct fast_task_info *task)
         task_arg->req_start_time = get_current_time_us();
     }
     task_context.task = task;
-    task_context.response.cmd = FDIR_PROTO_ACK;
-    task_context.response.body_len = 0;
+    task_context.response.header.cmd = FDIR_PROTO_ACK;
+    task_context.response.header.body_len = 0;
     task_context.response.error.length = 0;
     task_context.response.error.message[0] = '\0';
     task_context.log_error = true;
     task_context.response_done = false;
 
-    task_context.request.cmd = ((FDIRProtoHeader *)task->data)->cmd;
-    task_context.request.body_len = task->length - sizeof(FDIRProtoHeader);
+    task_context.request.header.cmd = ((FDIRProtoHeader *)task->data)->cmd;
+    task_context.request.header.body_len = task->length - sizeof(FDIRProtoHeader);
     do {
-        switch (task_context.request.cmd) {
+        switch (task_context.request.header.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
-                task_context.response.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
+                task_context.response.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
                 result = server_deal_actvie_test(&task_context);
                 break;
             case FDIR_PROTO_CREATE_DENTRY:
@@ -231,7 +237,7 @@ int server_deal_task(struct fast_task_info *task)
             default:
                 task_context.response.error.length = sprintf(
                         task_context.response.error.message,
-                        "unkown cmd: %d", task_context.request.cmd);
+                        "unkown cmd: %d", task_context.request.header.cmd);
                 result = -EINVAL;
                 break;
         }
@@ -240,8 +246,8 @@ int server_deal_task(struct fast_task_info *task)
     if (task_context.log_error && task_context.response.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
                 "client ip: %s, cmd: %d, req body length: %d, %s",
-                __LINE__, task->client_ip, task_context.request.cmd,
-                task_context.request.body_len,
+                __LINE__, task->client_ip, task_context.request.header.cmd,
+                task_context.request.header.body_len,
                 task_context.response.error.message);
     }
 
@@ -251,7 +257,8 @@ int server_deal_task(struct fast_task_info *task)
 
     proto_header = (FDIRProtoHeader *)task->data;
     if (!task_context.response_done) {
-        task_context.response.body_len = task_context.response.error.length;
+        task_context.response.header.body_len =
+            task_context.response.error.length;
         if (task_context.response.error.length > 0) {
             memcpy(task->data + sizeof(FDIRProtoHeader),
                     task_context.response.error.message,
@@ -260,26 +267,28 @@ int server_deal_task(struct fast_task_info *task)
     }
 
     proto_header->status = result >= 0 ? result : -1 * result;
-    proto_header->cmd = task_context.response.cmd;
-    int2buff(task_context.response.body_len, proto_header->body_len);
-    task->length = sizeof(FDIRProtoHeader) + task_context.response.body_len;
+    proto_header->cmd = task_context.response.header.cmd;
+    int2buff(task_context.response.header.body_len, proto_header->body_len);
+    task->length = sizeof(FDIRProtoHeader) +
+        task_context.response.header.body_len;
 
     r = sf_send_add_event(task);
     time_used = (int)(get_current_time_us() - task_arg->req_start_time);
     if (time_used > 50 * 1000) {
         lwarning("process a request timed used: %d us, "
                 "cmd: %d, req body len: %d, resp body len: %d",
-                time_used, task_context.request.cmd,
-                task_context.request.body_len,
-                task_context.response.body_len);
+                time_used, task_context.request.header.cmd,
+                task_context.request.header.body_len,
+                task_context.response.header.body_len);
     }
 
     ldebug("client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
             "time used: %d us",  task->client_ip,
-            task_context.request.cmd, task_context.request.body_len,
-            task_context.response.cmd, proto_header->status,
-            task_context.response.body_len, time_used);
+            task_context.request.header.cmd,
+            task_context.request.header.body_len,
+            task_context.response.header.cmd, proto_header->status,
+            task_context.response.header.body_len, time_used);
 
     return r == 0 ? result : r;
 }

@@ -2,7 +2,7 @@
 #ifndef _FDIR_CLIENT_PROTO_H
 #define _FDIR_CLIENT_PROTO_H
 
-#include "common/fdir_types.h"
+#include "fdir_types.h"
 
 #ifdef __cplusplus
 extern "C" {

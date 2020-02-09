@@ -167,8 +167,8 @@ void fdir_client_destroy_ex(FDIRServerCluster *server_cluster)
     }
 
     free(server_cluster->server_group.servers);
-    if (server_cluster->follower_group.servers != NULL) {
-        free(server_cluster->follower_group.servers);
+    if (server_cluster->slave_group.servers != NULL) {
+        free(server_cluster->slave_group.servers);
     }
     memset(server_cluster, 0, sizeof(FDIRServerCluster));
 }

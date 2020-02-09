@@ -32,4 +32,6 @@ src/client/Makefile
 src/server/fdir_serverd
 
 # other
-
+logs
+*.pid
+*.swp

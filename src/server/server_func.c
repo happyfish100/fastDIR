@@ -23,6 +23,9 @@ static int server_load_admin_config(IniContext *ini_context)
     } lengths;
     int bytes;
 
+    //TODO
+    return 0;
+
     if ((username=iniGetRequiredStrValue(ADMIN_SECTION_NAME, "username",
                     ini_context)) == NULL)
     {

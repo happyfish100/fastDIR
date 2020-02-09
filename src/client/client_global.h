@@ -2,7 +2,7 @@
 #ifndef _CLIENT_GLOBAL_H
 #define _CLIENT_GLOBAL_H
 
-#include "common/fdir_global.h"
+#include "fdir_global.h"
 
 typedef struct client_global_vars {
     int connect_timeout;

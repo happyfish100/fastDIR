@@ -15,14 +15,18 @@
 #define FDIR_MAX_PATH_COUNT  128
 
 typedef struct {
-    unsigned char cmd;  //response command
-    int body_len;       //response body length
+    unsigned char cmd; //command
+    short flags;
+    int body_len;      //body length
+    int status;
+} FDIRHeaderInfo;
+
+typedef struct {
+    FDIRHeaderInfo header;
 } FDIRRequestInfo;
 
 typedef struct {
-    unsigned char cmd;   //response command
-    int body_len;    //response body length
-    int status;
+    FDIRHeaderInfo header;
     struct {
         int length;
         char message[FDIR_ERROR_INFO_SIZE];
@@ -39,15 +43,15 @@ typedef struct fdir_server_group {
     ConnectionInfo *servers;
 } FDIRServerGroup;
 
-typedef struct fdir_follower_group {
+typedef struct fdir_slave_group {
     int count;
     int index;  //server index for roundrobin
     ConnectionInfo **servers;
-} FDIRFollowerGroup;
+} FDIRSlaveGroup;
 
 typedef struct fdir_server_cluster {
     FDIRServerGroup server_group;
-    FDIRFollowerGroup follower_group;
+    FDIRSlaveGroup slave_group;
     ConnectionInfo *master;
 } FDIRServerCluster;
 

@@ -26,6 +26,7 @@
 #include "common/fdir_types.h"
 #include "server_types.h"
 #include "server_func.h"
+#include "dentry.h"
 #include "server_handler.h"
 
 static bool daemon_mode = true;
@@ -42,7 +43,6 @@ int main(int argc, char *argv[])
     int r;
     failvars;
 
-    printf("sizeof(struct fast_task_info): %d\n", (int)sizeof(struct fast_task_info));
     stop = false;
     if (argc < 2) {
         sf_usage(argv[0]);
@@ -72,20 +72,23 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    sched_set_delay_params(300, 1024);
+    //sched_set_delay_params(300, 1024);
     r = setup_server_env(config_filename);
-    gofailif(r,"");
+    gofailif(r, "");
 
     r = sf_startup_schedule(&schedule_tid);
-    gofailif(r,"");
+    gofailif(r, "");
 
     r = sf_socket_server();
     gofailif(r, "socket server error");
     r = write_to_pid_file(g_pid_filename);
     gofailif(r, "write pid error");
 
+    r = dentry_init();
+    gofailif(r, "dentry init error");
+
     r = server_handler_init();
-    gofailif(r,"server handler init error");
+    gofailif(r, "server handler init error");
 
     fdir_proto_init();
 
@@ -93,7 +96,7 @@ int main(int argc, char *argv[])
             server_thread_loop,
             NULL, fdir_proto_set_body_length, server_deal_task,
             server_task_finish_cleanup, NULL,
-            100, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+            1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
     gofailif(r,"service init error");
     sf_set_remove_from_ready_list(false);
 
