@@ -1,6 +1,7 @@
 # Makefile.in
 src/server/Makefile
 src/client/Makefile
+src/client/tools/Makefile
 
 # Prerequisites
 *.d

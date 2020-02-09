@@ -40,9 +40,10 @@ int server_handler_destroy()
 
 void server_task_finish_cleanup(struct fast_task_info *task)
 {
-    FDIRServerTaskArg *task_arg;
+    /* FDIRServerTaskArg *task_arg;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
+    */
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
     sf_task_finish_clean_up(task);
