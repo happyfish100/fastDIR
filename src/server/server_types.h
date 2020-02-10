@@ -14,15 +14,6 @@
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 
-typedef struct {
-    struct fast_task_info *task;
-    FDIRRequestInfo request;
-    FDIRResponseInfo response;
-
-    bool response_done;
-    bool log_error;
-} ServerTaskContext;
-
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
@@ -58,10 +49,35 @@ typedef struct fdir_path_info {
     int count;
 } FDIRPathInfo;
 
+struct fdir_server_dentry;
+typedef struct fdir_server_dentry_array {
+    int alloc;
+    int count;
+    struct fdir_server_dentry **entries;
+} FDIRServerDentryArray;
+
 typedef struct server_task_arg {
     volatile int64_t task_version;
     int64_t req_start_time;
     FDIRPathInfo path_info;
+    struct {
+        FDIRServerDentryArray array;
+        int64_t token;
+        int offset;
+        time_t expires;  //expire time
+    } dentry_list_cache; //for dentry_list
 } FDIRServerTaskArg;
+
+typedef struct {
+    struct fast_task_info *task;
+    FDIRServerContext *server_context;
+    FDIRServerTaskArg *task_arg;
+
+    FDIRRequestInfo request;
+    FDIRResponseInfo response;
+
+    bool response_done;
+    bool log_error;
+} ServerTaskContext;
 
 #endif

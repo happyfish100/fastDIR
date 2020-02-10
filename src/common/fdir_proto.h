@@ -8,15 +8,17 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fdir_types.h"
 
-#define FDIR_PROTO_ACK                 6
+#define FDIR_PROTO_ACK                    6
 
-#define FDIR_PROTO_ACTIVE_TEST_REQ    35
-#define FDIR_PROTO_ACTIVE_TEST_RESP   36
+#define FDIR_PROTO_ACTIVE_TEST_REQ       35
+#define FDIR_PROTO_ACTIVE_TEST_RESP      36
 
-#define FDIR_PROTO_CREATE_DENTRY      43
-#define FDIR_PROTO_REMOVE_DENTRY      45
-#define FDIR_PROTO_LIST_DENTRY_REQ    47
-#define FDIR_PROTO_LIST_DENTRY_RESP   48
+#define FDIR_PROTO_CREATE_DENTRY         41
+#define FDIR_PROTO_REMOVE_DENTRY         43
+
+#define FDIR_PROTO_LIST_DENTRY_FIRST_REQ 45
+#define FDIR_PROTO_LIST_DENTRY_NEXT_REQ  47
+#define FDIR_PROTO_LIST_DENTRY_RESP      48
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
@@ -34,12 +36,19 @@
 #define FDIR_PROTO_MAGIC_PARAMS(m) \
     m[0], m[1], m[2], m[3]
 
-#define FDIR_PROTO_SET_HEADER(header, _cmd, _body_len)  \
+#define FDIR_PROTO_SET_HEADER(header, _cmd, _body_len) \
     do {  \
         FDIR_PROTO_SET_MAGIC((header)->magic);   \
         (header)->cmd = _cmd;      \
         (header)->status = 0;      \
         int2buff(_body_len, (header)->body_len); \
+    } while (0)
+
+#define FDIR_PROTO_SET_RESPONSE_HEADER(proto_header, resp_header) \
+    do {  \
+        (proto_header)->cmd = (resp_header).cmd;       \
+        (proto_header)->status = (resp_header).status; \
+        int2buff((resp_header).body_len, (proto_header)->body_len); \
     } while (0)
 
 typedef struct fdir_proto_header {
@@ -73,13 +82,27 @@ typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
 
-typedef struct fdir_proto_list_dentry {
-    struct {
-        char offset[2];
-        char count[2];
-    } limit;
+typedef struct fdir_proto_list_dentry_first_body {
     FDIRProtoDEntryInfo dentry;
-} FDIRProtoListDEntry;
+} FDIRProtoListDEntryFirstBody;
+
+typedef struct fdir_proto_list_dentry_next_body {
+    char token[8];
+    char count[4];
+    char padding[4];
+} FDIRProtoListDEntryNextBody;
+
+typedef struct fdir_proto_list_dentry_resp_body_header {
+    char token[8];
+    char count[4];
+    char is_last;
+    char padding[3];
+} FDIRProtoListDEntryRespBodyHeader;
+
+typedef struct fdir_proto_list_dentry_resp_body_part {
+    unsigned char name_len;
+    char name_str[0];
+} FDIRProtoListDEntryRespBodyPart;
 
 #ifdef __cplusplus
 extern "C" {
@@ -94,6 +117,28 @@ int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
 
 int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
         const int len, FDIRResponseInfo *response, const int network_timeout);
+
+static inline int fdir_send_and_check_response_header(ConnectionInfo *conn,
+        char *data, const int len, FDIRResponseInfo *response,
+        const int network_timeout,  const unsigned char expect_cmd)
+{
+    int result;
+
+    if ((result=fdir_send_and_recv_response_header(conn, data, len,
+                    response, network_timeout)) != 0)
+    {
+        return result;
+    }
+
+
+    if ((result=fdir_check_response(conn, response, network_timeout,
+                    expect_cmd)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
 
 int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
         const int len, FDIRResponseInfo *response, int network_timeout,

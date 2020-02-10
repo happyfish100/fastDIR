@@ -6,27 +6,12 @@
 
 #define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
-typedef struct fdir_dstatus {
-    int64_t inode;
-    mode_t mode;
-    int ctime;  /* create time */
-    int mtime;  /* modify time */
-    int atime;  /* last access time */
-    int64_t size;   /* file size in bytes */
-} FDIRDStatus;
-
-typedef struct fdir_dentry {
+typedef struct fdir_server_dentry {
     string_t name;
     FDIRDStatus stat;
     FDIRDentryContext *context;
     UniqSkiplist *children;
-} FDIRDentry;
-
-typedef struct fdir_dentry_array {
-    int alloc;
-    int count;
-    FDIRDentry **entries;
-} FDIRDentryArray;
+} FDIRServerDentry;
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,11 +31,11 @@ extern "C" {
 
     int dentry_find(FDIRServerContext *server_context,
             const FDIRPathInfo *path_info,
-            FDIRDentry **dentry);
+            FDIRServerDentry **dentry);
 
     int dentry_list(FDIRServerContext *server_context,
-            const FDIRPathInfo *path_info, FDIRDentryArray *array);
-    void dentry_array_free(FDIRDentryArray *array);
+            const FDIRPathInfo *path_info, FDIRServerDentryArray *array);
+    void dentry_array_free(FDIRServerDentryArray *array);
 
 #ifdef __cplusplus
 }

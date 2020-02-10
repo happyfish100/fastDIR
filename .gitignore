@@ -31,6 +31,7 @@ src/client/tools/Makefile
 # Executables
 *.out
 src/server/fdir_serverd
+src/client/tools/fdir_mkdir
 
 # other
 logs

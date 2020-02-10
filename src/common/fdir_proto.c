@@ -26,7 +26,7 @@ int fdir_proto_set_body_length(struct fast_task_info *task)
         return EINVAL;
     }
 
-    task->length = buff2int(header->body_len);
+    task->length = buff2int(header->body_len); //set body length
     return 0;
 }
 
@@ -106,15 +106,8 @@ int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
 {
     int result;
 
-    if ((result=fdir_send_and_recv_response_header(conn, data, len,
-        response, network_timeout)) != 0)
-    {
-        return result;
-    }
-
-
-    if ((result=fdir_check_response(conn, response, network_timeout,
-                    expect_cmd)) != 0)
+    if ((result=fdir_send_and_check_response_header(conn,
+                    data, len, response, network_timeout, expect_cmd)) != 0)
     {
         return result;
     }

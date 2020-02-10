@@ -18,7 +18,7 @@
 
 typedef struct fdir_namespace_entry {
     string_t name;
-    FDIRDentry dentry_root;
+    FDIRServerDentry dentry_root;
     struct fdir_namespace_entry *next;  //for hashtable
 } FDIRNamespaceEntry;
 
@@ -102,14 +102,14 @@ void dentry_destroy()
 
 static int dentry_compare(const void *p1, const void *p2)
 {
-    return fc_string_compare(&((FDIRDentry *)p1)->name, 
-            &((FDIRDentry *)p2)->name);
+    return fc_string_compare(&((FDIRServerDentry *)p1)->name,
+            &((FDIRServerDentry *)p2)->name);
 }
 
 void dentry_free(void *ptr, const int delay_seconds)
 {
-    FDIRDentry *dentry;
-    dentry = (FDIRDentry *)ptr;
+    FDIRServerDentry *dentry;
+    dentry = (FDIRServerDentry *)ptr;
 
     fast_allocator_free(&fdir_manager.name_acontext, dentry->name.str);
     if (delay_seconds > 0) {
@@ -123,8 +123,8 @@ void dentry_free(void *ptr, const int delay_seconds)
 
 int dentry_init_obj(void *element, void *init_args)
 {
-    FDIRDentry *dentry;
-    dentry = (FDIRDentry *)element;
+    FDIRServerDentry *dentry;
+    dentry = (FDIRServerDentry *)element;
     dentry->context = (FDIRDentryContext *)init_args;
     return 0;
 }
@@ -143,7 +143,7 @@ int dentry_init_context(FDIRDentryContext *context)
     }
 
      if ((result=fast_mblock_init_ex(&context->dentry_allocator,
-                     sizeof(FDIRDentry), 64 * 1024,
+                     sizeof(FDIRServerDentry), 64 * 1024,
                      dentry_init_obj, context, false)) != 0)
      {
         return result;
@@ -222,13 +222,13 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
     return entry;
 }
 
-static const FDIRDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
+static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
         const string_t *paths, const int count)
 {
     const string_t *p;
     const string_t *end;
-    FDIRDentry *current;
-    FDIRDentry target;
+    FDIRServerDentry *current;
+    FDIRServerDentry target;
 
     current = &ns_entry->dentry_root;
     end = paths + count;
@@ -238,7 +238,7 @@ static const FDIRDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
         }
 
         target.name = *p;
-        current = (FDIRDentry *)uniq_skiplist_find(current->children, &target);
+        current = (FDIRServerDentry *)uniq_skiplist_find(current->children, &target);
         if (current == NULL) {
             return NULL;
         }
@@ -249,9 +249,9 @@ static const FDIRDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
 
 static int dentry_find_parent_and_me(FDIRDentryContext *context,
         const FDIRPathInfo *path_info, string_t *my_name,
-        FDIRDentry **parent, FDIRDentry **me, const bool create_ns)
+        FDIRServerDentry **parent, FDIRServerDentry **me, const bool create_ns)
 {
-    FDIRDentry target;
+    FDIRServerDentry target;
     FDIRNamespaceEntry *ns_entry;
     int result;
 
@@ -281,7 +281,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     if (path_info->count == 1) {
         *parent = &ns_entry->dentry_root;
     } else {
-        *parent = (FDIRDentry *)dentry_find_ex(ns_entry,
+        *parent = (FDIRServerDentry *)dentry_find_ex(ns_entry,
                 path_info->paths, path_info->count - 1);
         if (*parent == NULL) {
             *me = NULL;
@@ -294,7 +294,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     }
 
     target.name = *my_name;
-    *me = (FDIRDentry *)uniq_skiplist_find((*parent)->children, &target);
+    *me = (FDIRServerDentry *)uniq_skiplist_find((*parent)->children, &target);
     return 0;
 }
 
@@ -302,8 +302,8 @@ int dentry_create(FDIRServerContext *server_context,
         const FDIRPathInfo *path_info,
         const int flags, const mode_t mode)
 {
-    FDIRDentry *parent;
-    FDIRDentry *current;
+    FDIRServerDentry *parent;
+    FDIRServerDentry *current;
     string_t my_name;
     int result;
 
@@ -334,7 +334,7 @@ int dentry_create(FDIRServerContext *server_context,
         return ENOSPC;
     }
     
-    current = (FDIRDentry *)fast_mblock_alloc_object(
+    current = (FDIRServerDentry *)fast_mblock_alloc_object(
             &server_context->dentry_context.dentry_allocator);
     if (current == NULL) {
         return ENOMEM;
@@ -367,8 +367,8 @@ int dentry_create(FDIRServerContext *server_context,
 int dentry_remove(FDIRServerContext *server_context,
         const FDIRPathInfo *path_info)
 {
-    FDIRDentry *parent;
-    FDIRDentry *current;
+    FDIRServerDentry *parent;
+    FDIRServerDentry *current;
     string_t my_name;
     int result;
 
@@ -395,9 +395,9 @@ int dentry_remove(FDIRServerContext *server_context,
 }
 
 int dentry_find(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info, FDIRDentry **dentry)
+        const FDIRPathInfo *path_info, FDIRServerDentry **dentry)
 {
-    FDIRDentry *parent;
+    FDIRServerDentry *parent;
     string_t my_name;
     int result;
 
@@ -414,9 +414,9 @@ int dentry_find(FDIRServerContext *server_context,
     return 0;
 }
 
-static int check_alloc_dentry_array(FDIRDentryArray *array, const int target_count)
+static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int target_count)
 {
-    FDIRDentry **entries;
+    FDIRServerDentry **entries;
     int new_alloc;
     int bytes;
 
@@ -429,8 +429,8 @@ static int check_alloc_dentry_array(FDIRDentryArray *array, const int target_cou
         new_alloc *= 2;
     }
 
-    bytes = sizeof(FDIRDentry *) * new_alloc;
-    entries = (FDIRDentry **)malloc(bytes);
+    bytes = sizeof(FDIRServerDentry *) * new_alloc;
+    entries = (FDIRServerDentry **)malloc(bytes);
     if (entries == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail", __LINE__, bytes);
@@ -440,7 +440,7 @@ static int check_alloc_dentry_array(FDIRDentryArray *array, const int target_cou
     if (array->entries != NULL) {
         if (array->count > 0) {
             memcpy(entries, array->entries,
-                    sizeof(FDIRDentry *) * array->count);
+                    sizeof(FDIRServerDentry *) * array->count);
         }
         free(array->entries);
     }
@@ -450,7 +450,7 @@ static int check_alloc_dentry_array(FDIRDentryArray *array, const int target_cou
     return 0;
 }
 
-void dentry_array_free(FDIRDentryArray *array)
+void dentry_array_free(FDIRServerDentryArray *array)
 {
     if (array->entries != NULL) {
         free(array->entries);
@@ -460,11 +460,11 @@ void dentry_array_free(FDIRDentryArray *array)
 }
 
 int dentry_list(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info, FDIRDentryArray *array)
+        const FDIRPathInfo *path_info, FDIRServerDentryArray *array)
 {
-    FDIRDentry *dentry;
-    FDIRDentry *current;
-    FDIRDentry **pp;
+    FDIRServerDentry *dentry;
+    FDIRServerDentry *current;
+    FDIRServerDentry **pp;
     UniqSkiplistIterator iterator;
     int result;
     int count;
@@ -489,7 +489,7 @@ int dentry_list(FDIRServerContext *server_context,
     } else {
         pp = array->entries;
         uniq_skiplist_iterator(dentry->children, &iterator);
-        while ((current=(FDIRDentry *)uniq_skiplist_next(&iterator)) != NULL) {
+        while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
            *pp++ = dentry;
         }
         array->count = pp - array->entries;
