@@ -10,10 +10,19 @@ typedef struct fdir_client_dentry {
     FDIRDStatus stat;
 } FDIRClientDentry;
 
+typedef struct fdir_client_buffer {
+    int size;
+    //char fixed[16 * 1024]; //fixed buffer
+    char fixed[16]; //fixed buffer
+    char *buff;            //recv buffer
+    char *current;
+} FDIRClientBuffer;
+
 typedef struct fdir_client_dentry_array {
     int alloc;
     int count;
     FDIRClientDentry *entries;
+    FDIRClientBuffer buffer;
     struct fast_mpool_man mpool;
 } FDIRClientDentryArray;
 

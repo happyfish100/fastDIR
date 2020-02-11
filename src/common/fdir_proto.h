@@ -88,7 +88,7 @@ typedef struct fdir_proto_list_dentry_first_body {
 
 typedef struct fdir_proto_list_dentry_next_body {
     char token[8];
-    char count[4];
+    char offset[4];    //for check, must be same with server's
     char padding[4];
 } FDIRProtoListDEntryNextBody;
 

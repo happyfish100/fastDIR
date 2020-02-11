@@ -40,15 +40,15 @@ void fdir_set_admin_header (FDIRProtoHeader *fdir_header_proto,
 int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout, const unsigned char expect_cmd)
 {
-    if (response->header.cmd != expect_cmd) {
-        response->error.length = sprintf(
-                response->error.message,
-                "response cmd: %d != expect: %d",
-                response->header.cmd, expect_cmd);
-        return EINVAL;
-    }
-
     if (response->header.status == 0) {
+        if (response->header.cmd != expect_cmd) {
+            response->error.length = sprintf(
+                    response->error.message,
+                    "response cmd: %d != expect: %d",
+                    response->header.cmd, expect_cmd);
+            return EINVAL;
+        }
+
         return 0;
     }
 
@@ -77,7 +77,8 @@ int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
     FDIRProtoHeader header_proto;
 
     if ((result=tcpsenddata_nb(conn->sock, data, len, network_timeout)) != 0) {
-        snprintf(response->error.message, sizeof(response->error.message),
+        response->error.length = snprintf(response->error.message,
+                sizeof(response->error.message),
                 "send data to server %s:%d fail, "
                 "errno: %d, error info: %s",
                 conn->ip_addr, conn->port,
@@ -85,10 +86,11 @@ int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
         return result;
     }
 
-    if ((result=tcprecvdata_nb_ex(conn->sock, &header_proto,
-            sizeof(FDIRProtoHeader), network_timeout, NULL)) != 0)
+    if ((result=tcprecvdata_nb(conn->sock, &header_proto,
+            sizeof(FDIRProtoHeader), network_timeout)) != 0)
     {
-        snprintf(response->error.message, sizeof(response->error.message),
+        response->error.length = snprintf(response->error.message,
+                sizeof(response->error.message),
                 "recv from server %s:%d fail, "
                 "errno: %d, error info: %s",
                 conn->ip_addr, conn->port,
@@ -113,7 +115,7 @@ int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
     }
 
     if (response->header.body_len > 0) {
-        snprintf(response->error.message,
+        response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
                 "server %s:%d, response body length: %d != 0",
                 conn->ip_addr, conn->port, response->header.body_len);

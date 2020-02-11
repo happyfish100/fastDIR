@@ -32,6 +32,7 @@ src/client/tools/Makefile
 *.out
 src/server/fdir_serverd
 src/client/tools/fdir_mkdir
+src/client/tools/fdir_list
 
 # other
 logs

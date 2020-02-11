@@ -11,8 +11,20 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] [-m mode] "
+    fprintf(stderr, "Usage: %s [-c config_filename] "
             "<-n namespace> <path>\n", argv[0]);
+}
+
+static void output_dentry_array(FDIRClientDentryArray *array)
+{
+    FDIRClientDentry *dentry;
+    FDIRClientDentry *end;
+
+    printf("count: %d\n", array->count);
+    end = array->entries + array->count;
+    for (dentry=array->entries; dentry<end; dentry++) {
+        printf("%.*s\n", dentry->name.len, dentry->name.str);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -22,11 +34,8 @@ int main(int argc, char *argv[])
     char *ns;
     char *path;
     FDIRDEntryInfo entry_info;
+    FDIRClientDentryArray array;
 	int result;
-    int base;
-    char *endptr;
-    const int flags = 0;
-    mode_t mode = 0755;
 
     if (argc < 2) {
         usage(argv);
@@ -34,7 +43,7 @@ int main(int argc, char *argv[])
     }
 
     ns = NULL;
-    while ((ch=getopt(argc, argv, "hc:m:n:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:n:")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -44,14 +53,6 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 config_filename = optarg;
-                break;
-            case 'm':
-                if (optarg[0] == '0') {
-                    base = 8;
-                } else {
-                    base = 10;
-                }
-                mode = strtol(optarg, &endptr, base);
                 break;
             default:
                 usage(argv);
@@ -72,9 +73,21 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    mode |= S_IFDIR;
     FC_SET_STRING(entry_info.ns, ns);
     FC_SET_STRING(entry_info.path, path);
-    return fdir_client_create_dentry(&g_fdir_global_vars.server_cluster,
-                    &entry_info, flags, mode);
+
+    if ((result=fdir_client_dentry_array_init(&array)) != 0) {
+        return result;
+    }
+
+    if ((result=fdir_client_list_dentry(&g_fdir_global_vars.server_cluster,
+                    &entry_info, &array)) != 0)
+    {
+        return result;
+    }
+
+    output_dentry_array(&array);
+    fdir_client_dentry_array_free(&array);
+
+    return 0;
 }

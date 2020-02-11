@@ -179,6 +179,9 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
+    logInfo("ns: %.*s, create_namespace: %.*s", ns->len, ns->str,
+            entry->name.len, entry->name.str);
+
     entry->next = *bucket;
     *bucket = entry;
     *err_no = 0;
@@ -201,9 +204,12 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
         entry = entry->next;
     }
 
+    if (entry != NULL) {
+        return entry;
+    }
     if (!create_ns) {
         *err_no = ENOENT;
-        return entry;
+        return NULL;
     }
 
     pthread_mutex_lock(&fdir_manager.hashtable.lock);
@@ -319,7 +325,14 @@ int dentry_create(FDIRServerContext *server_context,
         return result;
     }
 
-    if (parent == NULL || current != NULL) {
+    if (path_info->count == 0) {
+        return EEXIST;
+    }
+
+    if (parent == NULL) {
+        return ENOENT;
+    }
+    if (current != NULL) {
         return EEXIST;
     }
 
@@ -357,7 +370,6 @@ int dentry_create(FDIRServerContext *server_context,
     current->stat.size = 0;
     current->stat.atime = 0;
     current->stat.ctime = current->stat.mtime = g_current_time;
-
     if ((result=uniq_skiplist_insert(parent->children, current)) != 0) {
         return result;
     }
@@ -490,7 +502,7 @@ int dentry_list(FDIRServerContext *server_context,
         pp = array->entries;
         uniq_skiplist_iterator(dentry->children, &iterator);
         while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
-           *pp++ = dentry;
+           *pp++ = current;
         }
         array->count = pp - array->entries;
     }

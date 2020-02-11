@@ -100,8 +100,6 @@ static int server_parse_dentry_info(ServerTaskContext *task_context,
     path_info->path.len = buff2short(proto_dentry->path_len);
     path_info->path.str = proto_dentry->ns_str + path_info->ns.len;
 
-    logInfo("ns.len: %d, path.len: %d", path_info->ns.len, path_info->path.len);
-
     if (path_info->ns.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -198,7 +196,7 @@ static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
     }
 
     len = p - logic_path;
-    logInfo("logic_path for hash code: %.*s", len, logic_path);
+    //logInfo("logic_path for hash code: %.*s", len, logic_path);
     return simple_hash(logic_path, len);
 }
 
@@ -228,10 +226,11 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
         hash_code = server_get_parent_hashcode(&TASK_ARG->path_info);
         thread_index = hash_code % g_sf_global_vars.work_threads;
 
-        logInfo("hash_code: %u, thread_index: %d, current thread_index: %d",
+        logInfo("hash_code: %u, target thread_index: %d, current thread_index: %d",
                 hash_code, thread_index, SERVER_CONTEXT->thread_index);
 
         if (thread_index != SERVER_CONTEXT->thread_index) {
+            REQUEST.done = false;
             return sf_nio_notify(TASK, SF_NIO_STAGE_FORWARDED);
         }
     }
@@ -247,10 +246,8 @@ static int server_deal_remove_dentry(ServerTaskContext *task_context)
     return 0;
 }
 
-static int server_list_dentry_output(ServerTaskContext *task_context,
-        const int target_count)
+static int server_list_dentry_output(ServerTaskContext *task_context)
 {
-    FDIRProtoHeader *proto_header;
     FDIRProtoListDEntryRespBodyHeader *body_header;
     FDIRServerDentry **dentry;
     FDIRServerDentry **start;
@@ -263,19 +260,12 @@ static int server_list_dentry_output(ServerTaskContext *task_context,
 
     remain_count = TASK_ARG->dentry_list_cache.array.count -
         TASK_ARG->dentry_list_cache.offset;
-    if (target_count <= 0) {
-        count = remain_count;
-    } else if (remain_count < target_count) {
-        count = remain_count;
-    } else {
-        count = target_count;
-    }
 
     buf_end = TASK->data + TASK->size;
     p = REQUEST.body + sizeof(FDIRProtoListDEntryRespBodyHeader);
     start = TASK_ARG->dentry_list_cache.array.entries +
         TASK_ARG->dentry_list_cache.offset;
-    end = TASK_ARG->dentry_list_cache.array.entries + count;
+    end = start + remain_count;
     for (dentry=start; dentry<end; dentry++) {
         if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
                 (*dentry)->name.len)
@@ -305,8 +295,6 @@ static int server_list_dentry_output(ServerTaskContext *task_context,
         long2buff(0, body_header->token);
     }
 
-    proto_header = (FDIRProtoHeader *)TASK->data;
-    FDIR_PROTO_SET_RESPONSE_HEADER(proto_header, RESPONSE.header);
     task_context->response_done = true;
     return 0;
 }
@@ -321,9 +309,6 @@ static int server_deal_list_dentry_first(ServerTaskContext *task_context)
         return result;
     }
 
-    logInfo("fetch it! ns: %.*s, path: %.*s", TASK_ARG->path_info.ns.len,
-            TASK_ARG->path_info.ns.str, TASK_ARG->path_info.path.len,
-            TASK_ARG->path_info.path.str);
     if ((result=dentry_list(SERVER_CONTEXT, &TASK_ARG->path_info,
                     &TASK_ARG->dentry_list_cache.array)) != 0)
     {
@@ -331,14 +316,14 @@ static int server_deal_list_dentry_first(ServerTaskContext *task_context)
     }
 
     TASK_ARG->dentry_list_cache.offset = 0;
-    return server_list_dentry_output(task_context, 0);
+    return server_list_dentry_output(task_context);
 }
 
 static int server_deal_list_dentry_next(ServerTaskContext *task_context)
 {
     FDIRProtoListDEntryNextBody *next_body;
     int result;
-    int count;
+    int offset;
     int64_t token;
 
     if ((result=server_expect_body_length(task_context,
@@ -356,14 +341,21 @@ static int server_deal_list_dentry_next(ServerTaskContext *task_context)
 
     next_body = (FDIRProtoListDEntryNextBody *)REQUEST.body;
     token = buff2long(next_body->token);
-    count = buff2int(next_body->count);
+    offset = buff2int(next_body->offset);
     if (token != TASK_ARG->dentry_list_cache.token) {
         task_context->response.error.length = sprintf(
                 task_context->response.error.message,
                 "invalid token for next list");
         return EINVAL;
     }
-    return server_list_dentry_output(task_context, count);
+    if (offset != TASK_ARG->dentry_list_cache.offset) {
+        task_context->response.error.length = sprintf(
+                task_context->response.error.message,
+                "next list offset: %d != expected: %d",
+                offset, TASK_ARG->dentry_list_cache.offset);
+        return EINVAL;
+    }
+    return server_list_dentry_output(task_context);
 }
 
 static inline void init_task_context(ServerTaskContext *task_context)
@@ -382,6 +374,7 @@ static inline void init_task_context(ServerTaskContext *task_context)
     task_context->log_error = true;
     task_context->response_done = false;
 
+    REQUEST.done = true;
     REQUEST.header.cmd = ((FDIRProtoHeader *)TASK->data)->cmd;
     REQUEST.header.body_len = TASK->length - sizeof(FDIRProtoHeader);
     REQUEST.body = TASK->data + sizeof(FDIRProtoHeader);
@@ -414,7 +407,7 @@ static inline int deal_task_done(ServerTaskContext *task_context,
                 RESPONSE.error.message);
     }
 
-    if (REQUEST.forwarded) {
+    if (result == 0 && !REQUEST.done) {
         return result;
     }
 
@@ -430,8 +423,7 @@ static inline int deal_task_done(ServerTaskContext *task_context,
     proto_header->status = result >= 0 ? result : -1 * result;
     proto_header->cmd = RESPONSE.header.cmd;
     int2buff(RESPONSE.header.body_len, proto_header->body_len);
-    TASK->length = sizeof(FDIRProtoHeader) +
-        RESPONSE.header.body_len;
+    TASK->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
 
     r = sf_send_add_event(TASK);
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
@@ -443,13 +435,13 @@ static inline int deal_task_done(ServerTaskContext *task_context,
                 RESPONSE.header.body_len);
     }
 
-    logInfo("file: "__FILE__", line: %d, thread: #%d, "
+    logInfo("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
             "client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__, SERVER_CONTEXT->thread_index,
-            TASK->client_ip, REQUEST.header.cmd, REQUEST.header.body_len,
-            RESPONSE.header.cmd, proto_header->status,
-            RESPONSE.header.body_len, time_used);
+            REQUEST.forwarded, TASK->client_ip, REQUEST.header.cmd,
+            REQUEST.header.body_len, RESPONSE.header.cmd,
+            proto_header->status, RESPONSE.header.body_len, time_used);
 
     return r == 0 ? result : r;
 }
