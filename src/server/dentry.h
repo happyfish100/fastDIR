@@ -20,7 +20,7 @@ extern "C" {
     int dentry_init();
     void dentry_destroy();
 
-    int dentry_init_context(FDIRDentryContext *context);
+    int dentry_init_context(FDIRServerContext *server_context);
 
     int dentry_create(FDIRServerContext *server_context,
             const FDIRPathInfo *path_info,
@@ -35,7 +35,15 @@ extern "C" {
 
     int dentry_list(FDIRServerContext *server_context,
             const FDIRPathInfo *path_info, FDIRServerDentryArray *array);
-    void dentry_array_free(FDIRServerDentryArray *array);
+
+    static inline void dentry_array_free(FDIRServerDentryArray *array)
+    {
+        if (array->entries != NULL) {
+            free(array->entries);
+            array->entries = NULL;
+            array->alloc = array->count = 0;
+        }
+    }
 
 #ifdef __cplusplus
 }

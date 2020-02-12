@@ -12,10 +12,8 @@ typedef struct fdir_client_dentry {
 
 typedef struct fdir_client_buffer {
     int size;
-    //char fixed[16 * 1024]; //fixed buffer
-    char fixed[16]; //fixed buffer
+    char fixed[16 * 1024]; //fixed buffer
     char *buff;            //recv buffer
-    char *current;
 } FDIRClientBuffer;
 
 typedef struct fdir_client_dentry_array {
@@ -23,7 +21,11 @@ typedef struct fdir_client_dentry_array {
     int count;
     FDIRClientDentry *entries;
     FDIRClientBuffer buffer;
-    struct fast_mpool_man mpool;
+    struct {
+        struct fast_mpool_man mpool;
+        bool inited;
+        bool used;
+    } name_allocator;
 } FDIRClientDentryArray;
 
 #ifdef __cplusplus
@@ -33,6 +35,9 @@ extern "C" {
 int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
         const FDIRDEntryInfo *entry_info, const int flags,
         const mode_t mode);
+
+int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
+        const FDIRDEntryInfo *entry_info);
 
 int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
         const FDIRDEntryInfo *entry_info, FDIRClientDentryArray *array);

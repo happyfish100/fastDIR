@@ -34,7 +34,9 @@ typedef struct fdir_manager {
     struct fast_allocator_context name_acontext;
 } FDIRManager;
 
-const int delay_free_seconds = 3600;
+const int max_level_count = 20;
+//const int delay_free_seconds = 3600;
+const int delay_free_seconds = 60;
 static FDIRManager fdir_manager;
 
 static int dentry_strdup(string_t *dest, const char *src, const int len)
@@ -106,18 +108,30 @@ static int dentry_compare(const void *p1, const void *p2)
             &((FDIRServerDentry *)p2)->name);
 }
 
-void dentry_free(void *ptr, const int delay_seconds)
+static void dentry_do_free(void *ptr)
 {
     FDIRServerDentry *dentry;
     dentry = (FDIRServerDentry *)ptr;
 
+    if (dentry->children != NULL) {
+        uniq_skiplist_free(dentry->children);
+    }
+
     fast_allocator_free(&fdir_manager.name_acontext, dentry->name.str);
+    fast_mblock_free_object(&dentry->context->dentry_allocator,
+            (void *)dentry);
+}
+
+static void dentry_free_func(void *ptr, const int delay_seconds)
+{
+    FDIRServerDentry *dentry;
+    dentry = (FDIRServerDentry *)ptr;
+
     if (delay_seconds > 0) {
-        fast_mblock_delay_free_object(&dentry->context->dentry_allocator,
-                    (void *)dentry, delay_seconds);
+        server_add_to_delay_free_queue(&dentry->context->server_context->
+                delay_free_context, ptr, dentry_do_free, delay_free_seconds);
     } else {
-        fast_mblock_free_object(&dentry->context->dentry_allocator,
-                    (void *)dentry);
+        dentry_do_free(ptr);
     }
 }
 
@@ -129,13 +143,15 @@ int dentry_init_obj(void *element, void *init_args)
     return 0;
 }
 
-int dentry_init_context(FDIRDentryContext *context)
+int dentry_init_context(FDIRServerContext *server_context)
 {
     int result;
-    const int max_level_count = 20;
+    FDIRDentryContext *context;
 
+    context = &server_context->dentry_context;
+    context->server_context = server_context;
     if ((result=uniq_skiplist_init_ex(&context->factory,
-                    max_level_count, dentry_compare, dentry_free,
+                    max_level_count, dentry_compare, dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
                     delay_free_seconds)) != 0)
     {
@@ -244,7 +260,8 @@ static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
         }
 
         target.name = *p;
-        current = (FDIRServerDentry *)uniq_skiplist_find(current->children, &target);
+        current = (FDIRServerDentry *)uniq_skiplist_find(
+                current->children, &target);
         if (current == NULL) {
             return NULL;
         }
@@ -398,9 +415,6 @@ int dentry_remove(FDIRServerContext *server_context,
         if (uniq_skiplist_count(current->children) > 0) {
             return ENOTEMPTY;
         }
-
-        server_add_to_delay_free_queue(&server_context->delay_free_context,
-                current->children, delay_free_seconds);
     }
 
     return uniq_skiplist_delete(parent->children, current);
@@ -460,15 +474,6 @@ static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int targ
     array->alloc = new_alloc;
     array->entries = entries;
     return 0;
-}
-
-void dentry_array_free(FDIRServerDentryArray *array)
-{
-    if (array->entries != NULL) {
-        free(array->entries);
-        array->entries = NULL;
-        array->alloc = array->count = 0;
-    }
 }
 
 int dentry_list(FDIRServerContext *server_context,

@@ -14,31 +14,40 @@
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 
+typedef void (*server_free_func)(void *ptr);
+typedef void (*server_free_func_ex)(void *ctx, void *ptr);
+
+struct fdir_server_context;
+
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
+    struct fdir_server_context *server_context;
 } FDIRDentryContext;
 
-typedef struct skiplist_delay_free_node {
+typedef struct server_delay_free_node {
     int expires;
-    UniqSkiplist *skiplist;
-    struct skiplist_delay_free_node *next;
-} SkiplistDelayFreeNode;
+    void *ctx;     //the context
+    void *ptr;     //ptr to free
+    server_free_func free_func;
+    server_free_func_ex free_func_ex;
+    struct server_delay_free_node *next;
+} ServerDelayFreeNode;
 
-typedef struct skiplist_delay_free_queue {
-    SkiplistDelayFreeNode *head;
-    SkiplistDelayFreeNode *tail;
-} SkiplistDelayFreeQueue;
+typedef struct server_delay_free_queue {
+    ServerDelayFreeNode *head;
+    ServerDelayFreeNode *tail;
+} ServerDelayFreeQueue;
 
-typedef struct skiplist_delay_free_context {
+typedef struct server_delay_free_context {
     time_t last_check_time;
-    SkiplistDelayFreeQueue queue;
+    ServerDelayFreeQueue queue;
     struct fast_mblock_man allocator;
-} SkiplistDelayFreeContext;
+} ServerDelayFreeContext;
 
 typedef struct fdir_server_context {
     FDIRDentryContext dentry_context;
-    SkiplistDelayFreeContext delay_free_context;
+    ServerDelayFreeContext delay_free_context;
     int thread_index;
 } FDIRServerContext;
 

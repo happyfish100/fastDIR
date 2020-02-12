@@ -33,6 +33,7 @@ src/client/tools/Makefile
 src/server/fdir_serverd
 src/client/tools/fdir_mkdir
 src/client/tools/fdir_list
+src/client/tools/fdir_remove
 
 # other
 logs

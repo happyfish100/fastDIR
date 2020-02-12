@@ -20,8 +20,12 @@ void server_task_finish_cleanup(struct fast_task_info *task);
 void *server_alloc_thread_extra_data(const int thread_index);
 int server_thread_loop(struct nio_thread_data *thread_data);
 
-int server_add_to_delay_free_queue(SkiplistDelayFreeContext *pContext,
-        UniqSkiplist *skiplist, const int delay_seconds);
+int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+        void *ptr, server_free_func free_func, const int delay_seconds);
+
+int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
+        void *ctx, void *ptr, server_free_func_ex free_func_ex,
+        const int delay_seconds);
 
 static inline int server_expect_body_length(
         ServerTaskContext *task_context,

@@ -49,10 +49,10 @@ int server_handler_destroy()
 
 void server_task_finish_cleanup(struct fast_task_info *task)
 {
-    /* FDIRServerTaskArg *task_arg;
+    FDIRServerTaskArg *task_arg;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
-    */
+    dentry_array_free(&task_arg->dentry_list_cache.array);
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
     sf_task_finish_clean_up(task);
@@ -243,7 +243,30 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
 
 static int server_deal_remove_dentry(ServerTaskContext *task_context)
 {
-    return 0;
+    int result;
+    unsigned int hash_code;
+    unsigned int thread_index;
+
+    if (!REQUEST.forwarded) {
+        if ((result=server_check_and_parse_dentry(task_context,
+                        0, sizeof(FDIRProtoRemoveDEntry))) != 0)
+        {
+            return result;
+        }
+         
+        hash_code = server_get_parent_hashcode(&TASK_ARG->path_info);
+        thread_index = hash_code % g_sf_global_vars.work_threads;
+
+        logInfo("hash_code: %u, target thread_index: %d, current thread_index: %d",
+                hash_code, thread_index, SERVER_CONTEXT->thread_index);
+
+        if (thread_index != SERVER_CONTEXT->thread_index) {
+            REQUEST.done = false;
+            return sf_nio_notify(TASK, SF_NIO_STAGE_FORWARDED);
+        }
+    }
+
+    return dentry_remove(SERVER_CONTEXT, &TASK_ARG->path_info);
 }
 
 static int server_list_dentry_output(ServerTaskContext *task_context)
@@ -379,11 +402,6 @@ static inline void init_task_context(ServerTaskContext *task_context)
     REQUEST.header.body_len = TASK->length - sizeof(FDIRProtoHeader);
     REQUEST.body = TASK->data + sizeof(FDIRProtoHeader);
 
-    /*
-    fdir_proto_extract_header((FDIRProtoHeader *)TASK->data,
-            &REQUEST.header);
-     */
-
     if (TASK->nio_stage == SF_NIO_STAGE_FORWARDED) {
         TASK->nio_stage = SF_NIO_STAGE_SEND;
         REQUEST.forwarded = true;
@@ -498,13 +516,13 @@ void *server_alloc_thread_extra_data(const int thread_index)
     }
 
     memset(server_context, 0, sizeof(FDIRServerContext));
-    if ((dentry_init_context(&server_context->dentry_context)) != 0) {
+    if ((dentry_init_context(server_context)) != 0) {
         free(server_context);
         return NULL;
     }
 
     if (fast_mblock_init(&server_context->delay_free_context.allocator,
-                    sizeof(SkiplistDelayFreeNode), 16 * 1024) != 0)
+                    sizeof(ServerDelayFreeNode), 16 * 1024) != 0)
     {
         free(server_context);
         return NULL;
@@ -514,19 +532,11 @@ void *server_alloc_thread_extra_data(const int thread_index)
     return server_context;
 }
 
-int server_add_to_delay_free_queue(SkiplistDelayFreeContext *pContext,
-        UniqSkiplist *skiplist, const int delay_seconds)
+static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+        ServerDelayFreeNode *node, void *ptr, const int delay_seconds)
 {
-    SkiplistDelayFreeNode *node;
-
-    node = (SkiplistDelayFreeNode *)fast_mblock_alloc_object(
-            &pContext->allocator);
-    if (node == NULL) {
-        return ENOMEM;
-    }
-
     node->expires = g_current_time + delay_seconds;
-    node->skiplist = skiplist;
+    node->ptr = ptr;
     node->next = NULL;
     if (pContext->queue.head == NULL)
     {
@@ -537,14 +547,50 @@ int server_add_to_delay_free_queue(SkiplistDelayFreeContext *pContext,
         pContext->queue.tail->next = node;
     }
     pContext->queue.tail = node;
+}
+
+int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+        void *ptr, server_free_func free_func, const int delay_seconds)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &pContext->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = free_func;
+    node->free_func_ex = NULL;
+    node->ctx = NULL;
+    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
+    return 0;
+}
+
+int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
+        void *ptr, void *ctx, server_free_func_ex free_func_ex,
+        const int delay_seconds)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &pContext->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = NULL;
+    node->free_func_ex = free_func_ex;
+    node->ctx = ctx;
+    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
     return 0;
 }
 
 int server_thread_loop(struct nio_thread_data *thread_data)
 {
-    SkiplistDelayFreeContext *delay_context;
-    SkiplistDelayFreeNode *node;
-    SkiplistDelayFreeNode *deleted;
+    ServerDelayFreeContext *delay_context;
+    ServerDelayFreeNode *node;
+    ServerDelayFreeNode *deleted;
 
     delay_context = &((FDIRServerContext *)thread_data->arg)->
         delay_free_context;
@@ -557,7 +603,13 @@ int server_thread_loop(struct nio_thread_data *thread_data)
     delay_context->last_check_time = g_current_time;
     node = delay_context->queue.head;
     while ((node != NULL) && (node->expires < g_current_time)) {
-        uniq_skiplist_free(node->skiplist);
+        if (node->free_func != NULL) {
+            node->free_func(node->ptr);
+            //logInfo("free ptr: %p", node->ptr);
+        } else {
+            node->free_func_ex(node->ctx, node->ptr);
+            //logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
+        }
 
         deleted = node;
         node = node->next;

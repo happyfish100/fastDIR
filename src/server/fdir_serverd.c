@@ -31,6 +31,7 @@
 
 static bool daemon_mode = true;
 static int setup_server_env(const char *config_filename);
+static int setup_mblock_stat_task();
 
 int main(int argc, char *argv[])
 {
@@ -72,6 +73,8 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    //fast_mblock_manager_init();
+
     //sched_set_delay_params(300, 1024);
     r = setup_server_env(config_filename);
     gofailif(r, "");
@@ -100,6 +103,8 @@ int main(int argc, char *argv[])
     gofailif(r,"service init error");
     sf_set_remove_from_ready_list(false);
 
+    setup_mblock_stat_task();
+
     sf_accept_loop();
     if (g_schedule_flag) {
         pthread_kill(schedule_tid, SIGINT);
@@ -125,6 +130,27 @@ FAIL_:
     lcrit("program exit abnomally");
     log_destroy();
     return eres;
+}
+
+static int mblock_stat_task_func(void *args)
+{
+    fast_mblock_manager_stat_print_ex(false, FAST_MBLOCK_ORDER_BY_ELEMENT_SIZE);
+    return 0;
+}
+
+static int setup_mblock_stat_task()
+{
+    ScheduleEntry schedule_entry;
+    ScheduleArray schedule_array;
+
+    return 0;   //disabled for DEBUG
+
+    INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
+            0, 0, 0, 60,  mblock_stat_task_func, NULL);
+
+    schedule_array.count = 1;
+    schedule_array.entries = &schedule_entry;
+    return sched_add_entries(&schedule_array);
 }
 
 static int setup_server_env(const char *config_filename)
