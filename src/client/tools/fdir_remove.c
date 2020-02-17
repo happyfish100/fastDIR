@@ -62,6 +62,6 @@ int main(int argc, char *argv[])
 
     FC_SET_STRING(entry_info.ns, ns);
     FC_SET_STRING(entry_info.path, path);
-    return fdir_client_remove_dentry(&g_fdir_global_vars.server_cluster,
+    return fdir_client_remove_dentry(&g_client_global_vars.server_cluster,
                     &entry_info);
 }

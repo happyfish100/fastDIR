@@ -8,17 +8,28 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fdir_types.h"
 
-#define FDIR_PROTO_ACK                    6
+#define FDIR_PROTO_ACK                      6
 
-#define FDIR_PROTO_ACTIVE_TEST_REQ       35
-#define FDIR_PROTO_ACTIVE_TEST_RESP      36
+#define FDIR_PROTO_ACTIVE_TEST_REQ         35
+#define FDIR_PROTO_ACTIVE_TEST_RESP        36
 
-#define FDIR_PROTO_CREATE_DENTRY         41
-#define FDIR_PROTO_REMOVE_DENTRY         43
+#define FDIR_PROTO_CREATE_DENTRY           41
+#define FDIR_PROTO_REMOVE_DENTRY           43
 
-#define FDIR_PROTO_LIST_DENTRY_FIRST_REQ 45
-#define FDIR_PROTO_LIST_DENTRY_NEXT_REQ  47
-#define FDIR_PROTO_LIST_DENTRY_RESP      48
+#define FDIR_PROTO_LIST_DENTRY_FIRST_REQ   45
+#define FDIR_PROTO_LIST_DENTRY_NEXT_REQ    47
+#define FDIR_PROTO_LIST_DENTRY_RESP        48
+
+//cluster commands
+#define FDIR_PROTO_GET_SERVER_STATUS_REQ   61
+#define FDIR_PROTO_GET_SERVER_STATUS_RESP  62
+#define FDIR_PROTO_JOIN_LEADER             63
+#define FDIR_PROTO_PING_LEADER             64
+#define FDIR_PROTO_NOTIFY_NEXT_LEADER      65  //notify next leader to other servers
+#define FDIR_PROTO_COMMIT_NEXT_LEADER      66  //commit next leader to other servers
+#define FDIR_PROTO_NOTIFY_RESELECT_LEADER  67  //followers notify reselect leader when split-brain
+#define FDIR_PROTO_LEADER_PUSH_CLUSTER_CHG 68
+#define FDIR_PROTO_LEADER_PUSH_BINLOG      69
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \

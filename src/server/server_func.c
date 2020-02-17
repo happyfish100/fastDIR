@@ -1,5 +1,6 @@
 
 #include <sys/stat.h>
+#include <limits.h>
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
@@ -64,6 +65,30 @@ static int server_load_admin_config(IniContext *ini_context)
     return 0;
 }
 
+static int load_cluster_config(IniContext *ini_context, const char *filename)
+{
+    char *cluster_config_filename;
+    char full_cluster_filename[PATH_MAX];
+    const int min_hosts_each_group = 1;
+    const bool share_between_groups = true;
+
+    cluster_config_filename = iniGetStrValue(NULL,
+            "cluster_config_filename", ini_context);
+    if (cluster_config_filename == NULL || cluster_config_filename == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "item \"cluster_config_filename\" not exist or empty",
+                __LINE__);
+        return ENOENT;
+    }
+
+    resolve_path(filename, cluster_config_filename,
+            full_cluster_filename, sizeof(full_cluster_filename));
+    return fc_server_load_from_file_ex(&g_server_global_vars.
+            cluster_server_context, full_cluster_filename,
+            FDIR_SERVER_DEFAULT_INNER_PORT,
+            min_hosts_each_group, share_between_groups);
+}
+
 int server_load_config(const char *filename)
 {
     IniContext ini_context;
@@ -93,14 +118,16 @@ int server_load_config(const char *filename)
             "reload_interval_ms", &ini_context,
             FDIR_SERVER_DEFAULT_RELOAD_INTERVAL);
     if (g_server_global_vars.reload_interval_ms <= 0) {
-        g_server_global_vars.reload_interval_ms = FDIR_SERVER_DEFAULT_RELOAD_INTERVAL;
+        g_server_global_vars.reload_interval_ms =
+            FDIR_SERVER_DEFAULT_RELOAD_INTERVAL;
     }
 
     g_server_global_vars.check_alive_interval = iniGetIntValue(NULL,
             "check_alive_interval", &ini_context,
             FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL);
     if (g_server_global_vars.check_alive_interval <= 0) {
-        g_server_global_vars.check_alive_interval = FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL;
+        g_server_global_vars.check_alive_interval =
+            FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL;
     }
 
     g_server_global_vars.namespace_hashtable_capacity = iniGetIntValue(NULL,
@@ -109,6 +136,10 @@ int server_load_config(const char *filename)
     if (g_server_global_vars.namespace_hashtable_capacity <= 0) {
         g_server_global_vars.namespace_hashtable_capacity =
             FDIR_NAMESPACE_HASHTABLE_CAPACITY;
+    }
+
+    if ((result=load_cluster_config(&ini_context, filename)) != 0) {
+        return result;
     }
 
     iniFreeContext(&ini_context);
@@ -124,5 +155,7 @@ int server_load_config(const char *filename)
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity);
     sf_log_config_ex(server_config_str);
+
+    fc_server_to_log(&g_server_global_vars.cluster_server_context);
     return 0;
 }

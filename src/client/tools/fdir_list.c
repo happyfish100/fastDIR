@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    if ((result=fdir_client_list_dentry(&g_fdir_global_vars.server_cluster,
+    if ((result=fdir_client_list_dentry(&g_client_global_vars.server_cluster,
                     &entry_info, &array)) != 0)
     {
         return result;

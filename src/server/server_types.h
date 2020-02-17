@@ -89,4 +89,25 @@ typedef struct {
     bool log_error;
 } ServerTaskContext;
 
+typedef struct fdir_server_info {
+    int id;        //server id
+    ConnectionInfo server;
+} ServerInfo;
+
+typedef struct fdir_server_group {
+    int count;
+    ServerInfo *servers;
+} ServerGroup;
+
+typedef struct fdir_slave_group {
+    int count;
+    ServerInfo **servers;
+} ServerSlaveGroup;
+
+typedef struct fdir_server_cluster {
+    ServerGroup server_group;
+    ServerSlaveGroup slave_group;
+    ServerInfo *master;
+} ServerCluster;
+
 #endif

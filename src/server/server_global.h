@@ -3,6 +3,7 @@
 #define _FDIR_SERVER_GLOBAL_H
 
 #include "fastcommon/common_define.h"
+#include "fastcommon/server_id_func.h"
 
 typedef struct server_global_vars {
     struct {
@@ -16,6 +17,7 @@ typedef struct server_global_vars {
 
     int check_alive_interval;
 
+    FCServerContext cluster_server_context;
 } FDIRServerGlobalVars;
 
 #ifdef __cplusplus

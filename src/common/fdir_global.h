@@ -6,7 +6,6 @@
 
 typedef struct fdir_global_vars {
     Version version;
-    FDIRServerCluster server_cluster;
 } FDIRGlobalVars;
 
 #ifdef __cplusplus

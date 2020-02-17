@@ -3,16 +3,17 @@
 #define _FDIR_CLIENT_FUNC_H
 
 #include "fdir_global.h"
+#include "client_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define fdir_client_init(filename) \
-fdir_client_init_ex((&g_fdir_global_vars.server_cluster), filename)
+fdir_client_init_ex((&g_client_global_vars.server_cluster), filename)
 
 #define fdir_client_destroy() \
-    fdir_client_destroy_ex((&g_fdir_global_vars.server_cluster))
+    fdir_client_destroy_ex((&g_client_global_vars.server_cluster))
 
 /**
 * client initial from config file
