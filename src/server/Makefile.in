@@ -7,7 +7,7 @@ TARGET_PATH = $(TARGET_PREFIX)/bin
 CONFIG_PATH = $(TARGET_CONF_PATH)
 
 ALL_OBJS = ../common/fdir_proto.o server_func.o server_handler.o \
-           server_global.o dentry.o
+           server_global.o dentry.o cluster_relationship.o
 
 ALL_PRGS = fdir_serverd
 

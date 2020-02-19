@@ -8,6 +8,7 @@
 #include "fastcommon/fast_mblock.h"
 #include "fastcommon/fast_allocator.h"
 #include "fastcommon/uniq_skiplist.h"
+#include "fastcommon/server_id_func.h"
 #include "common/fdir_types.h"
 
 #define FDIR_SERVER_DEFAULT_RELOAD_INTERVAL       500
@@ -89,25 +90,19 @@ typedef struct {
     bool log_error;
 } ServerTaskContext;
 
-typedef struct fdir_server_info {
-    int id;        //server id
-    ConnectionInfo server;
-} ServerInfo;
-
-typedef struct fdir_server_group {
-    int count;
-    ServerInfo *servers;
-} ServerGroup;
-
 typedef struct fdir_slave_group {
+    int alloc;
     int count;
-    ServerInfo **servers;
-} ServerSlaveGroup;
+    FCServerInfo **servers;
+} FDIRServerSlaveGroup;
 
 typedef struct fdir_server_cluster {
-    ServerGroup server_group;
-    ServerSlaveGroup slave_group;
-    ServerInfo *master;
-} ServerCluster;
+    int64_t version;
+    struct {
+        FDIRServerSlaveGroup all;
+        FDIRServerSlaveGroup active;
+    } slaves;
+    FCServerInfo *master;
+} FDIRServerCluster;
 
 #endif

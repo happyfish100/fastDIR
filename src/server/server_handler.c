@@ -63,6 +63,52 @@ static int server_deal_actvie_test(ServerTaskContext *task_context)
     return server_expect_body_length(task_context, 0);
 }
 
+static int server_deal_get_server_status(ServerTaskContext *task_context)
+{
+    int result;
+    int server_id;
+    FDIRProtoGetServerStatusReq *req;
+    FDIRProtoGetServerStatusResp *resp;
+
+    if ((result=server_expect_body_length(task_context,
+                    sizeof(FDIRProtoGetServerStatusReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoGetServerStatusReq *)REQUEST.body;
+    server_id = buff2int(req->server_id);
+    if (memcmp(req->config_sign, CLUSTER_CONFIG_SIGN_BUF,
+                CLUSTER_CONFIG_SIGN_LEN) != 0)
+    {
+        char peer_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
+        char my_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
+
+        bin2hex((const char *)req->config_sign,
+                CLUSTER_CONFIG_SIGN_LEN, peer_hex);
+        bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
+                CLUSTER_CONFIG_SIGN_LEN, my_hex);
+
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "server #%d 's cluster config md5: %s != my: %s",
+                server_id, peer_hex, my_hex);
+        return EFAULT;
+    }
+
+    resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
+
+    //TODO
+    resp->is_master = MYSELF_IS_MASTER;
+    int2buff(CLUSTER_MYSELF_PTR->id, resp->server_id);
+    long2buff(0, resp->data_version);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
+    RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
+    task_context->response_done = true;
+    return 0;
+}
+
 static int server_compare_dentry_info(FDIRPathInfo *pinfo1,
         FDIRPathInfo *pinfo2)
 {
@@ -489,6 +535,9 @@ int server_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_PROTO_LIST_DENTRY_NEXT_REQ:
                 result = server_deal_list_dentry_next(&task_context);
+                break;
+            case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
+                result = server_deal_get_server_status(&task_context);
                 break;
             default:
                 task_context.response.error.length = sprintf(
