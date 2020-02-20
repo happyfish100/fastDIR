@@ -27,7 +27,7 @@
 #define FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP        64
 #define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         65
 #define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
-#define FDIR_CLUSTER_PROTO_NOTIFY_NEXT_MASTER      67  //notify next leader to other servers
+#define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     67  //notify next leader to other servers
 #define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      68  //commit next leader to other servers
 #define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  69  //followers notify reselect leader when split-brain
 #define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 70

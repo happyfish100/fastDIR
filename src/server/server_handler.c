@@ -26,6 +26,7 @@
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
+#include "cluster_relationship.h"
 #include "server_handler.h"
 
 #define SERVER_CONTEXT task_context->server_context
@@ -107,6 +108,58 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
     task_context->response_done = true;
     return 0;
+}
+
+static int server_deal_ping_master(ServerTaskContext *task_context)
+{
+    int result;
+
+    if ((result=server_expect_body_length(task_context, 0)) != 0) {
+        return result;
+    }
+
+    if (!MYSELF_IS_MASTER) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
+    return 0;
+}
+
+static int server_deal_next_master(ServerTaskContext *task_context)
+{
+    int result;
+    int master_id;
+    FCServerInfo *master;
+
+    if ((result=server_expect_body_length(task_context, 4)) != 0) {
+        return result;
+    }
+
+    if (MYSELF_IS_MASTER) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am already master");
+        return EEXIST;
+    }
+
+    master_id = buff2int(REQUEST.body);
+    master = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, master_id);
+    if (master == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "master id: %d not exist", master_id);
+        return ENOENT;
+    }
+
+    if (REQUEST.header.cmd == FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER) {
+        return cluster_relationship_pre_set_master(master);
+    } else {
+        return cluster_relationship_commit_master(master, false);
+    }
 }
 
 static int server_compare_dentry_info(FDIRPathInfo *pinfo1,
@@ -499,7 +552,7 @@ static inline int deal_task_done(ServerTaskContext *task_context,
                 RESPONSE.header.body_len);
     }
 
-    logInfo("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
+    logDebug("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
             "client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__, SERVER_CONTEXT->thread_index,
@@ -538,6 +591,13 @@ int server_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
                 result = server_deal_get_server_status(&task_context);
+                break;
+            case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
+                result = server_deal_ping_master(&task_context);
+                break;
+            case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
+            case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
+                result = server_deal_next_master(&task_context);
                 break;
             default:
                 task_context.response.error.length = sprintf(
