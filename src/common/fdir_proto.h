@@ -23,13 +23,15 @@
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP  62
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER             63
-#define FDIR_CLUSTER_PROTO_PING_MASTER             64
-#define FDIR_CLUSTER_PROTO_NOTIFY_NEXT_MASTER      65  //notify next leader to other servers
-#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      66  //commit next leader to other servers
-#define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  67  //followers notify reselect leader when split-brain
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 68
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG      69
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ         63
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP        64
+#define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         65
+#define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
+#define FDIR_CLUSTER_PROTO_NOTIFY_NEXT_MASTER      67  //notify next leader to other servers
+#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      68  //commit next leader to other servers
+#define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  69  //followers notify reselect leader when split-brain
+#define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 70
+#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG      71
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \

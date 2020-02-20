@@ -2,7 +2,7 @@
 #define _FDIR_TYPES_H
 
 #include "fastcommon/common_define.h"
-#include "fastcommon/connection_pool.h"
+#include "fastcommon/server_id_func.h"
 
 #define FDIR_ERROR_INFO_SIZE   256
 

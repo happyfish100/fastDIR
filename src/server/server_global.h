@@ -40,6 +40,21 @@ typedef struct server_global_vars {
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
 #define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index
 
+#define CLUSTER_GROUP_ADDRESS_ARRAY(server) \
+    (server)->group_addrs[CLUSTER_GROUP_INDEX].address_array
+#define SERVICE_GROUP_ADDRESS_ARRAY(server) \
+    (server)->group_addrs[SERVICE_GROUP_INDEX].address_array
+
+#define CLUSTER_GROUP_ADDRESS_FIRST_PTR(server) \
+    (*(server)->group_addrs[CLUSTER_GROUP_INDEX].address_array.addrs)
+#define SERVICE_GROUP_ADDRESS_FIRST_PTR(server) \
+    (*(server)->group_addrs[SERVICE_GROUP_INDEX].address_array.addrs)
+
+#define CLUSTER_GROUP_ADDRESS_FIRST_IP(server) \
+    CLUSTER_GROUP_ADDRESS_FIRST_PTR(server)->conn.ip_addr
+#define CLUSTER_GROUP_ADDRESS_FIRST_PORT(server) \
+    CLUSTER_GROUP_ADDRESS_FIRST_PTR(server)->conn.port
+
 #define CLUSTER_CONFIG_SIGN_BUF g_server_global_vars.cluster.config.md5_digest
 #define CLUSTER_CONFIG_SIGN_LEN 16
 

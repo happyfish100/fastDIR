@@ -14,8 +14,8 @@ extern "C" {
 int cluster_relationship_init();
 int cluster_relationship_destroy();
 
-void cluster_relationship_set_master(const int server_index,
-        ConnectionInfo *pLeader, const bool if_leader_self);
+void cluster_relationship_set_master(FCServerInfo *master,
+        const bool master_self);
 
 #ifdef __cplusplus
 }
