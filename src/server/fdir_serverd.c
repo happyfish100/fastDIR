@@ -28,6 +28,7 @@
 #include "server_func.h"
 #include "dentry.h"
 #include "cluster_relationship.h"
+#include "cluster_topology.h"
 #include "server_handler.h"
 
 static bool daemon_mode = true;
@@ -95,6 +96,9 @@ int main(int argc, char *argv[])
     gofailif(r, "server handler init error");
 
     fdir_proto_init();
+
+    r = cluster_top_init();
+    gofailif(r, "cluster topology init error");
 
     r = cluster_relationship_init();
     gofailif(r, "cluster relationship init error");

@@ -23,8 +23,7 @@
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP  62
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ         63
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP        64
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER             63
 #define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         65
 #define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
 #define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     67  //notify next leader to other servers
@@ -127,6 +126,12 @@ typedef struct fdir_proto_get_server_status_resp {
     char server_id[4];
     char data_version[8];
 } FDIRProtoGetServerStatusResp;
+
+typedef struct fdir_proto_join_master_req {
+    char server_id[4];
+    char config_sign[16];
+    char data_version[8];
+} FDIRProtoJoinMasterReq;
 
 #ifdef __cplusplus
 extern "C" {

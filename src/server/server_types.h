@@ -76,6 +76,8 @@ typedef struct server_task_arg {
         int offset;
         time_t expires;  //expire time
     } dentry_list_cache; //for dentry_list
+
+    FCServerInfo *cluster_peer;  //the peer server in the cluster
 } FDIRServerTaskArg;
 
 typedef struct {
@@ -90,17 +92,16 @@ typedef struct {
     bool log_error;
 } ServerTaskContext;
 
-typedef struct fdir_slave_group {
-    int alloc;
+typedef struct fdir_slave_array {
     int count;
     FCServerInfo **servers;
-} FDIRServerSlaveGroup;
+} FDIRServerSlaveArray;
 
 typedef struct fdir_server_cluster {
     int64_t version;
     struct {
-        FDIRServerSlaveGroup all;
-        FDIRServerSlaveGroup active;
+        FDIRServerSlaveArray inactives;
+        FDIRServerSlaveArray actives;
     } slaves;
     FCServerInfo *master;
 } FDIRServerCluster;

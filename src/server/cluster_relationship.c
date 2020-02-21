@@ -17,6 +17,7 @@
 #include "sf/sf_global.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
+#include "cluster_topology.h"
 #include "cluster_relationship.h"
 
 static FCServerInfo *g_next_master = NULL;
@@ -99,6 +100,32 @@ static int proto_get_server_status(ConnectionInfo *conn,
     return 0;
 }
 
+static int proto_join_master(ConnectionInfo *conn)
+{
+	int result;
+	FDIRProtoHeader *header;
+    FDIRProtoJoinMasterReq *req;
+    FDIRResponseInfo response;
+	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinMasterReq)];
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+
+    req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
+    int2buff(CLUSTER_MYSELF_PTR->id, req->server_id);
+    long2buff(DATA_VERSION, req->data_version);
+    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
+    if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
+                    sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+                    FDIR_PROTO_ACK)) != 0)
+    {
+        fdir_log_network_error(conn, &response, __LINE__, result);
+    }
+
+    return result;
+}
+
 static int proto_ping_master(ConnectionInfo *conn)
 {
     FDIRProtoHeader header;
@@ -166,9 +193,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
     if (server_status->server == CLUSTER_MYSELF_PTR) {
         server_status->is_master = MYSELF_IS_MASTER;
         server_status->server_id = CLUSTER_MYSELF_PTR->id;
-        
-        //TODO
-        server_status->data_version = 0;
+        server_status->data_version = DATA_VERSION;
         return 0;
     } else {
         if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(
@@ -307,9 +332,9 @@ int cluster_relationship_commit_master(FCServerInfo *master,
     }
 
     CLUSTER_MASTER_PTR = master;
-    g_next_master = NULL;
-
     if (master_self) {
+        ct_reset_slave_arrays();
+
         MYSELF_IS_MASTER = true;
         //TODO
         //g_tracker_master_chg_count++;
@@ -320,6 +345,8 @@ int cluster_relationship_commit_master(FCServerInfo *master,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(master),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(master));
     }
+
+    g_next_master = NULL;
     return 0;
 }
 
@@ -450,9 +477,18 @@ static int cluster_select_master()
 	return 0;
 }
 
+
+//CLUSTER_ACTIVE_SLAVES
+
+static int master_check_brain_split()
+{
+    return 0;
+}
+
 static int cluster_ping_master()
 {
 	int result;
+    static bool master_joined = false;
     FCServerInfo *master;
     ConnectionInfo *conn;
 
@@ -471,8 +507,17 @@ static int cluster_ping_master()
         return result;
     }
 
+    if (!master_joined) {
+        if ((result=proto_join_master(conn)) != 0) {
+            conn_pool_disconnect_server(conn);
+            return result;
+        }
+        master_joined = true;
+    }
+
 	if ((result=proto_ping_master(conn)) != 0) {
         conn_pool_disconnect_server(conn);
+        master_joined = false;
     }
 	return result;
 }

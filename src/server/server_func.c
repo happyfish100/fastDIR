@@ -9,8 +9,8 @@
 #include "fastcommon/local_ip_func.h"
 #include "sf/sf_global.h"
 #include "sf/sf_service.h"
-#include "server_types.h"
 #include "server_global.h"
+#include "cluster_topology.h"
 #include "server_func.h"
 
 static int server_load_admin_config(IniContext *ini_context)
@@ -216,7 +216,18 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
         return result;
     }
 
-    return find_myself_in_cluster_config(filename);
+    if ((result=find_myself_in_cluster_config(filename)) != 0) {
+        return result;
+    }
+
+    if ((result=ct_init_slave_array(&CLUSTER_ACTIVE_SLAVES)) != 0) {
+        return result;
+    }
+    if ((result=ct_init_slave_array(&CLUSTER_INACTIVE_SLAVES)) != 0) {
+        return result;
+    }
+
+    return 0;
 }
 
 int server_load_config(const char *filename)

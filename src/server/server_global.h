@@ -29,13 +29,21 @@ typedef struct server_global_vars {
         } config;
         FDIRServerCluster top; //topology
     } cluster;
+
+    struct {
+        int64_t version;
+    } data;
 } FDIRServerGlobalVars;
 
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
 
 #define MYSELF_IS_MASTER        g_server_global_vars.cluster.is_master
-#define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.top.master
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
+#define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.top.master
+#define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
+#define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
+
+#define DATA_VERSION            g_server_global_vars.data.version
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
 #define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index

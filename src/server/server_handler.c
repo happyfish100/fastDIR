@@ -27,6 +27,7 @@
 #include "server_func.h"
 #include "dentry.h"
 #include "cluster_relationship.h"
+#include "cluster_topology.h"
 #include "server_handler.h"
 
 #define SERVER_CONTEXT task_context->server_context
@@ -53,6 +54,12 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     FDIRServerTaskArg *task_arg;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
+
+    if (task_arg->cluster_peer != NULL) {
+        ct_slave_server_offline(task_arg->cluster_peer);
+        task_arg->cluster_peer = NULL;
+    }
+
     dentry_array_free(&task_arg->dentry_list_cache.array);
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
@@ -62,6 +69,29 @@ void server_task_finish_cleanup(struct fast_task_info *task)
 static int server_deal_actvie_test(ServerTaskContext *task_context)
 {
     return server_expect_body_length(task_context, 0);
+}
+
+static int server_check_config_sign(ServerTaskContext *task_context,
+        const int server_id, const char *config_sign)
+{
+    if (memcmp(config_sign, CLUSTER_CONFIG_SIGN_BUF,
+                CLUSTER_CONFIG_SIGN_LEN) != 0)
+    {
+        char peer_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
+        char my_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
+
+        bin2hex(config_sign, CLUSTER_CONFIG_SIGN_LEN, peer_hex);
+        bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
+                CLUSTER_CONFIG_SIGN_LEN, my_hex);
+
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "server #%d 's cluster config md5: %s != my: %s",
+                server_id, peer_hex, my_hex);
+        return EFAULT;
+    }
+
+    return 0;
 }
 
 static int server_deal_get_server_status(ServerTaskContext *task_context)
@@ -79,34 +109,71 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
 
     req = (FDIRProtoGetServerStatusReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
-    if (memcmp(req->config_sign, CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN) != 0)
+    if ((result=server_check_config_sign(task_context, server_id,
+                    req->config_sign)) != 0)
     {
-        char peer_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-        char my_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-
-        bin2hex((const char *)req->config_sign,
-                CLUSTER_CONFIG_SIGN_LEN, peer_hex);
-        bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN, my_hex);
-
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "server #%d 's cluster config md5: %s != my: %s",
-                server_id, peer_hex, my_hex);
-        return EFAULT;
+        return result;
     }
 
     resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
 
-    //TODO
     resp->is_master = MYSELF_IS_MASTER;
     int2buff(CLUSTER_MYSELF_PTR->id, resp->server_id);
-    long2buff(0, resp->data_version);
+    long2buff(DATA_VERSION, resp->data_version);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
     task_context->response_done = true;
+    return 0;
+}
+
+static int server_deal_join_master(ServerTaskContext *task_context)
+{
+    int result;
+    int server_id;
+    int64_t data_version;
+    FDIRProtoJoinMasterReq *req;
+    FCServerInfo *peer;
+
+    if ((result=server_expect_body_length(task_context,
+                    sizeof(FDIRProtoJoinMasterReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoJoinMasterReq *)REQUEST.body;
+    server_id = buff2int(req->server_id);
+    data_version = buff2long(req->data_version);
+    peer = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, server_id);
+    if (peer == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer server id: %d not exist", server_id);
+        return ENOENT;
+    }
+
+    if ((result=server_check_config_sign(task_context, server_id,
+                    req->config_sign)) != 0)
+    {
+        return result;
+    }
+
+    if (!MYSELF_IS_MASTER) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    if (TASK_ARG->cluster_peer != NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer server id: %d already joined", server_id);
+        return EEXIST;
+    }
+
+    TASK_ARG->cluster_peer = peer;
+    ct_slave_server_online(peer);
     return 0;
 }
 
@@ -116,6 +183,13 @@ static int server_deal_ping_master(ServerTaskContext *task_context)
 
     if ((result=server_expect_body_length(task_context, 0)) != 0) {
         return result;
+    }
+
+    if (TASK_ARG->cluster_peer == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "please join first");
+        return EINVAL;
     }
 
     if (!MYSELF_IS_MASTER) {
@@ -592,12 +666,15 @@ int server_deal_task(struct fast_task_info *task)
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
                 result = server_deal_get_server_status(&task_context);
                 break;
-            case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
-                result = server_deal_ping_master(&task_context);
-                break;
             case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
             case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
                 result = server_deal_next_master(&task_context);
+                break;
+            case FDIR_CLUSTER_PROTO_JOIN_MASTER:
+                result = server_deal_join_master(&task_context);
+                break;
+            case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
+                result = server_deal_ping_master(&task_context);
                 break;
             default:
                 task_context.response.error.length = sprintf(
