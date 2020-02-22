@@ -203,7 +203,7 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
     resolve_path(filename, cluster_config_filename,
             full_cluster_filename, sizeof(full_cluster_filename));
     if ((result=fc_server_load_from_file_ex(&CLUSTER_CONFIG_CTX,
-                    full_cluster_filename, FDIR_SERVER_DEFAULT_INNER_PORT,
+                    full_cluster_filename, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
                     min_hosts_each_group, share_between_groups)) != 0)
     {
         return result;
@@ -234,6 +234,8 @@ int server_load_config(const char *filename)
 {
     IniContext ini_context;
     char server_config_str[1024];
+    SFCustomConfig cluster_cfg;
+    SFCustomConfig service_cfg;
     int result;
 
     memset(&ini_context, 0, sizeof(IniContext));
@@ -244,9 +246,12 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    if ((result=sf_load_config("fdir_serverd", filename, &ini_context,
-                    FDIR_SERVER_DEFAULT_INNER_PORT,
-                    FDIR_SERVER_DEFAULT_OUTER_PORT)) != 0)
+    SF_SET_CUSTOM_CONFIG(cluster_cfg, "cluster",
+            FDIR_SERVER_DEFAULT_CLUSTER_PORT);
+    SF_SET_CUSTOM_CONFIG(service_cfg, "service",
+            FDIR_SERVER_DEFAULT_SERVICE_PORT);
+    if ((result=sf_load_config_ex("fdir_serverd", filename,
+                    &ini_context, &cluster_cfg, &service_cfg)) != 0)
     {
         return result;
     }
