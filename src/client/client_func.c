@@ -19,7 +19,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
     end = dir_servers + count;
     for (item=dir_servers; item<end; item++,server++) {
         if ((result=conn_pool_parse_server_info(item->value,
-                        server, FDIR_SERVER_DEFAULT_INNER_PORT)) != 0)
+                        server, FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
         {
             return result;
         }

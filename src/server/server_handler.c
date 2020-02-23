@@ -35,6 +35,8 @@
 #define TASK_ARG task_context->task_arg
 #define REQUEST  task_context->request
 #define RESPONSE task_context->response
+#define RESPONSE_STATUS RESPONSE.header.status
+#define RESP_STATUS     task_context.response.header.status
 
 static volatile int64_t next_token;   //next token for dentry list
 
@@ -583,8 +585,7 @@ static inline void init_task_context(ServerTaskContext *task_context)
     }
 }
 
-static inline int deal_task_done(ServerTaskContext *task_context,
-        const int result)
+static inline int deal_task_done(ServerTaskContext *task_context)
 {
     FDIRProtoHeader *proto_header;
     int r;
@@ -598,8 +599,8 @@ static inline int deal_task_done(ServerTaskContext *task_context,
                 RESPONSE.error.message);
     }
 
-    if (result == 0 && !REQUEST.done) {
-        return result;
+    if (RESPONSE_STATUS == 0 && !REQUEST.done) {
+        return RESPONSE_STATUS;
     }
 
     proto_header = (FDIRProtoHeader *)TASK->data;
@@ -611,7 +612,8 @@ static inline int deal_task_done(ServerTaskContext *task_context,
         }
     }
 
-    proto_header->status = result >= 0 ? result : -1 * result;
+    short2buff(RESPONSE_STATUS >= 0 ? RESPONSE_STATUS : -1 * RESPONSE_STATUS,
+            proto_header->status);
     proto_header->cmd = RESPONSE.header.cmd;
     int2buff(RESPONSE.header.body_len, proto_header->body_len);
     TASK->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
@@ -632,15 +634,14 @@ static inline int deal_task_done(ServerTaskContext *task_context,
             "time used: %d us", __LINE__, SERVER_CONTEXT->thread_index,
             REQUEST.forwarded, TASK->client_ip, REQUEST.header.cmd,
             REQUEST.header.body_len, RESPONSE.header.cmd,
-            proto_header->status, RESPONSE.header.body_len, time_used);
+            RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
 
-    return r == 0 ? result : r;
+    return r == 0 ? RESPONSE_STATUS : r;
 }
 
 int server_deal_task(struct fast_task_info *task)
 {
     ServerTaskContext task_context;
-    int result;
 
     task_context.task = task;
     init_task_context(&task_context);
@@ -649,43 +650,43 @@ int server_deal_task(struct fast_task_info *task)
         switch (task_context.request.header.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
                 task_context.response.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
-                result = server_deal_actvie_test(&task_context);
+                RESP_STATUS = server_deal_actvie_test(&task_context);
                 break;
             case FDIR_PROTO_CREATE_DENTRY:
-                result = server_deal_create_dentry(&task_context);
+                RESP_STATUS = server_deal_create_dentry(&task_context);
                 break;
             case FDIR_PROTO_REMOVE_DENTRY:
-                result = server_deal_remove_dentry(&task_context);
+                RESP_STATUS = server_deal_remove_dentry(&task_context);
                 break;
             case FDIR_PROTO_LIST_DENTRY_FIRST_REQ:
-                result = server_deal_list_dentry_first(&task_context);
+                RESP_STATUS = server_deal_list_dentry_first(&task_context);
                 break;
             case FDIR_PROTO_LIST_DENTRY_NEXT_REQ:
-                result = server_deal_list_dentry_next(&task_context);
+                RESP_STATUS = server_deal_list_dentry_next(&task_context);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
-                result = server_deal_get_server_status(&task_context);
+                RESP_STATUS = server_deal_get_server_status(&task_context);
                 break;
             case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
             case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
-                result = server_deal_next_master(&task_context);
+                RESP_STATUS = server_deal_next_master(&task_context);
                 break;
             case FDIR_CLUSTER_PROTO_JOIN_MASTER:
-                result = server_deal_join_master(&task_context);
+                RESP_STATUS = server_deal_join_master(&task_context);
                 break;
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
-                result = server_deal_ping_master(&task_context);
+                RESP_STATUS = server_deal_ping_master(&task_context);
                 break;
             default:
                 task_context.response.error.length = sprintf(
                         task_context.response.error.message,
                         "unkown cmd: %d", task_context.request.header.cmd);
-                result = -EINVAL;
+                RESP_STATUS = -EINVAL;
                 break;
         }
     } while(0);
 
-    return deal_task_done(&task_context, result);
+    return deal_task_done(&task_context);
 }
 
 void *server_alloc_thread_extra_data(const int thread_index)

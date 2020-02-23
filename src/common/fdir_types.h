@@ -15,10 +15,10 @@
 #define FDIR_MAX_PATH_COUNT  128
 
 typedef struct {
-    unsigned char cmd; //command
-    short flags;
     int body_len;      //body length
-    int status;
+    short flags;
+    short status;
+    unsigned char cmd; //command
 } FDIRHeaderInfo;
 
 typedef struct {

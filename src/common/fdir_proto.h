@@ -52,24 +52,24 @@
     do {  \
         FDIR_PROTO_SET_MAGIC((header)->magic);   \
         (header)->cmd = _cmd;      \
-        (header)->status = 0;      \
+        (header)->status[0] = (header)->status[1] = 0; \
         int2buff(_body_len, (header)->body_len); \
     } while (0)
 
 #define FDIR_PROTO_SET_RESPONSE_HEADER(proto_header, resp_header) \
     do {  \
         (proto_header)->cmd = (resp_header).cmd;       \
-        (proto_header)->status = (resp_header).status; \
-        int2buff((resp_header).body_len, (proto_header)->body_len); \
+        short2buff((resp_header).status, (proto_header)->status);  \
+        int2buff((resp_header).body_len, (proto_header)->body_len);\
     } while (0)
 
 typedef struct fdir_proto_header {
-    unsigned char magic[4];       //magic number
-    char body_len[4];    //body length
-    unsigned char cmd;   //the command code
-    unsigned char status;//status to store errno
+    unsigned char magic[4]; //magic number
+    char body_len[4];       //body length
+    char status[2];         //status to store errno
     char flags[2];
-    char padding[4];
+    unsigned char cmd;      //the command code
+    char padding[3];
 } FDIRProtoHeader;
 
 typedef struct fdir_proto_dentry_info {
@@ -179,7 +179,7 @@ static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
     header_info->cmd = header_proto->cmd;
     header_info->body_len = buff2int(header_proto->body_len);
     header_info->flags = buff2short(header_proto->flags);
-    header_info->status = header_proto->status;
+    header_info->status = buff2short(header_proto->status);
 }
 
 int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
