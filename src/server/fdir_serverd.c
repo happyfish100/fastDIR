@@ -29,6 +29,7 @@
 #include "dentry.h"
 #include "cluster_relationship.h"
 #include "cluster_topology.h"
+#include "server_binlog.h"
 #include "server_handler.h"
 
 static bool daemon_mode = true;
@@ -102,6 +103,9 @@ int main(int argc, char *argv[])
 
     r = cluster_relationship_init();
     gofailif(r, "cluster relationship init error");
+
+    r = server_binlog_init();
+    gofailif(r, "server binlog init error");
 
     r = sf_service_init(server_alloc_thread_extra_data,
             server_thread_loop,

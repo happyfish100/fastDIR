@@ -31,7 +31,7 @@ typedef struct server_global_vars {
     } cluster;
 
     struct {
-        int64_t version;
+        volatile int64_t version;
     } data;
 } FDIRServerGlobalVars;
 
