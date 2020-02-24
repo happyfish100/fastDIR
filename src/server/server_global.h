@@ -32,6 +32,7 @@ typedef struct server_global_vars {
 
     struct {
         volatile int64_t version;
+        string_t path;   //data path
     } data;
 } FDIRServerGlobalVars;
 
@@ -44,6 +45,9 @@ typedef struct server_global_vars {
 #define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
 
 #define DATA_VERSION            g_server_global_vars.data.version
+#define DATA_PATH               g_server_global_vars.data.path
+#define DATA_PATH_STR           DATA_PATH.str
+#define DATA_PATH_LEN           DATA_PATH.len
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
 #define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index

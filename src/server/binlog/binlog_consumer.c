@@ -16,6 +16,8 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
+#include "binlog_write_thread.h"
+#include "binlog_sync_thread.h"
 #include "binlog_consumer.h"
 
 ServerBinlogConsumerArray g_binlog_consumer_array;
@@ -48,6 +50,40 @@ static int init_binlog_consumer_array()
     return 0;
 }
 
+static int binlog_consumer_start()
+{
+    int result;
+    int i;
+    pthread_t tid;
+    pthread_attr_t thread_attr;
+    void *(*thread_func)(void *args);
+
+    if ((result=init_pthread_attr(&thread_attr, SF_G_THREAD_STACK_SIZE)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+            "init_pthread_attr fail, program exit!", __LINE__);
+        return result;
+    }
+
+    for (i=0; i<FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX); i++) {
+        if (FC_SID_SERVERS(CLUSTER_CONFIG_CTX) + i == CLUSTER_MYSELF_PTR) {
+            thread_func = binlog_write_thread_func;
+        } else {
+            thread_func = binlog_sync_thread_func;
+        }
+        if ((result=pthread_create(&tid, &thread_attr, thread_func,
+                        g_binlog_consumer_array.contexts + i)) != 0)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "create thread failed, errno: %d, error info: %s",
+                    __LINE__, result, STRERROR(result));
+            return result;
+        }
+    }
+
+    pthread_attr_destroy(&thread_attr);
+    return 0;
+}
+
 int binlog_consumer_init()
 {
     int result;
@@ -56,7 +92,7 @@ int binlog_consumer_init()
         return result;
     }
 
-	return 0;
+    return binlog_consumer_start();
 }
 
 void binlog_consumer_destroy()

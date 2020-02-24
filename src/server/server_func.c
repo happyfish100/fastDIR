@@ -230,6 +230,60 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
     return 0;
 }
 
+static int load_data_path_config(IniContext *ini_context, const char *filename)
+{
+    char *data_path;
+
+    data_path = iniGetStrValue(NULL, "data_path", ini_context);
+    if (data_path == NULL) {
+        data_path = "data";
+    } else if (*data_path == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, empty data_path! "
+                "please set data_path correctly.",
+                __LINE__, filename);
+        return EINVAL;
+    }
+
+    if (*data_path == '/') {
+        DATA_PATH_LEN = strlen(data_path);
+        DATA_PATH_STR = strdup(data_path);
+        if (DATA_PATH_STR == NULL) {
+            logError("file: "__FILE__", line: %d, "
+                    "malloc %d bytes fail", __LINE__, DATA_PATH_LEN + 1);
+            return ENOMEM;
+        }
+    } else {
+        DATA_PATH_LEN = strlen(SF_G_BASE_PATH) + strlen(data_path) + 1;
+        DATA_PATH_STR = (char *)malloc(DATA_PATH_LEN + 1);
+        if (DATA_PATH_STR == NULL) {
+            logError("file: "__FILE__", line: %d, "
+                    "malloc %d bytes fail", __LINE__, DATA_PATH_LEN + 1);
+            return ENOMEM;
+        }
+        DATA_PATH_LEN = sprintf(DATA_PATH_STR, "%s/%s",
+                SF_G_BASE_PATH, data_path);
+    }
+
+    if (access(DATA_PATH_STR, F_OK) != 0) {
+        if (errno != ENOENT) {
+            logError("file: "__FILE__", line: %d, "
+                    "access %s fail, errno: %d, error info: %s",
+                    __LINE__, DATA_PATH_STR, errno, STRERROR(errno));
+            return errno != 0 ? errno : EPERM;
+        }
+
+        if (mkdir(DATA_PATH_STR, 0775) != 0) {
+            logError("file: "__FILE__", line: %d, "
+                    "mkdir %s fail, errno: %d, error info: %s",
+                    __LINE__, DATA_PATH_STR, errno, STRERROR(errno));
+            return errno != 0 ? errno : EPERM;
+        }
+    }
+
+    return 0;
+}
+
 int server_load_config(const char *filename)
 {
     IniContext ini_context;
@@ -243,6 +297,10 @@ int server_load_config(const char *filename)
         logError("file: "__FILE__", line: %d, "
                 "load conf file \"%s\" fail, ret code: %d",
                 __LINE__, filename, result);
+        return result;
+    }
+
+    if ((result=load_data_path_config(&ini_context, filename)) != 0) {
         return result;
     }
 

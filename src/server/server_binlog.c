@@ -37,4 +37,5 @@ int server_binlog_init()
 void server_binlog_destroy()
 {
     binlog_producer_destroy();
+    binlog_consumer_destroy();
 }
