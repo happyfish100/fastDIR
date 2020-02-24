@@ -8,7 +8,8 @@ CONFIG_PATH = $(TARGET_CONF_PATH)
 
 ALL_OBJS = ../common/fdir_proto.o server_func.o server_handler.o \
            server_global.o dentry.o cluster_relationship.o cluster_topology.o \
-           server_binlog.o binlog/binlog_producer.o
+           server_binlog.o binlog/binlog_producer.o binlog/binlog_consumer.o  \
+           binlog/binlog_write_thread.o  binlog/binlog_sync_thread.o
 
 ALL_PRGS = fdir_serverd
 

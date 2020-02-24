@@ -14,39 +14,18 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
+#include "sf/sf_global.h"
 #include "../server_global.h"
+#include "binlog_consumer.h"
 #include "binlog_producer.h"
 
+#define SLEEP_NANO_SECONDS   (50 * 1000)
+#define MAX_SLEEP_COUNT      (20 * 1000)
+
 static struct fast_mblock_man record_buffer_allocator;
-ServerBinlogConsumerArray g_binlog_consumer_array;
 
-static int init_binlog_consumer_array()
-{
-    int result;
-    int count;
-    int bytes;
-    ServerBinlogConsumerContext *context;
-    ServerBinlogConsumerContext *end;
-
-    count = FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
-    bytes = sizeof(ServerBinlogConsumerContext) * count;
-    g_binlog_consumer_array.contexts = (ServerBinlogConsumerContext *)
-        malloc(bytes);
-    if (g_binlog_consumer_array.contexts == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
-        return ENOMEM;
-    }
-
-    end = g_binlog_consumer_array.contexts + count;
-    for (context=g_binlog_consumer_array.contexts; context<end; context++) {
-        if ((result=common_blocked_queue_init_ex(&context->queue, 10240)) != 0) {
-            return result;
-        }
-    }
-    g_binlog_consumer_array.count = count;
-    return 0;
-}
+static volatile int64_t next_data_version;
+static struct timespec sleep_ts;
 
 int record_buffer_alloc_init_func(void *element, void *args)
 {
@@ -78,27 +57,17 @@ int binlog_producer_init()
         return result;
     }
 
-    if ((result=init_binlog_consumer_array()) != 0) {
-        return result;
-    }
+    //TODO: DATA_VERSION must be inited first
+    next_data_version = DATA_VERSION + 1;
 
+    sleep_ts.tv_sec = 0;
+    sleep_ts.tv_nsec = SLEEP_NANO_SECONDS;
 	return 0;
 }
 
 void binlog_producer_destroy()
 {
     fast_mblock_destroy(&record_buffer_allocator);
-    if (g_binlog_consumer_array.contexts != NULL) {
-        ServerBinlogConsumerContext *context;
-        ServerBinlogConsumerContext *end;
-
-        end = g_binlog_consumer_array.contexts + g_binlog_consumer_array.count;
-        for (context=g_binlog_consumer_array.contexts; context<end; context++) {
-            common_blocked_queue_destroy(&context->queue);
-        }
-        free(g_binlog_consumer_array.contexts);
-        g_binlog_consumer_array.contexts = NULL;
-    }
 }
 
 ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
@@ -124,17 +93,32 @@ void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *buffer)
     }
 }
 
-int server_binlog_write(ServerBinlogRecordBuffer *record)
+int server_binlog_produce(ServerBinlogRecordBuffer *record)
 {
-    ServerBinlogConsumerContext *context;
-    ServerBinlogConsumerContext *end;
+    int count;
+    int result;
 
-    __sync_add_and_fetch(&record->reffer_count, g_binlog_consumer_array.count);
-
-    end = g_binlog_consumer_array.contexts + g_binlog_consumer_array.count;
-    for (context=g_binlog_consumer_array.contexts; context<end; context++) {
-        common_blocked_queue_push(&context->queue, record);
+    count = 0;
+    while ((record->data_version != __sync_fetch_and_add(
+                &next_data_version, 0)) && (++count < MAX_SLEEP_COUNT))
+    {
+        nanosleep(&sleep_ts, NULL);
     }
 
-    return 0;
+    if (count >= 1) {
+        if (count == MAX_SLEEP_COUNT) {
+            logError("file: "__FILE__", line: %d, "
+                    "waiting for next data version: %"PRId64" timeout, "
+                    "maybe some mistakes happened", __LINE__,
+                    record->data_version);
+        } else {
+            logWarning("file: "__FILE__", line: %d, "
+                    "waiting for next data version: %"PRId64" count: %d",
+                    __LINE__, record->data_version, count);
+        }
+    }
+
+    result = binlog_consumer_push_to_queues(record);
+    __sync_add_and_fetch(&next_data_version, 1);
+    return result;
 }
