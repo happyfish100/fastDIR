@@ -92,6 +92,10 @@ int binlog_consumer_init()
         return result;
     }
 
+    if ((result=binlog_write_thread_init()) != 0) {
+        return result;
+    }
+
     return binlog_consumer_start();
 }
 

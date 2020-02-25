@@ -264,6 +264,7 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
         DATA_PATH_LEN = sprintf(DATA_PATH_STR, "%s/%s",
                 SF_G_BASE_PATH, data_path);
     }
+    chopPath(DATA_PATH_STR);
 
     if (access(DATA_PATH_STR, F_OK) != 0) {
         if (errno != ENOENT) {
@@ -279,6 +280,8 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
                     __LINE__, DATA_PATH_STR, errno, STRERROR(errno));
             return errno != 0 ? errno : EPERM;
         }
+        
+        SF_CHOWN_RETURN_ON_ERROR(DATA_PATH_STR, geteuid(), getegid());
     }
 
     return 0;

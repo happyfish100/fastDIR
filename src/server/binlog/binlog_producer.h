@@ -12,7 +12,7 @@ extern "C" {
 int binlog_producer_init();
 void binlog_producer_destroy();
 
-ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer(int64_t *data_version);
+ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer();
 void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *buffer);
 
 int server_binlog_produce(ServerBinlogRecordBuffer *record);
