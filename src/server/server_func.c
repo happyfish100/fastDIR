@@ -321,6 +321,20 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    BINLOG_BUFFER_SIZE = iniGetIntValue(NULL, "binlog_buffer_size",
+            &ini_context, FDIR_DEFAULT_BINLOG_BUFFER_SIZE);
+    if (BINLOG_BUFFER_SIZE <= 0) {
+        BINLOG_BUFFER_SIZE = FDIR_DEFAULT_BINLOG_BUFFER_SIZE;
+    }
+    if (BINLOG_BUFFER_SIZE > g_sf_global_vars.max_buff_size) {
+        logWarning("file: "__FILE__", line: %d, "
+                "config file: %s , binlog_buffer_size: %d > "
+                "max_buff_size: %d, set it to max_buff_size",
+                __LINE__, filename, BINLOG_BUFFER_SIZE,
+                g_sf_global_vars.max_buff_size);
+        BINLOG_BUFFER_SIZE = g_sf_global_vars.max_buff_size;
+    }
+
     g_server_global_vars.reload_interval_ms = iniGetIntValue(NULL,
             "reload_interval_ms", &ini_context,
             FDIR_SERVER_DEFAULT_RELOAD_INTERVAL);
@@ -353,13 +367,15 @@ int server_load_config(const char *filename)
 
     load_local_host_ip_addrs();
     snprintf(server_config_str, sizeof(server_config_str),
-            "my server id = %d, "
+            "my server id = %d, data_path = %s, "
+            "binlog_buffer_size = %d KB, "
             "admin config {username: %s, secret_key: %s}, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
             "cluster server count = %d",
-            CLUSTER_MYSELF_PTR->id,
+            CLUSTER_MYSELF_PTR->id, DATA_PATH_STR,
+            BINLOG_BUFFER_SIZE / 1024,
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,
             g_server_global_vars.reload_interval_ms,

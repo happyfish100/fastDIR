@@ -9,6 +9,12 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "../server_types.h"
 
+typedef struct server_binlog_buffer {
+    char *buffer;  //the buffer pointer
+    int length;    //the content length
+    int size;      //the buffer size
+} ServerBinlogBuffer;
+
 typedef struct server_binlog_consumer_context {
     struct common_blocked_queue queue;
 } ServerBinlogConsumerContext;

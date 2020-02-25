@@ -33,6 +33,7 @@ typedef struct server_global_vars {
     struct {
         volatile int64_t version;
         string_t path;   //data path
+        int binlog_buffer_size;
     } data;
 } FDIRServerGlobalVars;
 
@@ -44,6 +45,7 @@ typedef struct server_global_vars {
 #define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
 #define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
 
+#define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
 #define DATA_VERSION            g_server_global_vars.data.version
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str

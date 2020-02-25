@@ -119,6 +119,15 @@ int server_binlog_produce(ServerBinlogRecordBuffer *record)
     }
 
     result = binlog_consumer_push_to_queues(record);
-    __sync_add_and_fetch(&next_data_version, 1);
+    if (count < MAX_SLEEP_COUNT) {  //normal
+        __sync_add_and_fetch(&next_data_version, 1);
+    } else {  //on exception
+        int64_t old_data_version;
+        old_data_version = __sync_fetch_and_add(&next_data_version, 0);
+        if (old_data_version <= record->data_version) {
+            __sync_bool_compare_and_swap(&next_data_version, old_data_version,
+                    record->data_version + 1);
+        }
+    }
     return result;
 }
