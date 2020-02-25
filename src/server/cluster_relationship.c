@@ -554,7 +554,7 @@ static void *cluster_thread_entrance(void* arg)
                         CLUSTER_GROUP_ADDRESS_FIRST_PORT(master));
 
                 sleep_seconds *= 2;
-                if (fail_count >= 3) {
+                if (fail_count >= 4) {
                     CLUSTER_MASTER_PTR = NULL;
                     fail_count = 0;
                     sleep_seconds = 1;

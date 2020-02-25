@@ -130,6 +130,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    server_binlog_terminate();
     sf_service_destroy();
     delete_pid_file(g_pid_filename);
     logInfo("file: "__FILE__", line: %d, "

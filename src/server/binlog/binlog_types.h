@@ -17,6 +17,7 @@ typedef struct server_binlog_buffer {
 
 typedef struct server_binlog_consumer_context {
     struct common_blocked_queue queue;
+    FCServerInfo *server;
 } ServerBinlogConsumerContext;
 
 typedef struct server_binlog_record_buffer {

@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 int binlog_write_thread_init();
+void binlog_write_thread_finish();
 
 void *binlog_write_thread_func(void *arg);
 

@@ -70,6 +70,8 @@ static int binlog_consumer_start()
         } else {
             thread_func = binlog_sync_thread_func;
         }
+        g_binlog_consumer_array.contexts[i].server =
+            FC_SID_SERVERS(CLUSTER_CONFIG_CTX) + i;
         if ((result=pthread_create(&tid, &thread_attr, thread_func,
                         g_binlog_consumer_array.contexts + i)) != 0)
         {
@@ -111,6 +113,17 @@ void binlog_consumer_destroy()
         }
         free(g_binlog_consumer_array.contexts);
         g_binlog_consumer_array.contexts = NULL;
+    }
+}
+
+void binlog_consumer_terminate()
+{
+    ServerBinlogConsumerContext *context;
+    ServerBinlogConsumerContext *end;
+
+    end = g_binlog_consumer_array.contexts + g_binlog_consumer_array.count;
+    for (context=g_binlog_consumer_array.contexts; context<end; context++) {
+        common_blocked_queue_terminate(&context->queue);
     }
 }
 

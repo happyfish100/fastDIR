@@ -16,6 +16,7 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
+#include "binlog_func.h"
 #include "binlog_producer.h"
 #include "binlog_write_thread.h"
 
@@ -37,7 +38,8 @@ typedef struct {
 } BinlogWriterContext;
 
 static BinlogWriterContext writer_context = {{'\0'}, 0, 0, 0, -1};
-struct common_blocked_queue *writer_queue = NULL;
+static struct common_blocked_queue *writer_queue = NULL;
+static volatile bool write_thread_running = false;
 
 static int write_to_binlog_index_file()
 {
@@ -181,15 +183,9 @@ int binlog_write_thread_init()
 {
     int result;
 
-    writer_context.binlog_buffer.buffer = (char *)malloc(BINLOG_BUFFER_SIZE);
-    if (writer_context.binlog_buffer.buffer == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__,
-                BINLOG_BUFFER_SIZE);
-        return ENOMEM;
+    if ((result=binlog_buffer_init(&writer_context.binlog_buffer)) != 0) {
+        return result;
     }
-    writer_context.binlog_buffer.size = BINLOG_BUFFER_SIZE;
-    writer_context.binlog_buffer.length = 0;
 
     if ((result=get_binlog_index_from_file()) != 0) {
         return result;
@@ -234,8 +230,31 @@ static int deal_binlog_records(struct common_blocked_node *node)
     return binlog_write_to_file();
 }
 
-static void binlog_write_thread_done()
+void binlog_write_thread_finish()
 {
+    struct common_blocked_node *node;
+    int count;
+
+    if (writer_queue != NULL) {
+        count = 0;
+        while (write_thread_running && ++count < 100) {
+            usleep(100 * 1000);
+        }
+        
+        if (write_thread_running) {
+            logWarning("file: "__FILE__", line: %d, "
+                    "binlog write thread still running, "
+                    "exit anyway!", __LINE__);
+        }
+
+        node = common_blocked_queue_try_pop_all_nodes(writer_queue);
+        if (node != NULL) {
+            deal_binlog_records(node);
+            common_blocked_queue_free_all_nodes(writer_queue, node);
+        }
+        writer_queue = NULL;
+    }
+
     if (writer_context.fd >= 0) {
         close(writer_context.fd);
         writer_context.fd = -1;
@@ -246,6 +265,7 @@ void *binlog_write_thread_func(void *arg)
 {
     struct common_blocked_node *node;
 
+    write_thread_running = true;
     writer_queue = &((ServerBinlogConsumerContext *)arg)->queue;
     while (SF_G_CONTINUE_FLAG) {
         node = common_blocked_queue_pop_all_nodes(writer_queue);
@@ -257,13 +277,6 @@ void *binlog_write_thread_func(void *arg)
         common_blocked_queue_free_all_nodes(writer_queue, node);
     }
 
-    sleep(1);
-    node = common_blocked_queue_try_pop_all_nodes(writer_queue);
-    if (node != NULL) {
-        deal_binlog_records(node);
-        common_blocked_queue_free_all_nodes(writer_queue, node);
-    }
-
-    binlog_write_thread_done();
+    write_thread_running = false;
     return NULL;
 }
