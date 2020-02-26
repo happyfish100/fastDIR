@@ -200,7 +200,7 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 
 static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 {
-    ConnectionInfo *conn;
+    ConnectionInfo conn;
     int result;
 
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
@@ -209,32 +209,47 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
         server_status->data_version = DATA_VERSION;
         return 0;
     } else {
-        if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            server_status->cs->server), SF_G_CONNECT_TIMEOUT,
-                        &result)) == NULL)
+        if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
+                            server_status->cs->server), &conn,
+                        SF_G_CONNECT_TIMEOUT)) != 0)
         {
             return result;
         }
-        if ((result=proto_get_server_status(conn, server_status)) != 0) {
-            conn_pool_disconnect_server(conn);
-        }
+
+        result = proto_get_server_status(&conn, server_status);
+        conn_pool_disconnect_server(&conn);
         return result;
     }
 }
 
 static int cluster_get_master(FDIRClusterServerStatus *server_status)
 {
+#define STATUS_ARRAY_FIXED_COUNT  8
 	FDIRClusterServerInfo *server;
 	FDIRClusterServerInfo *end;
 	FDIRClusterServerStatus *current_status;
-	FDIRClusterServerStatus status_array[8];  //TODO
+	FDIRClusterServerStatus *cs_status;
+	FDIRClusterServerStatus status_array[STATUS_ARRAY_FIXED_COUNT];
 	int count;
 	int result;
 	int r;
 	int i;
 
 	memset(server_status, 0, sizeof(FDIRClusterServerStatus));
-	current_status = status_array;
+    if (CLUSTER_SERVER_ARRAY.count < STATUS_ARRAY_FIXED_COUNT) {
+        cs_status = status_array;
+    } else {
+        int bytes;
+        bytes = sizeof(FDIRClusterServerStatus) * CLUSTER_SERVER_ARRAY.count;
+        cs_status = (FDIRClusterServerStatus *)malloc(bytes);
+        if (cs_status == NULL) {
+            logError("file: "__FILE__", line: %d, "
+                    "malloc %d bytes fail", __LINE__, bytes);
+            return ENOMEM;
+        }
+    }
+
+	current_status = cs_status;
 	result = 0;
 	end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
 	for (server=CLUSTER_SERVER_ARRAY.servers; server<end; server++) {
@@ -247,7 +262,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
 		}
 	}
 
-	count = current_status - status_array;
+	count = current_status - cs_status;
     if (count == 0) {
         logError("file: "__FILE__", line: %d, "
                 "get server status fail, "
@@ -256,21 +271,24 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
         return result == 0 ? ENOENT : result;
     }
 
-	qsort(status_array, count, sizeof(FDIRClusterServerStatus),
+	qsort(cs_status, count, sizeof(FDIRClusterServerStatus),
 		cluster_cmp_server_status);
 
 	for (i=0; i<count; i++) {
         logInfo("file: "__FILE__", line: %d, "
                 "server_id: %d, ip addr %s:%d, is_master: %d, "
                 "data_version: %"PRId64, __LINE__,
-                status_array[i].server_id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(status_array[i].cs->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(status_array[i].cs->server),
-                status_array[i].is_master, status_array[i].data_version);
+                cs_status[i].server_id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
+                cs_status[i].is_master, cs_status[i].data_version);
     }
 
-	memcpy(server_status, status_array + (count - 1),
+	memcpy(server_status, cs_status + (count - 1),
 			sizeof(FDIRClusterServerStatus));
+    if (cs_status != status_array) {
+        free(cs_status);
+    }
 	return 0;
 }
 
@@ -278,13 +296,13 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
 		FDIRClusterServerInfo *master, const char cmd, bool *bConnectFail)
 {
     char out_buff[sizeof(FDIRProtoHeader) + 4];
-    ConnectionInfo *conn;
+    ConnectionInfo conn;
     FDIRProtoHeader *header;
     FDIRResponseInfo response;
     int result;
 
-    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(cs->server),
-                    SF_G_CONNECT_TIMEOUT, &result)) == NULL)
+    if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
+                        cs->server), &conn, SF_G_CONNECT_TIMEOUT)) != 0)
     {
         *bConnectFail = true;
         return result;
@@ -295,14 +313,14 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     FDIR_PROTO_SET_HEADER(header, cmd, sizeof(out_buff) -
             sizeof(FDIRProtoHeader));
     int2buff(master->server->id, out_buff + sizeof(FDIRProtoHeader));
-    if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
+    if ((result=fdir_send_and_recv_none_body_response(&conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_PROTO_ACK)) != 0)
     {
-        fdir_log_network_error(conn, &response, __LINE__, result);
-        conn_pool_disconnect_server(conn);
+        fdir_log_network_error(&conn, &response, __LINE__, result);
     }
 
+    conn_pool_disconnect_server(&conn);
     return result;
 }
 
@@ -346,10 +364,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     CLUSTER_MASTER_PTR = master;
     if (master_self) {
         ct_reset_slave_arrays();
-
         MYSELF_IS_MASTER = true;
-        //TODO
-        //g_tracker_master_chg_count++;
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
@@ -496,41 +511,39 @@ static int master_check_brain_split()
     return 0;
 }
 
-static int cluster_ping_master()
+static int cluster_ping_master(ConnectionInfo *conn)
 {
-	int result;
-    static bool master_joined = false;
+    int result;
     FDIRClusterServerInfo *master;
-    ConnectionInfo *conn;
 
-	if (MYSELF_IS_MASTER) {
-		return 0;  //do not need ping myself
-	}
-
-    master = CLUSTER_MASTER_PTR;
-	if (master == NULL) {
-		return ENOENT;
-	}
-
-    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(master->
-                        server), SF_G_CONNECT_TIMEOUT, &result)) == NULL)
-    {
-        return result;
+    if (MYSELF_IS_MASTER) {
+        return 0;  //do not need ping myself
     }
 
-    if (!master_joined) {
+    master = CLUSTER_MASTER_PTR;
+    if (master == NULL) {
+        return ENOENT;
+    }
+
+    if (conn->sock < 0) {
+        if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
+                            master->server), conn,
+                        SF_G_CONNECT_TIMEOUT)) != 0)
+        {
+            return result;
+        }
+
         if ((result=proto_join_master(conn)) != 0) {
             conn_pool_disconnect_server(conn);
             return result;
         }
-        master_joined = true;
     }
 
-	if ((result=proto_ping_master(conn)) != 0) {
+    if ((result=proto_ping_master(conn)) != 0) {
         conn_pool_disconnect_server(conn);
-        master_joined = false;
     }
-	return result;
+
+    return 0;
 }
 
 static void *cluster_thread_entrance(void* arg)
@@ -540,6 +553,10 @@ static void *cluster_thread_entrance(void* arg)
     int fail_count;
     int sleep_seconds;
     FDIRClusterServerInfo *master;
+    ConnectionInfo mconn;  //master connection
+
+    memset(&mconn, 0, sizeof(mconn));
+    mconn.sock = -1;
 
     fail_count = 0;
     sleep_seconds = 1;
@@ -553,7 +570,7 @@ static void *cluster_thread_entrance(void* arg)
                 sleep_seconds = 1;
             }
         } else {
-            if (cluster_ping_master() == 0) {
+            if (cluster_ping_master(&mconn) == 0) {
                 fail_count = 0;
                 sleep_seconds = 1;
             } else {

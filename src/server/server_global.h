@@ -38,9 +38,11 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
     } data;
 
+    /*
     struct {
         char key[FDIR_REPLICA_KEY_SIZE];   //slave distribute to master
     } replica;
+    */
 } FDIRServerGlobalVars;
 
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
@@ -61,7 +63,7 @@ typedef struct server_global_vars {
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
 
-#define REPLICA_KEY_BUFF        g_server_global_vars.replica.key
+#define REPLICA_KEY_BUFF        CLUSTER_MYSELF_PTR->key
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
 #define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index

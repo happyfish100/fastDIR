@@ -17,13 +17,13 @@
 #include "sf/sf_global.h"
 #include "../server_global.h"
 #include "binlog_func.h"
+#include "binlog_reader.h"
 #include "binlog_producer.h"
 #include "binlog_write_thread.h"
 
 #define BINLOG_FILE_MAX_SIZE   (1024 * 1024 * 1024)
-#define BINLOG_FILE_PREFIX     "binlog"
+
 #define BINLOG_INDEX_FILENAME  BINLOG_FILE_PREFIX"_index.dat"
-#define BINLOG_FILE_EXT_FMT    ".%05d"
 
 #define BINLOG_INDEX_ITEM_CURRENT_WRITE     "current_write"
 #define BINLOG_INDEX_ITEM_CURRENT_COMPRESS  "current_compress"
@@ -104,9 +104,8 @@ static int open_writable_binlog()
         close(writer_context.fd);
     }
 
-    snprintf(writer_context.filename, sizeof(writer_context.filename),
-            "%s/%s"BINLOG_FILE_EXT_FMT, DATA_PATH_STR,
-            BINLOG_FILE_PREFIX, writer_context.binlog_index);
+    GET_BINLOG_FILENAME(writer_context.filename, sizeof(writer_context.
+                filename), writer_context.binlog_index);
     writer_context.fd = open(writer_context.filename,
             O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (writer_context.fd < 0) {

@@ -144,7 +144,6 @@ static int server_deal_join_master(ServerTaskContext *task_context)
 
     req = (FDIRProtoJoinMasterReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
-    req->key;
     peer = fdir_get_server_by_id(server_id);
     if (peer == NULL) {
         RESPONSE.error.length = sprintf(
@@ -173,6 +172,7 @@ static int server_deal_join_master(ServerTaskContext *task_context)
         return EEXIST;
     }
 
+    memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     TASK_ARG->cluster_peer = peer;
     ct_slave_server_online(peer);
     return 0;

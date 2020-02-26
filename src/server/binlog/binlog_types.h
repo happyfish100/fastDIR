@@ -22,8 +22,9 @@ typedef struct server_binlog_consumer_context {
 
 typedef struct server_binlog_record_buffer {
     int64_t data_version;
-    FastBuffer record;
+    unsigned int hash_code;
     volatile int reffer_count;
+    FastBuffer record;
 } ServerBinlogRecordBuffer;
 
 typedef struct server_binlog_consumer_array {
