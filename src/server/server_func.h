@@ -10,6 +10,8 @@ extern "C" {
 
     int server_load_config(const char *filename);
 
+    FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id);
+
 #ifdef __cplusplus
 }
 #endif

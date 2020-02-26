@@ -195,7 +195,7 @@ int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
     int2buff(mode, entry_body->front.mode);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryBody)
         + entry_info->ns.len + entry_info->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_PROTO_CREATE_DENTRY,
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_DENTRY,
             out_bytes - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
@@ -241,7 +241,7 @@ int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
 
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoRemoveDEntry)
         + entry_info->ns.len + entry_info->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_PROTO_REMOVE_DENTRY,
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_DENTRY,
             out_bytes - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
@@ -459,13 +459,13 @@ static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
         (out_buff + sizeof(FDIRProtoHeader));
     out_bytes = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoListDEntryNextBody);
-    FDIR_PROTO_SET_HEADER(header, FDIR_PROTO_LIST_DENTRY_NEXT_REQ,
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     memcpy(entry_body->token, next_token->str, next_token->len);
     int2buff(array->count, entry_body->offset);
     if ((result=fdir_send_and_check_response_header(conn, out_buff,
                     out_bytes, response, g_client_global_vars.
-                    network_timeout, FDIR_PROTO_LIST_DENTRY_RESP)) == 0)
+                    network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
         return deal_list_dentry_response_body(conn, response,
                     array, next_token);
@@ -524,7 +524,7 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
 
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryFirstBody)
         + entry_info->ns.len + entry_info->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_PROTO_LIST_DENTRY_FIRST_REQ,
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     if (array->name_allocator.used) {
@@ -535,7 +535,7 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
     response.error.message[0] = '\0';
     if ((result=fdir_send_and_check_response_header(conn, out_buff,
                     out_bytes, &response, g_client_global_vars.
-                    network_timeout, FDIR_PROTO_LIST_DENTRY_RESP)) == 0)
+                    network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
         result = deal_list_dentry_response(conn, &response, array);
     }

@@ -30,7 +30,7 @@ static int init_binlog_consumer_array()
     ServerBinlogConsumerContext *context;
     ServerBinlogConsumerContext *end;
 
-    count = FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+    count = CLUSTER_SERVER_ARRAY.count;
     bytes = sizeof(ServerBinlogConsumerContext) * count;
     g_binlog_consumer_array.contexts = (ServerBinlogConsumerContext *)
         malloc(bytes);
@@ -64,14 +64,14 @@ static int binlog_consumer_start()
         return result;
     }
 
-    for (i=0; i<FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX); i++) {
-        if (FC_SID_SERVERS(CLUSTER_CONFIG_CTX) + i == CLUSTER_MYSELF_PTR) {
+    for (i=0; i<CLUSTER_SERVER_ARRAY.count; i++) {
+        if (CLUSTER_SERVER_ARRAY.servers + i == CLUSTER_MYSELF_PTR) {
             thread_func = binlog_write_thread_func;
         } else {
             thread_func = binlog_sync_thread_func;
         }
         g_binlog_consumer_array.contexts[i].server =
-            FC_SID_SERVERS(CLUSTER_CONFIG_CTX) + i;
+            CLUSTER_SERVER_ARRAY.servers + i;
         if ((result=pthread_create(&tid, &thread_attr, thread_func,
                         g_binlog_consumer_array.contexts + i)) != 0)
         {

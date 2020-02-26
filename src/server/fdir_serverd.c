@@ -76,6 +76,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    srand(time(NULL));
     //fast_mblock_manager_init();
 
     //sched_set_delay_params(300, 1024);

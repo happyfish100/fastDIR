@@ -14,16 +14,17 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
+#include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "cluster_topology.h"
 #include "cluster_relationship.h"
 
-static FCServerInfo *g_next_master = NULL;
+static FDIRClusterServerInfo *g_next_master = NULL;
 
 typedef struct fdir_cluster_server_status {
-    FCServerInfo *server;
+    FDIRClusterServerInfo *cs;
     bool is_master;
     int server_id;
     int64_t data_version;
@@ -61,7 +62,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoGetServerStatusReq *)(out_buff + sizeof(FDIRProtoHeader));
-    int2buff(CLUSTER_MYSELF_PTR->id, req->server_id);
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
 
 	if ((result=fdir_send_and_check_response_header(conn, out_buff,
@@ -100,6 +101,17 @@ static int proto_get_server_status(ConnectionInfo *conn,
     return 0;
 }
 
+static inline void generate_replica_key()
+{
+    static int64_t key_number_sn = 0;
+    int64_t n1, n2;
+
+    n1 = (((int64_t)CLUSTER_MY_SERVER_ID) << 48) |
+        (((int64_t)getpid()) << 32) | (++key_number_sn);
+    n2 = (((int64_t)g_current_time) << 32) | rand();
+    long2buff(n1 ^ n2, REPLICA_KEY_BUFF);
+}
+
 static int proto_join_master(ConnectionInfo *conn)
 {
 	int result;
@@ -108,13 +120,14 @@ static int proto_join_master(ConnectionInfo *conn)
     FDIRResponseInfo response;
 	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinMasterReq)];
 
+    generate_replica_key();
     header = (FDIRProtoHeader *)out_buff;
     FDIR_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
-    int2buff(CLUSTER_MYSELF_PTR->id, req->server_id);
-    long2buff(DATA_VERSION, req->data_version);
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
     if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
@@ -190,14 +203,14 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
     ConnectionInfo *conn;
     int result;
 
-    if (server_status->server == CLUSTER_MYSELF_PTR) {
+    if (server_status->cs == CLUSTER_MYSELF_PTR) {
         server_status->is_master = MYSELF_IS_MASTER;
-        server_status->server_id = CLUSTER_MYSELF_PTR->id;
+        server_status->server_id = CLUSTER_MY_SERVER_ID;
         server_status->data_version = DATA_VERSION;
         return 0;
     } else {
         if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            server_status->server), SF_G_CONNECT_TIMEOUT,
+                            server_status->cs->server), SF_G_CONNECT_TIMEOUT,
                         &result)) == NULL)
         {
             return result;
@@ -211,8 +224,8 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 
 static int cluster_get_master(FDIRClusterServerStatus *server_status)
 {
-	FCServerInfo *server;
-	FCServerInfo *end;
+	FDIRClusterServerInfo *server;
+	FDIRClusterServerInfo *end;
 	FDIRClusterServerStatus *current_status;
 	FDIRClusterServerStatus status_array[8];  //TODO
 	int count;
@@ -223,10 +236,9 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
 	memset(server_status, 0, sizeof(FDIRClusterServerStatus));
 	current_status = status_array;
 	result = 0;
-	end = FC_SID_SERVERS(CLUSTER_CONFIG_CTX) +
-        FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
-	for (server=FC_SID_SERVERS(CLUSTER_CONFIG_CTX); server<end; server++) {
-		current_status->server = server;
+	end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+	for (server=CLUSTER_SERVER_ARRAY.servers; server<end; server++) {
+		current_status->cs = server;
         r = cluster_get_server_status(current_status);
 		if (r == 0) {
 			current_status++;
@@ -240,7 +252,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
         logError("file: "__FILE__", line: %d, "
                 "get server status fail, "
                 "server count: %d", __LINE__,
-                FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
+                CLUSTER_SERVER_ARRAY.count);
         return result == 0 ? ENOENT : result;
     }
 
@@ -252,8 +264,8 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
                 "server_id: %d, ip addr %s:%d, is_master: %d, "
                 "data_version: %"PRId64, __LINE__,
                 status_array[i].server_id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(status_array[i].server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(status_array[i].server),
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(status_array[i].cs->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(status_array[i].cs->server),
                 status_array[i].is_master, status_array[i].data_version);
     }
 
@@ -262,8 +274,8 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
 	return 0;
 }
 
-static int do_notify_master_changed(FCServerInfo *server,
-		FCServerInfo *master, const char cmd, bool *bConnectFail)
+static int do_notify_master_changed(FDIRClusterServerInfo *cs,
+		FDIRClusterServerInfo *master, const char cmd, bool *bConnectFail)
 {
     char out_buff[sizeof(FDIRProtoHeader) + 4];
     ConnectionInfo *conn;
@@ -271,7 +283,7 @@ static int do_notify_master_changed(FCServerInfo *server,
     FDIRResponseInfo response;
     int result;
 
-    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(server),
+    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(cs->server),
                     SF_G_CONNECT_TIMEOUT, &result)) == NULL)
     {
         *bConnectFail = true;
@@ -282,7 +294,7 @@ static int do_notify_master_changed(FCServerInfo *server,
     header = (FDIRProtoHeader *)out_buff;
     FDIR_PROTO_SET_HEADER(header, cmd, sizeof(out_buff) -
             sizeof(FDIRProtoHeader));
-    int2buff(master->id, out_buff + sizeof(FDIRProtoHeader));
+    int2buff(master->server->id, out_buff + sizeof(FDIRProtoHeader));
     if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_PROTO_ACK)) != 0)
@@ -294,9 +306,9 @@ static int do_notify_master_changed(FCServerInfo *server,
     return result;
 }
 
-int cluster_relationship_pre_set_master(FCServerInfo *master)
+int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master)
 {
-    FCServerInfo *next_master;
+    FDIRClusterServerInfo *next_master;
 
     next_master = g_next_master;
     if (next_master == NULL) {
@@ -305,7 +317,7 @@ int cluster_relationship_pre_set_master(FCServerInfo *master)
         logError("file: "__FILE__", line: %d, "
                 "try to set next master id: %d, "
                 "but next master: %d already exist",
-                __LINE__, master->id, next_master->id);
+                __LINE__, master->server->id, next_master->server->id);
         g_next_master = NULL;
         return EEXIST;
     }
@@ -313,10 +325,10 @@ int cluster_relationship_pre_set_master(FCServerInfo *master)
     return 0;
 }
 
-int cluster_relationship_commit_master(FCServerInfo *master,
+int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
         const bool master_self)
 {
-    FCServerInfo *next_master;
+    FDIRClusterServerInfo *next_master;
     next_master = g_next_master;
     if (next_master == NULL) {
         logError("file: "__FILE__", line: %d, "
@@ -326,7 +338,7 @@ int cluster_relationship_commit_master(FCServerInfo *master,
     if (next_master != master) {
         logError("file: "__FILE__", line: %d, "
                 "next master server id: %d != expected server id: %d",
-                __LINE__, next_master->id, master->id);
+                __LINE__, next_master->server->id, master->server->id);
         g_next_master = NULL;
         return EBUSY;
     }
@@ -341,55 +353,54 @@ int cluster_relationship_commit_master(FCServerInfo *master,
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
-                __LINE__, master->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(master),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(master));
+                __LINE__, master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
     }
 
     g_next_master = NULL;
     return 0;
 }
 
-static int cluster_notify_next_master(FCServerInfo *server,
+static int cluster_notify_next_master(FDIRClusterServerInfo *cs,
         FDIRClusterServerStatus *server_status, bool *bConnectFail)
 {
-    if (server_status->server == server) {
-        return cluster_relationship_pre_set_master(server); 
+    if (server_status->cs == cs) {
+        return cluster_relationship_pre_set_master(cs); 
     } else {
-        FCServerInfo *master;
-        master = server_status->server;
-        return do_notify_master_changed(server, master,
+        FDIRClusterServerInfo *master;
+        master = server_status->cs;
+        return do_notify_master_changed(cs, master,
                 FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER, bConnectFail);
     }
 }
 
-static int cluster_commit_next_master(FCServerInfo *server,
+static int cluster_commit_next_master(FDIRClusterServerInfo *cs,
         FDIRClusterServerStatus *server_status, bool *bConnectFail)
 {
-    FCServerInfo *master;
+    FDIRClusterServerInfo *master;
 
-    master = server_status->server;
-    if (server_status->server == server) {
+    master = server_status->cs;
+    if (server_status->cs == cs) {
         return cluster_relationship_commit_master(master, true);
     } else {
-        return do_notify_master_changed(server, master,
+        return do_notify_master_changed(cs, master,
                 FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER, bConnectFail);
     }
 }
 
 static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 {
-	FCServerInfo *server;
-	FCServerInfo *send;
+	FDIRClusterServerInfo *server;
+	FDIRClusterServerInfo *send;
 	int result;
 	bool bConnectFail;
 	int success_count;
 
 	result = ENOENT;
-	send = FC_SID_SERVERS(CLUSTER_CONFIG_CTX) +
-    FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+	send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
 	success_count = 0;
-	for (server=FC_SID_SERVERS(CLUSTER_CONFIG_CTX); server<send; server++) {
+	for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
 		if ((result=cluster_notify_next_master(server,
 				server_status, &bConnectFail)) != 0)
 		{
@@ -407,7 +418,7 @@ static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 
 	result = ENOENT;
 	success_count = 0;
-	for (server=FC_SID_SERVERS(CLUSTER_CONFIG_CTX); server<send; server++) {
+	for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
 		if ((result=cluster_commit_next_master(server,
 				server_status, &bConnectFail)) != 0)
 		{
@@ -431,7 +442,7 @@ static int cluster_select_master()
 {
 	int result;
 	FDIRClusterServerStatus server_status;
-    FCServerInfo *next_master;
+    FDIRClusterServerInfo *next_master;
 
 	logInfo("file: "__FILE__", line: %d, "
 		"selecting master...", __LINE__);
@@ -440,7 +451,7 @@ static int cluster_select_master()
 		return result;
 	}
 
-    next_master = server_status.server;
+    next_master = server_status.cs;
     if (CLUSTER_MYSELF_PTR == next_master) {
 		if ((result=cluster_notify_master_changed(
                         &server_status)) != 0)
@@ -450,26 +461,26 @@ static int cluster_select_master()
 
 		logInfo("file: "__FILE__", line: %d, "
 			"I am the new master, id: %d, ip %s:%d",
-			__LINE__, next_master->id,
-            CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master),
-            CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master));
+			__LINE__, next_master->server->id,
+            CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+            CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
 	} else {
         if (server_status.is_master) {
             CLUSTER_MASTER_PTR = next_master;
 
 			logInfo("file: "__FILE__", line: %d, "
 				"the master server id: %d, ip %s:%d",
-                __LINE__, next_master->id,
-				CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master));
+                __LINE__, next_master->server->id,
+				CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
         }
         else
 		{
 			logInfo("file: "__FILE__", line: %d, "
 				"waiting for the candidate master server id: %d, "
-                "ip %s:%d notify ...", __LINE__, next_master->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master));
+                "ip %s:%d notify ...", __LINE__, next_master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
 			return ENOENT;
 		}
 	}
@@ -489,7 +500,7 @@ static int cluster_ping_master()
 {
 	int result;
     static bool master_joined = false;
-    FCServerInfo *master;
+    FDIRClusterServerInfo *master;
     ConnectionInfo *conn;
 
 	if (MYSELF_IS_MASTER) {
@@ -501,8 +512,8 @@ static int cluster_ping_master()
 		return ENOENT;
 	}
 
-    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(master),
-                    SF_G_CONNECT_TIMEOUT, &result)) == NULL)
+    if ((conn=fc_server_check_connect(&CLUSTER_GROUP_ADDRESS_ARRAY(master->
+                        server), SF_G_CONNECT_TIMEOUT, &result)) == NULL)
     {
         return result;
     }
@@ -528,7 +539,7 @@ static void *cluster_thread_entrance(void* arg)
 
     int fail_count;
     int sleep_seconds;
-    FCServerInfo *master;
+    FDIRClusterServerInfo *master;
 
     fail_count = 0;
     sleep_seconds = 1;
@@ -549,9 +560,9 @@ static void *cluster_thread_entrance(void* arg)
                 ++fail_count;
                 logError("file: "__FILE__", line: %d, "
                         "%dth ping master id: %d, ip %s:%d fail",
-                        __LINE__, fail_count, master->id,
-                        CLUSTER_GROUP_ADDRESS_FIRST_IP(master),
-                        CLUSTER_GROUP_ADDRESS_FIRST_PORT(master));
+                        __LINE__, fail_count, master->server->id,
+                        CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
+                        CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
 
                 sleep_seconds *= 2;
                 if (fail_count >= 4) {

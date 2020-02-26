@@ -12,12 +12,12 @@
 typedef struct server_binlog_buffer {
     char *buffer;  //the buffer pointer
     int length;    //the content length
-    int size;      //the buffer size
+    int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;
 
 typedef struct server_binlog_consumer_context {
     struct common_blocked_queue queue;
-    FCServerInfo *server;
+    FDIRClusterServerInfo *server;
 } ServerBinlogConsumerContext;
 
 typedef struct server_binlog_record_buffer {

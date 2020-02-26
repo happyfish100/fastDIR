@@ -21,8 +21,8 @@
 #include "binlog_sync_thread.h"
 
 typedef struct {
+    FDIRClusterServerInfo *peer_server;
     ServerBinlogBuffer binlog_buffer;
-    FCServerInfo *peer_server;
 } BinlogSyncContext;
 
 static int binlog_sync_to_server(BinlogSyncContext *sync_context)
@@ -31,6 +31,7 @@ static int binlog_sync_to_server(BinlogSyncContext *sync_context)
         return 0;
     }
 
+    int64_t last_data_version;
     //TODO
     return 0;
 }

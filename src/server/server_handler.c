@@ -120,7 +120,7 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
     resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
 
     resp->is_master = MYSELF_IS_MASTER;
-    int2buff(CLUSTER_MYSELF_PTR->id, resp->server_id);
+    int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
     long2buff(DATA_VERSION, resp->data_version);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
@@ -133,9 +133,8 @@ static int server_deal_join_master(ServerTaskContext *task_context)
 {
     int result;
     int server_id;
-    int64_t data_version;
     FDIRProtoJoinMasterReq *req;
-    FCServerInfo *peer;
+    FDIRClusterServerInfo *peer;
 
     if ((result=server_expect_body_length(task_context,
                     sizeof(FDIRProtoJoinMasterReq))) != 0)
@@ -145,8 +144,8 @@ static int server_deal_join_master(ServerTaskContext *task_context)
 
     req = (FDIRProtoJoinMasterReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
-    data_version = buff2long(req->data_version);
-    peer = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, server_id);
+    req->key;
+    peer = fdir_get_server_by_id(server_id);
     if (peer == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -209,7 +208,7 @@ static int server_deal_next_master(ServerTaskContext *task_context)
 {
     int result;
     int master_id;
-    FCServerInfo *master;
+    FDIRClusterServerInfo *master;
 
     if ((result=server_expect_body_length(task_context, 4)) != 0) {
         return result;
@@ -223,11 +222,11 @@ static int server_deal_next_master(ServerTaskContext *task_context)
     }
 
     master_id = buff2int(REQUEST.body);
-    master = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, master_id);
+    master = fdir_get_server_by_id(master_id);
     if (master == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
-                "master id: %d not exist", master_id);
+                "master server id: %d not exist", master_id);
         return ENOENT;
     }
 
@@ -477,7 +476,7 @@ static int server_list_dentry_output(ServerTaskContext *task_context)
     }
     count = dentry - start;
     RESPONSE.header.body_len = p - REQUEST.body;
-    RESPONSE.header.cmd = FDIR_PROTO_LIST_DENTRY_RESP;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
 
     body_header = (FDIRProtoListDEntryRespBodyHeader *)REQUEST.body;
     int2buff(count, body_header->count);
@@ -652,16 +651,16 @@ int server_deal_task(struct fast_task_info *task)
                 task_context.response.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
                 RESP_STATUS = server_deal_actvie_test(&task_context);
                 break;
-            case FDIR_PROTO_CREATE_DENTRY:
+            case FDIR_SERVICE_PROTO_CREATE_DENTRY:
                 RESP_STATUS = server_deal_create_dentry(&task_context);
                 break;
-            case FDIR_PROTO_REMOVE_DENTRY:
+            case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
                 RESP_STATUS = server_deal_remove_dentry(&task_context);
                 break;
-            case FDIR_PROTO_LIST_DENTRY_FIRST_REQ:
+            case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
                 RESP_STATUS = server_deal_list_dentry_first(&task_context);
                 break;
-            case FDIR_PROTO_LIST_DENTRY_NEXT_REQ:
+            case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
                 RESP_STATUS = server_deal_list_dentry_next(&task_context);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:

@@ -13,17 +13,19 @@
 #define FDIR_PROTO_ACTIVE_TEST_REQ         35
 #define FDIR_PROTO_ACTIVE_TEST_RESP        36
 
-#define FDIR_PROTO_CREATE_DENTRY           41
-#define FDIR_PROTO_REMOVE_DENTRY           43
+//service commands
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY           41
+#define FDIR_SERVICE_PROTO_REMOVE_DENTRY           43
 
-#define FDIR_PROTO_LIST_DENTRY_FIRST_REQ   45
-#define FDIR_PROTO_LIST_DENTRY_NEXT_REQ    47
-#define FDIR_PROTO_LIST_DENTRY_RESP        48
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ   45
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ    47
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        48
+
 
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP  62
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER             63
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER             63  //slave  -> master
 #define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         65
 #define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
 #define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     67  //notify next leader to other servers
@@ -31,6 +33,11 @@
 #define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  69  //followers notify reselect leader when split-brain
 #define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 70
 #define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG      71
+
+
+//replication commands
+#define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ          81  //master -> slave
+#define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP         82
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
@@ -128,10 +135,19 @@ typedef struct fdir_proto_get_server_status_resp {
 } FDIRProtoGetServerStatusResp;
 
 typedef struct fdir_proto_join_master_req {
-    char server_id[4];
+    char server_id[4];     //the slave server id
     char config_sign[16];
-    char data_version[8];
+    char key[FDIR_REPLICA_KEY_SIZE];   //the slave key used on JOIN_SLAVE
 } FDIRProtoJoinMasterReq;
+
+typedef struct fdir_proto_join_slave_req {
+    char server_id[4];   //the master server id
+    char key[FDIR_REPLICA_KEY_SIZE];  //the slave key passed / set by JOIN_MASTER
+} FDIRProtoJoinSlaveReq;
+
+typedef struct fdir_proto_join_slave_resp {
+    char last_data_version[8];   //the slave's last data version
+} FDIRProtoJoinSlaveResp;
 
 #ifdef __cplusplus
 extern "C" {

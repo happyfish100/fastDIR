@@ -66,6 +66,16 @@ typedef struct fdir_server_dentry_array {
     struct fdir_server_dentry **entries;
 } FDIRServerDentryArray;
 
+typedef struct fdir_cluster_server_info {
+    FCServerInfo *server;
+    char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
+} FDIRClusterServerInfo;
+
+typedef struct fdir_cluster_server_array {
+    int count;
+    FDIRClusterServerInfo *servers;
+} FDIRClusterServerArray;
+
 typedef struct server_task_arg {
     volatile int64_t task_version;
     int64_t req_start_time;
@@ -77,7 +87,7 @@ typedef struct server_task_arg {
         time_t expires;  //expire time
     } dentry_list_cache; //for dentry_list
 
-    FCServerInfo *cluster_peer;  //the peer server in the cluster
+    FDIRClusterServerInfo *cluster_peer;  //the peer server in the cluster
 } FDIRServerTaskArg;
 
 typedef struct {
@@ -94,7 +104,7 @@ typedef struct {
 
 typedef struct fdir_slave_array {
     int count;
-    FCServerInfo **servers;
+    FDIRClusterServerInfo **servers;
 } FDIRServerSlaveArray;
 
 typedef struct fdir_server_cluster {
@@ -103,7 +113,7 @@ typedef struct fdir_server_cluster {
         FDIRServerSlaveArray inactives;
         FDIRServerSlaveArray actives;
     } slaves;
-    FCServerInfo *master;
+    FDIRClusterServerInfo *master;
 } FDIRServerCluster;
 
 #endif

@@ -75,7 +75,8 @@ static int find_myself_in_cluster_config(const char *filename)
         const char *ip_addr;
         int port;
     } found;
-    FCServerInfo *myself;
+    FCServerInfo *server;
+    FDIRClusterServerInfo *myself;
     int ports[2];
     int count;
     int i;
@@ -91,9 +92,11 @@ static int find_myself_in_cluster_config(const char *filename)
     local_ip = get_first_local_ip();
     while (local_ip != NULL) {
         for (i=0; i<count; i++) {
-            myself = fc_server_get_by_ip_port(&CLUSTER_CONFIG_CTX,
+            server = fc_server_get_by_ip_port(&CLUSTER_CONFIG_CTX,
                     local_ip, ports[i]);
-            if (myself != NULL) {
+            if (server != NULL) {
+                myself = CLUSTER_SERVER_ARRAY.servers +
+                    (server - FC_SID_SERVERS(CLUSTER_CONFIG_CTX));
                 if (CLUSTER_MYSELF_PTR == NULL) {
                     CLUSTER_MYSELF_PTR = myself;
                 } else if (myself != CLUSTER_MYSELF_PTR) {
@@ -102,8 +105,8 @@ static int find_myself_in_cluster_config(const char *filename)
                             "in more than one servers, %s:%d in "
                             "server id %d, and %s:%d in server id %d",
                             __LINE__, filename, found.ip_addr, found.port,
-                            CLUSTER_MYSELF_PTR->id,
-                            local_ip, ports[i], myself->id);
+                            CLUSTER_MY_SERVER_ID, local_ip,
+                            ports[i], myself->server->id);
                     return EEXIST;
                 }
 
@@ -183,6 +186,35 @@ static int find_group_indexes_in_cluster_config(const char *filename)
     return 0;
 }
 
+static int init_cluster_server_array()
+{
+    int bytes;
+    FDIRClusterServerInfo *cs;
+    FCServerInfo *server;
+    FCServerInfo *end;
+
+    bytes = sizeof(FDIRClusterServerInfo) *
+        FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+    CLUSTER_SERVER_ARRAY.servers = (FDIRClusterServerInfo *)malloc(bytes);
+    if (CLUSTER_SERVER_ARRAY.servers == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "malloc %d bytes fail", __LINE__, bytes);
+        return ENOMEM;
+    }
+    memset(CLUSTER_SERVER_ARRAY.servers, 0, bytes);
+
+    end = FC_SID_SERVERS(CLUSTER_CONFIG_CTX) +
+        FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+    for (server=FC_SID_SERVERS(CLUSTER_CONFIG_CTX),
+            cs=CLUSTER_SERVER_ARRAY.servers; server<end; server++, cs++)
+    {
+        cs->server = server;
+    }
+
+    CLUSTER_SERVER_ARRAY.count = FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+    return 0;
+}
+
 static int load_cluster_config(IniContext *ini_context, const char *filename)
 {
     int result;
@@ -209,6 +241,9 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
         return result;
     }
 
+    if ((result=init_cluster_server_array()) != 0) {
+        return result;
+    }
     if ((result=find_group_indexes_in_cluster_config(filename)) != 0) {
         return result;
     }
@@ -285,6 +320,18 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
     }
 
     return 0;
+}
+
+FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
+{
+    FCServerInfo *server;
+    server = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, server_id);
+    if (server == NULL) {
+        return NULL;
+    }
+
+    return CLUSTER_SERVER_ARRAY.servers + (server -
+            FC_SID_SERVERS(CLUSTER_CONFIG_CTX));
 }
 
 int server_load_config(const char *filename)
@@ -374,7 +421,7 @@ int server_load_config(const char *filename)
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
             "cluster server count = %d",
-            CLUSTER_MYSELF_PTR->id, DATA_PATH_STR,
+            CLUSTER_MY_SERVER_ID, DATA_PATH_STR,
             BINLOG_BUFFER_SIZE / 1024,
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,

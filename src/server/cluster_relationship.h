@@ -14,9 +14,9 @@ extern "C" {
 int cluster_relationship_init();
 int cluster_relationship_destroy();
 
-int cluster_relationship_pre_set_master(FCServerInfo *master);
+int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master);
 
-int cluster_relationship_commit_master(FCServerInfo *master,
+int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
         const bool master_self);
 
 #ifdef __cplusplus

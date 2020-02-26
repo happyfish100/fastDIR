@@ -5,6 +5,7 @@
 #include "fastcommon/server_id_func.h"
 
 #define FDIR_ERROR_INFO_SIZE   256
+#define FDIR_REPLICA_KEY_SIZE    8
 
 #define FDIR_NETWORK_TIMEOUT_DEFAULT    30
 #define FDIR_CONNECT_TIMEOUT_DEFAULT     5

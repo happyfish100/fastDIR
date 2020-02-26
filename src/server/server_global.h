@@ -20,13 +20,15 @@ typedef struct server_global_vars {
 
     struct {
         bool is_master;  //if I am master
-        FCServerInfo *myself;
+        FDIRClusterServerInfo *myself;
         struct {
             FCServerConfig ctx;
             unsigned char md5_digest[16];
             int cluster_group_index;
             int service_group_index;
         } config;
+
+        FDIRClusterServerArray server_array;
         FDIRServerCluster top; //topology
     } cluster;
 
@@ -35,6 +37,10 @@ typedef struct server_global_vars {
         string_t path;   //data path
         int binlog_buffer_size;
     } data;
+
+    struct {
+        char key[FDIR_REPLICA_KEY_SIZE];   //slave distribute to master
+    } replica;
 } FDIRServerGlobalVars;
 
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
@@ -42,6 +48,10 @@ typedef struct server_global_vars {
 #define MYSELF_IS_MASTER        g_server_global_vars.cluster.is_master
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
 #define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.top.master
+#define CLUSTER_SERVER_ARRAY    g_server_global_vars.cluster.server_array
+
+#define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
+
 #define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
 #define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
 
@@ -50,6 +60,8 @@ typedef struct server_global_vars {
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
+
+#define REPLICA_KEY_BUFF        g_server_global_vars.replica.key
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
 #define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index
