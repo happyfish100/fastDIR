@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     const char *config_filename = "/etc/fdir/client.conf";
     char *ns;
     char *path;
-    FDIRDEntryInfo entry_info;
+    FDIRDEntryFullName entry_info;
     FDIRClientDentryArray array;
 	int result;
 

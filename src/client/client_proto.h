@@ -33,14 +33,14 @@ extern "C" {
 #endif
 
 int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info, const int flags,
+        const FDIRDEntryFullName *entry_info, const int flags,
         const mode_t mode);
 
 int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info);
+        const FDIRDEntryFullName *entry_info);
 
 int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info, FDIRClientDentryArray *array);
+        const FDIRDEntryFullName *entry_info, FDIRClientDentryArray *array);
 
 int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
 

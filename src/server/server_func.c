@@ -215,6 +215,40 @@ static int init_cluster_server_array()
     return 0;
 }
 
+static int server_load_cluster_id(IniContext *ini_context, const char *filename)
+{
+    char *cluster_id;
+    char *endptr = NULL;
+
+    cluster_id = iniGetStrValue(NULL, "cluster_id", ini_context);
+    if (cluster_id == NULL || *cluster_id == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, item \"cluster_id\" not exist or empty",
+                __LINE__, filename);
+        return ENOENT;
+    }
+
+    CLUSTER_ID = strtol(cluster_id, &endptr, 10);
+    if (CLUSTER_ID <= 0 || (endptr != NULL && *endptr != '\0')) {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, cluster_id: %s is invalid, "
+                "it must be a natural number!", __LINE__,
+                filename, cluster_id);
+        return EINVAL;
+    }
+
+    if (CLUSTER_ID > FDIR_CLUSTER_ID_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, cluster_id: %s is too large, "
+                "exceeds %d", __LINE__, filename,
+                cluster_id, FDIR_CLUSTER_ID_MAX);
+        return EINVAL;
+    }
+
+    DATA_CURRENT_INODE = ((int64_t)CLUSTER_ID) << (63 - FDIR_CLUSTER_ID_BITS);
+    return 0;
+}
+
 static int load_cluster_config(IniContext *ini_context, const char *filename)
 {
     int result;
@@ -223,9 +257,13 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
     const int min_hosts_each_group = 1;
     const bool share_between_groups = true;
 
+    if ((result=server_load_cluster_id(ini_context, filename)) != 0) {
+        return result;
+    }
+
     cluster_config_filename = iniGetStrValue(NULL,
             "cluster_config_filename", ini_context);
-    if (cluster_config_filename == NULL || cluster_config_filename == '\0') {
+    if (cluster_config_filename == NULL || *cluster_config_filename == '\0') {
         logError("file: "__FILE__", line: %d, "
                 "item \"cluster_config_filename\" not exist or empty",
                 __LINE__);
@@ -322,6 +360,39 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
     return 0;
 }
 
+static int load_dentry_max_data_size(IniContext *ini_context,
+        const char *filename)
+{
+    char *dentry_max_data_size;
+    int64_t bytes;
+    int result;
+
+    dentry_max_data_size = iniGetStrValue(NULL,
+            "dentry_max_data_size", ini_context);
+    if (dentry_max_data_size == NULL) {
+        bytes = 256;
+    } else if ((result=parse_bytes(dentry_max_data_size, 1, &bytes)) != 0) {
+        return result;
+    }
+
+    DENTRY_MAX_DATA_SIZE = bytes;
+    if (DENTRY_MAX_DATA_SIZE < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s , dentry_max_data_size: %d < 0",
+                __LINE__, filename, DENTRY_MAX_DATA_SIZE);
+        return EINVAL;
+    }
+
+    if (DENTRY_MAX_DATA_SIZE > 4096) {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s , dentry_max_data_size: %d > 4KB",
+                __LINE__, filename, DENTRY_MAX_DATA_SIZE);
+        return EOVERFLOW;
+    }
+
+    return 0;
+}
+
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 {
     FCServerInfo *server;
@@ -351,6 +422,10 @@ int server_load_config(const char *filename)
     }
 
     if ((result=load_data_path_config(&ini_context, filename)) != 0) {
+        return result;
+    }
+
+    if ((result=load_dentry_max_data_size(&ini_context, filename)) != 0) {
         return result;
     }
 
@@ -414,14 +489,15 @@ int server_load_config(const char *filename)
 
     load_local_host_ip_addrs();
     snprintf(server_config_str, sizeof(server_config_str),
-            "my server id = %d, data_path = %s, "
-            "binlog_buffer_size = %d KB, "
+            "cluster_id = %d, my server id = %d, data_path = %s, "
+            "dentry_max_data_size = %d, binlog_buffer_size = %d KB, "
             "admin config {username: %s, secret_key: %s}, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
             "cluster server count = %d",
-            CLUSTER_MY_SERVER_ID, DATA_PATH_STR,
+            CLUSTER_ID, CLUSTER_MY_SERVER_ID,
+            DATA_PATH_STR, DENTRY_MAX_DATA_SIZE,
             BINLOG_BUFFER_SIZE / 1024,
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,
@@ -432,5 +508,6 @@ int server_load_config(const char *filename)
     sf_log_config_ex(server_config_str);
     log_local_host_ip_addrs();
     log_cluster_server_config();
+
     return 0;
 }

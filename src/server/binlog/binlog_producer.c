@@ -57,8 +57,8 @@ int binlog_producer_init()
         return result;
     }
 
-    //TODO: DATA_VERSION must be inited first
-    next_data_version = DATA_VERSION + 1;
+    //TODO: DATA_CURRENT_VERSION must be inited first
+    next_data_version = DATA_CURRENT_VERSION + 1;
 
     sleep_ts.tv_sec = 0;
     sleep_ts.tv_nsec = SLEEP_NANO_SECONDS;
@@ -80,7 +80,7 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
         return NULL;
     }
 
-    record->data_version = __sync_add_and_fetch(&DATA_VERSION, 1);
+    record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
     return record;
 }
 

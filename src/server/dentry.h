@@ -6,9 +6,19 @@
 
 #define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
+typedef struct fdir_dentry_status {
+    mode_t mode;
+    int ctime;  /* create time */
+    int mtime;  /* modify time */
+    int atime;  /* last access time */
+    int64_t size;   /* file size in bytes */
+} FDIRDEntryStatus;
+
 typedef struct fdir_server_dentry {
+    int64_t inode;
     string_t name;
-    FDIRDStatus stat;
+    FDIRDEntryStatus stat;
+    string_t data;      //user defined data
     FDIRDentryContext *context;
     UniqSkiplist *children;
 } FDIRServerDentry;

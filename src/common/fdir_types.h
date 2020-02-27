@@ -39,18 +39,9 @@ typedef struct {
     } error;
 } FDIRResponseInfo;
 
-typedef struct fdir_dstatus {
-    int64_t inode;
-    mode_t mode;
-    int ctime;  /* create time */
-    int mtime;  /* modify time */
-    int atime;  /* last access time */
-    int64_t size;   /* file size in bytes */
-} FDIRDStatus;
-
-typedef struct fdir_dentry_info {
-    string_t ns;
-    string_t path;
-} FDIRDEntryInfo;
+typedef struct fdir_dentry_full_name {
+    string_t ns;    //namespace
+    string_t path;  //full path
+} FDIRDEntryFullName;
 
 #endif

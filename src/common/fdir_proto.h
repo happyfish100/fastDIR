@@ -135,12 +135,14 @@ typedef struct fdir_proto_get_server_status_resp {
 } FDIRProtoGetServerStatusResp;
 
 typedef struct fdir_proto_join_master_req {
+    char cluster_id[4];    //the cluster id
     char server_id[4];     //the slave server id
     char config_sign[16];
     char key[FDIR_REPLICA_KEY_SIZE];   //the slave key used on JOIN_SLAVE
 } FDIRProtoJoinMasterReq;
 
 typedef struct fdir_proto_join_slave_req {
+    char cluster_id[4];    //the cluster id
     char server_id[4];   //the master server id
     char key[FDIR_REPLICA_KEY_SIZE];  //the slave key passed / set by JOIN_MASTER
 } FDIRProtoJoinSlaveReq;

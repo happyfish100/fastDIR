@@ -173,11 +173,7 @@ static int setup_server_env(const char *config_filename)
 
     sf_set_current_time();
 
-    result = server_load_config(config_filename);
-    if (result != 0) {
-        fprintf(stderr, "load from conf file %s fail, "
-                "erro no: %d, error info: %s",
-                config_filename, result, strerror(result));
+    if ((result=server_load_config(config_filename)) != 0) {
         return result;
     }
 

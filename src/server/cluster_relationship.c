@@ -126,6 +126,7 @@ static int proto_join_master(ConnectionInfo *conn)
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
+    int2buff(CLUSTER_ID, req->cluster_id);
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
@@ -206,7 +207,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
         server_status->is_master = MYSELF_IS_MASTER;
         server_status->server_id = CLUSTER_MY_SERVER_ID;
-        server_status->data_version = DATA_VERSION;
+        server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
     } else {
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(

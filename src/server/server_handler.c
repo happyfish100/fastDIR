@@ -121,7 +121,7 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
 
     resp->is_master = MYSELF_IS_MASTER;
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
-    long2buff(DATA_VERSION, resp->data_version);
+    long2buff(DATA_CURRENT_VERSION, resp->data_version);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
@@ -132,6 +132,7 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
 static int server_deal_join_master(ServerTaskContext *task_context)
 {
     int result;
+    int cluster_id;
     int server_id;
     FDIRProtoJoinMasterReq *req;
     FDIRClusterServerInfo *peer;
@@ -143,7 +144,16 @@ static int server_deal_join_master(ServerTaskContext *task_context)
     }
 
     req = (FDIRProtoJoinMasterReq *)REQUEST.body;
+    cluster_id = buff2int(req->cluster_id);
     server_id = buff2int(req->server_id);
+    if (cluster_id != CLUSTER_ID) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer cluster id: %d != mine: %d",
+                cluster_id, CLUSTER_ID);
+        return EINVAL;
+    }
+
     peer = fdir_get_server_by_id(server_id);
     if (peer == NULL) {
         RESPONSE.error.length = sprintf(
@@ -245,7 +255,8 @@ static int server_compare_dentry_info(FDIRPathInfo *pinfo1,
     string_t *s2;
     string_t *end;
 
-    if ((result=fc_string_compare(&pinfo1->ns, &pinfo2->ns)) != 0) {
+    if ((result=fc_string_compare(&pinfo1->fullname.ns,
+                    &pinfo2->fullname.ns)) != 0) {
         return result;
     }
 
@@ -269,44 +280,44 @@ static int server_parse_dentry_info(ServerTaskContext *task_context,
     FDIRProtoDEntryInfo *proto_dentry;
 
     proto_dentry = (FDIRProtoDEntryInfo *)start;
-    path_info->ns.len = proto_dentry->ns_len;
-    path_info->ns.str = proto_dentry->ns_str;
-    path_info->path.len = buff2short(proto_dentry->path_len);
-    path_info->path.str = proto_dentry->ns_str + path_info->ns.len;
+    path_info->fullname.ns.len = proto_dentry->ns_len;
+    path_info->fullname.ns.str = proto_dentry->ns_str;
+    path_info->fullname.path.len = buff2short(proto_dentry->path_len);
+    path_info->fullname.path.str = proto_dentry->ns_str + path_info->fullname.ns.len;
 
-    if (path_info->ns.len <= 0) {
+    if (path_info->fullname.ns.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid namespace length: %d <= 0",
-                path_info->ns.len);
+                path_info->fullname.ns.len);
         return EINVAL;
     }
 
-    if (path_info->path.len <= 0) {
+    if (path_info->fullname.path.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid path length: %d <= 0",
-                path_info->path.len);
+                path_info->fullname.path.len);
         return EINVAL;
     }
-    if (path_info->path.len > PATH_MAX) {
+    if (path_info->fullname.path.len > PATH_MAX) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid path length: %d > %d",
-                path_info->path.len, PATH_MAX);
+                path_info->fullname.path.len, PATH_MAX);
         return EINVAL;
     }
 
-    if (path_info->path.str[0] != '/') {
+    if (path_info->fullname.path.str[0] != '/') {
         RESPONSE.error.length = snprintf(
                 RESPONSE.error.message,
                 sizeof(RESPONSE.error.message),
-                "invalid path: %.*s", path_info->path.len,
-                path_info->path.str);
+                "invalid path: %.*s", path_info->fullname.path.len,
+                path_info->fullname.path.str);
         return EINVAL;
     }
 
-    path_info->count = split_string_ex(&path_info->path, '/',
+    path_info->count = split_string_ex(&path_info->fullname.path, '/',
         path_info->paths, FDIR_MAX_PATH_COUNT, true);
     return 0;
 }
@@ -331,8 +342,8 @@ static inline int server_check_and_parse_dentry(ServerTaskContext *task_context,
         return result;
     }
 
-    req_body_len = fixed_part_size + TASK_ARG->path_info.ns.len +
-        TASK_ARG->path_info.path.len;
+    req_body_len = fixed_part_size + TASK_ARG->path_info.fullname.ns.len +
+        TASK_ARG->path_info.fullname.path.len;
     if (req_body_len != REQUEST.header.body_len) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -354,8 +365,8 @@ static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
     char *p;
 
     p = logic_path;
-    memcpy(p, path_info->ns.str, path_info->ns.len);
-    p += path_info->ns.len;
+    memcpy(p, path_info->fullname.ns.str, path_info->fullname.ns.len);
+    p += path_info->fullname.ns.len;
 
     if (include_last) {
         end = path_info->paths + path_info->count;

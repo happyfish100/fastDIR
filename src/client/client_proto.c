@@ -43,7 +43,7 @@ void fdir_client_dentry_array_free(FDIRClientDentryArray *array)
     }
 }
 
-static int client_check_set_proto_dentry(const FDIRDEntryInfo *entry_info,
+static int client_check_set_proto_dentry(const FDIRDEntryFullName *entry_info,
         FDIRProtoDEntryInfo *entry_proto)
 {
     if (entry_info->ns.len <= 0 || entry_info->ns.len > NAME_MAX) {
@@ -166,7 +166,7 @@ static inline void log_network_error_ex(FDIRResponseInfo *response,
         log_network_error_ex(response, conn, result, __LINE__)
 
 int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info, const int flags,
+        const FDIRDEntryFullName *entry_info, const int flags,
         const mode_t mode)
 {
     FDIRProtoHeader *header;
@@ -215,7 +215,7 @@ int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
 }
 
 int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info)
+        const FDIRDEntryFullName *entry_info)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveDEntry *entry_body;
@@ -497,7 +497,7 @@ static int deal_list_dentry_response(ConnectionInfo *conn,
 }
 
 int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
-        const FDIRDEntryInfo *entry_info, FDIRClientDentryArray *array)
+        const FDIRDEntryFullName *entry_info, FDIRClientDentryArray *array)
 {
     FDIRProtoHeader *header;
     FDIRProtoListDEntryFirstBody *entry_body;

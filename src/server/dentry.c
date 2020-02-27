@@ -31,7 +31,6 @@ typedef struct fdir_namespace_hashtable {
 
 typedef struct fdir_manager {
     FDIRNamespaceHashtable hashtable;
-    struct fast_allocator_context name_acontext;
 } FDIRManager;
 
 const int max_level_count = 20;
@@ -39,40 +38,19 @@ const int max_level_count = 20;
 const int delay_free_seconds = 60;
 static FDIRManager fdir_manager;
 
-static int dentry_strdup(string_t *dest, const char *src, const int len)
-{
-    dest->str = (char *)fast_allocator_alloc(
-            &fdir_manager.name_acontext, len + 1);
-    if (dest->str == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, len + 1);
-        return ENOMEM;
-    }
+#define dentry_strdup_ex(context, dest, src, len) \
+    fast_allocator_alloc_string_ex(&(context)->name_acontext, dest, src, len)
 
-    memcpy(dest->str, src, len + 1);
-    dest->len = len;
-    return 0;
-}
-
-#define dentry_strdup_ex(dest, src) \
-    dentry_strdup(dest, (src)->str, (src)->len)
+#define dentry_strdup(context, dest, src) \
+    fast_allocator_alloc_string(&(context)->name_acontext, dest, src)
 
 int dentry_init()
 {
-#define NAME_REGION_COUNT 1
 
     int result;
     int bytes;
-    struct fast_region_info regions[NAME_REGION_COUNT];
 
     memset(&fdir_manager, 0, sizeof(fdir_manager));
-
-    FAST_ALLOCATOR_INIT_REGION(regions[0], 0, NAME_MAX + 1, 8, 16 * 1024);
-    if ((result=fast_allocator_init_ex(&fdir_manager.name_acontext,
-            regions, NAME_REGION_COUNT, 0, 0.00, 0, true)) != 0)
-    {
-        return result;
-    }
 
     if ((result=fast_mblock_init(&fdir_manager.hashtable.allocator,
                     sizeof(FDIRNamespaceEntry), 4096)) != 0)
@@ -117,7 +95,7 @@ static void dentry_do_free(void *ptr)
         uniq_skiplist_free(dentry->children);
     }
 
-    fast_allocator_free(&fdir_manager.name_acontext, dentry->name.str);
+    fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
     fast_mblock_free_object(&dentry->context->dentry_allocator,
             (void *)dentry);
 }
@@ -145,8 +123,12 @@ int dentry_init_obj(void *element, void *init_args)
 
 int dentry_init_context(FDIRServerContext *server_context)
 {
-    int result;
+#define NAME_REGION_COUNT 4
+
     FDIRDentryContext *context;
+    struct fast_region_info regions[NAME_REGION_COUNT];
+    int count;
+    int result;
 
     context = &server_context->dentry_context;
     context->server_context = server_context;
@@ -158,14 +140,38 @@ int dentry_init_context(FDIRServerContext *server_context)
         return result;
     }
 
-     if ((result=fast_mblock_init_ex(&context->dentry_allocator,
-                     sizeof(FDIRServerDentry), 64 * 1024,
-                     dentry_init_obj, context, false)) != 0)
-     {
+    if ((result=fast_mblock_init_ex(&context->dentry_allocator,
+                    sizeof(FDIRServerDentry), 8 * 1024,
+                    dentry_init_obj, context, false)) != 0)
+    {
         return result;
-     }
+    }
 
-     return 0;
+    FAST_ALLOCATOR_INIT_REGION(regions[0], 0, 64, 4, 8 * 1024);
+    if (DENTRY_MAX_DATA_SIZE <= NAME_MAX + 1) {
+        FAST_ALLOCATOR_INIT_REGION(regions[1], 64, NAME_MAX + 1, 8, 4 * 1024);
+        count = 2;
+    } else {
+        FAST_ALLOCATOR_INIT_REGION(regions[1],  64,  256,  8, 4 * 1024);
+        if (DENTRY_MAX_DATA_SIZE <= 1024) {
+            FAST_ALLOCATOR_INIT_REGION(regions[2], 256, DENTRY_MAX_DATA_SIZE,
+                    16, 2 * 1024);
+            count = 3;
+        } else {
+            FAST_ALLOCATOR_INIT_REGION(regions[2], 256, 1024, 16, 2 * 1024);
+            FAST_ALLOCATOR_INIT_REGION(regions[3], 1024,
+                    DENTRY_MAX_DATA_SIZE, 32, 1024);
+            count = 4;
+        }
+    }
+
+    if ((result=fast_allocator_init_ex(&context->name_acontext,
+                    regions, count, 0, 0.00, 0, false)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
 }
 
 static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
@@ -180,11 +186,13 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
-    if ((*err_no=dentry_strdup_ex(&entry->name, ns)) != 0) {
+    if ((*err_no=dentry_strdup(context, &entry->name, ns)) != 0) {
         return NULL;
     }
 
-    if ((*err_no=dentry_strdup(&entry->dentry_root.name, "/", 1)) != 0) {
+    if ((*err_no=dentry_strdup_ex(context, &entry->dentry_root.name,
+                    "/", 1)) != 0)
+    {
         return NULL;
     }
     entry->dentry_root.stat.mode |= S_IFDIR;
@@ -278,14 +286,14 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     FDIRNamespaceEntry *ns_entry;
     int result;
 
-    if (path_info->path.len == 0 || path_info->path.str[0] != '/') {
+    if (path_info->fullname.path.len == 0 || path_info->fullname.path.str[0] != '/') {
         *parent = *me = NULL;
         my_name->len = 0;
         my_name->str = NULL;
         return EINVAL;
     }
 
-    if ((ns_entry=get_namespace(context, &path_info->ns,
+    if ((ns_entry=get_namespace(context, &path_info->fullname.ns,
                     create_ns, &result)) == NULL)
     {
         *parent = *me = NULL;
@@ -355,12 +363,12 @@ int dentry_create(FDIRServerContext *server_context,
 
     if (uniq_skiplist_count(parent->children) >= MAX_ENTRIES_PER_PATH) {
         char *parent_end;
-        parent_end = (char *)fc_memrchr(path_info->path.str, '/',
-                path_info->path.len);
+        parent_end = (char *)fc_memrchr(path_info->fullname.path.str, '/',
+                path_info->fullname.path.len);
         logError("file: "__FILE__", line: %d, "
                 "too many entries in path %.*s, exceed %d",
-                __LINE__, (int)(parent_end - path_info->path.str),
-                path_info->path.str, MAX_ENTRIES_PER_PATH);
+                __LINE__, (int)(parent_end - path_info->fullname.path.str),
+                path_info->fullname.path.str, MAX_ENTRIES_PER_PATH);
         return ENOSPC;
     }
     
@@ -380,9 +388,13 @@ int dentry_create(FDIRServerContext *server_context,
         }
     }
 
-    if ((result=dentry_strdup_ex(&current->name, &my_name)) != 0) {
+    if ((result=dentry_strdup(&server_context->dentry_context,
+                    &current->name, &my_name)) != 0)
+    {
         return result;
     }
+
+    current->inode = __sync_add_and_fetch(&DATA_CURRENT_INODE, 1);
     current->stat.mode = mode;
     current->stat.size = 0;
     current->stat.atime = 0;

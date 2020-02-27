@@ -14,11 +14,14 @@ typedef struct server_global_vars {
 
     int namespace_hashtable_capacity;
 
+    int dentry_max_data_size;
+
     int reload_interval_ms;
 
     int check_alive_interval;
 
     struct {
+        short id;  //cluster id for generate inode
         bool is_master;  //if I am master
         FDIRClusterServerInfo *myself;
         struct {
@@ -33,7 +36,8 @@ typedef struct server_global_vars {
     } cluster;
 
     struct {
-        volatile int64_t version;
+        volatile int64_t current_inode;  //for inode generate
+        volatile int64_t current_version; //binlog version
         string_t path;   //data path
         int binlog_buffer_size;
     } data;
@@ -52,13 +56,16 @@ typedef struct server_global_vars {
 #define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.top.master
 #define CLUSTER_SERVER_ARRAY    g_server_global_vars.cluster.server_array
 
+#define CLUSTER_ID              g_server_global_vars.cluster.id
 #define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
 
 #define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
 #define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
 
+#define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
-#define DATA_VERSION            g_server_global_vars.data.version
+#define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
+#define DATA_CURRENT_INODE      g_server_global_vars.data.current_inode
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len

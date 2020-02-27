@@ -11,6 +11,9 @@
 #include "fastcommon/server_id_func.h"
 #include "common/fdir_types.h"
 
+#define FDIR_CLUSTER_ID_BITS                 10
+#define FDIR_CLUSTER_ID_MAX                  ((1 << FDIR_CLUSTER_ID_BITS) - 1)
+
 #define FDIR_SERVER_DEFAULT_RELOAD_INTERVAL       500
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
@@ -23,6 +26,7 @@ struct fdir_server_context;
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
+    struct fast_allocator_context name_acontext;
     struct fdir_server_context *server_context;
 } FDIRDentryContext;
 
@@ -53,8 +57,8 @@ typedef struct fdir_server_context {
 } FDIRServerContext;
 
 typedef struct fdir_path_info {
-    string_t ns;    //namespace
-    string_t path;  //origin path
+    FDIRDEntryFullName fullname;
+
     string_t paths[FDIR_MAX_PATH_COUNT];   //splited path parts
     int count;
 } FDIRPathInfo;

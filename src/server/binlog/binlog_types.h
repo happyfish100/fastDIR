@@ -9,6 +9,13 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "../server_types.h"
 
+typedef struct server_binlog_record {
+    int64_t inode;
+    FDIRDEntryFullName *fullname;
+    int64_t data_version;
+    unsigned int hash_code;
+} ServerBinlogRecord;
+
 typedef struct server_binlog_buffer {
     char *buffer;  //the buffer pointer
     int length;    //the content length
