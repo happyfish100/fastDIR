@@ -23,6 +23,13 @@ typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
 struct fdir_server_context;
 
+typedef struct fdir_dentry_status {
+    mode_t mode;
+    int ctime;  /* create time */
+    int mtime;  /* modify time */
+    int64_t size;   /* file size in bytes */
+} FDIRDEntryStatus;
+
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;

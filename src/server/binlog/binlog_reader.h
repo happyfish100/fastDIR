@@ -28,6 +28,12 @@ int binlog_reader_init(ServerBinlogReader *reader,
         const ServerBinlogFilePosition *position,
         const int64_t last_data_version);
 
+int binlog_get_first_record_version(const ServerBinlogFilePosition *position,
+        int64_t *data_version);
+
+int binlog_get_last_record_version_offset(ServerBinlogFilePosition *position,
+        int64_t *data_version);
+
 #define GET_BINLOG_FILENAME(filename, size, binlog_index) \
     snprintf(filename, size, "%s/%s"BINLOG_FILE_EXT_FMT,  \
             DATA_PATH_STR, BINLOG_FILE_PREFIX, binlog_index)

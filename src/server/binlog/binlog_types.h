@@ -9,15 +9,35 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "../server_types.h"
 
-typedef struct server_binlog_record {
-    int64_t inode;
+typedef struct fdir_binlog_path_info {
     FDIRDEntryFullName *fullname;
+    int hash_code;
+} FDIRBinlogPathInfo;
+
+typedef struct fdir_binlog_record {
     int64_t data_version;
-    unsigned int hash_code;
-} ServerBinlogRecord;
+    int64_t inode;
+    int operation;
+    union {
+        int64_t flags;
+        struct {
+            bool path : 1;
+            bool user_data : 1;
+            bool extra_data: 1;
+            bool mode : 1;
+            bool ctime: 1;
+            bool mtime: 1;
+            bool size : 1;
+        } fields;
+    } options;
+    FDIRBinlogPathInfo path;
+    FDIRDEntryStatus stat;
+    string_t user_data;
+    string_t extra_data;
+} FDIRBinlogRecord;
 
 typedef struct server_binlog_buffer {
-    char *buffer;  //the buffer pointer
+    char *buff;    //the buffer pointer
     int length;    //the content length
     int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;
@@ -29,7 +49,6 @@ typedef struct server_binlog_consumer_context {
 
 typedef struct server_binlog_record_buffer {
     int64_t data_version;
-    unsigned int hash_code;
     volatile int reffer_count;
     FastBuffer record;
 } ServerBinlogRecordBuffer;
