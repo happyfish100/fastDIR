@@ -10,7 +10,7 @@
 #include "../server_types.h"
 
 typedef struct fdir_binlog_path_info {
-    FDIRDEntryFullName *fullname;
+    FDIRDEntryFullName fullname;
     int hash_code;
 } FDIRBinlogPathInfo;
 
@@ -21,14 +21,21 @@ typedef struct fdir_binlog_record {
     union {
         int64_t flags;
         struct {
-            bool path : 1;
+            union {
+                int flags: 3;
+                struct {
+                    bool ns: 1;  //namespace
+                    bool pt: 1;  //path
+                    bool hc: 1;  //hash code
+                };
+            } path_info;
             bool user_data : 1;
             bool extra_data: 1;
             bool mode : 1;
             bool ctime: 1;
             bool mtime: 1;
             bool size : 1;
-        } fields;
+        };
     } options;
     FDIRBinlogPathInfo path;
     FDIRDEntryStatus stat;
