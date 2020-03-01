@@ -68,6 +68,7 @@ typedef struct fdir_path_info {
 
     string_t paths[FDIR_MAX_PATH_COUNT];   //splited path parts
     int count;
+    unsigned int hash_code;
 } FDIRPathInfo;
 
 struct fdir_server_dentry;

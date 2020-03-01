@@ -331,16 +331,16 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
 
 int dentry_create(FDIRServerContext *server_context,
         const FDIRPathInfo *path_info,
-        const int flags, const mode_t mode)
+        FDIRBinlogRecord *record, const int flags)
 {
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
     int result;
 
-    if ((mode & S_IFMT) == 0) {
+    if ((record->stat.mode & S_IFMT) == 0) {
         logError("file: "__FILE__", line: %d, "
-                "invalid file mode: %d", __LINE__, mode);
+                "invalid file mode: %d", __LINE__, record->stat.mode);
         return EINVAL;
     }
 
@@ -378,7 +378,7 @@ int dentry_create(FDIRServerContext *server_context,
         return ENOMEM;
     }
 
-    if ((mode & S_IFDIR) == 0) {
+    if ((record->stat.mode & S_IFDIR) == 0) {
         current->children = NULL;
     } else {
         current->children = uniq_skiplist_new(&server_context->
@@ -395,18 +395,20 @@ int dentry_create(FDIRServerContext *server_context,
     }
 
     current->inode = __sync_add_and_fetch(&DATA_CURRENT_INODE, 1);
-    current->stat.mode = mode;
-    current->stat.size = 0;
-    current->stat.atime = 0;
-    current->stat.ctime = current->stat.mtime = g_current_time;
+    current->stat.mode = record->stat.mode;
+    current->stat.ctime = record->stat.ctime;
+    current->stat.mtime = record->stat.mtime;
+    current->stat.size = record->stat.size;
     if ((result=uniq_skiplist_insert(parent->children, current)) != 0) {
         return result;
     }
+
+    record->inode = current->inode;
     return 0;
 }
 
 int dentry_remove(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info)
+        const FDIRPathInfo *path_info, FDIRBinlogRecord *record)
 {
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
@@ -429,6 +431,7 @@ int dentry_remove(FDIRServerContext *server_context,
         }
     }
 
+    record->inode = current->inode;
     return uniq_skiplist_delete(parent->children, current);
 }
 

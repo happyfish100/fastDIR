@@ -18,24 +18,6 @@
 #include "binlog_producer.h"
 #include "binlog_pack.h"
 
-#define BINLOG_OP_NONE_INT           0
-#define BINLOG_OP_CREATE_DENTRY_INT  1
-#define BINLOG_OP_REMOVE_DENTRY_INT  2
-#define BINLOG_OP_RENAME_DENTRY_INT  3
-#define BINLOG_OP_UPDATE_DENTRY_INT  4
-
-#define BINLOG_OP_NONE_STR           ""
-#define BINLOG_OP_CREATE_DENTRY_STR  "create"
-#define BINLOG_OP_REMOVE_DENTRY_STR  "remove"
-#define BINLOG_OP_RENAME_DENTRY_STR  "rename"
-#define BINLOG_OP_UPDATE_DENTRY_STR  "update"
-
-#define BINLOG_OP_CREATE_DENTRY_LEN  (sizeof(BINLOG_OP_CREATE_DENTRY_STR) - 1)
-#define BINLOG_OP_REMOVE_DENTRY_LEN  (sizeof(BINLOG_OP_REMOVE_DENTRY_STR) - 1)
-#define BINLOG_OP_RENAME_DENTRY_LEN  (sizeof(BINLOG_OP_RENAME_DENTRY_STR) - 1)
-#define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
-
-
 #define BINLOG_RECORD_START_TAG_CHAR '<'
 #define BINLOG_RECORD_START_TAG_STR  "<rec"
 #define BINLOG_RECORD_START_TAG_LEN (sizeof(BINLOG_RECORD_START_TAG_STR) - 1)
@@ -48,6 +30,7 @@
 #define BINLOG_RECORD_FIELD_NAME_INODE         "id"
 #define BINLOG_RECORD_FIELD_NAME_DATA_VERSION  "dv"
 #define BINLOG_RECORD_FIELD_NAME_OPERATION     "op"
+#define BINLOG_RECORD_FIELD_NAME_TIMESTAMP     "ts"
 #define BINLOG_RECORD_FIELD_NAME_NAMESPACE     "ns"
 #define BINLOG_RECORD_FIELD_NAME_PATH          "pt"
 #define BINLOG_RECORD_FIELD_NAME_EXTRA_DATA    "ex"
@@ -61,6 +44,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_INODE         ('i' * 256 + 'd')
 #define BINLOG_RECORD_FIELD_INDEX_DATA_VERSION  ('d' * 265 + 'v')
 #define BINLOG_RECORD_FIELD_INDEX_OPERATION     ('o' * 256 + 'p')
+#define BINLOG_RECORD_FIELD_INDEX_TIMESTAMP     ('t' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_NAMESPACE     ('n' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_PATH          ('p' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_EXTRA_DATA    ('e' * 256 + 'x')
@@ -158,9 +142,6 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     old_len = buffer->length;
     buffer->length += BINLOG_RECORD_SIZE_STRLEN;
 
-    fast_buffer_append(buffer, " %s=%"PRId64,
-            BINLOG_RECORD_FIELD_NAME_DATA_VERSION, record->data_version);
-
     fast_buffer_append_buff(buffer, BINLOG_RECORD_START_TAG_STR,
             BINLOG_RECORD_START_TAG_LEN);
 
@@ -174,6 +155,9 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     op_caption.len = strlen(op_caption.str);
     BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION, op_caption);
 
+    fast_buffer_append(buffer, " %s=%d",
+            BINLOG_RECORD_FIELD_NAME_TIMESTAMP, record->timestamp);
+
     if (record->options.path_info.flags != 0) {
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_NAMESPACE,
                 record->path.fullname.ns);
@@ -181,7 +165,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_PATH,
                 record->path.fullname.path);
 
-        fast_buffer_append(buffer, " %s=%d",
+        fast_buffer_append(buffer, " %s=%u",
                 BINLOG_RECORD_FIELD_NAME_HASH_CODE,
                 record->path.hash_code);
     }
@@ -228,6 +212,8 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     }
 
     sprintf(buffer->data + old_len, BINLOG_RECORD_SIZE_PRINTF_FMT, record_len);
+    *(buffer->data + old_len + BINLOG_RECORD_SIZE_STRLEN) =
+        BINLOG_RECORD_START_TAG_CHAR;  //restore the start char
     return 0;
 }
 
@@ -338,6 +324,12 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
                         &pcontext->fv.value.s);
             }
             break;
+        case BINLOG_RECORD_FIELD_INDEX_TIMESTAMP:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->timestamp = pcontext->fv.value.n;
+            }
+            break;
         case BINLOG_RECORD_FIELD_INDEX_NAMESPACE:
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
@@ -439,6 +431,12 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
         return ENOENT;
     }
 
+    if (record->timestamp <= 0) {
+        sprintf(pcontext->error_info, "expect timestamp field: %s",
+                BINLOG_RECORD_FIELD_NAME_TIMESTAMP);
+        return ENOENT;
+    }
+
     if (record->options.path_info.flags != 0) {
         if (record->options.path_info.ns == 0) {
             sprintf(pcontext->error_info, "expect namespace field: %s",
@@ -517,7 +515,7 @@ int binlog_unpack_record(const char *str, const int len,
     }
 
     rec_start = NULL;
-    record_len  = strtoll(str, &rec_start, 10);
+    record_len  = strtol(str, &rec_start, 10);
     if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
         sprintf(error_info, "unexpect char: %c(0x%02X), "
                 "expect start tag char: %c", *rec_start,

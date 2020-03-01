@@ -138,7 +138,7 @@ static int binlog_write_to_file()
         return 0;
     }
 
-    if (fc_safe_write(writer_context.fd, writer_context.binlog_buffer.buffer,
+    if (fc_safe_write(writer_context.fd, writer_context.binlog_buffer.buff,
                 writer_context.binlog_buffer.length) !=
             writer_context.binlog_buffer.length)
     {
@@ -197,17 +197,17 @@ static inline int deal_binlog_one_record(ServerBinlogRecordBuffer *rb)
 {
     int result;
     if (writer_context.binlog_buffer.size - writer_context.binlog_buffer.length
-            < rb->record.length)
+            < rb->buffer.length)
     {
         if ((result=binlog_write_to_file()) != 0) {
             return result;
         }
     }
 
-    memcpy(writer_context.binlog_buffer.buffer +
+    memcpy(writer_context.binlog_buffer.buff +
             writer_context.binlog_buffer.length,
-            rb->record.data, rb->record.length);
-    writer_context.binlog_buffer.length += rb->record.length;
+            rb->buffer.data, rb->buffer.length);
+    writer_context.binlog_buffer.length += rb->buffer.length;
     return 0;
 }
 

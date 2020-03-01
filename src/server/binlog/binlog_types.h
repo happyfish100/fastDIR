@@ -9,20 +9,40 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "../server_types.h"
 
+#define BINLOG_OP_NONE_INT           0
+#define BINLOG_OP_CREATE_DENTRY_INT  1
+#define BINLOG_OP_REMOVE_DENTRY_INT  2
+#define BINLOG_OP_RENAME_DENTRY_INT  3
+#define BINLOG_OP_UPDATE_DENTRY_INT  4
+
+#define BINLOG_OP_NONE_STR           ""
+#define BINLOG_OP_CREATE_DENTRY_STR  "cr"
+#define BINLOG_OP_REMOVE_DENTRY_STR  "rm"
+#define BINLOG_OP_RENAME_DENTRY_STR  "rn"
+#define BINLOG_OP_UPDATE_DENTRY_STR  "up"
+
+#define BINLOG_OP_CREATE_DENTRY_LEN  (sizeof(BINLOG_OP_CREATE_DENTRY_STR) - 1)
+#define BINLOG_OP_REMOVE_DENTRY_LEN  (sizeof(BINLOG_OP_REMOVE_DENTRY_STR) - 1)
+#define BINLOG_OP_RENAME_DENTRY_LEN  (sizeof(BINLOG_OP_RENAME_DENTRY_STR) - 1)
+#define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
+
+#define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1) | (1 << 2))
+
 typedef struct fdir_binlog_path_info {
     FDIRDEntryFullName fullname;
-    int hash_code;
+    unsigned int hash_code;
 } FDIRBinlogPathInfo;
 
 typedef struct fdir_binlog_record {
     int64_t data_version;
     int64_t inode;
     int operation;
+    int timestamp;
     union {
         int64_t flags;
         struct {
             union {
-                int flags: 3;
+                int flags: 4;
                 struct {
                     bool ns: 1;  //namespace
                     bool pt: 1;  //path
@@ -55,9 +75,10 @@ typedef struct server_binlog_consumer_context {
 } ServerBinlogConsumerContext;
 
 typedef struct server_binlog_record_buffer {
-    int64_t data_version;
+    int64_t data_version; //for idempotency (slave only)
+    uint64_t hash_code;   //for thread dispatch (master and slave)
     volatile int reffer_count;
-    FastBuffer record;
+    FastBuffer buffer;
 } ServerBinlogRecordBuffer;
 
 typedef struct server_binlog_consumer_array {

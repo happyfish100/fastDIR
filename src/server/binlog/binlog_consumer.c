@@ -127,15 +127,15 @@ void binlog_consumer_terminate()
     }
 }
 
-int binlog_consumer_push_to_queues(ServerBinlogRecordBuffer *record)
+int binlog_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
 {
     ServerBinlogConsumerContext *context;
     ServerBinlogConsumerContext *end;
-    __sync_add_and_fetch(&record->reffer_count, g_binlog_consumer_array.count);
 
+    __sync_add_and_fetch(&rbuffer->reffer_count, g_binlog_consumer_array.count);
     end = g_binlog_consumer_array.contexts + g_binlog_consumer_array.count;
     for (context=g_binlog_consumer_array.contexts; context<end; context++) {
-        common_blocked_queue_push(&context->queue, record);
+        common_blocked_queue_push(&context->queue, rbuffer);
     }
     return 0;
 }

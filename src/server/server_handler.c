@@ -23,6 +23,8 @@
 #include "sf/sf_nio.h"
 #include "sf/sf_global.h"
 #include "common/fdir_proto.h"
+#include "binlog/binlog_producer.h"
+#include "binlog/binlog_pack.h"
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
@@ -355,7 +357,7 @@ static inline int server_check_and_parse_dentry(ServerTaskContext *task_context,
     return 0;
 }
 
-static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
+static void server_get_dentry_hashcode(FDIRPathInfo *path_info,
         const bool include_last)
 {
     char logic_path[NAME_MAX + PATH_MAX + 2];
@@ -382,7 +384,7 @@ static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
 
     len = p - logic_path;
     //logInfo("logic_path for hash code: %.*s", len, logic_path);
-    return simple_hash(logic_path, len);
+    path_info->hash_code = simple_hash(logic_path, len);
 }
 
 #define server_get_parent_hashcode(path_info)  \
@@ -391,14 +393,41 @@ static unsigned int server_get_dentry_hashcode(FDIRPathInfo *path_info,
 #define server_get_my_hashcode(path_info)  \
     server_get_dentry_hashcode(path_info, true)
 
+
+static int server_binlog_produce(FDIRBinlogRecord *record,
+        const uint64_t hash_code)
+{
+    ServerBinlogRecordBuffer *rbuffer;
+    int result;
+
+    if ((rbuffer=server_binlog_alloc_rbuffer()) == NULL) {
+        return ENOMEM;
+    }
+
+    rbuffer->hash_code = hash_code;
+    record->data_version = rbuffer->data_version;
+    record->timestamp = g_current_time;
+    if ((result=binlog_pack_record(record, &rbuffer->buffer)) != 0) {
+        return result;
+    }
+
+    return server_binlog_dispatch(rbuffer);
+}
+
+#define SERVER_SET_RECORD_PATH_INFO(record, pinfo) \
+    do {  \
+        record.path.fullname = pinfo.fullname;   \
+        record.path.hash_code = pinfo.hash_code; \
+        record.options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED; \
+    } while (0)
+
 static int server_deal_create_dentry(ServerTaskContext *task_context)
 {
     int result;
     FDIRProtoCreateDEntryFront *proto_front;
-    unsigned int hash_code;
-    unsigned int thread_index;
+    FDIRBinlogRecord record;
+    unsigned int target_thread_index;
     int flags;
-    int mode;
 
     if (!REQUEST.forwarded) {
         if ((result=server_check_and_parse_dentry(task_context,
@@ -408,29 +437,44 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
             return result;
         }
          
-        hash_code = server_get_parent_hashcode(&TASK_ARG->path_info);
-        thread_index = hash_code % g_sf_global_vars.work_threads;
+        server_get_parent_hashcode(&TASK_ARG->path_info);
+        target_thread_index = TASK_ARG->path_info.hash_code %
+            g_sf_global_vars.work_threads;
 
-        logInfo("hash_code: %u, target thread_index: %d, current thread_index: %d",
-                hash_code, thread_index, SERVER_CONTEXT->thread_index);
+        logInfo("hash_code: %u, target thread_index: %d, "
+                "my thread_index: %d", TASK_ARG->path_info.hash_code,
+                target_thread_index, SERVER_CONTEXT->thread_index);
 
-        if (thread_index != SERVER_CONTEXT->thread_index) {
+        if (target_thread_index != SERVER_CONTEXT->thread_index) {
             REQUEST.done = false;
-            return sf_nio_notify(TASK, SF_NIO_STAGE_FORWARDED);
+            return sf_nio_forward_request(TASK, target_thread_index);
         }
     }
 
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
     flags = buff2int(proto_front->flags);
-    mode = buff2int(proto_front->mode);
-    return dentry_create(SERVER_CONTEXT, &TASK_ARG->path_info, flags, mode);
+    record.stat.mode = buff2int(proto_front->mode);
+
+    record.options.flags = 0;
+    record.operation = BINLOG_OP_CREATE_DENTRY_INT;
+    SERVER_SET_RECORD_PATH_INFO(record, TASK_ARG->path_info);
+    record.stat.ctime = record.stat.mtime = g_current_time;
+    record.options.ctime = record.options.mtime = 1;
+    record.options.mode = 1;
+    if ((result=dentry_create(SERVER_CONTEXT, &TASK_ARG->path_info,
+                    &record, flags)) != 0)
+    {
+        return result;
+    }
+
+    return server_binlog_produce(&record, TASK_ARG->path_info.hash_code);
 }
 
 static int server_deal_remove_dentry(ServerTaskContext *task_context)
 {
     int result;
-    unsigned int hash_code;
-    unsigned int thread_index;
+    FDIRBinlogRecord record;
+    unsigned int target_thread_index;
 
     if (!REQUEST.forwarded) {
         if ((result=server_check_and_parse_dentry(task_context,
@@ -438,20 +482,30 @@ static int server_deal_remove_dentry(ServerTaskContext *task_context)
         {
             return result;
         }
-         
-        hash_code = server_get_parent_hashcode(&TASK_ARG->path_info);
-        thread_index = hash_code % g_sf_global_vars.work_threads;
 
-        logInfo("hash_code: %u, target thread_index: %d, current thread_index: %d",
-                hash_code, thread_index, SERVER_CONTEXT->thread_index);
+        server_get_parent_hashcode(&TASK_ARG->path_info);
+        target_thread_index = TASK_ARG->path_info.hash_code %
+            g_sf_global_vars.work_threads;
 
-        if (thread_index != SERVER_CONTEXT->thread_index) {
+        logInfo("hash_code: %u, target thread_index: %d, my thread_index: %d",
+                TASK_ARG->path_info.hash_code, target_thread_index,
+                SERVER_CONTEXT->thread_index);
+
+        if (target_thread_index != SERVER_CONTEXT->thread_index) {
             REQUEST.done = false;
-            return sf_nio_notify(TASK, SF_NIO_STAGE_FORWARDED);
+            return sf_nio_forward_request(TASK, target_thread_index);
         }
     }
 
-    return dentry_remove(SERVER_CONTEXT, &TASK_ARG->path_info);
+    record.options.flags = 0;
+    record.operation = BINLOG_OP_REMOVE_DENTRY_INT;
+    SERVER_SET_RECORD_PATH_INFO(record, TASK_ARG->path_info);
+    if ((result=dentry_remove(SERVER_CONTEXT, &TASK_ARG->path_info,
+                    &record)) != 0)
+    {
+        return result;
+    }
+    return server_binlog_produce(&record, TASK_ARG->path_info.hash_code);
 }
 
 static int server_list_dentry_output(ServerTaskContext *task_context)
@@ -638,13 +692,15 @@ static inline int deal_task_done(ServerTaskContext *task_context)
                 RESPONSE.header.body_len);
     }
 
-    logDebug("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
+    if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
+    logInfo("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
             "client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__, SERVER_CONTEXT->thread_index,
             REQUEST.forwarded, TASK->client_ip, REQUEST.header.cmd,
             REQUEST.header.body_len, RESPONSE.header.cmd,
             RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
+    }
 
     return r == 0 ? RESPONSE_STATUS : r;
 }

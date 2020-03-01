@@ -31,8 +31,10 @@ static int binlog_sync_to_server(BinlogSyncContext *sync_context)
         return 0;
     }
 
-    int64_t last_data_version;
     //TODO
+    //int64_t last_data_version;
+    sync_context->binlog_buffer.length = 0;  //reset cache buff
+
     return 0;
 }
 
@@ -41,17 +43,17 @@ static inline int deal_binlog_one_record(BinlogSyncContext *sync_context,
 {
     int result;
     if (sync_context->binlog_buffer.size - sync_context->binlog_buffer.length
-            < rb->record.length)
+            < rb->buffer.length)
     {
         if ((result=binlog_sync_to_server(sync_context)) != 0) {
             return result;
         }
     }
 
-    memcpy(sync_context->binlog_buffer.buffer +
+    memcpy(sync_context->binlog_buffer.buff +
             sync_context->binlog_buffer.length,
-            rb->record.data, rb->record.length);
-    sync_context->binlog_buffer.length += rb->record.length;
+            rb->buffer.data, rb->buffer.length);
+    sync_context->binlog_buffer.length += rb->buffer.length;
     return 0;
 }
 

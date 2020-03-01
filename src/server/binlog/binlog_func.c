@@ -20,8 +20,8 @@
 
 int binlog_buffer_init(ServerBinlogBuffer *buffer)
 {
-    buffer->buffer = (char *)malloc(BINLOG_BUFFER_SIZE);
-    if (buffer->buffer == NULL) {
+    buffer->buff = (char *)malloc(BINLOG_BUFFER_SIZE);
+    if (buffer->buff == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail", __LINE__,
                 BINLOG_BUFFER_SIZE);

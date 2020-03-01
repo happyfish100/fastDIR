@@ -17,6 +17,10 @@ int binlog_pack_init();
 
 int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer);
 
+int binlog_unpack_record(const char *str, const int len,
+        FDIRBinlogRecord *record, const char **record_end,
+        char *error_info);
+
 #ifdef __cplusplus
 }
 #endif

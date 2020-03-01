@@ -33,7 +33,7 @@ int record_buffer_alloc_init_func(void *element, void *args)
     int min_bytes;
     int init_capacity;
 
-    buffer = &((ServerBinlogRecordBuffer *)element)->record;
+    buffer = &((ServerBinlogRecordBuffer *)element)->buffer;
 
     min_bytes = NAME_MAX + PATH_MAX + 128;
     init_capacity = 512;
@@ -41,8 +41,6 @@ int record_buffer_alloc_init_func(void *element, void *args)
         init_capacity *= 2;
     }
 
-    logInfo("file: "__FILE__", line: %d, "
-            "init_capacity: %d", __LINE__, init_capacity);
     return fast_buffer_init_ex(buffer, init_capacity);
 }
 
@@ -72,34 +70,34 @@ void binlog_producer_destroy()
 
 ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
 {
-    ServerBinlogRecordBuffer *record;
+    ServerBinlogRecordBuffer *rbuffer;
 
-    record = (ServerBinlogRecordBuffer *)fast_mblock_alloc_object(
+    rbuffer = (ServerBinlogRecordBuffer *)fast_mblock_alloc_object(
             &record_buffer_allocator);
-    if (record == NULL) {
+    if (rbuffer == NULL) {
         return NULL;
     }
 
-    record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-    return record;
+    rbuffer->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+    return rbuffer;
 }
 
-void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *buffer)
+void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
-    if (__sync_sub_and_fetch(&buffer->reffer_count, 1) == 0) {
+    if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
         logInfo("file: "__FILE__", line: %d, "
-                "free record buffer: %p", __LINE__, buffer);
-        fast_mblock_free_object(&record_buffer_allocator, buffer);
+                "free record buffer: %p", __LINE__, rbuffer);
+        fast_mblock_free_object(&record_buffer_allocator, rbuffer);
     }
 }
 
-int server_binlog_produce(ServerBinlogRecordBuffer *record)
+int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
 {
     int count;
     int result;
 
     count = 0;
-    while ((record->data_version != __sync_fetch_and_add(
+    while ((rbuffer->data_version != __sync_fetch_and_add(
                 &next_data_version, 0)) && (++count < MAX_SLEEP_COUNT))
     {
         nanosleep(&sleep_ts, NULL);
@@ -110,23 +108,23 @@ int server_binlog_produce(ServerBinlogRecordBuffer *record)
             logError("file: "__FILE__", line: %d, "
                     "waiting for next data version: %"PRId64" timeout, "
                     "maybe some mistakes happened", __LINE__,
-                    record->data_version);
+                    rbuffer->data_version);
         } else {
             logWarning("file: "__FILE__", line: %d, "
                     "waiting for next data version: %"PRId64" count: %d",
-                    __LINE__, record->data_version, count);
+                    __LINE__, rbuffer->data_version, count);
         }
     }
 
-    result = binlog_consumer_push_to_queues(record);
+    result = binlog_consumer_push_to_queues(rbuffer);
     if (count < MAX_SLEEP_COUNT) {  //normal
         __sync_add_and_fetch(&next_data_version, 1);
     } else {  //on exception
         int64_t old_data_version;
         old_data_version = __sync_fetch_and_add(&next_data_version, 0);
-        if (old_data_version <= record->data_version) {
+        if (old_data_version <= rbuffer->data_version) {
             __sync_bool_compare_and_swap(&next_data_version, old_data_version,
-                    record->data_version + 1);
+                    rbuffer->data_version + 1);
         }
     }
     return result;
