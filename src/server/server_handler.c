@@ -407,6 +407,8 @@ static int server_binlog_produce(FDIRBinlogRecord *record,
     rbuffer->hash_code = hash_code;
     record->data_version = rbuffer->data_version;
     record->timestamp = g_current_time;
+
+    fast_buffer_reset(&rbuffer->buffer);
     if ((result=binlog_pack_record(record, &rbuffer->buffer)) != 0) {
         return result;
     }

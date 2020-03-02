@@ -12,6 +12,7 @@
 #include "common/fdir_types.h"
 #include "server_global.h"
 #include "server_handler.h"
+#include "inode_generator.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2
@@ -394,7 +395,7 @@ int dentry_create(FDIRServerContext *server_context,
         return result;
     }
 
-    current->inode = __sync_add_and_fetch(&DATA_CURRENT_INODE, 1);
+    current->inode = inode_generator_next();
     current->stat.mode = record->stat.mode;
     current->stat.ctime = record->stat.ctime;
     current->stat.mtime = record->stat.mtime;

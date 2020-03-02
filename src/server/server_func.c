@@ -245,7 +245,6 @@ static int server_load_cluster_id(IniContext *ini_context, const char *filename)
         return EINVAL;
     }
 
-    DATA_CURRENT_INODE = ((int64_t)CLUSTER_ID) << (63 - FDIR_CLUSTER_ID_BITS);
     return 0;
 }
 

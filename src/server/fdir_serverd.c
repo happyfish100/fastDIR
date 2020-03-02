@@ -29,6 +29,7 @@
 #include "dentry.h"
 #include "cluster_relationship.h"
 #include "cluster_topology.h"
+#include "inode_generator.h"
 #include "server_binlog.h"
 #include "server_handler.h"
 
@@ -86,6 +87,9 @@ int main(int argc, char *argv[])
     r = sf_startup_schedule(&schedule_tid);
     gofailif(r, "");
 
+    r = inode_generator_init();
+    gofailif(r, "inode generator init error");
+
     r = sf_socket_server();
     gofailif(r, "socket server error");
     r = write_to_pid_file(g_pid_filename);
@@ -131,6 +135,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    inode_generator_destroy();
     server_binlog_terminate();
     sf_service_destroy();
     delete_pid_file(g_pid_filename);

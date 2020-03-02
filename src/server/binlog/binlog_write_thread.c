@@ -14,6 +14,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
+#include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
 #include "binlog_func.h"
@@ -130,6 +131,34 @@ static int open_writable_binlog()
     return 0;
 }
 
+static int open_next_binlog()
+{
+    GET_BINLOG_FILENAME(writer_context.filename, sizeof(writer_context.
+                filename), writer_context.binlog_index);
+    if (access(writer_context.filename, F_OK) == 0) {
+        char bak_filename[PATH_MAX];
+        char date_str[32];
+
+        sprintf(bak_filename, "%s.%s", writer_context.filename,
+                formatDatetime(g_current_time, "%Y%m%d%H%M%S",
+                    date_str, sizeof(date_str)));
+        if (rename(writer_context.filename, bak_filename) == 0) { 
+            logWarning("file: "__FILE__", line: %d, "
+                    "binlog file %s exist, rename to %s",
+                    __LINE__, writer_context.filename, bak_filename);
+        } else {
+            logError("file: "__FILE__", line: %d, "
+                    "rename binlog %s to backup %s fail, "
+                    "errno: %d, error info: %s",
+                    __LINE__, writer_context.filename, bak_filename,
+                    errno, STRERROR(errno));
+            return errno != 0 ? errno : EPERM;
+        }
+    }
+
+    return open_writable_binlog();
+}
+
 static int binlog_write_to_file()
 {
     int result;
@@ -158,12 +187,11 @@ static int binlog_write_to_file()
     } else {
         writer_context.file_size += writer_context.binlog_buffer.length;
         if (writer_context.file_size >= BINLOG_FILE_MAX_SIZE) {
-            writer_context.binlog_index++;
+            writer_context.binlog_index++;  //rotate
             if ((result=write_to_binlog_index_file()) == 0) {
-                result = open_writable_binlog();
+                result = open_next_binlog();
             }
 
-            writer_context.file_size = 0;
             if (result != 0) {
                 logError("file: "__FILE__", line: %d, "
                         "open binlog file \"%s\" fail",
@@ -272,7 +300,11 @@ void *binlog_write_thread_func(void *arg)
             continue;
         }
 
-        deal_binlog_records(node);
+        if (deal_binlog_records(node) != 0) {
+            logCrit("file: "__FILE__", line: %d, "
+                    "deal_binlog_records fail, program exit!", __LINE__);
+            SF_G_CONTINUE_FLAG = false;
+        }
         common_blocked_queue_free_all_nodes(writer_queue, node);
     }
 
