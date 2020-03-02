@@ -21,6 +21,12 @@ int binlog_unpack_record(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
         char *error_info);
 
+int binlog_detect_record(const char *str, const int len,
+        int64_t *data_version, char *error_info);
+
+int binlog_detect_record_reverse(const char *str, const int len,
+        int64_t *data_version, int *offset, char *error_info);
+
 #ifdef __cplusplus
 }
 #endif

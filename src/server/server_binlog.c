@@ -14,6 +14,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
+#include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_consumer.h"
 #include "binlog/binlog_write_thread.h"
@@ -24,6 +25,9 @@ int server_binlog_init()
 {
     int result;
 
+    if ((result=binlog_pack_init()) != 0) {
+        return result;
+    }
     if ((result=binlog_producer_init()) != 0) {
         return result;
     }

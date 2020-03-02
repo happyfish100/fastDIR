@@ -12,7 +12,10 @@ extern "C" {
 int inode_generator_init();
 void inode_generator_destroy();
 
-int64_t inode_generator_next();
+static inline int64_t inode_generator_next()
+{
+    return INODE_CLUSTER_PART | __sync_add_and_fetch(&CURRENT_INODE_SN, 1);
+}
 
 #ifdef __cplusplus
 }

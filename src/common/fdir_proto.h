@@ -142,7 +142,7 @@ typedef struct fdir_proto_join_master_req {
 } FDIRProtoJoinMasterReq;
 
 typedef struct fdir_proto_join_slave_req {
-    char cluster_id[4];    //the cluster id
+    char cluster_id[4];  //the cluster id
     char server_id[4];   //the master server id
     char key[FDIR_REPLICA_KEY_SIZE];  //the slave key passed / set by JOIN_MASTER
 } FDIRProtoJoinSlaveReq;
@@ -150,6 +150,11 @@ typedef struct fdir_proto_join_slave_req {
 typedef struct fdir_proto_join_slave_resp {
     char last_data_version[8];   //the slave's last data version
 } FDIRProtoJoinSlaveResp;
+
+typedef struct fdir_proto_ping_master_resp {
+    char inode_sn[8];  //current inode sn of master
+    char your_status;  //tell the status of the slave
+} FDIRProtoPingMasterResp;
 
 #ifdef __cplusplus
 extern "C" {
@@ -187,9 +192,21 @@ static inline int fdir_send_and_check_response_header(ConnectionInfo *conn,
     return 0;
 }
 
-int fdir_send_and_recv_none_body_response(ConnectionInfo *conn, char *data,
-        const int len, FDIRResponseInfo *response, int network_timeout,
-        const unsigned char expect_cmd);
+int fdir_send_and_recv_response(ConnectionInfo *conn, char *send_data,
+        const int send_len, FDIRResponseInfo *response,
+        const int network_timeout, const unsigned char expect_cmd,
+        char *recv_data, const int expect_body_len);
+
+static inline int fdir_send_and_recv_none_body_response(ConnectionInfo *conn,
+        char *send_data, const int send_len, FDIRResponseInfo *response,
+        const int network_timeout, const unsigned char expect_cmd)
+{
+    char *recv_data = NULL;
+    const int expect_body_len = 0;
+
+    return fdir_send_and_recv_response(conn, send_data, send_len, response,
+        network_timeout, expect_cmd, recv_data, expect_body_len);
+}
 
 static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
         FDIRHeaderInfo *header_info)

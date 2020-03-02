@@ -38,7 +38,7 @@ typedef struct {
     ServerBinlogBuffer binlog_buffer;
 } BinlogWriterContext;
 
-static BinlogWriterContext writer_context = {{'\0'}, 0, 0, 0, -1};
+static BinlogWriterContext writer_context = {{'\0'}, -1, 0, 0, -1};
 static struct common_blocked_queue *writer_queue = NULL;
 static volatile bool write_thread_running = false;
 
@@ -79,6 +79,7 @@ static int get_binlog_index_from_file()
             "%s/%s", DATA_PATH_STR, BINLOG_INDEX_FILENAME);
     if (access(full_filename, F_OK) != 0) {
         if (errno == ENOENT) {
+            writer_context.binlog_index = 0;
             return write_to_binlog_index_file();
         }
     }
@@ -219,6 +220,15 @@ int binlog_write_thread_init()
     }
 
     return open_writable_binlog();
+}
+
+int binlog_get_current_write_index()
+{
+    if (writer_context.binlog_index < 0) {
+        get_binlog_index_from_file();
+    }
+
+    return writer_context.binlog_index;
 }
 
 static inline int deal_binlog_one_record(ServerBinlogRecordBuffer *rb)

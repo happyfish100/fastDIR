@@ -193,6 +193,7 @@ static int server_deal_join_master(ServerTaskContext *task_context)
 static int server_deal_ping_master(ServerTaskContext *task_context)
 {
     int result;
+    FDIRProtoPingMasterResp *resp;
 
     if ((result=server_expect_body_length(task_context, 0)) != 0) {
         return result;
@@ -212,7 +213,12 @@ static int server_deal_ping_master(ServerTaskContext *task_context)
         return EINVAL;
     }
 
+    resp = (FDIRProtoPingMasterResp *)REQUEST.body;
+    long2buff(CURRENT_INODE_SN, resp->inode_sn);
+    resp->your_status = TASK_ARG->cluster_peer->status;
+    task_context->response_done = true;
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
+    RESPONSE.header.body_len = sizeof(FDIRProtoPingMasterResp);
     return 0;
 }
 
@@ -457,6 +463,7 @@ static int server_deal_create_dentry(ServerTaskContext *task_context)
     flags = buff2int(proto_front->flags);
     record.stat.mode = buff2int(proto_front->mode);
 
+    record.inode = 0;
     record.options.flags = 0;
     record.operation = BINLOG_OP_CREATE_DENTRY_INT;
     SERVER_SET_RECORD_PATH_INFO(record, TASK_ARG->path_info);

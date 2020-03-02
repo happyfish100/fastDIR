@@ -16,6 +16,7 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
+#include "binlog_reader.h"
 #include "binlog_consumer.h"
 #include "binlog_producer.h"
 
@@ -47,6 +48,7 @@ int record_buffer_alloc_init_func(void *element, void *args)
 int binlog_producer_init()
 {
     int result;
+    int64_t offset;
 
     if ((result=fast_mblock_init_ex(&record_buffer_allocator,
                     sizeof(ServerBinlogRecordBuffer),
@@ -55,9 +57,15 @@ int binlog_producer_init()
         return result;
     }
 
-    //TODO: DATA_CURRENT_VERSION must be inited first
-    next_data_version = DATA_CURRENT_VERSION + 1;
+    if ((result=binlog_get_max_record_version((int64_t *)
+                    &DATA_CURRENT_VERSION, &offset)) != 0)
+    {
+        return result;
+    }
 
+    logInfo("DATA_CURRENT_VERSION == %"PRId64, DATA_CURRENT_VERSION);
+
+    next_data_version = DATA_CURRENT_VERSION + 1;
     sleep_ts.tv_sec = 0;
     sleep_ts.tv_nsec = SLEEP_NANO_SECONDS;
 	return 0;

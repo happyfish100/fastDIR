@@ -395,7 +395,11 @@ int dentry_create(FDIRServerContext *server_context,
         return result;
     }
 
-    current->inode = inode_generator_next();
+    if (record->inode == 0) {
+        current->inode = inode_generator_next();
+    } else {
+        current->inode = record->inode;
+    }
     current->stat.mode = record->stat.mode;
     current->stat.ctime = record->stat.ctime;
     current->stat.mtime = record->stat.mtime;
@@ -404,7 +408,9 @@ int dentry_create(FDIRServerContext *server_context,
         return result;
     }
 
-    record->inode = current->inode;
+    if (record->inode == 0) {
+        record->inode = current->inode;
+    }
     return 0;
 }
 

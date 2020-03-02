@@ -144,35 +144,26 @@ static int proto_ping_master(ConnectionInfo *conn)
 {
     FDIRProtoHeader header;
     FDIRResponseInfo response;
+    FDIRProtoPingMasterResp ping_resp;
+    int64_t inode_sn;
     int result;
-    char in_buff[1024];
-    char *pInBuff;
 
     FDIR_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
-    if ((result=fdir_send_and_check_response_header(conn, (char *)&header,
+    if ((result=fdir_send_and_recv_response(conn, (char *)&header,
                     sizeof(header), &response, SF_G_NETWORK_TIMEOUT,
-                    FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) != 0)
+                    FDIR_CLUSTER_PROTO_PING_MASTER_RESP, (char *)&ping_resp,
+                    sizeof(FDIRProtoPingMasterResp))) != 0)
     {
         fdir_log_network_error(conn, &response, __LINE__, result);
         return result;
     }
 
-    if (response.header.body_len == 0) {
-        return 0;
+    inode_sn = buff2long(ping_resp.inode_sn);
+    if (inode_sn > CURRENT_INODE_SN) {
+        CURRENT_INODE_SN = inode_sn;
     }
-
-    pInBuff = in_buff;
-    /*
-    if ((result=fdfs_recv_response(conn, &pInBuff,
-                    sizeof(in_buff), &in_bytes)) != 0)
-    {
-        logError("file: "__FILE__", line: %d, "
-                "fdfs_recv_response from %s:%d fail, result: %d",
-                __LINE__, conn->ip_addr,
-                conn->port, result);
-        return result;
-    }
-    */
+    //TODO
+    //ping_resp.your_status;
 
     return 0;
 }
@@ -223,7 +214,8 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
     }
 }
 
-static int cluster_get_master(FDIRClusterServerStatus *server_status)
+static int cluster_get_master(FDIRClusterServerStatus *server_status,
+        int *active_count)
 {
 #define STATUS_ARRAY_FIXED_COUNT  8
 	FDIRClusterServerInfo *server;
@@ -231,7 +223,6 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
 	FDIRClusterServerStatus *current_status;
 	FDIRClusterServerStatus *cs_status;
 	FDIRClusterServerStatus status_array[STATUS_ARRAY_FIXED_COUNT];
-	int count;
 	int result;
 	int r;
 	int i;
@@ -263,8 +254,8 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
 		}
 	}
 
-	count = current_status - cs_status;
-    if (count == 0) {
+	*active_count = current_status - cs_status;
+    if (*active_count == 0) {
         logError("file: "__FILE__", line: %d, "
                 "get server status fail, "
                 "server count: %d", __LINE__,
@@ -272,10 +263,10 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
         return result == 0 ? ENOENT : result;
     }
 
-	qsort(cs_status, count, sizeof(FDIRClusterServerStatus),
+	qsort(cs_status, *active_count, sizeof(FDIRClusterServerStatus),
 		cluster_cmp_server_status);
 
-	for (i=0; i<count; i++) {
+	for (i=0; i<*active_count; i++) {
         logInfo("file: "__FILE__", line: %d, "
                 "server_id: %d, ip addr %s:%d, is_master: %d, "
                 "data_version: %"PRId64, __LINE__,
@@ -285,7 +276,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status)
                 cs_status[i].is_master, cs_status[i].data_version);
     }
 
-	memcpy(server_status, cs_status + (count - 1),
+	memcpy(server_status, cs_status + (*active_count - 1),
 			sizeof(FDIRClusterServerStatus));
     if (cs_status != status_array) {
         free(cs_status);
@@ -457,15 +448,38 @@ static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 static int cluster_select_master()
 {
 	int result;
+    int active_count;
+    int i;
+    int sleep_secs;
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
 
 	logInfo("file: "__FILE__", line: %d, "
 		"selecting master...", __LINE__);
 
-	if ((result=cluster_get_master(&server_status)) != 0) {
-		return result;
-	}
+    sleep_secs = 2;
+    i = 0;
+    while (1) {
+        if ((result=cluster_get_master(&server_status, &active_count)) != 0) {
+            return result;
+        }
+        if ((active_count == CLUSTER_SERVER_ARRAY.count) ||
+                (active_count >= 2 && server_status.is_master))
+        {
+            break;
+        }
+
+        if (++i == 5) {
+            break;
+        }
+
+        logInfo("file: "__FILE__", line: %d, "
+                "round %dth, active server count: %d < server count: %d, "
+                "try again after %d seconds.", __LINE__, i, active_count,
+                CLUSTER_SERVER_ARRAY.count, sleep_secs);
+        sleep(sleep_secs);
+        sleep_secs *= 2;
+    }
 
     next_master = server_status.cs;
     if (CLUSTER_MYSELF_PTR == next_master) {

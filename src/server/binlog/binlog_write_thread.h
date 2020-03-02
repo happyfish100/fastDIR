@@ -14,6 +14,8 @@ void binlog_write_thread_finish();
 
 void *binlog_write_thread_func(void *arg);
 
+int binlog_get_current_write_index();
+
 #ifdef __cplusplus
 }
 #endif

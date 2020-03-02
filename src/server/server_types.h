@@ -81,6 +81,7 @@ typedef struct fdir_server_dentry_array {
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
+    char status;                       //the slave status
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {

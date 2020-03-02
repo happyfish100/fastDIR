@@ -17,13 +17,11 @@
 #include "server_global.h"
 #include "inode_generator.h"
 
-#define INODE_SN_FILENAME          ".inode.sn"
-#define INODE_SN_FLUSH_FREQUENCE   10000
+#define INODE_SN_FILENAME  ".inode.sn"
+#define INODE_SN_MAX_QPS   (1000 * 1000)
 
 #define GET_INODE_SN_FILENAME(filename, size) \
     snprintf(filename, size, "%s/%s", DATA_PATH_STR, INODE_SN_FILENAME)
-
-static int64_t inode_cluster = 0;
 
 #define write_to_inode_sn_file()  write_to_inode_sn_file_func(NULL)
 
@@ -80,25 +78,16 @@ int inode_generator_init()
                     __LINE__, filename, content);
             return EINVAL;
         }
-        CURRENT_INODE_SN += INODE_SN_FLUSH_FREQUENCE;  //skip avoid conflict
+        CURRENT_INODE_SN += INODE_SN_MAX_QPS;  //skip avoid conflict
+    } else {
+        CURRENT_INODE_SN = 0;
     }
 
-    inode_cluster = ((int64_t)CLUSTER_ID) << (63 - FDIR_CLUSTER_ID_BITS);
+    INODE_CLUSTER_PART = ((int64_t)CLUSTER_ID) << (63 - FDIR_CLUSTER_ID_BITS);
 	return setup_inode_sn_flush_task();
 }
 
 void inode_generator_destroy()
 {
     write_to_inode_sn_file();
-}
-
-int64_t inode_generator_next()
-{
-    int64_t sn;
-    sn = __sync_add_and_fetch(&CURRENT_INODE_SN, 1);
-    if (sn % INODE_SN_FLUSH_FREQUENCE == 0) {
-        write_to_inode_sn_file();
-    }
-
-    return inode_cluster | sn;
 }
