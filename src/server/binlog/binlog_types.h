@@ -65,6 +65,7 @@ typedef struct fdir_binlog_record {
 
 typedef struct server_binlog_buffer {
     char *buff;    //the buffer pointer
+    char *current; //for the consumer
     int length;    //the content length
     int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;

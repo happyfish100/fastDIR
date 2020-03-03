@@ -395,7 +395,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
 
         if (body_header->is_last) {
             FC_SET_STRING_EX(dentry->name, part->name_str, part->name_len);
-        } else if ((result=fast_mpool_strdup_ex(&array->name_allocator.mpool,
+        } else if ((result=fast_mpool_alloc_string_ex(&array->name_allocator.mpool,
                         &dentry->name, part->name_str, part->name_len)) != 0)
         {
             response->error.length = sprintf(response->error.message,

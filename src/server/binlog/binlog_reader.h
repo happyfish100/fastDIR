@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 int binlog_reader_init(ServerBinlogReader *reader,
-        const ServerBinlogFilePosition *position,
+        const ServerBinlogFilePosition *hint_pos,
         const int64_t last_data_version);
 
 int binlog_get_first_record_version(const int file_index,

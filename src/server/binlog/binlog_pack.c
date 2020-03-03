@@ -515,7 +515,7 @@ static inline int binlog_check_rec_length(const int len,
             + BINLOG_RECORD_END_TAG_LEN)
     {
         sprintf(pcontext->error_info, "string length: %d is too short", len);
-        return EINVAL;
+        return EAGAIN;
     }
 
     return 0;
@@ -606,7 +606,7 @@ int binlog_unpack_record(const char *str, const int len,
 }
 
 int binlog_detect_record(const char *str, const int len,
-        int64_t *data_version, char *error_info)
+        int64_t *data_version, const char **rec_end, char *error_info)
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
@@ -621,6 +621,88 @@ int binlog_detect_record(const char *str, const int len,
         return result;
     }
 
+    *rec_end = pcontext.rec_end;
+    *data_version = record.data_version;
+    return 0;
+}
+
+static bool binlog_is_record_start(const char *str, const int len,
+        FieldParserContext *pcontext)
+{
+    int record_len;
+    const char *rec_start;
+
+    rec_start = NULL;
+    record_len  = strtol(str, (char **)&rec_start, 10);
+    if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
+       return false;
+    }
+    if (rec_start - str != BINLOG_RECORD_SIZE_STRLEN) {
+        return false;
+    }
+
+    if (memcmp(rec_start, BINLOG_RECORD_START_TAG_STR,
+                BINLOG_RECORD_START_TAG_LEN) != 0)
+    {
+        return false;
+    }
+
+    if (record_len > len - BINLOG_RECORD_SIZE_STRLEN) {
+        return false;
+    }
+
+    pcontext->rec_end = str + BINLOG_RECORD_SIZE_STRLEN + record_len;
+    if (memcmp(pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
+                BINLOG_RECORD_END_TAG_STR,
+                BINLOG_RECORD_END_TAG_LEN) == 0)
+    {
+        pcontext->p = rec_start + BINLOG_RECORD_START_TAG_LEN;
+        return true;
+    }
+    return false;
+}
+
+int binlog_detect_record_forward(const char *str, const int len,
+        int64_t *data_version, int *rstart_offset, int *rend_offset,
+        char *error_info)
+{
+    FDIRBinlogRecord record;
+    FieldParserContext pcontext;
+    const char *rec_start;
+    const char *p;
+    const char *end;
+    int result;
+
+    pcontext.error_info = error_info;
+    *rstart_offset = -1;
+    p = str;
+    end = str + len;
+    while ((end - p > 32 + BINLOG_RECORD_START_TAG_LEN) && (rec_start=
+                (const char *)memchr(p, BINLOG_RECORD_START_TAG_CHAR,
+                    end - p)) != NULL)
+    {
+        const char *start;
+        start = rec_start - BINLOG_RECORD_SIZE_STRLEN;
+        if ((start >= str) && binlog_is_record_start(
+                    start, end - start, &pcontext))
+        {
+            *rstart_offset = start - str;
+            break;
+        }
+
+        p = rec_start + 1;
+    }
+
+    if (*rstart_offset < 0) {
+        sprintf(error_info, "can't found record start");
+        return ENOENT;
+    }
+
+    if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
+        return result;
+    }
+
+    *rend_offset = pcontext.rec_end - str;
     *data_version = record.data_version;
     return 0;
 }
@@ -630,9 +712,8 @@ int binlog_detect_record_reverse(const char *str, const int len,
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
+    const char *start;
     const char *rec_start;
-    const char *p;
-    const char *next_end;
     int l;
     int result;
 
@@ -643,49 +724,23 @@ int binlog_detect_record_reverse(const char *str, const int len,
 
     *offset = -1;
     l = len;
-    while (l > 0 && (rec_start=fc_memrchr(str, BINLOG_RECORD_START_TAG_CHAR,
-                    l)) != NULL)
+    while (l > 0 && (rec_start=fc_memrchr(str,
+                    BINLOG_RECORD_START_TAG_CHAR, l)) != NULL)
     {
-        next_end = rec_start - 1;
-        if (memcmp(rec_start, BINLOG_RECORD_START_TAG_STR,
-                    BINLOG_RECORD_START_TAG_LEN) != 0)
+        start = rec_start - BINLOG_RECORD_SIZE_STRLEN;
+        if ((start >= str) && binlog_is_record_start(
+                    start, len - (start - str), &pcontext))
         {
-            l = next_end - str;
-            continue;
-        }
-
-        p = rec_start;
-        while ((p > str) && (*(p-1) >= '0' && *(p-1) <= '9')) {
-            --p;
-        }
-
-        if (rec_start - p != BINLOG_RECORD_SIZE_STRLEN) {
-            l = next_end - str;
-            continue;
-        }
-
-        if (p == str) {
-            *offset = 0;
+            *offset = start - str;
             break;
         }
 
-        if ((p - str >= BINLOG_RECORD_END_TAG_LEN) &&
-                memcmp(p - BINLOG_RECORD_END_TAG_LEN,
-                BINLOG_RECORD_END_TAG_STR,
-                BINLOG_RECORD_END_TAG_LEN) == 0)
-        {
-            *offset = p - str;
-            break;
-        }
+        l = (rec_start - 1) - str;
     }
 
     if (*offset < 0) {
         sprintf(error_info, "can't found record start");
-        return EINVAL;
-    }
-
-    if ((result=binlog_check_record(str + *offset, len, &pcontext)) != 0) {
-        return result;
+        return ENOENT;
     }
 
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
