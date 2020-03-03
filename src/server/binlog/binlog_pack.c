@@ -79,7 +79,22 @@ static FastCharConverter char_converter;
 
 int binlog_pack_init()
 {
-   return std_spaces_add_backslash_converter_init(&char_converter);
+#define ESCAPE_CHAR_PAIR_COUNT 10
+    FastCharPair pairs[ESCAPE_CHAR_PAIR_COUNT];
+
+    FAST_CHAR_MAKE_PAIR(pairs[0], '\0', '0');
+    FAST_CHAR_MAKE_PAIR(pairs[1], '\t', 't');
+    FAST_CHAR_MAKE_PAIR(pairs[2], '\n', 'n');
+    FAST_CHAR_MAKE_PAIR(pairs[3], '\v', 'v');
+    FAST_CHAR_MAKE_PAIR(pairs[4], '\f', 'f');
+    FAST_CHAR_MAKE_PAIR(pairs[5], '\r', 'r');
+    FAST_CHAR_MAKE_PAIR(pairs[6], ' ',  's');
+    FAST_CHAR_MAKE_PAIR(pairs[7], '\\', '\\');
+    FAST_CHAR_MAKE_PAIR(pairs[8], '<',  'l');
+    FAST_CHAR_MAKE_PAIR(pairs[9], '>',  'g');
+
+    return char_converter_init_ex(&char_converter, pairs,
+            ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
 }
 
 static inline const char *get_operation_caption(const int operation)
@@ -121,23 +136,44 @@ static inline int get_operation_integer(const string_t *operation)
     }
 }
 
-#define BINLOG_PACK_STRINGL(buffer, name, val, len) \
+#define BINLOG_PACK_STRINGL(buffer, name, val, len, need_escape) \
     do { \
         fast_buffer_append(buffer, " %s=%d,", name, len); \
-        fast_buffer_append_buff(buffer, val, len);  \
+        if (need_escape) { \
+            fast_char_escape(&char_converter, val, len,  \
+                    buffer->data + buffer->length, &escape_len, \
+                    buffer->alloc_size - buffer->length);   \
+            buffer->length += escape_len;  \
+        } else {  \
+            fast_buffer_append_buff(buffer, val, len);  \
+        }  \
     } while (0)
 
 #define BINLOG_PACK_STRING(buffer, name, value) \
-    BINLOG_PACK_STRINGL(buffer, name, value.str, value.len)
+    BINLOG_PACK_STRINGL(buffer, name, value.str, value.len, true)
 
 int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 {
     string_t op_caption;
     int old_len;
+    int expect_len;
     int record_len;
     int result;
+    int escape_len;
 
-    if ((result=fast_buffer_check(buffer, 1024)) != 0) {
+    expect_len = 512;
+    if (record->options.path_info.flags != 0) {
+        expect_len += record->path.fullname.ns.len +
+                record->path.fullname.path.len;
+    }
+    if (record->options.extra_data) {
+        expect_len += record->extra_data.len;
+    }
+    if (record->options.user_data) {
+        expect_len += record->user_data.len;
+    }
+    expect_len *= 2;
+    if ((result=fast_buffer_check_capacity(buffer, expect_len)) != 0) {
         return result;
     }
 
@@ -156,7 +192,8 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
     op_caption.str = (char *)get_operation_caption(record->operation);
     op_caption.len = strlen(op_caption.str);
-    BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION, op_caption);
+    BINLOG_PACK_STRINGL(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
+            op_caption.str, op_caption.len, false);
 
     fast_buffer_append(buffer, " %s=%d",
             BINLOG_RECORD_FIELD_NAME_TIMESTAMP, record->timestamp);
@@ -275,6 +312,9 @@ static int binlog_get_next_field_value(FieldParserContext *pcontext)
                     pcontext->fv.name, n);
             return EINVAL;
         }
+
+        fast_char_unescape(&char_converter, pcontext->fv.value.s.str,
+                &pcontext->fv.value.s.len);
     } else if (*endptr == ' ') {
         pcontext->fv.type = BINLOG_FIELD_TYPE_INTEGER;
         pcontext->fv.value.n = n;
