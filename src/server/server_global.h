@@ -44,6 +44,7 @@ typedef struct server_global_vars {
         volatile int64_t current_version; //binlog version
         string_t path;   //data path
         int binlog_buffer_size;
+        int thread_count;
     } data;
 
     /*
@@ -71,6 +72,7 @@ typedef struct server_global_vars {
 #define CURRENT_INODE_SN        g_server_global_vars.inode_generator.sn
 #define INODE_CLUSTER_PART      g_server_global_vars.inode_generator.cluster
 #define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
+#define DATA_THREAD_COUNT       g_server_global_vars.data.thread_count
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len

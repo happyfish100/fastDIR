@@ -72,8 +72,8 @@ static int open_readable_binlog(ServerBinlogReader *reader)
         }
     }
 
-    reader->binlog_buffer.current = reader->binlog_buffer.buff;
-    reader->binlog_buffer.length = 0;
+    reader->binlog_buffer.current = reader->binlog_buffer.end =
+        reader->binlog_buffer.buff;
     return 0;
 }
 
@@ -84,24 +84,23 @@ static int do_binlog_read(ServerBinlogReader *reader)
     int read_bytes;
 
     if (reader->binlog_buffer.current != reader->binlog_buffer.buff) {
-        remain = reader->binlog_buffer.buff + reader->binlog_buffer.length
-            - reader->binlog_buffer.current;
+        remain = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
         if (remain > 0) {
             memmove(reader->binlog_buffer.buff, reader->binlog_buffer.current,
                     remain);
         }
 
         reader->binlog_buffer.current = reader->binlog_buffer.buff;
-        reader->binlog_buffer.length = remain;
+        reader->binlog_buffer.end = reader->binlog_buffer.buff + remain;
     }
 
-    read_bytes = reader->binlog_buffer.size - reader->binlog_buffer.length;
+    read_bytes = reader->binlog_buffer.size -
+        BINLOG_BUFFER_LENGTH(reader->binlog_buffer);
     if (read_bytes == 0) {
         return ENOSPC;
     }
 
-    read_bytes = read(reader->fd, reader->binlog_buffer.buff +
-            reader->binlog_buffer.length, read_bytes);
+    read_bytes = read(reader->fd, reader->binlog_buffer.end, read_bytes);
     if (read_bytes == 0) {
         return ENOENT;
     }
@@ -114,8 +113,74 @@ static int do_binlog_read(ServerBinlogReader *reader)
     }
 
     reader->position.offset += read_bytes;
-    reader->binlog_buffer.length += read_bytes;
+    reader->binlog_buffer.end += read_bytes;
     return 0;
+}
+
+int binlog_reader_read(ServerBinlogReader *reader)
+{
+    int result;
+
+    result = do_binlog_read(reader);
+    if (result == 0 || result != ENOENT) {
+        return result;
+    }
+
+    if (reader->position.index < binlog_get_current_write_index()) {
+        reader->position.offset = 0;
+        reader->position.index++;
+        if ((result=open_readable_binlog(reader)) != 0) {
+            return result;
+        }
+        result = do_binlog_read(reader);
+    }
+
+    return result;
+}
+
+int binlog_reader_next_record(ServerBinlogReader *reader,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    int len;
+    char *rec_end;
+    char error_info[FDIR_ERROR_INFO_SIZE];
+
+    len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
+    if (len <= 32 && (result=binlog_reader_read(reader)) != 0) {
+        return result;
+    }
+
+    result = binlog_unpack_record(reader->binlog_buffer.current, len,
+            record, (const char **)&rec_end, error_info);
+    if (result == EAGAIN || result == EOVERFLOW) {
+        if ((result=binlog_reader_read(reader)) != 0) {
+            return result;
+        }
+
+        len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
+        result = binlog_unpack_record(reader->binlog_buffer.current, len,
+                record, (const char **)&rec_end, error_info);
+    }
+
+    if (result != 0) {
+        if (*error_info != '\0') {
+            logError("file: "__FILE__", line: %d, "
+                    "binlog_unpack_record fail, "
+                    "binlog file: %s, error info: %s",
+                    __LINE__, reader->filename, error_info);
+        } else {
+            logError("file: "__FILE__", line: %d, "
+                    "binlog_unpack_record fail, "
+                    "binlog file: %s, errno: %d, error info: %s",
+                    __LINE__, reader->filename, result, STRERROR(result));
+        }
+
+        return result;
+    }
+
+    reader->binlog_buffer.current = rec_end;
+    return result;
 }
 
 static int find_data_version(ServerBinlogReader *reader,
@@ -123,9 +188,7 @@ static int find_data_version(ServerBinlogReader *reader,
 {
     int result;
     int64_t data_version;
-    char *next_rec;
     char *rec_end;
-    char *buff_end;
     char error_info[FDIR_ERROR_INFO_SIZE];
 
     reader->position.offset = 0;
@@ -134,28 +197,27 @@ static int find_data_version(ServerBinlogReader *reader,
     }
 
     while ((result=do_binlog_read(reader)) == 0) {
-        buff_end = reader->binlog_buffer.buff + reader->binlog_buffer.length;
-        next_rec = reader->binlog_buffer.buff;
-        while ((result=binlog_detect_record(next_rec, buff_end - next_rec,
+        while ((result=binlog_detect_record(reader->binlog_buffer.current,
+                        BINLOG_BUFFER_REMAIN(reader->binlog_buffer),
                         &data_version, (const char **)&rec_end,
                         error_info)) == 0)
         {
             if (last_data_version == data_version) {
-                reader->position.offset -= buff_end - rec_end;
+                reader->position.offset -= reader->binlog_buffer.end - rec_end;
                 break;
             } else if (last_data_version < data_version) {
                 logWarning("file: "__FILE__", line: %d, "
                         "can't found data version %"PRId64", "
                         "skip to next data version %"PRId64,
                         __LINE__, last_data_version, data_version);
-                reader->position.offset -= buff_end - next_rec;
+                reader->position.offset -= BINLOG_BUFFER_REMAIN(
+                        reader->binlog_buffer);
                 break;
             }
-            next_rec = rec_end;
+            reader->binlog_buffer.current = rec_end;
         }
 
         if (result == EAGAIN || result == EOVERFLOW) {
-            reader->binlog_buffer.current = next_rec;
             continue;
         }
 

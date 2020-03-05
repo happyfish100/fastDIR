@@ -17,6 +17,7 @@
 #define FDIR_SERVER_DEFAULT_RELOAD_INTERVAL       500
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
+#define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);

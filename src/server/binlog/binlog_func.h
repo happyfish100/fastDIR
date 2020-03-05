@@ -5,6 +5,10 @@
 
 #include "binlog_types.h"
 
+
+#define BINLOG_BUFFER_LENGTH(buffer) ((buffer).end - (buffer).buff)
+#define BINLOG_BUFFER_REMAIN(buffer) ((buffer).end - (buffer).current)
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -79,19 +79,17 @@ static FastCharConverter char_converter;
 
 int binlog_pack_init()
 {
-#define ESCAPE_CHAR_PAIR_COUNT 10
+#define ESCAPE_CHAR_PAIR_COUNT 8
     FastCharPair pairs[ESCAPE_CHAR_PAIR_COUNT];
 
     FAST_CHAR_MAKE_PAIR(pairs[0], '\0', '0');
-    FAST_CHAR_MAKE_PAIR(pairs[1], '\t', 't');
-    FAST_CHAR_MAKE_PAIR(pairs[2], '\n', 'n');
-    FAST_CHAR_MAKE_PAIR(pairs[3], '\v', 'v');
-    FAST_CHAR_MAKE_PAIR(pairs[4], '\f', 'f');
-    FAST_CHAR_MAKE_PAIR(pairs[5], '\r', 'r');
-    FAST_CHAR_MAKE_PAIR(pairs[6], ' ',  's');
-    FAST_CHAR_MAKE_PAIR(pairs[7], '\\', '\\');
-    FAST_CHAR_MAKE_PAIR(pairs[8], '<',  'l');
-    FAST_CHAR_MAKE_PAIR(pairs[9], '>',  'g');
+    FAST_CHAR_MAKE_PAIR(pairs[1], '\n', 'n');
+    FAST_CHAR_MAKE_PAIR(pairs[2], '\v', 'v');
+    FAST_CHAR_MAKE_PAIR(pairs[3], '\f', 'f');
+    FAST_CHAR_MAKE_PAIR(pairs[4], '\r', 'r');
+    FAST_CHAR_MAKE_PAIR(pairs[5], '\\', '\\');
+    FAST_CHAR_MAKE_PAIR(pairs[6], '<',  'l');
+    FAST_CHAR_MAKE_PAIR(pairs[7], '>',  'g');
 
     return char_converter_init_ex(&char_converter, pairs,
             ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
@@ -136,21 +134,40 @@ static inline int get_operation_integer(const string_t *operation)
     }
 }
 
-#define BINLOG_PACK_STRINGL(buffer, name, val, len, need_escape) \
-    do { \
-        fast_buffer_append(buffer, " %s=%d,", name, len); \
-        if (need_escape) { \
-            fast_char_escape(&char_converter, val, len,  \
-                    buffer->data + buffer->length, &escape_len, \
-                    buffer->alloc_size - buffer->length);   \
-            buffer->length += escape_len;  \
-        } else {  \
-            fast_buffer_append_buff(buffer, val, len);  \
-        }  \
-    } while (0)
+static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
+        const char *val, const int len, const bool need_escape)
+{
+    char len_buff[16];
+    int len1, len2;
+    int escape_len;
+
+    fast_buffer_append(buffer, " %s=%d,", name, len);
+    if (need_escape) {
+        fast_char_escape(&char_converter, val, len,
+                buffer->data + buffer->length, &escape_len,
+                buffer->alloc_size - buffer->length);
+        if (escape_len != len) {
+            len1 = snprintf(NULL, 0, "%d", len);
+            len2 = snprintf(len_buff, sizeof(len_buff), "%d", escape_len);
+            if (len2 == len1) {
+                memcpy(buffer->data + buffer->length - (len1 + 1),
+                        len_buff, len2);  //replace the length only
+            } else {
+                buffer->length -= len1 + 1;
+                fast_buffer_append(buffer, "%d,", len2);
+                fast_char_escape(&char_converter, val, len,
+                        buffer->data + buffer->length, &escape_len,
+                        buffer->alloc_size - buffer->length);
+            }
+        }
+        buffer->length += escape_len;
+    } else {
+        fast_buffer_append_buff(buffer, val, len);
+    }
+}
 
 #define BINLOG_PACK_STRING(buffer, name, value) \
-    BINLOG_PACK_STRINGL(buffer, name, value.str, value.len, true)
+    binlog_pack_stringl(buffer, name, value.str, value.len, true)
 
 int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 {
@@ -159,12 +176,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     int expect_len;
     int record_len;
     int result;
-    int escape_len;
 
     expect_len = 512;
     if (record->options.path_info.flags != 0) {
-        expect_len += record->path.fullname.ns.len +
-                record->path.fullname.path.len;
+        expect_len += record->fullname.ns.len +
+                record->fullname.path.len;
     }
     if (record->options.extra_data) {
         expect_len += record->extra_data.len;
@@ -192,7 +208,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
     op_caption.str = (char *)get_operation_caption(record->operation);
     op_caption.len = strlen(op_caption.str);
-    BINLOG_PACK_STRINGL(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
+    binlog_pack_stringl(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
             op_caption.str, op_caption.len, false);
 
     fast_buffer_append(buffer, " %s=%d",
@@ -200,14 +216,14 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
     if (record->options.path_info.flags != 0) {
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_NAMESPACE,
-                record->path.fullname.ns);
+                record->fullname.ns);
 
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_PATH,
-                record->path.fullname.path);
+                record->fullname.path);
 
         fast_buffer_append(buffer, " %s=%u",
                 BINLOG_RECORD_FIELD_NAME_HASH_CODE,
-                record->path.hash_code);
+                record->hash_code);
     }
 
     if (record->options.extra_data) {
@@ -376,14 +392,14 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_NAMESPACE:
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
-                record->path.fullname.ns = pcontext->fv.value.s;
+                record->fullname.ns = pcontext->fv.value.s;
                 record->options.path_info.ns = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_PATH:
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
-                record->path.fullname.path = pcontext->fv.value.s;
+                record->fullname.path = pcontext->fv.value.s;
                 record->options.path_info.pt = 1;
             }
             break;
@@ -432,8 +448,8 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_HASH_CODE:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
-                record->path.hash_code = pcontext->fv.value.n;
-                record->options.path_info.hc = 1;
+                record->hash_code = pcontext->fv.value.n;
+                record->options.hash_code = 1;
             }
             break;
         default:
@@ -468,6 +484,12 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
         return ENOENT;
     }
 
+    if (record->options.hash_code == 0) {
+        sprintf(pcontext->error_info, "expect hash code field: %s",
+                BINLOG_RECORD_FIELD_NAME_HASH_CODE);
+        return ENOENT;
+    }
+
     if (record->operation == BINLOG_OP_NONE_INT) {
         sprintf(pcontext->error_info, "expect operation field: %s",
                 BINLOG_RECORD_FIELD_NAME_OPERATION);
@@ -489,11 +511,6 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
         if (record->options.path_info.pt == 0) {
             sprintf(pcontext->error_info, "expect path field: %s",
                     BINLOG_RECORD_FIELD_NAME_PATH);
-            return ENOENT;
-        }
-        if (record->options.path_info.hc == 0) {
-            sprintf(pcontext->error_info, "expect hash code field: %s",
-                    BINLOG_RECORD_FIELD_NAME_HASH_CODE);
             return ENOENT;
         }
     }

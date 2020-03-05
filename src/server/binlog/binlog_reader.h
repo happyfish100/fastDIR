@@ -28,6 +28,11 @@ int binlog_reader_init(ServerBinlogReader *reader,
         const ServerBinlogFilePosition *hint_pos,
         const int64_t last_data_version);
 
+int binlog_reader_read(ServerBinlogReader *reader);
+
+int binlog_reader_next_record(ServerBinlogReader *reader,
+        FDIRBinlogRecord *record);
+
 int binlog_get_first_record_version(const int file_index,
         int64_t *data_version);
 

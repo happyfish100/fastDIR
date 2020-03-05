@@ -26,29 +26,25 @@
 #define BINLOG_OP_RENAME_DENTRY_LEN  (sizeof(BINLOG_OP_RENAME_DENTRY_STR) - 1)
 #define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
 
-#define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1) | (1 << 2))
-
-typedef struct fdir_binlog_path_info {
-    FDIRDEntryFullName fullname;
-    unsigned int hash_code;
-} FDIRBinlogPathInfo;
+#define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
 typedef struct fdir_binlog_record {
     int64_t data_version;
     int64_t inode;
+    unsigned int hash_code;
     int operation;
     int timestamp;
     union {
         int64_t flags;
         struct {
             union {
-                int flags: 4;
+                int flags: 3;
                 struct {
                     bool ns: 1;  //namespace
                     bool pt: 1;  //path
-                    bool hc: 1;  //hash code
                 };
             } path_info;
+            bool hash_code : 1;
             bool user_data : 1;
             bool extra_data: 1;
             bool mode : 1;
@@ -57,15 +53,17 @@ typedef struct fdir_binlog_record {
             bool size : 1;
         };
     } options;
-    FDIRBinlogPathInfo path;
+    FDIRDEntryFullName fullname; //path namespace and path name
     FDIRDEntryStatus stat;
     string_t user_data;
     string_t extra_data;
+    int result;    //data thread deal result
 } FDIRBinlogRecord;
 
 typedef struct server_binlog_buffer {
     char *buff;    //the buffer pointer
     char *current; //for the consumer
+    char *end;     //data end ptr
     int length;    //the content length
     int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;

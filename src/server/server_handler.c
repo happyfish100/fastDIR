@@ -424,8 +424,8 @@ static int server_binlog_produce(FDIRBinlogRecord *record,
 
 #define SERVER_SET_RECORD_PATH_INFO(record, pinfo) \
     do {  \
-        record.path.fullname = pinfo.fullname;   \
-        record.path.hash_code = pinfo.hash_code; \
+        record.fullname = pinfo.fullname;   \
+        record.hash_code = pinfo.hash_code; \
         record.options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED; \
     } while (0)
 

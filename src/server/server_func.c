@@ -428,6 +428,12 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    DATA_THREAD_COUNT = iniGetIntValue(NULL, "data_threads",
+            &ini_context, FDIR_DEFAULT_DATA_THREAD_COUNT);
+    if (DATA_THREAD_COUNT <= 0) {
+        DATA_THREAD_COUNT = FDIR_DEFAULT_DATA_THREAD_COUNT;
+    }
+
     SF_SET_CUSTOM_CONFIG(cluster_cfg, "cluster",
             FDIR_SERVER_DEFAULT_CLUSTER_PORT);
     SF_SET_CUSTOM_CONFIG(service_cfg, "service",
@@ -489,15 +495,16 @@ int server_load_config(const char *filename)
     load_local_host_ip_addrs();
     snprintf(server_config_str, sizeof(server_config_str),
             "cluster_id = %d, my server id = %d, data_path = %s, "
-            "dentry_max_data_size = %d, binlog_buffer_size = %d KB, "
+            "data_threads = %d, dentry_max_data_size = %d, "
+            "binlog_buffer_size = %d KB, "
             "admin config {username: %s, secret_key: %s}, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
             "cluster server count = %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
-            DATA_PATH_STR, DENTRY_MAX_DATA_SIZE,
-            BINLOG_BUFFER_SIZE / 1024,
+            DATA_PATH_STR, DATA_THREAD_COUNT,
+            DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,
             g_server_global_vars.reload_interval_ms,

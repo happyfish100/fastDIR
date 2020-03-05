@@ -9,6 +9,7 @@
 
 typedef struct fdir_server_dentry {
     int64_t inode;
+    unsigned int hash_code;   //thread dispach & mutex lock
     string_t name;
     FDIRDEntryStatus stat;
     string_t user_data;      //user defined data
