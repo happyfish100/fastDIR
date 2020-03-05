@@ -50,6 +50,8 @@ static inline int deal_binlog_one_record(BinlogSyncContext *sync_context,
         }
     }
 
+    //rb->task
+
     memcpy(sync_context->binlog_buffer.buff +
             sync_context->binlog_buffer.length,
             rb->buffer.data, rb->buffer.length);

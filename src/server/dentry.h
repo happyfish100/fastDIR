@@ -3,7 +3,7 @@
 #define _FDIR_DENTRY_H
 
 #include "server_types.h"
-#include "binlog/binlog_types.h"
+#include "data_thread.h"
 
 #define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
@@ -24,22 +24,19 @@ extern "C" {
     int dentry_init();
     void dentry_destroy();
 
-    int dentry_init_context(FDIRServerContext *server_context);
+    int dentry_init_context(FDIRDataThreadContext *db_context);
 
-    int dentry_create(FDIRServerContext *server_context,
-            const FDIRPathInfo *path_info,
-            FDIRBinlogRecord *record, const int flags);
-
-    int dentry_remove(FDIRServerContext *server_context,
-            const FDIRPathInfo *path_info,
+    int dentry_create(FDIRDataThreadContext *db_context,
             FDIRBinlogRecord *record);
 
-    int dentry_find(FDIRServerContext *server_context,
-            const FDIRPathInfo *path_info,
+    int dentry_remove(FDIRDataThreadContext *db_context,
+            FDIRBinlogRecord *record);
+
+    int dentry_find(const FDIRDEntryFullName *fullname,
             FDIRServerDentry **dentry);
 
-    int dentry_list(FDIRServerContext *server_context,
-            const FDIRPathInfo *path_info, FDIRServerDentryArray *array);
+    int dentry_list(const FDIRDEntryFullName *fullname,
+            FDIRServerDentryArray *array);
 
     static inline void dentry_array_free(FDIRServerDentryArray *array)
     {

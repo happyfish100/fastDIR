@@ -7,6 +7,7 @@
 #include <pthread.h>
 #include "fastcommon/fast_buffer.h"
 #include "fastcommon/common_blocked_queue.h"
+#include "fastcommon/fast_task_queue.h"
 #include "../server_types.h"
 
 #define BINLOG_OP_NONE_INT           0
@@ -27,6 +28,8 @@
 #define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
+
+typedef void (*data_thread_notify_func)(const int result, void *args);
 
 typedef struct fdir_binlog_record {
     int64_t data_version;
@@ -57,7 +60,11 @@ typedef struct fdir_binlog_record {
     FDIRDEntryStatus stat;
     string_t user_data;
     string_t extra_data;
-    int result;    //data thread deal result
+
+    struct {
+        data_thread_notify_func func;
+        void *args;    //for thread continue deal
+    } notify;
 } FDIRBinlogRecord;
 
 typedef struct server_binlog_buffer {
@@ -75,8 +82,8 @@ typedef struct server_binlog_consumer_context {
 
 typedef struct server_binlog_record_buffer {
     int64_t data_version; //for idempotency (slave only)
-    uint64_t hash_code;   //for thread dispatch (master and slave)
     volatile int reffer_count;
+    struct fast_task_info *task;
     FastBuffer buffer;
 } ServerBinlogRecordBuffer;
 

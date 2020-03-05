@@ -26,8 +26,6 @@ typedef struct {
 
 typedef struct {
     FDIRHeaderInfo header;
-    bool forwarded;    //if forwarded request
-    bool done;
     char *body;
 } FDIRRequestInfo;
 

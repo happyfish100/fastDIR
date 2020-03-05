@@ -112,8 +112,7 @@ int main(int argc, char *argv[])
     r = server_binlog_init();
     gofailif(r, "server binlog init error");
 
-    r = sf_service_init(server_alloc_thread_extra_data,
-            server_thread_loop,
+    r = sf_service_init(server_alloc_thread_extra_data, NULL,
             NULL, fdir_proto_set_body_length, server_deal_task,
             server_task_finish_cleanup, NULL,
             1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));

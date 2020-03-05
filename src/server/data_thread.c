@@ -13,32 +13,145 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
+#include "fastcommon/sched_thread.h"
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
 #include "server_global.h"
+#include "dentry.h"
 #include "data_thread.h"
 
 DataThreadArray g_data_thread_array;
 static void *data_thread_func(void *arg);
 
+static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+        ServerDelayFreeNode *node, void *ptr, const int delay_seconds)
+{
+    node->expires = g_current_time + delay_seconds;
+    node->ptr = ptr;
+    node->next = NULL;
+    if (pContext->queue.head == NULL)
+    {
+        pContext->queue.head = node;
+    }
+    else
+    {
+        pContext->queue.tail->next = node;
+    }
+    pContext->queue.tail = node;
+}
+
+int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+        void *ptr, server_free_func free_func, const int delay_seconds)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &pContext->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = free_func;
+    node->free_func_ex = NULL;
+    node->ctx = NULL;
+    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
+    return 0;
+}
+
+int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
+        void *ptr, void *ctx, server_free_func_ex free_func_ex,
+        const int delay_seconds)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &pContext->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = NULL;
+    node->free_func_ex = free_func_ex;
+    node->ctx = ctx;
+    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
+    return 0;
+}
+
+static int deal_delay_free_queque(FDIRDataThreadContext *thread_ctx)
+{
+    ServerDelayFreeContext *delay_context;
+    ServerDelayFreeNode *node;
+    ServerDelayFreeNode *deleted;
+
+    delay_context = &thread_ctx->delay_free_context;
+    if (delay_context->last_check_time == g_current_time ||
+            delay_context->queue.head == NULL)
+    {
+        return 0;
+    }
+
+    delay_context->last_check_time = g_current_time;
+    node = delay_context->queue.head;
+    while ((node != NULL) && (node->expires < g_current_time)) {
+        if (node->free_func != NULL) {
+            node->free_func(node->ptr);
+            logInfo("free ptr: %p", node->ptr);
+        } else {
+            node->free_func_ex(node->ctx, node->ptr);
+            logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
+        }
+
+        deleted = node;
+        node = node->next;
+        fast_mblock_free_object(&delay_context->allocator, deleted);
+    }
+
+    delay_context->queue.head = node;
+    if (node == NULL) {
+        delay_context->queue.tail = NULL;
+    }
+
+    return 0;
+}
+
+static int init_thread_ctx(FDIRDataThreadContext *context)
+{
+    int result;
+    if ((result=dentry_init_context(context)) != 0) {
+        return result;
+    }
+
+    if ((result=fast_mblock_init(&context->delay_free_context.allocator,
+                    sizeof(ServerDelayFreeNode), 16 * 1024)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=common_blocked_queue_init_ex(&context->queue, 4096)) != 0) {
+        return result;
+    }
+    return 0;
+}
+
 static int init_data_thread_array()
 {
     int result;
     int bytes;
-    DataThreadContext *context;
-    DataThreadContext *end;
+    FDIRDataThreadContext *context;
+    FDIRDataThreadContext *end;
 
-    bytes = sizeof(DataThreadContext) * DATA_THREAD_COUNT;
-    g_data_thread_array.contexts = (DataThreadContext *)malloc(bytes);
+    bytes = sizeof(FDIRDataThreadContext) * DATA_THREAD_COUNT;
+    g_data_thread_array.contexts = (FDIRDataThreadContext *)malloc(bytes);
     if (g_data_thread_array.contexts == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
+    memset(g_data_thread_array.contexts, 0, bytes);
 
     end = g_data_thread_array.contexts + DATA_THREAD_COUNT;
     for (context=g_data_thread_array.contexts; context<end; context++) {
-        if ((result=common_blocked_queue_init_ex(&context->queue, 4096)) != 0) {
+        if ((result=init_thread_ctx(context)) != 0) {
             return result;
         }
     }
@@ -49,9 +162,10 @@ static int init_data_thread_array()
 static int data_thread_start()
 {
     int result;
-    int i;
     pthread_t tid;
     pthread_attr_t thread_attr;
+    FDIRDataThreadContext *context;
+    FDIRDataThreadContext *end;
 
     if ((result=init_pthread_attr(&thread_attr, SF_G_THREAD_STACK_SIZE)) != 0) {
         logError("file: "__FILE__", line: %d, "
@@ -59,9 +173,10 @@ static int data_thread_start()
         return result;
     }
 
-    for (i=0; i<g_data_thread_array.count; i++) {
+    end = g_data_thread_array.contexts + g_data_thread_array.count;
+    for (context=g_data_thread_array.contexts; context<end; context++) {
         if ((result=pthread_create(&tid, &thread_attr, data_thread_func,
-                        g_data_thread_array.contexts + i)) != 0)
+                        context)) != 0)
         {
             logError("file: "__FILE__", line: %d, "
                     "create thread failed, errno: %d, error info: %s",
@@ -88,8 +203,8 @@ int data_thread_init()
 void data_thread_destroy()
 {
     if (g_data_thread_array.contexts != NULL) {
-        DataThreadContext *context;
-        DataThreadContext *end;
+        FDIRDataThreadContext *context;
+        FDIRDataThreadContext *end;
 
         end = g_data_thread_array.contexts + g_data_thread_array.count;
         for (context=g_data_thread_array.contexts; context<end; context++) {
@@ -102,8 +217,8 @@ void data_thread_destroy()
 
 void data_thread_terminate()
 {
-    DataThreadContext *context;
-    DataThreadContext *end;
+    FDIRDataThreadContext *context;
+    FDIRDataThreadContext *end;
 
     end = g_data_thread_array.contexts + g_data_thread_array.count;
     for (context=g_data_thread_array.contexts; context<end; context++) {
@@ -111,13 +226,36 @@ void data_thread_terminate()
     }
 }
 
-static inline int deal_binlog_one_record(DataThreadContext *data_context,
+static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    return 0;
+    int result = 0;
+
+    switch (record->operation) {
+        case BINLOG_OP_CREATE_DENTRY_INT:
+            result = dentry_create(thread_ctx, record);
+            break;
+        case BINLOG_OP_REMOVE_DENTRY_INT:
+            result = dentry_remove(thread_ctx, record);
+            break;
+        case BINLOG_OP_RENAME_DENTRY_INT:
+            break;
+        case BINLOG_OP_UPDATE_DENTRY_INT:
+            break;
+        default:
+            break;
+    }
+
+    if (record->notify.func != NULL) {
+        if (result == 0 && record->data_version == 0) {
+            record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+        }
+        record->notify.func(result, record->notify.args);
+    }
+    return result;
 }
 
-static int deal_binlog_records(DataThreadContext *data_context,
+static int deal_binlog_records(FDIRDataThreadContext *thread_ctx,
         struct common_blocked_node *node)
 {
     FDIRBinlogRecord *record;
@@ -125,7 +263,7 @@ static int deal_binlog_records(DataThreadContext *data_context,
 
     do {
         record = (FDIRBinlogRecord *)node->data;
-        if ((result=deal_binlog_one_record(data_context, record)) != 0) {
+        if ((result=deal_binlog_one_record(thread_ctx, record)) != 0) {
             return result;
         }
 
@@ -139,18 +277,20 @@ static void *data_thread_func(void *arg)
 {
     struct common_blocked_queue *queue;
     struct common_blocked_node *node;
-    DataThreadContext *data_context;
+    FDIRDataThreadContext *thread_ctx;
 
-    data_context = (DataThreadContext *)arg;
-    queue = &data_context->queue;
+    thread_ctx = (FDIRDataThreadContext *)arg;
+    queue = &thread_ctx->queue;
     while (SF_G_CONTINUE_FLAG) {
         node = common_blocked_queue_pop_all_nodes(queue);
         if (node == NULL) {
             continue;
         }
 
-        deal_binlog_records(data_context, node);
+        deal_binlog_records(thread_ctx, node);
         common_blocked_queue_free_all_nodes(queue, node);
+
+        deal_delay_free_queque(thread_ctx);
     }
 
     return NULL;

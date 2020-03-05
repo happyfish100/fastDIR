@@ -86,7 +86,6 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
         return NULL;
     }
 
-    rbuffer->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
     return rbuffer;
 }
 

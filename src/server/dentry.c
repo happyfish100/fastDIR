@@ -107,7 +107,7 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
     dentry = (FDIRServerDentry *)ptr;
 
     if (delay_seconds > 0) {
-        server_add_to_delay_free_queue(&dentry->context->server_context->
+        server_add_to_delay_free_queue(&dentry->context->db_context->
                 delay_free_context, ptr, dentry_do_free, delay_free_seconds);
     } else {
         dentry_do_free(ptr);
@@ -122,7 +122,7 @@ int dentry_init_obj(void *element, void *init_args)
     return 0;
 }
 
-int dentry_init_context(FDIRServerContext *server_context)
+int dentry_init_context(FDIRDataThreadContext *db_context)
 {
 #define NAME_REGION_COUNT 4
 
@@ -131,8 +131,8 @@ int dentry_init_context(FDIRServerContext *server_context)
     int count;
     int result;
 
-    context = &server_context->dentry_context;
-    context->server_context = server_context;
+    context = &db_context->dentry_context;
+    context->db_context = db_context;
     if ((result=uniq_skiplist_init_ex(&context->factory,
                     max_level_count, dentry_compare, dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
@@ -280,27 +280,30 @@ static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
 }
 
 static int dentry_find_parent_and_me(FDIRDentryContext *context,
-        const FDIRPathInfo *path_info, string_t *my_name,
-        FDIRServerDentry **parent, FDIRServerDentry **me, const bool create_ns)
+        const FDIRDEntryFullName *fullname, FDIRPathInfo *path_info,
+        string_t *my_name, FDIRServerDentry **parent, FDIRServerDentry **me,
+        const bool create_ns)
 {
     FDIRServerDentry target;
     FDIRNamespaceEntry *ns_entry;
     int result;
 
-    if (path_info->fullname.path.len == 0 || path_info->fullname.path.str[0] != '/') {
+    if (fullname->path.len == 0 || fullname->path.str[0] != '/') {
         *parent = *me = NULL;
         my_name->len = 0;
         my_name->str = NULL;
         return EINVAL;
     }
 
-    if ((ns_entry=get_namespace(context, &path_info->fullname.ns,
+    if ((ns_entry=get_namespace(context, &fullname->ns,
                     create_ns, &result)) == NULL)
     {
         *parent = *me = NULL;
         return result;
     }
 
+    path_info->count = split_string_ex(&fullname->path, '/',
+        path_info->paths, FDIR_MAX_PATH_COUNT, true);
     if (path_info->count == 0) {
         *parent = NULL;
         *me = &ns_entry->dentry_root;
@@ -330,10 +333,9 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     return 0;
 }
 
-int dentry_create(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info,
-        FDIRBinlogRecord *record, const int flags)
+int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 {
+    FDIRPathInfo path_info;
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
@@ -345,13 +347,14 @@ int dentry_create(FDIRServerContext *server_context,
         return EINVAL;
     }
 
-    if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    path_info, &my_name, &parent, &current, true)) != 0)
+    if ((result=dentry_find_parent_and_me(&db_context->dentry_context,
+                    &record->fullname, &path_info, &my_name, &parent,
+                    &current, true)) != 0)
     {
         return result;
     }
 
-    if (path_info->count == 0) {
+    if (path_info.count == 0) {
         return EEXIST;
     }
 
@@ -364,17 +367,17 @@ int dentry_create(FDIRServerContext *server_context,
 
     if (uniq_skiplist_count(parent->children) >= MAX_ENTRIES_PER_PATH) {
         char *parent_end;
-        parent_end = (char *)fc_memrchr(path_info->fullname.path.str, '/',
-                path_info->fullname.path.len);
+        parent_end = (char *)fc_memrchr(record->fullname.path.str, '/',
+                record->fullname.path.len);
         logError("file: "__FILE__", line: %d, "
                 "too many entries in path %.*s, exceed %d",
-                __LINE__, (int)(parent_end - path_info->fullname.path.str),
-                path_info->fullname.path.str, MAX_ENTRIES_PER_PATH);
+                __LINE__, (int)(parent_end - record->fullname.path.str),
+                record->fullname.path.str, MAX_ENTRIES_PER_PATH);
         return ENOSPC;
     }
     
     current = (FDIRServerDentry *)fast_mblock_alloc_object(
-            &server_context->dentry_context.dentry_allocator);
+            &db_context->dentry_context.dentry_allocator);
     if (current == NULL) {
         return ENOMEM;
     }
@@ -382,14 +385,14 @@ int dentry_create(FDIRServerContext *server_context,
     if ((record->stat.mode & S_IFDIR) == 0) {
         current->children = NULL;
     } else {
-        current->children = uniq_skiplist_new(&server_context->
+        current->children = uniq_skiplist_new(&db_context->
                 dentry_context.factory, INIT_LEVEL_COUNT);
         if (current->children == NULL) {
             return ENOMEM;
         }
     }
 
-    if ((result=dentry_strdup(&server_context->dentry_context,
+    if ((result=dentry_strdup(&db_context->dentry_context,
                     &current->name, &my_name)) != 0)
     {
         return result;
@@ -414,16 +417,18 @@ int dentry_create(FDIRServerContext *server_context,
     return 0;
 }
 
-int dentry_remove(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info, FDIRBinlogRecord *record)
+int dentry_remove(FDIRDataThreadContext *db_context,
+        FDIRBinlogRecord *record)
 {
+    FDIRPathInfo path_info;
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
     int result;
 
-    if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    path_info, &my_name, &parent, &current, false)) != 0)
+    if ((result=dentry_find_parent_and_me(&db_context->dentry_context,
+                    &record->fullname, &path_info, &my_name, &parent,
+                    &current, false)) != 0)
     {
         return result;
     }
@@ -442,15 +447,15 @@ int dentry_remove(FDIRServerContext *server_context,
     return uniq_skiplist_delete(parent->children, current);
 }
 
-int dentry_find(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info, FDIRServerDentry **dentry)
+int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
 {
+    FDIRPathInfo path_info;
     FDIRServerDentry *parent;
     string_t my_name;
     int result;
 
-    if ((result=dentry_find_parent_and_me(&server_context->dentry_context,
-                    path_info, &my_name, &parent, dentry, false)) != 0)
+    if ((result=dentry_find_parent_and_me(NULL, fullname, &path_info,
+                    &my_name, &parent, dentry, false)) != 0)
     {
         return result;
     }
@@ -498,8 +503,8 @@ static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int targ
     return 0;
 }
 
-int dentry_list(FDIRServerContext *server_context,
-        const FDIRPathInfo *path_info, FDIRServerDentryArray *array)
+int dentry_list(const FDIRDEntryFullName *fullname,
+        FDIRServerDentryArray *array)
 {
     FDIRServerDentry *dentry;
     FDIRServerDentry *current;
@@ -509,7 +514,7 @@ int dentry_list(FDIRServerContext *server_context,
     int count;
 
     array->count = 0;
-    if ((result=dentry_find(server_context, path_info, &dentry)) != 0) {
+    if ((result=dentry_find(fullname, &dentry)) != 0) {
         return result;
     }
 

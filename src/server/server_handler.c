@@ -32,15 +32,11 @@
 #include "cluster_topology.h"
 #include "server_handler.h"
 
-#define SERVER_CONTEXT task_context->server_context
-#define TASK     task_context->task
-#define TASK_ARG task_context->task_arg
-#define REQUEST  task_context->request
-#define RESPONSE task_context->response
-#define RESPONSE_STATUS RESPONSE.header.status
-#define RESP_STATUS     task_context.response.header.status
+#define TASK_STATUS_CONTINUE   12345
 
 static volatile int64_t next_token;   //next token for dentry list
+
+static int deal_task_done(struct fast_task_info *task);
 
 int server_handler_init()
 {
@@ -70,12 +66,12 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-static int server_deal_actvie_test(ServerTaskContext *task_context)
+static int server_deal_actvie_test(struct fast_task_info *task)
 {
-    return server_expect_body_length(task_context, 0);
+    return server_expect_body_length(task, 0);
 }
 
-static int server_check_config_sign(ServerTaskContext *task_context,
+static int server_check_config_sign(struct fast_task_info *task,
         const int server_id, const char *config_sign)
 {
     if (memcmp(config_sign, CLUSTER_CONFIG_SIGN_BUF,
@@ -98,14 +94,14 @@ static int server_check_config_sign(ServerTaskContext *task_context,
     return 0;
 }
 
-static int server_deal_get_server_status(ServerTaskContext *task_context)
+static int server_deal_get_server_status(struct fast_task_info *task)
 {
     int result;
     int server_id;
     FDIRProtoGetServerStatusReq *req;
     FDIRProtoGetServerStatusResp *resp;
 
-    if ((result=server_expect_body_length(task_context,
+    if ((result=server_expect_body_length(task,
                     sizeof(FDIRProtoGetServerStatusReq))) != 0)
     {
         return result;
@@ -113,7 +109,7 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
 
     req = (FDIRProtoGetServerStatusReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
-    if ((result=server_check_config_sign(task_context, server_id,
+    if ((result=server_check_config_sign(task, server_id,
                     req->config_sign)) != 0)
     {
         return result;
@@ -127,11 +123,11 @@ static int server_deal_get_server_status(ServerTaskContext *task_context)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
-    task_context->response_done = true;
+    TASK_ARG->context.response_done = true;
     return 0;
 }
 
-static int server_deal_join_master(ServerTaskContext *task_context)
+static int server_deal_join_master(struct fast_task_info *task)
 {
     int result;
     int cluster_id;
@@ -139,7 +135,7 @@ static int server_deal_join_master(ServerTaskContext *task_context)
     FDIRProtoJoinMasterReq *req;
     FDIRClusterServerInfo *peer;
 
-    if ((result=server_expect_body_length(task_context,
+    if ((result=server_expect_body_length(task,
                     sizeof(FDIRProtoJoinMasterReq))) != 0)
     {
         return result;
@@ -164,7 +160,7 @@ static int server_deal_join_master(ServerTaskContext *task_context)
         return ENOENT;
     }
 
-    if ((result=server_check_config_sign(task_context, server_id,
+    if ((result=server_check_config_sign(task, server_id,
                     req->config_sign)) != 0)
     {
         return result;
@@ -190,12 +186,12 @@ static int server_deal_join_master(ServerTaskContext *task_context)
     return 0;
 }
 
-static int server_deal_ping_master(ServerTaskContext *task_context)
+static int server_deal_ping_master(struct fast_task_info *task)
 {
     int result;
     FDIRProtoPingMasterResp *resp;
 
-    if ((result=server_expect_body_length(task_context, 0)) != 0) {
+    if ((result=server_expect_body_length(task, 0)) != 0) {
         return result;
     }
 
@@ -216,19 +212,19 @@ static int server_deal_ping_master(ServerTaskContext *task_context)
     resp = (FDIRProtoPingMasterResp *)REQUEST.body;
     long2buff(CURRENT_INODE_SN, resp->inode_sn);
     resp->your_status = TASK_ARG->cluster_peer->status;
-    task_context->response_done = true;
+    TASK_ARG->context.response_done = true;
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
     RESPONSE.header.body_len = sizeof(FDIRProtoPingMasterResp);
     return 0;
 }
 
-static int server_deal_next_master(ServerTaskContext *task_context)
+static int server_deal_next_master(struct fast_task_info *task)
 {
     int result;
     int master_id;
     FDIRClusterServerInfo *master;
 
-    if ((result=server_expect_body_length(task_context, 4)) != 0) {
+    if ((result=server_expect_body_length(task, 4)) != 0) {
         return result;
     }
 
@@ -255,103 +251,74 @@ static int server_deal_next_master(ServerTaskContext *task_context)
     }
 }
 
-static int server_compare_dentry_info(FDIRPathInfo *pinfo1,
-        FDIRPathInfo *pinfo2)
-{
-    int result;
-    string_t *s1;
-    string_t *s2;
-    string_t *end;
-
-    if ((result=fc_string_compare(&pinfo1->fullname.ns,
-                    &pinfo2->fullname.ns)) != 0) {
-        return result;
-    }
-
-    if ((result=pinfo1->count - pinfo2->count) != 0) {
-        return result;
-    }
-
-    end = pinfo1->paths + pinfo1->count;
-    for (s1=pinfo1->paths,s2=pinfo2->paths; s1<end; s1++,s2++) {
-        if ((result=fc_string_compare(s1, s2)) != 0) {
-            return result;
-        }
-    }
-
-    return 0;
-}
-
-static int server_parse_dentry_info(ServerTaskContext *task_context,
-        char *start, FDIRPathInfo *path_info)
+static int server_parse_dentry_info(struct fast_task_info *task,
+        char *start, FDIRDEntryFullName *fullname)
 {
     FDIRProtoDEntryInfo *proto_dentry;
 
     proto_dentry = (FDIRProtoDEntryInfo *)start;
-    path_info->fullname.ns.len = proto_dentry->ns_len;
-    path_info->fullname.ns.str = proto_dentry->ns_str;
-    path_info->fullname.path.len = buff2short(proto_dentry->path_len);
-    path_info->fullname.path.str = proto_dentry->ns_str + path_info->fullname.ns.len;
+    fullname->ns.len = proto_dentry->ns_len;
+    fullname->ns.str = proto_dentry->ns_str;
+    fullname->path.len = buff2short(proto_dentry->path_len);
+    fullname->path.str = proto_dentry->ns_str + fullname->ns.len;
 
-    if (path_info->fullname.ns.len <= 0) {
+    if (fullname->ns.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid namespace length: %d <= 0",
-                path_info->fullname.ns.len);
+                fullname->ns.len);
         return EINVAL;
     }
 
-    if (path_info->fullname.path.len <= 0) {
+    if (fullname->path.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid path length: %d <= 0",
-                path_info->fullname.path.len);
+                fullname->path.len);
         return EINVAL;
     }
-    if (path_info->fullname.path.len > PATH_MAX) {
+    if (fullname->path.len > PATH_MAX) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid path length: %d > %d",
-                path_info->fullname.path.len, PATH_MAX);
+                fullname->path.len, PATH_MAX);
         return EINVAL;
     }
 
-    if (path_info->fullname.path.str[0] != '/') {
+    if (fullname->path.str[0] != '/') {
         RESPONSE.error.length = snprintf(
                 RESPONSE.error.message,
                 sizeof(RESPONSE.error.message),
-                "invalid path: %.*s", path_info->fullname.path.len,
-                path_info->fullname.path.str);
+                "invalid path: %.*s", fullname->path.len,
+                fullname->path.str);
         return EINVAL;
     }
 
-    path_info->count = split_string_ex(&path_info->fullname.path, '/',
-        path_info->paths, FDIR_MAX_PATH_COUNT, true);
     return 0;
 }
 
-static inline int server_check_and_parse_dentry(ServerTaskContext *task_context,
-        const int front_part_size, const int fixed_part_size)
+static int server_check_and_parse_dentry(struct fast_task_info *task,
+        const int front_part_size, const int fixed_part_size,
+        FDIRDEntryFullName *fullname)
 {
     int result;
     int req_body_len;
 
-    if ((result=server_check_body_length(task_context,
+    if ((result=server_check_body_length(task,
                     fixed_part_size + 1, fixed_part_size +
                     NAME_MAX + PATH_MAX)) != 0)
     {
         return result;
     }
 
-    if ((result=server_parse_dentry_info(task_context,
-                    REQUEST.body + front_part_size,
-                    &TASK_ARG->path_info)) != 0)
+    if ((result=server_parse_dentry_info(task, REQUEST.body +
+                    front_part_size, fullname)) != 0)
     {
         return result;
     }
 
-    req_body_len = fixed_part_size + TASK_ARG->path_info.fullname.ns.len +
-        TASK_ARG->path_info.fullname.path.len;
+    req_body_len = fixed_part_size + fullname->ns.len +
+        fullname->path.len;
     if (req_body_len != REQUEST.header.body_len) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -363,6 +330,7 @@ static inline int server_check_and_parse_dentry(ServerTaskContext *task_context,
     return 0;
 }
 
+/*
 static void server_get_dentry_hashcode(FDIRPathInfo *path_info,
         const bool include_last)
 {
@@ -398,10 +366,9 @@ static void server_get_dentry_hashcode(FDIRPathInfo *path_info,
 
 #define server_get_my_hashcode(path_info)  \
     server_get_dentry_hashcode(path_info, true)
+*/
 
-
-static int server_binlog_produce(FDIRBinlogRecord *record,
-        const uint64_t hash_code)
+static int server_binlog_produce(struct fast_task_info *task)
 {
     ServerBinlogRecordBuffer *rbuffer;
     int result;
@@ -410,114 +377,125 @@ static int server_binlog_produce(FDIRBinlogRecord *record,
         return ENOMEM;
     }
 
-    rbuffer->hash_code = hash_code;
-    record->data_version = rbuffer->data_version;
-    record->timestamp = g_current_time;
+    TASK_ARG->context.deal_func = deal_task_done;
+    rbuffer->data_version = RECORD->data_version;
+    rbuffer->task = task;
+    RECORD->timestamp = g_current_time;
 
     fast_buffer_reset(&rbuffer->buffer);
-    if ((result=binlog_pack_record(record, &rbuffer->buffer)) != 0) {
+    result = binlog_pack_record(RECORD, &rbuffer->buffer);
+
+    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)->
+            record_allocator, RECORD);
+    RECORD = NULL;
+
+    //TODO waiting for callback
+    if (result == 0) {
+        return server_binlog_dispatch(rbuffer);
+    } else {
         return result;
     }
-
-    return server_binlog_dispatch(rbuffer);
 }
 
-#define SERVER_SET_RECORD_PATH_INFO(record, pinfo) \
-    do {  \
-        record.fullname = pinfo.fullname;   \
-        record.hash_code = pinfo.hash_code; \
-        record.options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED; \
-    } while (0)
+static inline int alloc_record_object(struct fast_task_info *task)
+{
+    RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+            &((FDIRServerContext *)task->thread_data->arg)->
+            record_allocator);
+    if (RECORD == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "system busy, please try later");
+        return EBUSY;
+    }
 
-static int server_deal_create_dentry(ServerTaskContext *task_context)
+    return 0;
+}
+
+static void record_deal_done_notify(const int result, void *args)
+{
+    struct fast_task_info *task;
+    task = (struct fast_task_info *)args;
+    RESPONSE_STATUS = result;
+    sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+}
+
+static int handle_record_deal_done(struct fast_task_info *task)
+{
+    return server_binlog_produce(task);
+}
+
+static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
+{
+    int result;
+
+    RECORD->notify.func = record_deal_done_notify;
+    RECORD->notify.args = task;
+
+    TASK_ARG->context.deal_func = handle_record_deal_done;
+    result = push_to_data_thread_queue(RECORD);
+    return result == 0 ? TASK_STATUS_CONTINUE : result;
+}
+
+static int server_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
     FDIRProtoCreateDEntryFront *proto_front;
-    FDIRBinlogRecord record;
-    unsigned int target_thread_index;
     int flags;
 
-    if (!REQUEST.forwarded) {
-        if ((result=server_check_and_parse_dentry(task_context,
-                        sizeof(FDIRProtoCreateDEntryFront),
-                        sizeof(FDIRProtoCreateDEntryBody))) != 0)
-        {
-            return result;
-        }
-         
-        server_get_parent_hashcode(&TASK_ARG->path_info);
-        target_thread_index = TASK_ARG->path_info.hash_code %
-            g_sf_global_vars.work_threads;
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
 
-        logInfo("hash_code: %u, target thread_index: %d, "
-                "my thread_index: %d", TASK_ARG->path_info.hash_code,
-                target_thread_index, SERVER_CONTEXT->thread_index);
-
-        if (target_thread_index != SERVER_CONTEXT->thread_index) {
-            REQUEST.done = false;
-            return sf_nio_forward_request(TASK, target_thread_index);
-        }
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoCreateDEntryFront),
+                    sizeof(FDIRProtoCreateDEntryBody),
+                    &RECORD->fullname)) != 0)
+    {
+        return result;
     }
 
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
     flags = buff2int(proto_front->flags);
-    record.stat.mode = buff2int(proto_front->mode);
+    RECORD->stat.mode = buff2int(proto_front->mode);
 
-    record.inode = 0;
-    record.options.flags = 0;
-    record.operation = BINLOG_OP_CREATE_DENTRY_INT;
-    SERVER_SET_RECORD_PATH_INFO(record, TASK_ARG->path_info);
-    record.stat.ctime = record.stat.mtime = g_current_time;
-    record.options.ctime = record.options.mtime = 1;
-    record.options.mode = 1;
-    if ((result=dentry_create(SERVER_CONTEXT, &TASK_ARG->path_info,
-                    &record, flags)) != 0)
-    {
-        return result;
-    }
+    RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,
+            RECORD->fullname.ns.len);
+    RECORD->inode = 0;
+    RECORD->options.flags = 0;
+    RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
+    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
+    RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
+    RECORD->options.ctime = RECORD->options.mtime = 1;
+    RECORD->options.mode = 1;
 
-    return server_binlog_produce(&record, TASK_ARG->path_info.hash_code);
+    return push_record_to_data_thread_queue(task);
 }
 
-static int server_deal_remove_dentry(ServerTaskContext *task_context)
+static int server_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
-    FDIRBinlogRecord record;
-    unsigned int target_thread_index;
 
-    if (!REQUEST.forwarded) {
-        if ((result=server_check_and_parse_dentry(task_context,
-                        0, sizeof(FDIRProtoRemoveDEntry))) != 0)
-        {
-            return result;
-        }
-
-        server_get_parent_hashcode(&TASK_ARG->path_info);
-        target_thread_index = TASK_ARG->path_info.hash_code %
-            g_sf_global_vars.work_threads;
-
-        logInfo("hash_code: %u, target thread_index: %d, my thread_index: %d",
-                TASK_ARG->path_info.hash_code, target_thread_index,
-                SERVER_CONTEXT->thread_index);
-
-        if (target_thread_index != SERVER_CONTEXT->thread_index) {
-            REQUEST.done = false;
-            return sf_nio_forward_request(TASK, target_thread_index);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
 
-    record.options.flags = 0;
-    record.operation = BINLOG_OP_REMOVE_DENTRY_INT;
-    SERVER_SET_RECORD_PATH_INFO(record, TASK_ARG->path_info);
-    if ((result=dentry_remove(SERVER_CONTEXT, &TASK_ARG->path_info,
-                    &record)) != 0)
+    if ((result=server_check_and_parse_dentry(task,
+                    0, sizeof(FDIRProtoRemoveDEntry),
+                    &RECORD->fullname)) != 0)
     {
         return result;
     }
-    return server_binlog_produce(&record, TASK_ARG->path_info.hash_code);
+
+    RECORD->inode = 0;
+    RECORD->options.flags = 0;
+    RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
+    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
+
+    return push_record_to_data_thread_queue(task);
 }
 
-static int server_list_dentry_output(ServerTaskContext *task_context)
+static int server_list_dentry_output(struct fast_task_info *task)
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
     FDIRServerDentry **dentry;
@@ -532,7 +510,7 @@ static int server_list_dentry_output(ServerTaskContext *task_context)
     remain_count = TASK_ARG->dentry_list_cache.array.count -
         TASK_ARG->dentry_list_cache.offset;
 
-    buf_end = TASK->data + TASK->size;
+    buf_end = task->data + task->size;
     p = REQUEST.body + sizeof(FDIRProtoListDEntryRespBodyHeader);
     start = TASK_ARG->dentry_list_cache.array.entries +
         TASK_ARG->dentry_list_cache.offset;
@@ -566,46 +544,48 @@ static int server_list_dentry_output(ServerTaskContext *task_context)
         long2buff(0, body_header->token);
     }
 
-    task_context->response_done = true;
+    TASK_ARG->context.response_done = true;
     return 0;
 }
 
-static int server_deal_list_dentry_first(ServerTaskContext *task_context)
+static int server_deal_list_dentry_first(struct fast_task_info *task)
 {
     int result;
+    FDIRDEntryFullName fullname;
 
-    if ((result=server_check_and_parse_dentry(task_context,
-                    0, sizeof(FDIRProtoListDEntryFirstBody))) != 0)
+    if ((result=server_check_and_parse_dentry(task,
+                    0, sizeof(FDIRProtoListDEntryFirstBody),
+                    &fullname)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_list(SERVER_CONTEXT, &TASK_ARG->path_info,
-                    &TASK_ARG->dentry_list_cache.array)) != 0)
+    if ((result=dentry_list(&fullname, &TASK_ARG->
+                    dentry_list_cache.array)) != 0)
     {
         return result;
     }
 
     TASK_ARG->dentry_list_cache.offset = 0;
-    return server_list_dentry_output(task_context);
+    return server_list_dentry_output(task);
 }
 
-static int server_deal_list_dentry_next(ServerTaskContext *task_context)
+static int server_deal_list_dentry_next(struct fast_task_info *task)
 {
     FDIRProtoListDEntryNextBody *next_body;
     int result;
     int offset;
     int64_t token;
 
-    if ((result=server_expect_body_length(task_context,
+    if ((result=server_expect_body_length(task,
                     sizeof(FDIRProtoListDEntryNextBody))) != 0)
     {
         return result;
     }
 
     if (TASK_ARG->dentry_list_cache.expires < g_current_time) {
-        task_context->response.error.length = sprintf(
-                task_context->response.error.message,
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
                 "dentry list cache expires, please try again");
         return ETIMEDOUT;
     }
@@ -614,73 +594,56 @@ static int server_deal_list_dentry_next(ServerTaskContext *task_context)
     token = buff2long(next_body->token);
     offset = buff2int(next_body->offset);
     if (token != TASK_ARG->dentry_list_cache.token) {
-        task_context->response.error.length = sprintf(
-                task_context->response.error.message,
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
                 "invalid token for next list");
         return EINVAL;
     }
     if (offset != TASK_ARG->dentry_list_cache.offset) {
-        task_context->response.error.length = sprintf(
-                task_context->response.error.message,
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
                 "next list offset: %d != expected: %d",
                 offset, TASK_ARG->dentry_list_cache.offset);
         return EINVAL;
     }
-    return server_list_dentry_output(task_context);
+    return server_list_dentry_output(task);
 }
 
-static inline void init_task_context(ServerTaskContext *task_context)
+static inline void init_task_context(struct fast_task_info *task)
 {
-    SERVER_CONTEXT = (FDIRServerContext *)TASK->thread_data->arg;
-    TASK_ARG = (FDIRServerTaskArg *)TASK->arg;
-
-    if (TASK->nio_stage != SF_NIO_STAGE_FORWARDED) {
-        TASK_ARG->req_start_time = get_current_time_us();
-    }
+    TASK_ARG->req_start_time = get_current_time_us();
     RESPONSE.header.cmd = FDIR_PROTO_ACK;
     RESPONSE.header.body_len = 0;
     RESPONSE.header.status = 0;
     RESPONSE.error.length = 0;
     RESPONSE.error.message[0] = '\0';
-    task_context->log_error = true;
-    task_context->response_done = false;
+    TASK_ARG->context.log_error = true;
+    TASK_ARG->context.response_done = false;
 
-    REQUEST.done = true;
-    REQUEST.header.cmd = ((FDIRProtoHeader *)TASK->data)->cmd;
-    REQUEST.header.body_len = TASK->length - sizeof(FDIRProtoHeader);
-    REQUEST.body = TASK->data + sizeof(FDIRProtoHeader);
-
-    if (TASK->nio_stage == SF_NIO_STAGE_FORWARDED) {
-        TASK->nio_stage = SF_NIO_STAGE_SEND;
-        REQUEST.forwarded = true;
-    } else {
-        REQUEST.forwarded = false;
-    }
+    REQUEST.header.cmd = ((FDIRProtoHeader *)task->data)->cmd;
+    REQUEST.header.body_len = task->length - sizeof(FDIRProtoHeader);
+    REQUEST.body = task->data + sizeof(FDIRProtoHeader);
 }
 
-static inline int deal_task_done(ServerTaskContext *task_context)
+static int deal_task_done(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
     int r;
     int time_used;
 
-    if (task_context->log_error && RESPONSE.error.length > 0) {
+    if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
                 "client ip: %s, cmd: %d, req body length: %d, %s",
-                __LINE__, TASK->client_ip, REQUEST.header.cmd,
+                __LINE__, task->client_ip, REQUEST.header.cmd,
                 REQUEST.header.body_len,
                 RESPONSE.error.message);
     }
 
-    if (RESPONSE_STATUS == 0 && !REQUEST.done) {
-        return RESPONSE_STATUS;
-    }
-
-    proto_header = (FDIRProtoHeader *)TASK->data;
-    if (!task_context->response_done) {
+    proto_header = (FDIRProtoHeader *)task->data;
+    if (!TASK_ARG->context.response_done) {
         RESPONSE.header.body_len = RESPONSE.error.length;
         if (RESPONSE.error.length > 0) {
-            memcpy(TASK->data + sizeof(FDIRProtoHeader),
+            memcpy(task->data + sizeof(FDIRProtoHeader),
                     RESPONSE.error.message, RESPONSE.error.length);
         }
     }
@@ -689,9 +652,9 @@ static inline int deal_task_done(ServerTaskContext *task_context)
             proto_header->status);
     proto_header->cmd = RESPONSE.header.cmd;
     int2buff(RESPONSE.header.body_len, proto_header->body_len);
-    TASK->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
+    task->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
 
-    r = sf_send_add_event(TASK);
+    r = sf_send_add_event(task);
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
     if (time_used > 50 * 1000) {
         lwarning("process a request timed used: %d us, "
@@ -702,11 +665,11 @@ static inline int deal_task_done(ServerTaskContext *task_context)
     }
 
     if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
-    logInfo("file: "__FILE__", line: %d, thread: #%d, forwarded: %d, "
+    logInfo("file: "__FILE__", line: %d, "
             "client ip: %s, req cmd: %d, req body_len: %d, "
             "resp cmd: %d, status: %d, resp body_len: %d, "
-            "time used: %d us", __LINE__, SERVER_CONTEXT->thread_index,
-            REQUEST.forwarded, TASK->client_ip, REQUEST.header.cmd,
+            "time used: %d us", __LINE__,
+            task->client_ip, REQUEST.header.cmd,
             REQUEST.header.body_len, RESPONSE.header.cmd,
             RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
     }
@@ -716,52 +679,58 @@ static inline int deal_task_done(ServerTaskContext *task_context)
 
 int server_deal_task(struct fast_task_info *task)
 {
-    ServerTaskContext task_context;
+    if (task->nio_stage == SF_NIO_STAGE_CONTINUE) {
+        task->nio_stage = SF_NIO_STAGE_SEND;
+        return TASK_ARG->context.deal_func(task);
+    }
 
-    task_context.task = task;
-    init_task_context(&task_context);
+    init_task_context(task);
 
     do {
-        switch (task_context.request.header.cmd) {
+        switch (REQUEST.header.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
-                task_context.response.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
-                RESP_STATUS = server_deal_actvie_test(&task_context);
+                RESPONSE.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
+                RESPONSE_STATUS = server_deal_actvie_test(task);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY:
-                RESP_STATUS = server_deal_create_dentry(&task_context);
+                RESPONSE_STATUS = server_deal_create_dentry(task);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
-                RESP_STATUS = server_deal_remove_dentry(&task_context);
+                RESPONSE_STATUS = server_deal_remove_dentry(task);
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
-                RESP_STATUS = server_deal_list_dentry_first(&task_context);
+                RESPONSE_STATUS = server_deal_list_dentry_first(task);
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
-                RESP_STATUS = server_deal_list_dentry_next(&task_context);
+                RESPONSE_STATUS = server_deal_list_dentry_next(task);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
-                RESP_STATUS = server_deal_get_server_status(&task_context);
+                RESPONSE_STATUS = server_deal_get_server_status(task);
                 break;
             case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
             case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
-                RESP_STATUS = server_deal_next_master(&task_context);
+                RESPONSE_STATUS = server_deal_next_master(task);
                 break;
             case FDIR_CLUSTER_PROTO_JOIN_MASTER:
-                RESP_STATUS = server_deal_join_master(&task_context);
+                RESPONSE_STATUS = server_deal_join_master(task);
                 break;
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
-                RESP_STATUS = server_deal_ping_master(&task_context);
+                RESPONSE_STATUS = server_deal_ping_master(task);
                 break;
             default:
-                task_context.response.error.length = sprintf(
-                        task_context.response.error.message,
-                        "unkown cmd: %d", task_context.request.header.cmd);
-                RESP_STATUS = -EINVAL;
+                RESPONSE.error.length = sprintf(
+                        RESPONSE.error.message,
+                        "unkown cmd: %d", REQUEST.header.cmd);
+                RESPONSE_STATUS = -EINVAL;
                 break;
         }
     } while(0);
 
-    return deal_task_done(&task_context);
+    if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) {
+        return 0;
+    } else {
+        return deal_task_done(task);
+    }
 }
 
 void *server_alloc_thread_extra_data(const int thread_index)
@@ -778,110 +747,12 @@ void *server_alloc_thread_extra_data(const int thread_index)
     }
 
     memset(server_context, 0, sizeof(FDIRServerContext));
-    if ((dentry_init_context(server_context)) != 0) {
-        free(server_context);
-        return NULL;
-    }
-
-    if (fast_mblock_init(&server_context->delay_free_context.allocator,
-                    sizeof(ServerDelayFreeNode), 16 * 1024) != 0)
+    if (fast_mblock_init_ex(&server_context->record_allocator,
+                sizeof(FDIRBinlogRecord), 4 * 1024, NULL, NULL, false) != 0)
     {
         free(server_context);
         return NULL;
     }
 
-    server_context->thread_index = thread_index;
     return server_context;
-}
-
-static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
-        ServerDelayFreeNode *node, void *ptr, const int delay_seconds)
-{
-    node->expires = g_current_time + delay_seconds;
-    node->ptr = ptr;
-    node->next = NULL;
-    if (pContext->queue.head == NULL)
-    {
-        pContext->queue.head = node;
-    }
-    else
-    {
-        pContext->queue.tail->next = node;
-    }
-    pContext->queue.tail = node;
-}
-
-int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
-        void *ptr, server_free_func free_func, const int delay_seconds)
-{
-    ServerDelayFreeNode *node;
-
-    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
-            &pContext->allocator);
-    if (node == NULL) {
-        return ENOMEM;
-    }
-
-    node->free_func = free_func;
-    node->free_func_ex = NULL;
-    node->ctx = NULL;
-    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
-    return 0;
-}
-
-int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
-        void *ptr, void *ctx, server_free_func_ex free_func_ex,
-        const int delay_seconds)
-{
-    ServerDelayFreeNode *node;
-
-    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
-            &pContext->allocator);
-    if (node == NULL) {
-        return ENOMEM;
-    }
-
-    node->free_func = NULL;
-    node->free_func_ex = free_func_ex;
-    node->ctx = ctx;
-    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
-    return 0;
-}
-
-int server_thread_loop(struct nio_thread_data *thread_data)
-{
-    ServerDelayFreeContext *delay_context;
-    ServerDelayFreeNode *node;
-    ServerDelayFreeNode *deleted;
-
-    delay_context = &((FDIRServerContext *)thread_data->arg)->
-        delay_free_context;
-    if (delay_context->last_check_time == g_current_time ||
-            delay_context->queue.head == NULL)
-    {
-        return 0;
-    }
-
-    delay_context->last_check_time = g_current_time;
-    node = delay_context->queue.head;
-    while ((node != NULL) && (node->expires < g_current_time)) {
-        if (node->free_func != NULL) {
-            node->free_func(node->ptr);
-            //logInfo("free ptr: %p", node->ptr);
-        } else {
-            node->free_func_ex(node->ctx, node->ptr);
-            //logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
-        }
-
-        deleted = node;
-        node = node->next;
-        fast_mblock_free_object(&delay_context->allocator, deleted);
-    }
-
-    delay_context->queue.head = node;
-    if (node == NULL) {
-        delay_context->queue.tail = NULL;
-    }
-
-    return 0;
 }
