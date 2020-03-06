@@ -25,7 +25,7 @@
 
 static struct fast_mblock_man record_buffer_allocator;
 
-static volatile int64_t next_data_version;
+static volatile int64_t next_data_version = 0;
 static struct timespec sleep_ts;
 
 int record_buffer_alloc_init_func(void *element, void *args)
@@ -102,10 +102,11 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
 {
     int count;
     int result;
+    int64_t current_version;
 
     count = 0;
-    while ((rbuffer->data_version != __sync_fetch_and_add(
-                &next_data_version, 0)) && (++count < MAX_SLEEP_COUNT))
+    while ((rbuffer->data_version != (current_version=__sync_fetch_and_add(
+                &next_data_version, 0))) && (++count < MAX_SLEEP_COUNT))
     {
         nanosleep(&sleep_ts, NULL);
     }
@@ -113,13 +114,13 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
     if (count >= 1) {
         if (count == MAX_SLEEP_COUNT) {
             logError("file: "__FILE__", line: %d, "
-                    "waiting for next data version: %"PRId64" timeout, "
-                    "maybe some mistakes happened", __LINE__,
-                    rbuffer->data_version);
+                    "waiting for my turn timeout, my data version: %"PRId64", "
+                    "maybe some mistakes happened, next data version: %"PRId64,
+                    __LINE__, rbuffer->data_version, current_version);
         } else {
             logWarning("file: "__FILE__", line: %d, "
-                    "waiting for next data version: %"PRId64" count: %d",
-                    __LINE__, rbuffer->data_version, count);
+                    "waiting for my turn count: %d, my data version: %"PRId64,
+                    __LINE__, count, rbuffer->data_version);
         }
     }
 
@@ -134,5 +135,12 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
                     rbuffer->data_version + 1);
         }
     }
+
+    /*
+    current_version=__sync_fetch_and_add(&next_data_version, 0);
+    logInfo("file: "__FILE__", line: %d, "
+            "=======my data version: %"PRId64", next: %"PRId64", current: %"PRId64"=====",
+            __LINE__, rbuffer->data_version, current_version, DATA_CURRENT_VERSION);
+            */
     return result;
 }

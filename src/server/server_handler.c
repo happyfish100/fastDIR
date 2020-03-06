@@ -36,8 +36,6 @@
 
 static volatile int64_t next_token;   //next token for dentry list
 
-static int deal_task_done(struct fast_task_info *task);
-
 int server_handler_init()
 {
     next_token = ((int64_t)g_current_time) << 32;
@@ -377,7 +375,7 @@ static int server_binlog_produce(struct fast_task_info *task)
         return ENOMEM;
     }
 
-    TASK_ARG->context.deal_func = deal_task_done;
+    TASK_ARG->context.deal_func = NULL;
     rbuffer->data_version = RECORD->data_version;
     rbuffer->task = task;
     RECORD->timestamp = g_current_time;
@@ -389,9 +387,12 @@ static int server_binlog_produce(struct fast_task_info *task)
             record_allocator, RECORD);
     RECORD = NULL;
 
-    //TODO waiting for callback
     if (result == 0) {
-        return server_binlog_dispatch(rbuffer);
+        result = server_binlog_dispatch(rbuffer);
+    }
+
+    if (result == 0) {
+        return SLAVE_SERVER_COUNT > 0 ? TASK_STATUS_CONTINUE : result;
     } else {
         return result;
     }
@@ -422,7 +423,11 @@ static void record_deal_done_notify(const int result, void *args)
 
 static int handle_record_deal_done(struct fast_task_info *task)
 {
-    return server_binlog_produce(task);
+    if (RESPONSE_STATUS == 0) {
+        return server_binlog_produce(task);
+    } else {
+        return RESPONSE_STATUS;
+    }
 }
 
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
@@ -436,6 +441,15 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     result = push_to_data_thread_queue(RECORD);
     return result == 0 ? TASK_STATUS_CONTINUE : result;
 }
+
+#define SERVER_SET_RECORD_PATH_INFO()  \
+    do {   \
+        RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,  \
+                RECORD->fullname.ns.len);  \
+        RECORD->inode = RECORD->data_version = 0;  \
+        RECORD->options.flags = 0;   \
+        RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;  \
+    } while (0)
 
 static int server_deal_create_dentry(struct fast_task_info *task)
 {
@@ -455,20 +469,16 @@ static int server_deal_create_dentry(struct fast_task_info *task)
         return result;
     }
 
+    SERVER_SET_RECORD_PATH_INFO();
+
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
     flags = buff2int(proto_front->flags);
     RECORD->stat.mode = buff2int(proto_front->mode);
 
-    RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,
-            RECORD->fullname.ns.len);
-    RECORD->inode = 0;
-    RECORD->options.flags = 0;
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
-    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
     RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
     RECORD->options.ctime = RECORD->options.mtime = 1;
     RECORD->options.mode = 1;
-
     return push_record_to_data_thread_queue(task);
 }
 
@@ -487,11 +497,8 @@ static int server_deal_remove_dentry(struct fast_task_info *task)
         return result;
     }
 
-    RECORD->inode = 0;
-    RECORD->options.flags = 0;
+    SERVER_SET_RECORD_PATH_INFO();
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
-    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
-
     return push_record_to_data_thread_queue(task);
 }
 
@@ -679,56 +686,72 @@ static int deal_task_done(struct fast_task_info *task)
 
 int server_deal_task(struct fast_task_info *task)
 {
+    int result;
+
+    /*
+    logInfo("file: "__FILE__", line: %d, "
+            "nio_stage: %d, SF_NIO_STAGE_CONTINUE: %d", __LINE__,
+            task->nio_stage, SF_NIO_STAGE_CONTINUE);
+            */
+
     if (task->nio_stage == SF_NIO_STAGE_CONTINUE) {
         task->nio_stage = SF_NIO_STAGE_SEND;
-        return TASK_ARG->context.deal_func(task);
-    }
+        if (TASK_ARG->context.deal_func != NULL) {
+            result = TASK_ARG->context.deal_func(task);
+        } else {
+            result = RESPONSE_STATUS;
+            if (result == TASK_STATUS_CONTINUE) {
+                logError("file: "__FILE__", line: %d, "
+                        "unexpect status: %d", __LINE__, result);
+                result = EBUSY;
+            }
+        }
+    } else {
+        init_task_context(task);
 
-    init_task_context(task);
-
-    do {
         switch (REQUEST.header.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
                 RESPONSE.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
-                RESPONSE_STATUS = server_deal_actvie_test(task);
+                result = server_deal_actvie_test(task);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY:
-                RESPONSE_STATUS = server_deal_create_dentry(task);
+                result = server_deal_create_dentry(task);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
-                RESPONSE_STATUS = server_deal_remove_dentry(task);
+                result = server_deal_remove_dentry(task);
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
-                RESPONSE_STATUS = server_deal_list_dentry_first(task);
+                result = server_deal_list_dentry_first(task);
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
-                RESPONSE_STATUS = server_deal_list_dentry_next(task);
+                result = server_deal_list_dentry_next(task);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
-                RESPONSE_STATUS = server_deal_get_server_status(task);
+                result = server_deal_get_server_status(task);
                 break;
             case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
             case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
-                RESPONSE_STATUS = server_deal_next_master(task);
+                result = server_deal_next_master(task);
                 break;
             case FDIR_CLUSTER_PROTO_JOIN_MASTER:
-                RESPONSE_STATUS = server_deal_join_master(task);
+                result = server_deal_join_master(task);
                 break;
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
-                RESPONSE_STATUS = server_deal_ping_master(task);
+                result = server_deal_ping_master(task);
                 break;
             default:
                 RESPONSE.error.length = sprintf(
                         RESPONSE.error.message,
                         "unkown cmd: %d", REQUEST.header.cmd);
-                RESPONSE_STATUS = -EINVAL;
+                result = -EINVAL;
                 break;
         }
-    } while(0);
+    }
 
-    if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) {
+    if (result == TASK_STATUS_CONTINUE) {
         return 0;
     } else {
+        RESPONSE_STATUS = result;
         return deal_task_done(task);
     }
 }

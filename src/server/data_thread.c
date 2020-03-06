@@ -231,6 +231,12 @@ static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
 {
     int result = 0;
 
+    /*
+    logInfo("file: "__FILE__", line: %d, "
+            "inode: %"PRId64", data_version: %"PRId64,
+            __LINE__, record->inode, record->data_version);
+            */
+
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             result = dentry_create(thread_ctx, record);
@@ -252,6 +258,12 @@ static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         }
         record->notify.func(result, record->notify.args);
     }
+
+    /*
+    logInfo("file: "__FILE__", line: %d, "
+            "result: %d, data_version: %"PRId64,
+            __LINE__, result, record->data_version);
+            */
     return result;
 }
 

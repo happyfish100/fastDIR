@@ -15,6 +15,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
+#include "sf/sf_nio.h"
 #include "../server_global.h"
 #include "binlog_func.h"
 #include "binlog_producer.h"
@@ -50,7 +51,12 @@ static inline int deal_binlog_one_record(BinlogSyncContext *sync_context,
         }
     }
 
-    //rb->task
+    //TODO
+    if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)rb->task->arg)->context.
+            waiting_rpc_count, 1) == 0)
+    {
+        sf_nio_notify(rb->task, SF_NIO_STAGE_CONTINUE);
+    }
 
     memcpy(sync_context->binlog_buffer.buff +
             sync_context->binlog_buffer.length,

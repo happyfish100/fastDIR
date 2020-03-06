@@ -77,6 +77,8 @@ typedef struct server_global_vars {
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
 
+#define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX) - 1)
+
 #define REPLICA_KEY_BUFF        CLUSTER_MYSELF_PTR->key
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index

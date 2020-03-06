@@ -31,6 +31,7 @@
 #include "cluster_topology.h"
 #include "inode_generator.h"
 #include "server_binlog.h"
+#include "data_thread.h"
 #include "server_handler.h"
 
 static bool daemon_mode = true;
@@ -111,6 +112,9 @@ int main(int argc, char *argv[])
 
     r = server_binlog_init();
     gofailif(r, "server binlog init error");
+
+    r = data_thread_init();
+    gofailif(r, "data thread init error");
 
     r = sf_service_init(server_alloc_thread_extra_data, NULL,
             NULL, fdir_proto_set_body_length, server_deal_task,

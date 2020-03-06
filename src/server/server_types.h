@@ -70,6 +70,7 @@ typedef struct server_task_arg {
 
         struct fdir_binlog_record *record;
         int (*deal_func)(struct fast_task_info *task);
+        volatile int waiting_rpc_count;
         bool response_done;
         bool log_error;
     } context;
