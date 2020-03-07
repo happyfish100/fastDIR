@@ -4,6 +4,7 @@
 
 #include "fastcommon/common_define.h"
 #include "fastcommon/server_id_func.h"
+#include "sf/sf_global.h"
 #include "server_types.h"
 
 typedef struct server_global_vars {
@@ -33,6 +34,8 @@ typedef struct server_global_vars {
 
         FDIRClusterServerArray server_array;
         FDIRServerCluster top; //topology
+
+        SFContext sf_context;  //for cluster communication
     } cluster;
 
     struct {
@@ -66,6 +69,8 @@ typedef struct server_global_vars {
 
 #define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
 #define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
+
+#define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size

@@ -92,7 +92,11 @@ int main(int argc, char *argv[])
     gofailif(r, "inode generator init error");
 
     r = sf_socket_server();
-    gofailif(r, "socket server error");
+    gofailif(r, "service socket server error");
+
+    r = sf_socket_server_ex(&CLUSTER_SF_CTX);
+    gofailif(r, "cluster socket server error");
+
     r = write_to_pid_file(g_pid_filename);
     gofailif(r, "write pid error");
 
@@ -116,21 +120,32 @@ int main(int argc, char *argv[])
     r = data_thread_init();
     gofailif(r, "data thread init error");
 
+    r = sf_service_init_ex(&CLUSTER_SF_CTX, server_alloc_thread_extra_data, NULL,
+            NULL, fdir_proto_set_body_length, server_deal_task,
+            server_task_finish_cleanup, NULL,
+            1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+    gofailif(r, "cluster service init error");
+    sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
+
     r = sf_service_init(server_alloc_thread_extra_data, NULL,
             NULL, fdir_proto_set_body_length, server_deal_task,
             server_task_finish_cleanup, NULL,
             1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
-    gofailif(r,"service init error");
+    gofailif(r, "server service init error");
     sf_set_remove_from_ready_list(false);
 
     setup_mblock_stat_task();
 
+    sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
     sf_accept_loop();
     if (g_schedule_flag) {
         pthread_kill(schedule_tid, SIGINT);
     }
+
     wait_count = 0;
-    while ((g_worker_thread_count != 0) || g_schedule_flag) {
+    while ((SF_G_ALIVE_THREAD_COUNT != 0 || SF_ALIVE_THREAD_COUNT(
+                    CLUSTER_SF_CTX) != 0) || g_schedule_flag)
+    {
         usleep(10000);
         if (++wait_count > 1000) {
             lwarning("waiting timeout, exit!");

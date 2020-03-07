@@ -82,9 +82,9 @@ static int find_myself_in_cluster_config(const char *filename)
     int i;
 
     count = 0;
-    ports[count++] = g_sf_global_vars.inner_port;
-    if (g_sf_global_vars.outer_port != g_sf_global_vars.inner_port) {
-        ports[count++] = g_sf_global_vars.outer_port;
+    ports[count++] = g_sf_context.inner_port;
+    if (g_sf_context.outer_port != g_sf_context.inner_port) {
+        ports[count++] = g_sf_context.outer_port;
     }
 
     found.ip_addr = NULL;
@@ -404,12 +404,48 @@ FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
             FC_SID_SERVERS(CLUSTER_CONFIG_CTX));
 }
 
+static void server_log_configs()
+{
+    char sz_server_config[512];
+    char sz_global_config[512];
+    char sz_service_config[128];
+    char sz_cluster_config[128];
+
+    sf_global_config_to_string(sz_global_config, sizeof(sz_global_config));
+    sf_context_config_to_string(&g_sf_context,
+            sz_service_config, sizeof(sz_service_config));
+    sf_context_config_to_string(&CLUSTER_SF_CTX,
+            sz_cluster_config, sizeof(sz_cluster_config));
+
+    snprintf(sz_server_config, sizeof(sz_server_config),
+            "cluster_id = %d, my server id = %d, data_path = %s, "
+            "data_threads = %d, dentry_max_data_size = %d, "
+            "binlog_buffer_size = %d KB, "
+            "admin config {username: %s, secret_key: %s}, "
+            "reload_interval_ms = %d ms, "
+            "check_alive_interval = %d s, "
+            "namespace_hashtable_capacity = %d, "
+            "cluster server count = %d",
+            CLUSTER_ID, CLUSTER_MY_SERVER_ID,
+            DATA_PATH_STR, DATA_THREAD_COUNT,
+            DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
+            g_server_global_vars.admin.username.str,
+            g_server_global_vars.admin.secret_key.str,
+            g_server_global_vars.reload_interval_ms,
+            g_server_global_vars.check_alive_interval,
+            g_server_global_vars.namespace_hashtable_capacity,
+            FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
+
+    logInfo("%s, service: {%s}, cluster: {%s}, %s",
+            sz_global_config, sz_service_config,
+            sz_cluster_config, sz_server_config);
+    log_local_host_ip_addrs();
+    log_cluster_server_config();
+}
+
 int server_load_config(const char *filename)
 {
     IniContext ini_context;
-    char server_config_str[1024];
-    SFCustomConfig cluster_cfg;
-    SFCustomConfig service_cfg;
     int result;
 
     memset(&ini_context, 0, sizeof(IniContext));
@@ -434,12 +470,17 @@ int server_load_config(const char *filename)
         DATA_THREAD_COUNT = FDIR_DEFAULT_DATA_THREAD_COUNT;
     }
 
-    SF_SET_CUSTOM_CONFIG(cluster_cfg, "cluster",
-            FDIR_SERVER_DEFAULT_CLUSTER_PORT);
-    SF_SET_CUSTOM_CONFIG(service_cfg, "service",
-            FDIR_SERVER_DEFAULT_SERVICE_PORT);
-    if ((result=sf_load_config_ex("fdir_serverd", filename,
-                    &ini_context, &cluster_cfg, &service_cfg)) != 0)
+    if ((result=sf_load_config_ex("fdir_serverd", filename, &ini_context,
+                    "service", FDIR_SERVER_DEFAULT_SERVICE_PORT,
+                    FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=sf_load_context_from_config(&CLUSTER_SF_CTX,
+                    filename, &ini_context, "cluster",
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT,
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
     {
         return result;
     }
@@ -493,27 +534,7 @@ int server_load_config(const char *filename)
     iniFreeContext(&ini_context);
 
     load_local_host_ip_addrs();
-    snprintf(server_config_str, sizeof(server_config_str),
-            "cluster_id = %d, my server id = %d, data_path = %s, "
-            "data_threads = %d, dentry_max_data_size = %d, "
-            "binlog_buffer_size = %d KB, "
-            "admin config {username: %s, secret_key: %s}, "
-            "reload_interval_ms = %d ms, "
-            "check_alive_interval = %d s, "
-            "namespace_hashtable_capacity = %d, "
-            "cluster server count = %d",
-            CLUSTER_ID, CLUSTER_MY_SERVER_ID,
-            DATA_PATH_STR, DATA_THREAD_COUNT,
-            DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
-            g_server_global_vars.admin.username.str,
-            g_server_global_vars.admin.secret_key.str,
-            g_server_global_vars.reload_interval_ms,
-            g_server_global_vars.check_alive_interval,
-            g_server_global_vars.namespace_hashtable_capacity,
-            FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
-    sf_log_config_ex(server_config_str);
-    log_local_host_ip_addrs();
-    log_cluster_server_config();
+    server_log_configs();
 
     return 0;
 }
