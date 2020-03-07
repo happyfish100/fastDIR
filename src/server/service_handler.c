@@ -1,4 +1,4 @@
-//server_handler.c
+//service_handler.c
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -30,26 +30,26 @@
 #include "dentry.h"
 #include "cluster_relationship.h"
 #include "cluster_topology.h"
-#include "server_handler.h"
+#include "service_handler.h"
 
 static volatile int64_t next_token;   //next token for dentry list
 
-int server_handler_init()
+int service_handler_init()
 {
     next_token = ((int64_t)g_current_time) << 32;
     return 0;
 }
 
-int server_handler_destroy()
+int service_handler_destroy()
 {   
     return 0;
 }
 
 void server_task_finish_cleanup(struct fast_task_info *task)
 {
-    FDIRServerTaskArg *task_arg;
+    //FDIRServerTaskArg *task_arg;
 
-    task_arg = (FDIRServerTaskArg *)task->arg;
+    //task_arg = (FDIRServerTaskArg *)task->arg;
 
     dentry_array_free(&DENTRY_LIST_CACHE.array);
 
@@ -268,7 +268,7 @@ static int server_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
     FDIRProtoCreateDEntryFront *proto_front;
-    int flags;
+    //int flags;
 
     if ((result=alloc_record_object(task)) != 0) {
         return result;
@@ -285,7 +285,7 @@ static int server_deal_create_dentry(struct fast_task_info *task)
     SERVER_SET_RECORD_PATH_INFO();
 
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
-    flags = buff2int(proto_front->flags);
+    //flags = buff2int(proto_front->flags);
     RECORD->stat.mode = buff2int(proto_front->mode);
 
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;

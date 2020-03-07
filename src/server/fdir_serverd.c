@@ -32,7 +32,7 @@
 #include "inode_generator.h"
 #include "server_binlog.h"
 #include "data_thread.h"
-#include "server_handler.h"
+#include "service_handler.h"
 #include "cluster_handler.h"
 
 static bool daemon_mode = true;
@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
     r = dentry_init();
     gofailif(r, "dentry init error");
 
-    r = server_handler_init();
+    r = service_handler_init();
     gofailif(r, "server handler init error");
 
     fdir_proto_init();

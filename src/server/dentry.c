@@ -11,7 +11,7 @@
 #include "fastcommon/sched_thread.h"
 #include "common/fdir_types.h"
 #include "server_global.h"
-#include "server_handler.h"
+#include "service_handler.h"
 #include "inode_generator.h"
 #include "dentry.h"
 
