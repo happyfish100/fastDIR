@@ -19,6 +19,16 @@
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 #define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
+#define TASK_STATUS_CONTINUE   12345
+#define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
+#define REQUEST           TASK_ARG->context.request
+#define RESPONSE          TASK_ARG->context.response
+#define RESPONSE_STATUS   RESPONSE.header.status
+#define RECORD            TASK_ARG->context.service.record
+#define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
+#define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
+#define CLUSTER_PEER      TASK_ARG->context.cluster.peer
+
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
@@ -57,25 +67,34 @@ struct fdir_binlog_record;
 typedef struct server_task_arg {
     volatile int64_t task_version;
     int64_t req_start_time;
-    struct {
-        FDIRServerDentryArray array;
-        int64_t token;
-        int offset;
-        time_t expires;  //expire time
-    } dentry_list_cache; //for dentry_list
 
     struct {
         FDIRRequestInfo request;
         FDIRResponseInfo response;
-
-        struct fdir_binlog_record *record;
         int (*deal_func)(struct fast_task_info *task);
-        volatile int waiting_rpc_count;
         bool response_done;
         bool log_error;
+
+        union {
+            struct {
+                struct {
+                    FDIRServerDentryArray array;
+                    int64_t token;
+                    int offset;
+                    time_t expires;  //expire time
+                } dentry_list_cache; //for dentry_list
+
+
+                struct fdir_binlog_record *record;
+                volatile int waiting_rpc_count;
+            } service;
+
+            struct {
+                FDIRClusterServerInfo *peer;  //the peer server in the cluster
+            } cluster;
+        };
     } context;
 
-    FDIRClusterServerInfo *cluster_peer;  //the peer server in the cluster
 } FDIRServerTaskArg;
 
 typedef struct fdir_server_context {

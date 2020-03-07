@@ -135,7 +135,7 @@ int binlog_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
 
     __sync_add_and_fetch(&rbuffer->reffer_count, g_binlog_consumer_array.count);
     __sync_add_and_fetch(&((FDIRServerTaskArg *)rbuffer->task->arg)->context.
-            waiting_rpc_count, g_binlog_consumer_array.count - 1);
+            service.waiting_rpc_count, g_binlog_consumer_array.count - 1);
     end = g_binlog_consumer_array.contexts + g_binlog_consumer_array.count;
     for (context=g_binlog_consumer_array.contexts; context<end; context++) {
         if ((result=common_blocked_queue_push(&context->queue, rbuffer)) != 0) {

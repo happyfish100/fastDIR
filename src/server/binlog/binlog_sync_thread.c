@@ -53,7 +53,7 @@ static inline int deal_binlog_one_record(BinlogSyncContext *sync_context,
 
     //TODO
     if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)rb->task->arg)->context.
-            waiting_rpc_count, 1) == 0)
+            service.waiting_rpc_count, 1) == 0)
     {
         sf_nio_notify(rb->task, SF_NIO_STAGE_CONTINUE);
     }

@@ -32,8 +32,6 @@
 #include "cluster_topology.h"
 #include "server_handler.h"
 
-#define TASK_STATUS_CONTINUE   12345
-
 static volatile int64_t next_token;   //next token for dentry list
 
 int server_handler_init()
@@ -53,12 +51,7 @@ void server_task_finish_cleanup(struct fast_task_info *task)
 
     task_arg = (FDIRServerTaskArg *)task->arg;
 
-    if (task_arg->cluster_peer != NULL) {
-        ct_slave_server_offline(task_arg->cluster_peer);
-        task_arg->cluster_peer = NULL;
-    }
-
-    dentry_array_free(&task_arg->dentry_list_cache.array);
+    dentry_array_free(&DENTRY_LIST_CACHE.array);
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
     sf_task_finish_clean_up(task);
@@ -67,186 +60,6 @@ void server_task_finish_cleanup(struct fast_task_info *task)
 static int server_deal_actvie_test(struct fast_task_info *task)
 {
     return server_expect_body_length(task, 0);
-}
-
-static int server_check_config_sign(struct fast_task_info *task,
-        const int server_id, const char *config_sign)
-{
-    if (memcmp(config_sign, CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN) != 0)
-    {
-        char peer_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-        char my_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-
-        bin2hex(config_sign, CLUSTER_CONFIG_SIGN_LEN, peer_hex);
-        bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN, my_hex);
-
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "server #%d 's cluster config md5: %s != my: %s",
-                server_id, peer_hex, my_hex);
-        return EFAULT;
-    }
-
-    return 0;
-}
-
-static int server_deal_get_server_status(struct fast_task_info *task)
-{
-    int result;
-    int server_id;
-    FDIRProtoGetServerStatusReq *req;
-    FDIRProtoGetServerStatusResp *resp;
-
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoGetServerStatusReq))) != 0)
-    {
-        return result;
-    }
-
-    req = (FDIRProtoGetServerStatusReq *)REQUEST.body;
-    server_id = buff2int(req->server_id);
-    if ((result=server_check_config_sign(task, server_id,
-                    req->config_sign)) != 0)
-    {
-        return result;
-    }
-
-    resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
-
-    resp->is_master = MYSELF_IS_MASTER;
-    int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
-    long2buff(DATA_CURRENT_VERSION, resp->data_version);
-
-    RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
-    RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
-    TASK_ARG->context.response_done = true;
-    return 0;
-}
-
-static int server_deal_join_master(struct fast_task_info *task)
-{
-    int result;
-    int cluster_id;
-    int server_id;
-    FDIRProtoJoinMasterReq *req;
-    FDIRClusterServerInfo *peer;
-
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoJoinMasterReq))) != 0)
-    {
-        return result;
-    }
-
-    req = (FDIRProtoJoinMasterReq *)REQUEST.body;
-    cluster_id = buff2int(req->cluster_id);
-    server_id = buff2int(req->server_id);
-    if (cluster_id != CLUSTER_ID) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "peer cluster id: %d != mine: %d",
-                cluster_id, CLUSTER_ID);
-        return EINVAL;
-    }
-
-    peer = fdir_get_server_by_id(server_id);
-    if (peer == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "peer server id: %d not exist", server_id);
-        return ENOENT;
-    }
-
-    if ((result=server_check_config_sign(task, server_id,
-                    req->config_sign)) != 0)
-    {
-        return result;
-    }
-
-    if (!MYSELF_IS_MASTER) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not master");
-        return EINVAL;
-    }
-
-    if (TASK_ARG->cluster_peer != NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "peer server id: %d already joined", server_id);
-        return EEXIST;
-    }
-
-    memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
-    TASK_ARG->cluster_peer = peer;
-    ct_slave_server_online(peer);
-    return 0;
-}
-
-static int server_deal_ping_master(struct fast_task_info *task)
-{
-    int result;
-    FDIRProtoPingMasterResp *resp;
-
-    if ((result=server_expect_body_length(task, 0)) != 0) {
-        return result;
-    }
-
-    if (TASK_ARG->cluster_peer == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "please join first");
-        return EINVAL;
-    }
-
-    if (!MYSELF_IS_MASTER) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not master");
-        return EINVAL;
-    }
-
-    resp = (FDIRProtoPingMasterResp *)REQUEST.body;
-    long2buff(CURRENT_INODE_SN, resp->inode_sn);
-    resp->your_status = TASK_ARG->cluster_peer->status;
-    TASK_ARG->context.response_done = true;
-    RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
-    RESPONSE.header.body_len = sizeof(FDIRProtoPingMasterResp);
-    return 0;
-}
-
-static int server_deal_next_master(struct fast_task_info *task)
-{
-    int result;
-    int master_id;
-    FDIRClusterServerInfo *master;
-
-    if ((result=server_expect_body_length(task, 4)) != 0) {
-        return result;
-    }
-
-    if (MYSELF_IS_MASTER) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am already master");
-        return EEXIST;
-    }
-
-    master_id = buff2int(REQUEST.body);
-    master = fdir_get_server_by_id(master_id);
-    if (master == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "master server id: %d not exist", master_id);
-        return ENOENT;
-    }
-
-    if (REQUEST.header.cmd == FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER) {
-        return cluster_relationship_pre_set_master(master);
-    } else {
-        return cluster_relationship_commit_master(master, false);
-    }
 }
 
 static int server_parse_dentry_info(struct fast_task_info *task,
@@ -514,13 +327,13 @@ static int server_list_dentry_output(struct fast_task_info *task)
     int remain_count;
     int count;
 
-    remain_count = TASK_ARG->dentry_list_cache.array.count -
-        TASK_ARG->dentry_list_cache.offset;
+    remain_count = DENTRY_LIST_CACHE.array.count -
+        DENTRY_LIST_CACHE.offset;
 
     buf_end = task->data + task->size;
     p = REQUEST.body + sizeof(FDIRProtoListDEntryRespBodyHeader);
-    start = TASK_ARG->dentry_list_cache.array.entries +
-        TASK_ARG->dentry_list_cache.offset;
+    start = DENTRY_LIST_CACHE.array.entries +
+        DENTRY_LIST_CACHE.offset;
     end = start + remain_count;
     for (dentry=start; dentry<end; dentry++) {
         if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
@@ -540,12 +353,12 @@ static int server_list_dentry_output(struct fast_task_info *task)
     body_header = (FDIRProtoListDEntryRespBodyHeader *)REQUEST.body;
     int2buff(count, body_header->count);
     if (count < remain_count) {
-        TASK_ARG->dentry_list_cache.offset += count;
-        TASK_ARG->dentry_list_cache.expires = g_current_time + 60;
-        TASK_ARG->dentry_list_cache.token = __sync_add_and_fetch(&next_token, 1);
+        DENTRY_LIST_CACHE.offset += count;
+        DENTRY_LIST_CACHE.expires = g_current_time + 60;
+        DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
 
         body_header->is_last = 0;
-        long2buff(TASK_ARG->dentry_list_cache.token, body_header->token);
+        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
     } else {
         body_header->is_last = 1;
         long2buff(0, body_header->token);
@@ -567,13 +380,11 @@ static int server_deal_list_dentry_first(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=dentry_list(&fullname, &TASK_ARG->
-                    dentry_list_cache.array)) != 0)
-    {
+    if ((result=dentry_list(&fullname, &DENTRY_LIST_CACHE.array)) != 0) {
         return result;
     }
 
-    TASK_ARG->dentry_list_cache.offset = 0;
+    DENTRY_LIST_CACHE.offset = 0;
     return server_list_dentry_output(task);
 }
 
@@ -590,7 +401,7 @@ static int server_deal_list_dentry_next(struct fast_task_info *task)
         return result;
     }
 
-    if (TASK_ARG->dentry_list_cache.expires < g_current_time) {
+    if (DENTRY_LIST_CACHE.expires < g_current_time) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "dentry list cache expires, please try again");
@@ -600,17 +411,17 @@ static int server_deal_list_dentry_next(struct fast_task_info *task)
     next_body = (FDIRProtoListDEntryNextBody *)REQUEST.body;
     token = buff2long(next_body->token);
     offset = buff2int(next_body->offset);
-    if (token != TASK_ARG->dentry_list_cache.token) {
+    if (token != DENTRY_LIST_CACHE.token) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid token for next list");
         return EINVAL;
     }
-    if (offset != TASK_ARG->dentry_list_cache.offset) {
+    if (offset != DENTRY_LIST_CACHE.offset) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "next list offset: %d != expected: %d",
-                offset, TASK_ARG->dentry_list_cache.offset);
+                offset, DENTRY_LIST_CACHE.offset);
         return EINVAL;
     }
     return server_list_dentry_output(task);
@@ -725,19 +536,6 @@ int server_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
                 result = server_deal_list_dentry_next(task);
-                break;
-            case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
-                result = server_deal_get_server_status(task);
-                break;
-            case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
-            case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
-                result = server_deal_next_master(task);
-                break;
-            case FDIR_CLUSTER_PROTO_JOIN_MASTER:
-                result = server_deal_join_master(task);
-                break;
-            case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
-                result = server_deal_ping_master(task);
                 break;
             default:
                 RESPONSE.error.length = sprintf(

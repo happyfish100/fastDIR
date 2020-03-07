@@ -33,6 +33,7 @@
 #include "server_binlog.h"
 #include "data_thread.h"
 #include "server_handler.h"
+#include "cluster_handler.h"
 
 static bool daemon_mode = true;
 static int setup_server_env(const char *config_filename);
@@ -120,9 +121,9 @@ int main(int argc, char *argv[])
     r = data_thread_init();
     gofailif(r, "data thread init error");
 
-    r = sf_service_init_ex(&CLUSTER_SF_CTX, server_alloc_thread_extra_data, NULL,
-            NULL, fdir_proto_set_body_length, server_deal_task,
-            server_task_finish_cleanup, NULL,
+    r = sf_service_init_ex(&CLUSTER_SF_CTX, cluster_alloc_thread_extra_data,
+            NULL, NULL, fdir_proto_set_body_length, cluster_deal_task,
+            cluster_task_finish_cleanup, NULL,
             1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
     gofailif(r, "cluster service init error");
     sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
