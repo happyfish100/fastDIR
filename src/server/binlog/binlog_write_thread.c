@@ -36,11 +36,12 @@ typedef struct {
     int file_size;
     int fd;
     ServerBinlogBuffer binlog_buffer;
+    struct common_blocked_queue queue;
 } BinlogWriterContext;
 
 static BinlogWriterContext writer_context = {{'\0'}, -1, 0, 0, -1};
-static struct common_blocked_queue *writer_queue = NULL;
 static volatile bool write_thread_running = false;
+struct common_blocked_queue *g_writer_queue = NULL;
 
 static int write_to_binlog_index_file()
 {
@@ -215,6 +216,9 @@ int binlog_write_thread_init()
         return result;
     }
 
+    if ((result=common_blocked_queue_init_ex(&writer_context.queue, 10240)) != 0) {
+        return result;
+    }
     if ((result=get_binlog_index_from_file()) != 0) {
         return result;
     }
@@ -272,7 +276,7 @@ void binlog_write_thread_finish()
     struct common_blocked_node *node;
     int count;
 
-    if (writer_queue != NULL) {
+    if (g_writer_queue != NULL) {
         count = 0;
         while (write_thread_running && ++count < 100) {
             usleep(100 * 1000);
@@ -284,12 +288,12 @@ void binlog_write_thread_finish()
                     "exit anyway!", __LINE__);
         }
 
-        node = common_blocked_queue_try_pop_all_nodes(writer_queue);
+        node = common_blocked_queue_try_pop_all_nodes(g_writer_queue);
         if (node != NULL) {
             deal_binlog_records(node);
-            common_blocked_queue_free_all_nodes(writer_queue, node);
+            common_blocked_queue_free_all_nodes(g_writer_queue, node);
         }
-        writer_queue = NULL;
+        g_writer_queue = NULL;
     }
 
     if (writer_context.fd >= 0) {
@@ -303,9 +307,9 @@ void *binlog_write_thread_func(void *arg)
     struct common_blocked_node *node;
 
     write_thread_running = true;
-    writer_queue = &((ServerBinlogConsumerContext *)arg)->queue;
+    g_writer_queue = &writer_context.queue;
     while (SF_G_CONTINUE_FLAG) {
-        node = common_blocked_queue_pop_all_nodes(writer_queue);
+        node = common_blocked_queue_pop_all_nodes(g_writer_queue);
         if (node == NULL) {
             continue;
         }
@@ -315,7 +319,7 @@ void *binlog_write_thread_func(void *arg)
                     "deal_binlog_records fail, program exit!", __LINE__);
             SF_G_CONTINUE_FLAG = false;
         }
-        common_blocked_queue_free_all_nodes(writer_queue, node);
+        common_blocked_queue_free_all_nodes(g_writer_queue, node);
     }
 
     write_thread_running = false;

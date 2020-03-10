@@ -19,7 +19,7 @@ int cluster_handler_destroy();
 int cluster_deal_task(struct fast_task_info *task);
 void cluster_task_finish_cleanup(struct fast_task_info *task);
 void *cluster_alloc_thread_extra_data(const int thread_index);
-//int cluster_thread_loop(struct nio_thread_data *thread_data);
+int cluster_thread_loop_callback(struct nio_thread_data *thread_data);
 
 #ifdef __cplusplus
 }

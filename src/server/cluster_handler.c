@@ -25,6 +25,7 @@
 #include "common/fdir_proto.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_pack.h"
+#include "binlog/binlog_replication.h"
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
@@ -259,6 +260,11 @@ static void record_deal_done_notify(const int result, void *args)
 }
 */
 
+static int cluster_deal_push_binlog(struct fast_task_info *task)
+{
+    return 0;
+}
+
 static inline void init_task_context(struct fast_task_info *task)
 {
     TASK_ARG->req_start_time = get_current_time_us();
@@ -370,6 +376,9 @@ int cluster_deal_task(struct fast_task_info *task)
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
                 result = cluster_deal_ping_master(task);
                 break;
+            case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ:
+                result = cluster_deal_push_binlog(task);
+                break;
             default:
                 RESPONSE.error.length = sprintf(
                         RESPONSE.error.message,
@@ -387,6 +396,7 @@ int cluster_deal_task(struct fast_task_info *task)
     }
 }
 
+
 void *cluster_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
@@ -402,4 +412,12 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
 
     memset(server_context, 0, sizeof(FDIRServerContext));
     return server_context;
+}
+
+int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
+{
+    FDIRServerContext *server_ctx;
+ 
+    server_ctx = (FDIRServerContext *)thread_data->arg;
+    return binlog_replication_process(server_ctx);
 }

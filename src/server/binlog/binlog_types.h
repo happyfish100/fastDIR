@@ -77,19 +77,20 @@ typedef struct server_binlog_buffer {
 
 typedef struct server_binlog_consumer_context {
     struct common_blocked_queue queue;
-    FDIRClusterServerInfo *server;
+    FDIRClusterServerInfo *server;   //which slave
 } ServerBinlogConsumerContext;
-
-typedef struct server_binlog_record_buffer {
-    int64_t data_version; //for idempotency (slave only)
-    volatile int reffer_count;
-    struct fast_task_info *task;
-    FastBuffer buffer;
-} ServerBinlogRecordBuffer;
 
 typedef struct server_binlog_consumer_array {
     ServerBinlogConsumerContext *contexts;
     int count;
 } ServerBinlogConsumerArray;
+
+typedef struct server_binlog_record_buffer {
+    int64_t data_version; //for idempotency (slave only)
+    volatile int reffer_count;
+    struct fast_task_info *task;  //for notify / callback
+    FastBuffer buffer;
+    struct server_binlog_record_buffer *nexts[0];
+} ServerBinlogRecordBuffer;
 
 #endif

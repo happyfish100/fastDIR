@@ -4,6 +4,7 @@
 #define _SERVER_BINLOG_H_
 
 #include "binlog/binlog_types.h"
+#include "binlog/binlog_consumer.h"
 
 #ifdef __cplusplus
 extern "C" {

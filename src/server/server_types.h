@@ -62,6 +62,38 @@ typedef struct fdir_cluster_server_array {
     FDIRClusterServerInfo *servers;
 } FDIRClusterServerArray;
 
+struct server_binlog_record_buffer;
+
+typedef struct fdir_record_buffer_queue {
+    struct server_binlog_record_buffer *head;
+    struct server_binlog_record_buffer *tail;
+    pthread_mutex_t lock;
+} FDIRRecordBufferQueue; 
+
+typedef struct fdir_slave_replication {
+    struct fast_task_info *task;
+    FDIRClusterServerInfo *slave;
+    int index;  //for next links
+    struct {
+        int start_time;
+        int last_errno;
+        ConnectionInfo conn;
+    } connection_info;
+
+    FDIRRecordBufferQueue queue;
+} FDIRSlaveReplication;
+
+typedef struct fdir_slave_replication_array {
+    FDIRSlaveReplication *replications;
+    int count;
+} FDIRSlaveReplicationArray;
+
+typedef struct fdir_slave_replication_ptr_array {
+    int count;
+    int index;
+    FDIRSlaveReplication **replications;
+} FDIRSlaveReplicationPtrArray;
+
 struct fdir_binlog_record;
 
 typedef struct server_task_arg {
@@ -90,7 +122,11 @@ typedef struct server_task_arg {
             } service;
 
             struct {
-                FDIRClusterServerInfo *peer;  //the peer server in the cluster
+                int type;
+                union {
+                    FDIRClusterServerInfo *peer;  //the peer server in the cluster
+                    FDIRSlaveReplication *replica;
+                };
             } cluster;
         };
     } context;
@@ -98,7 +134,16 @@ typedef struct server_task_arg {
 } FDIRServerTaskArg;
 
 typedef struct fdir_server_context {
-    struct fast_mblock_man record_allocator;
+    union {
+        struct {
+            struct fast_mblock_man record_allocator;
+        } service;
+
+        struct {
+            FDIRSlaveReplicationPtrArray connectings;
+            FDIRSlaveReplicationPtrArray connected;
+        } cluster;
+    };
 } FDIRServerContext;
 
 typedef struct fdir_slave_array {

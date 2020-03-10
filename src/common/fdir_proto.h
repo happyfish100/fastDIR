@@ -32,7 +32,8 @@
 #define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      68  //commit next leader to other servers
 #define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  69  //followers notify reselect leader when split-brain
 #define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 70
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG      71
+#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ  71
+#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP 72
 
 
 //replication commands

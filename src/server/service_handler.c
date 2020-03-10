@@ -197,7 +197,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
 
     fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)->
-            record_allocator, RECORD);
+            service.record_allocator, RECORD);
     RECORD = NULL;
 
     if (result == 0) {
@@ -215,7 +215,7 @@ static inline int alloc_record_object(struct fast_task_info *task)
 {
     RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
             &((FDIRServerContext *)task->thread_data->arg)->
-            record_allocator);
+            service.record_allocator);
     if (RECORD == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -568,7 +568,7 @@ void *server_alloc_thread_extra_data(const int thread_index)
     }
 
     memset(server_context, 0, sizeof(FDIRServerContext));
-    if (fast_mblock_init_ex(&server_context->record_allocator,
+    if (fast_mblock_init_ex(&server_context->service.record_allocator,
                 sizeof(FDIRBinlogRecord), 4 * 1024, NULL, NULL, false) != 0)
     {
         free(server_context);

@@ -48,10 +48,13 @@ int record_buffer_alloc_init_func(void *element, void *args)
 int binlog_producer_init()
 {
     int result;
+    int element_size;
     int64_t offset;
 
-    if ((result=fast_mblock_init_ex(&record_buffer_allocator,
-                    sizeof(ServerBinlogRecordBuffer),
+    element_size = sizeof(ServerBinlogRecordBuffer) +
+        sizeof(struct server_binlog_record_buffer *) *
+        CLUSTER_SERVER_ARRAY.count;
+    if ((result=fast_mblock_init_ex(&record_buffer_allocator, element_size,
                     1024, record_buffer_alloc_init_func, NULL, true)) != 0)
     {
         return result;

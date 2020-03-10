@@ -92,6 +92,11 @@ int main(int argc, char *argv[])
     r = inode_generator_init();
     gofailif(r, "inode generator init error");
 
+
+     sched_print_all_entries();
+    logInfo("g_sf_global_vars.sync_log_buff_interval: %d, next id: %d",
+            g_sf_global_vars.sync_log_buff_interval, sched_generate_next_id());
+
     r = sf_socket_server();
     gofailif(r, "service socket server error");
 
@@ -122,8 +127,8 @@ int main(int argc, char *argv[])
     gofailif(r, "data thread init error");
 
     r = sf_service_init_ex(&CLUSTER_SF_CTX, cluster_alloc_thread_extra_data,
-            NULL, NULL, fdir_proto_set_body_length, cluster_deal_task,
-            cluster_task_finish_cleanup, NULL,
+            cluster_thread_loop_callback, NULL, fdir_proto_set_body_length,
+            cluster_deal_task, cluster_task_finish_cleanup, NULL,
             1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
     gofailif(r, "cluster service init error");
     sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
@@ -134,6 +139,9 @@ int main(int argc, char *argv[])
             1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
     gofailif(r, "server service init error");
     sf_set_remove_from_ready_list(false);
+
+    //TODO remove me
+    binlog_consumer_replication_start();
 
     setup_mblock_stat_task();
 

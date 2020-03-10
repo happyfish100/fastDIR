@@ -11,7 +11,7 @@ ALL_OBJS = ../common/fdir_proto.o server_func.o service_handler.o \
            cluster_relationship.o cluster_topology.o \
            data_thread.o inode_generator.o server_binlog.o \
            binlog/binlog_producer.o binlog/binlog_consumer.o \
-           binlog/binlog_write_thread.o  binlog/binlog_sync_thread.o \
+           binlog/binlog_write_thread.o  binlog/binlog_replication.o \
            binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o
 
 ALL_PRGS = fdir_serverd

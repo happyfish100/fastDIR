@@ -9,12 +9,11 @@
 extern "C" {
 #endif
 
-extern ServerBinlogConsumerArray g_binlog_consumer_array;
-
 int binlog_consumer_init();
 void binlog_consumer_destroy();
 void binlog_consumer_terminate();
 
+int binlog_consumer_replication_start();
 int binlog_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer);
 
 #ifdef __cplusplus
