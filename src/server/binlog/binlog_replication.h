@@ -9,7 +9,8 @@
 extern "C" {
 #endif
 
-int binlog_replication_add_to_thread(FDIRSlaveReplication *replication);
+int binlog_replication_bind_thread(FDIRSlaveReplication *replication);
+int binlog_replication_rebind_thread(FDIRSlaveReplication *replication);
 int binlog_replication_process(FDIRServerContext *server_ctx);
 
 #ifdef __cplusplus

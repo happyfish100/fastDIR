@@ -4,8 +4,8 @@
 #include "fastcommon/connection_pool.h"
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/sockopt.h"
-#include "fdir_proto.h"
 #include "fdir_types.h"
+#include "fdir_proto.h"
 
 void fdir_proto_init()
 {

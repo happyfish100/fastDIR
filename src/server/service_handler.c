@@ -51,6 +51,8 @@ void server_task_finish_cleanup(struct fast_task_info *task)
 
     //task_arg = (FDIRServerTaskArg *)task->arg;
 
+    logInfo("file: "__FILE__", line: %d task: %p", __LINE__, task);
+
     dentry_array_free(&DENTRY_LIST_CACHE.array);
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);

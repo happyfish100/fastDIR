@@ -19,6 +19,10 @@
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 #define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
+#define FDIR_CLUSTER_TASK_TYPE_NONE          0
+#define FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP  1
+#define FDIR_CLUSTER_TASK_TYPE_REPLICATION   2
+
 #define TASK_STATUS_CONTINUE   12345
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
@@ -28,6 +32,8 @@
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
+#define CLUSTER_REPLICA   TASK_ARG->context.cluster.replica
+#define CLUSTER_TASK_TYPE TASK_ARG->context.cluster.task_type
 
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
@@ -122,7 +128,7 @@ typedef struct server_task_arg {
             } service;
 
             struct {
-                int type;
+                int task_type;
                 union {
                     FDIRClusterServerInfo *peer;  //the peer server in the cluster
                     FDIRSlaveReplication *replica;

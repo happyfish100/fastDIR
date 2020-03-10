@@ -126,7 +126,7 @@ int binlog_consumer_replication_start()
     for (replication=slave_replication_array.replications; replication<end;
             replication++)
     {
-        if ((result=binlog_replication_add_to_thread(replication)) != 0) {
+        if ((result=binlog_replication_bind_thread(replication)) != 0) {
             return result;
         }
     }

@@ -17,6 +17,7 @@
 #include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
 #include "sf/sf_nio.h"
+#include "../../common/fdir_proto.h"
 #include "../server_global.h"
 #include "binlog_func.h"
 #include "binlog_producer.h"
@@ -136,7 +137,7 @@ static void add_to_replication_ptr_array(FDIRSlaveReplicationPtrArray *
     array->replications[array->count++] = replication;
 }
 
-static void remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
+static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
         array, FDIRSlaveReplication *replication)
 {
     int i;
@@ -148,16 +149,17 @@ static void remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
     }
 
     if (i == array->count) {
-        return;
+        return ENOENT;
     }
 
     for (i=i+1; i<array->count; i++) {
         array->replications[i - 1] = array->replications[i];
     }
     array->count--;
+    return 0;
 }
 
-int binlog_replication_add_to_thread(FDIRSlaveReplication *replication)
+int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
     int result;
     struct fast_task_info *task;
@@ -178,6 +180,9 @@ int binlog_replication_add_to_thread(FDIRSlaveReplication *replication)
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
 
+    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICATION;
+    CLUSTER_REPLICA = replication;
+    replication->connection_info.conn.sock = -1;
     replication->task = task;
     server_ctx = (FDIRServerContext *)task->thread_data->arg;
     if ((result=check_alloc_ptr_array(&server_ctx->
@@ -194,6 +199,21 @@ int binlog_replication_add_to_thread(FDIRSlaveReplication *replication)
     add_to_replication_ptr_array(&server_ctx->
             cluster.connectings, replication);
     return 0;
+}
+
+int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
+{
+    int result;
+    FDIRServerContext *server_ctx;
+
+    server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
+    if ((result=remove_from_replication_ptr_array(&server_ctx->
+                cluster.connected, replication)) == 0)
+    {
+        result = binlog_replication_bind_thread(replication);
+    }
+
+    return result;
 }
 
 static inline FDIRSlaveReplication *replication_array_next(
@@ -264,7 +284,7 @@ static int deal_connecting_replication(FDIRSlaveReplication *replication)
         FCAddressInfo *addr;
 
         addr_array = &CLUSTER_GROUP_ADDRESS_ARRAY(replication->slave->server);
-        addr = addr_array->addrs[addr_array->index];
+        addr = addr_array->addrs[addr_array->index++];
         if (addr_array->index >= addr_array->count) {
             addr_array->index = 0;
         }
@@ -310,6 +330,49 @@ static int deal_connecting_replication(FDIRSlaveReplication *replication)
     return result;
 }
 
+static int send_join_slave_package(FDIRSlaveReplication *replication)
+{
+	int result;
+	FDIRProtoHeader *header;
+    FDIRProtoJoinSlaveReq *req;
+	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinSlaveReq)];
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+
+    req = (FDIRProtoJoinSlaveReq *)(out_buff + sizeof(FDIRProtoHeader));
+    int2buff(CLUSTER_ID, req->cluster_id);
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    memcpy(req->key, replication->slave->key, FDIR_REPLICA_KEY_SIZE);
+
+    if ((result=tcpsenddata_nb(replication->connection_info.conn.sock,
+                    out_buff, sizeof(out_buff), SF_G_NETWORK_TIMEOUT)) != 0)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "send data to server %s:%d fail, "
+                "errno: %d, error info: %s", __LINE__,
+                replication->connection_info.conn.ip_addr,
+                replication->connection_info.conn.port,
+                result, STRERROR(result));
+        close(replication->connection_info.conn.sock);
+        replication->connection_info.conn.sock = -1;
+    }
+
+    return result;
+}
+
+static int connect_and_send_join_package(FDIRSlaveReplication *replication)
+{
+    int result;
+    result = deal_connecting_replication(replication);
+    if (result == 0) {
+        result = send_join_slave_package(replication);
+    }
+
+    return result;
+}
+
 static int deal_replication_connectings(FDIRServerContext *server_ctx)
 {
     int result;
@@ -323,18 +386,22 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
 
     array->index = 0;
     while ((replication=replication_array_next(array)) != NULL) {
-        result = deal_connecting_replication(replication);
+        result = connect_and_send_join_package(replication);
         if (result == 0) {
-            remove_from_replication_ptr_array(&server_ctx->
-                    cluster.connectings, replication);
-            add_to_replication_ptr_array(&server_ctx->
-                    cluster.connected, replication);
+            if (remove_from_replication_ptr_array(&server_ctx->
+                    cluster.connectings, replication) == 0)
+            {
+                add_to_replication_ptr_array(&server_ctx->
+                        cluster.connected, replication);
+            }
 
             replication->task->event.fd = replication->
                 connection_info.conn.sock;
+            snprintf(replication->task->client_ip,
+                    sizeof(replication->task->client_ip), "%s",
+                    replication->connection_info.conn.ip_addr);
             if (sf_nio_notify(replication->task, SF_NIO_STAGE_INIT) != 0) {
             }
-            array->index--; //rewind index
         } else if (result != EINPROGRESS) {
             logError("file: "__FILE__", line: %d, "
                     "connect to %s:%d fail, time used: %ds, "
@@ -368,7 +435,7 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
     while ((replication=replication_array_next(array)) != NULL) {
         if (deal_connected_replication(replication) != 0) {
             //TODO
-            array->index--; //rewind index
+            //array->index--; //rewind index
         }
     }
 

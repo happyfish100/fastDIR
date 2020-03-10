@@ -56,9 +56,18 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
 
     task_arg = (FDIRServerTaskArg *)task->arg;
 
-    if (CLUSTER_PEER != NULL) {
-        ct_slave_server_offline(CLUSTER_PEER);
-        CLUSTER_PEER = NULL;
+    if (CLUSTER_TASK_TYPE == FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP) {
+        if (CLUSTER_PEER != NULL) {
+            ct_slave_server_offline(CLUSTER_PEER);
+            CLUSTER_PEER = NULL;
+        }
+        CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
+    } else if (CLUSTER_TASK_TYPE == FDIR_CLUSTER_TASK_TYPE_REPLICATION) {
+        if (CLUSTER_REPLICA != NULL) {
+            binlog_replication_rebind_thread(CLUSTER_REPLICA);
+            CLUSTER_REPLICA = NULL;
+        }
+        CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
     }
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
@@ -180,6 +189,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     }
 
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
+    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
     ct_slave_server_online(peer);
     return 0;
