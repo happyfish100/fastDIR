@@ -29,6 +29,7 @@
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
+#include "server_binlog.h"
 #include "cluster_relationship.h"
 #include "cluster_topology.h"
 #include "cluster_handler.h"
@@ -275,6 +276,163 @@ static int cluster_deal_push_binlog(struct fast_task_info *task)
     return 0;
 }
 
+static inline int cluster_check_replication_task(struct fast_task_info *task)
+{
+    if (CLUSTER_TASK_TYPE != FDIR_CLUSTER_TASK_TYPE_REPLICATION) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid task type: %d != %d", CLUSTER_TASK_TYPE,
+                FDIR_CLUSTER_TASK_TYPE_REPLICATION);
+        return EINVAL;
+    }
+
+    if (CLUSTER_REPLICA == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "cluster replication ptr is null");
+        return EINVAL;
+    }
+    return 0;
+}
+
+static int cluster_deal_join_slave_req(struct fast_task_info *task)
+{
+    int result;
+    int cluster_id;
+    int server_id;
+    FDIRBinlogFilePosition bf_position;
+    FDIRProtoJoinSlaveReq *req;
+    FDIRClusterServerInfo *peer;
+    FDIRClusterServerInfo *master;
+    FDIRClusterServerInfo *next_master;
+    FDIRProtoJoinSlaveResp *resp;
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoJoinSlaveReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoJoinSlaveReq *)REQUEST.body;
+    cluster_id = buff2int(req->cluster_id);
+    server_id = buff2int(req->server_id);
+    if (cluster_id != CLUSTER_ID) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer cluster id: %d != mine: %d",
+                cluster_id, CLUSTER_ID);
+        return EINVAL;
+    }
+
+    peer = fdir_get_server_by_id(server_id);
+    if (peer == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer server id: %d not exist", server_id);
+        return ENOENT;
+    }
+
+    next_master = g_next_master;
+    if (next_master != NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "master selection in progress, the candidate "
+                "master id: %d", next_master->server->id);
+        return EBUSY;
+    }
+
+    master = CLUSTER_MASTER_PTR;
+    if (peer != master) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "master NOT consistent, peer server id: %d, "
+                "local master id: %d", server_id, master != NULL ?
+                master->server->id : 0);
+        return master != NULL ? FDIR_STATUS_MASTER_INCONSISTENT : EFAULT;
+    }
+
+    if (memcmp(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE) != 0) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "check key fail");
+        return EPERM;
+    }
+
+    binlog_get_current_write_position(&bf_position);
+
+    resp = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    long2buff(DATA_CURRENT_VERSION, resp->last_data_version);
+    int2buff(bf_position.index, resp->binlog_pos_hint.index);
+    long2buff(bf_position.offset, resp->binlog_pos_hint.offset);
+
+    TASK_ARG->context.response_done = true;
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
+    RESPONSE.header.body_len = sizeof(FDIRProtoJoinSlaveResp);
+    return 0;
+}
+
+static int cluster_deal_join_slave_resp(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoJoinSlaveResp *req;
+
+    if ((result=cluster_check_replication_task(task)) != 0) {
+        return result;
+    }
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoJoinSlaveResp))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    CLUSTER_REPLICA->slave->last_data_version = buff2long(
+            req->last_data_version);
+    CLUSTER_REPLICA->slave->binlog_pos_hint.index = buff2int(
+            req->binlog_pos_hint.index);
+    CLUSTER_REPLICA->slave->binlog_pos_hint.offset = buff2long(
+            req->binlog_pos_hint.offset);
+    return 0;
+}
+
+static int cluster_deal_slave_ack(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=cluster_check_replication_task(task)) != 0) {
+        return result;
+    }
+
+    if (REQUEST_STATUS != 0) {
+        if (REQUEST.header.body_len > 0) {
+            if (REQUEST.header.body_len >= sizeof(RESPONSE.error.message)) {
+                RESPONSE.error.length = sizeof(RESPONSE.error.message) - 1;
+            } else {
+                RESPONSE.error.length = REQUEST.header.body_len;
+            }
+            memcpy(RESPONSE.error.message, REQUEST.body, RESPONSE.error.length);
+            *(RESPONSE.error.message + RESPONSE.error.length) = '\0';
+        }
+
+        if (REQUEST_STATUS == FDIR_STATUS_MASTER_INCONSISTENT) {
+            //TODO  reselect master
+        }
+
+        return REQUEST_STATUS;
+    }
+
+    if (REQUEST.header.body_len > 0) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "ACK body length: %d != 0",
+                REQUEST.header.body_len);
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 static inline void init_task_context(struct fast_task_info *task)
 {
     TASK_ARG->req_start_time = get_current_time_us();
@@ -285,9 +443,11 @@ static inline void init_task_context(struct fast_task_info *task)
     RESPONSE.error.message[0] = '\0';
     TASK_ARG->context.log_error = true;
     TASK_ARG->context.response_done = false;
+    TASK_ARG->context.need_response = true;
 
     REQUEST.header.cmd = ((FDIRProtoHeader *)task->data)->cmd;
     REQUEST.header.body_len = task->length - sizeof(FDIRProtoHeader);
+    REQUEST.header.status = buff2short(((FDIRProtoHeader *)task->data)->status);
     REQUEST.body = task->data + sizeof(FDIRProtoHeader);
 }
 
@@ -303,6 +463,14 @@ static int deal_task_done(struct fast_task_info *task)
                 __LINE__, task->client_ip, REQUEST.header.cmd,
                 REQUEST.header.body_len,
                 RESPONSE.error.message);
+    }
+
+    if (!TASK_ARG->context.need_response) {
+        if (RESPONSE_STATUS == 0) {
+            task->offset = task->length = 0;
+            return sf_set_read_event(task);
+        }
+        return RESPONSE_STATUS > 0 ? -1 * RESPONSE_STATUS : RESPONSE_STATUS;
     }
 
     proto_header = (FDIRProtoHeader *)task->data;
@@ -386,8 +554,19 @@ int cluster_deal_task(struct fast_task_info *task)
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
                 result = cluster_deal_ping_master(task);
                 break;
+            case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
+                result = cluster_deal_join_slave_req(task);
+                break;
+            case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
+                result = cluster_deal_join_slave_resp(task);
+                TASK_ARG->context.need_response = false;
+                break;
             case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ:
                 result = cluster_deal_push_binlog(task);
+                break;
+            case FDIR_PROTO_ACK:
+                result = cluster_deal_slave_ack(task);
+                TASK_ARG->context.need_response = false;
                 break;
             default:
                 RESPONSE.error.length = sprintf(

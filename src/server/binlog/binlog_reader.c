@@ -77,6 +77,28 @@ static int open_readable_binlog(ServerBinlogReader *reader)
     return 0;
 }
 
+static int do_read_to_buffer(ServerBinlogReader *reader,
+        char *buff, const int size, int *read_bytes)
+{
+    int result;
+
+    *read_bytes = read(reader->fd, buff, size);
+    if (*read_bytes == 0) {
+        return ENOENT;
+    }
+    if (*read_bytes < 0) {
+        *read_bytes = 0;
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "read binlog file: %s, errno: %d, error info: %s",
+                __LINE__, reader->filename, result, STRERROR(result));
+        return result;
+    }
+
+    reader->position.offset += *read_bytes;
+    return 0;
+}
+
 static int do_binlog_read(ServerBinlogReader *reader)
 {
     int remain;
@@ -99,20 +121,12 @@ static int do_binlog_read(ServerBinlogReader *reader)
     if (read_bytes == 0) {
         return ENOSPC;
     }
-
-    read_bytes = read(reader->fd, reader->binlog_buffer.end, read_bytes);
-    if (read_bytes == 0) {
-        return ENOENT;
-    }
-    if (read_bytes < 0) {
-        result = errno != 0 ? errno : EIO;
-        logError("file: "__FILE__", line: %d, "
-                "read binlog file: %s, errno: %d, error info: %s",
-                __LINE__, reader->filename, result, STRERROR(result));
+    if ((result=do_read_to_buffer(reader, reader->binlog_buffer.end,
+                    read_bytes, &read_bytes)) != 0)
+    {
         return result;
     }
 
-    reader->position.offset += read_bytes;
     reader->binlog_buffer.end += read_bytes;
     return 0;
 }
@@ -136,6 +150,66 @@ int binlog_reader_read(ServerBinlogReader *reader)
     }
 
     return result;
+}
+
+int binlog_read_to_buffer(ServerBinlogReader *reader,
+        char *buff, const int size, int *read_bytes)
+{
+    int result;
+
+    result = do_read_to_buffer(reader, buff, size, read_bytes);
+    if (result == 0 || result != ENOENT) {
+        return result;
+    }
+
+    if (reader->position.index < binlog_get_current_write_index()) {
+        reader->position.offset = 0;
+        reader->position.index++;
+        if ((result=open_readable_binlog(reader)) != 0) {
+            return result;
+        }
+
+        result = do_read_to_buffer(reader, buff, size, read_bytes);
+    }
+
+    return result;
+}
+
+int binlog_reader_integral_read(ServerBinlogReader *reader,
+        char *buff, const int size, int *read_bytes)
+{
+    int result;
+    char *rec_end;
+    int remain_len;
+
+    if ((result=binlog_read_to_buffer(reader, buff, size,
+                    read_bytes)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=binlog_detect_last_record_end(buff, *read_bytes,
+                    (const char **)&rec_end)) != 0)
+    {
+        return result == ENOENT ? EFAULT : result;
+    }
+
+    remain_len = (buff + *read_bytes) - rec_end;
+    if (remain_len > 0) {
+        *read_bytes -= remain_len;
+        reader->position.offset -= remain_len;
+        if (lseek(reader->fd, reader->position.offset, SEEK_SET) < 0) {
+            result = errno != 0 ? errno : EACCES;
+            logError("file: "__FILE__", line: %d, "
+                    "lseek file \"%s\" fail,  offset: %"PRId64", "
+                    "errno: %d, error info: %s", __LINE__,
+                    reader->filename, reader->position.offset,
+                    result, STRERROR(result));
+            return result;
+        }
+    }
+
+    return 0;
 }
 
 int binlog_reader_next_record(ServerBinlogReader *reader,
@@ -345,7 +419,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 }
 
 int binlog_reader_init(ServerBinlogReader *reader,
-        const ServerBinlogFilePosition *hint_pos,
+        const FDIRBinlogFilePosition *hint_pos,
         const int64_t last_data_version)
 {
     int result;

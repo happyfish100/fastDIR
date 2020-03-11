@@ -23,6 +23,7 @@
 #define BINLOG_RECORD_START_TAG_STR  "<rec"
 #define BINLOG_RECORD_START_TAG_LEN (sizeof(BINLOG_RECORD_START_TAG_STR) - 1)
 
+#define BINLOG_RECORD_END_TAG_CHAR '\n'
 #define BINLOG_RECORD_END_TAG_STR   "/rec>\n"
 #define BINLOG_RECORD_END_TAG_LEN   (sizeof(BINLOG_RECORD_END_TAG_STR) - 1)
 
@@ -806,4 +807,27 @@ int binlog_detect_record_reverse(const char *str, const int len,
 
     *data_version = record.data_version;
     return 0;
+}
+
+int binlog_detect_last_record_end(const char *str, const int len,
+        const char **rec_end)
+{
+    int l;
+
+    l = len;
+    while (l > 0 && (*rec_end=fc_memrchr(str,
+                    BINLOG_RECORD_END_TAG_CHAR, l)) != NULL)
+    {
+        *rec_end += 1;
+        l = *rec_end - str;
+        if ((l >= BINLOG_RECORD_END_TAG_LEN) && memcmp(
+                    *rec_end - BINLOG_RECORD_END_TAG_LEN,
+                    BINLOG_RECORD_END_TAG_STR,
+                    BINLOG_RECORD_END_TAG_LEN) == 0)
+        {
+            return 0;
+        }
+    }
+
+    return ENOENT;
 }

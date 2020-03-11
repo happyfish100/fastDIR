@@ -136,9 +136,6 @@ int main(int argc, char *argv[])
     gofailif(r, "server service init error");
     sf_set_remove_from_ready_list(false);
 
-    //TODO remove me
-    binlog_consumer_replication_start();
-
     setup_mblock_stat_task();
 
     sf_accept_loop_ex(&CLUSTER_SF_CTX, false);

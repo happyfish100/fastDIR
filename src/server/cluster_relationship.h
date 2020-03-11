@@ -11,6 +11,8 @@
 extern "C" {
 #endif
 
+extern FDIRClusterServerInfo *g_next_master;
+
 int cluster_relationship_init();
 int cluster_relationship_destroy();
 

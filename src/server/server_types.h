@@ -28,6 +28,7 @@
 #define REQUEST           TASK_ARG->context.request
 #define RESPONSE          TASK_ARG->context.response
 #define RESPONSE_STATUS   RESPONSE.header.status
+#define REQUEST_STATUS    REQUEST.header.status
 #define RECORD            TASK_ARG->context.service.record
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
@@ -57,10 +58,17 @@ typedef struct fdir_server_dentry_array {
     struct fdir_server_dentry **entries;
 } FDIRServerDentryArray;
 
+typedef struct fdir_binlog_file_position {
+    int index;      //current binlog file
+    int64_t offset; //current file offset
+} FDIRBinlogFilePosition;
+
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
     char status;                       //the slave status
+    FDIRBinlogFilePosition binlog_pos_hint;
+    int64_t last_data_version;
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {
@@ -82,7 +90,9 @@ typedef struct fdir_slave_replication {
     int index;  //for next links
     struct {
         int start_time;
+        int next_connect_time;
         int last_errno;
+        int fail_count;
         ConnectionInfo conn;
     } connection_info;
 
@@ -96,7 +106,6 @@ typedef struct fdir_slave_replication_array {
 
 typedef struct fdir_slave_replication_ptr_array {
     int count;
-    int index;
     FDIRSlaveReplication **replications;
 } FDIRSlaveReplicationPtrArray;
 
@@ -112,6 +121,7 @@ typedef struct server_task_arg {
         int (*deal_func)(struct fast_task_info *task);
         bool response_done;
         bool log_error;
+        bool need_response;
 
         union {
             struct {

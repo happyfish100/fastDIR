@@ -81,35 +81,6 @@ static int deal_binlog_records(BinlogSyncContext *sync_context,
 
     return binlog_sync_to_server(sync_context);
 }
-
-void *binlog_replication_func(void *arg)
-{
-    struct common_blocked_queue *queue;
-    struct common_blocked_node *node;
-    BinlogSyncContext sync_context;
-
-    if (binlog_buffer_init(&sync_context.binlog_buffer) != 0) {
-        logCrit("file: "__FILE__", line: %d, "
-                "binlog_buffer_init fail, program exit!", __LINE__);
-
-        SF_G_CONTINUE_FLAG = false;
-        return NULL;
-    }
-
-    sync_context.peer_server = ((ServerBinlogConsumerContext *)arg)->server;
-    queue = &((ServerBinlogConsumerContext *)arg)->queue;
-    while (SF_G_CONTINUE_FLAG) {
-        node = common_blocked_queue_pop_all_nodes(queue);
-        if (node == NULL) {
-            continue;
-        }
-
-        deal_binlog_records(&sync_context, node);
-        common_blocked_queue_free_all_nodes(queue, node);
-    }
-
-    return NULL;
-}
 */
 
 static int check_alloc_ptr_array(FDIRSlaveReplicationPtrArray *array)
@@ -216,16 +187,6 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     return result;
 }
 
-static inline FDIRSlaveReplication *replication_array_next(
-        FDIRSlaveReplicationPtrArray *array)
-{
-    if (array->index >= array->count) {
-        return NULL;
-    }
-
-    return array->replications[array->index++];
-}
-
 static int async_connect_server(ConnectionInfo *conn)
 {
     int result;
@@ -272,7 +233,35 @@ static int async_connect_server(ConnectionInfo *conn)
     return 0;
 }
 
-static int deal_connecting_replication(FDIRSlaveReplication *replication)
+static void calc_next_connect_time(FDIRSlaveReplication *replication)
+{
+    int interval;
+
+    switch (replication->connection_info.fail_count) {
+        case 0:
+            interval = 1;
+            break;
+        case 1:
+            interval = 2;
+            break;
+        case 2:
+            interval = 4;
+            break;
+        case 3:
+            interval = 8;
+            break;
+        case 4:
+            interval = 16;
+            break;
+        default:
+            interval = 32;
+            break;
+    }
+
+    replication->connection_info.next_connect_time = g_current_time + interval;
+}
+
+static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
 {
     int result;
     int polled;
@@ -283,6 +272,10 @@ static int deal_connecting_replication(FDIRSlaveReplication *replication)
         FCAddressPtrArray *addr_array;
         FCAddressInfo *addr;
 
+        if (replication->connection_info.next_connect_time > g_current_time) {
+            return EAGAIN;
+        }
+
         addr_array = &CLUSTER_GROUP_ADDRESS_ARRAY(replication->slave->server);
         addr = addr_array->addrs[addr_array->index++];
         if (addr_array->index >= addr_array->count) {
@@ -291,6 +284,7 @@ static int deal_connecting_replication(FDIRSlaveReplication *replication)
 
         replication->connection_info.start_time = g_current_time;
         replication->connection_info.conn = addr->conn;
+        calc_next_connect_time(replication);
         if ((result=async_connect_server(&replication->
                         connection_info.conn)) == 0)
         {
@@ -362,10 +356,42 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
     return result;
 }
 
-static int connect_and_send_join_package(FDIRSlaveReplication *replication)
+#define DECREASE_TASK_WAITING_RPC_COUNT(rb) \
+    do { \
+        if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)rb->task->arg)-> \
+                    context.service.waiting_rpc_count, 1) == 0) \
+        { \
+            sf_nio_notify(rb->task, SF_NIO_STAGE_CONTINUE);  \
+        } \
+    } while (0)
+
+static void replication_queue_discard(FDIRSlaveReplication *replication)
+{
+    ServerBinlogRecordBuffer *rb;
+    ServerBinlogRecordBuffer *current;
+
+    pthread_mutex_lock(&replication->queue.lock);
+    current = replication->queue.head;
+    if (replication->queue.head != NULL) {
+        replication->queue.head = replication->queue.tail = NULL;
+    }
+    pthread_mutex_unlock(&replication->queue.lock);
+
+    while (current != NULL) {
+        rb = current;
+        current = current->nexts[replication->index];
+
+        DECREASE_TASK_WAITING_RPC_COUNT(rb);
+        server_binlog_release_rbuffer(rb);
+    }
+}
+
+static int deal_connecting_replication(FDIRSlaveReplication *replication)
 {
     int result;
-    result = deal_connecting_replication(replication);
+
+    replication_queue_discard(replication);
+    result = check_and_make_replica_connection(replication);
     if (result == 0) {
         result = send_join_slave_package(replication);
     }
@@ -375,42 +401,136 @@ static int connect_and_send_join_package(FDIRSlaveReplication *replication)
 
 static int deal_replication_connectings(FDIRServerContext *server_ctx)
 {
+#define SUCCESS_ARRAY_ELEMENT_MAX  8
+
     int result;
-    FDIRSlaveReplicationPtrArray *array;
+    int i;
+    char prompt[128];
+    struct {
+        int count;
+        FDIRSlaveReplication *replications[SUCCESS_ARRAY_ELEMENT_MAX];
+    } success_array;
     FDIRSlaveReplication *replication;
 
-    array = &server_ctx->cluster.connectings;
-    if (array->count == 0) {
+    if (server_ctx->cluster.connectings.count == 0) {
         return 0;
     }
 
-    array->index = 0;
-    while ((replication=replication_array_next(array)) != NULL) {
-        result = connect_and_send_join_package(replication);
+    success_array.count = 0;
+    for (i=0; i<server_ctx->cluster.connectings.count; i++) {
+        replication = server_ctx->cluster.connectings.replications[i];
+        result = deal_connecting_replication(replication);
         if (result == 0) {
-            if (remove_from_replication_ptr_array(&server_ctx->
-                    cluster.connectings, replication) == 0)
+            if (success_array.count < SUCCESS_ARRAY_ELEMENT_MAX) {
+                success_array.replications[success_array.count++] = replication;
+            }
+        } else if (!(result == EINPROGRESS || result == EAGAIN)) {
+            if (result != replication->connection_info.last_errno
+                    || replication->connection_info.fail_count % 1 == 0)
             {
-                add_to_replication_ptr_array(&server_ctx->
-                        cluster.connected, replication);
+                replication->connection_info.last_errno = result;
+                logError("file: "__FILE__", line: %d, "
+                        "%dth connect to %s:%d fail, time used: %ds, "
+                        "errno: %d, error info: %s", __LINE__,
+                        replication->connection_info.fail_count + 1,
+                        replication->connection_info.conn.ip_addr,
+                        replication->connection_info.conn.port, (int)
+                        (g_current_time - replication->connection_info.start_time),
+                        result, STRERROR(result));
             }
-
-            replication->task->event.fd = replication->
-                connection_info.conn.sock;
-            snprintf(replication->task->client_ip,
-                    sizeof(replication->task->client_ip), "%s",
-                    replication->connection_info.conn.ip_addr);
-            if (sf_nio_notify(replication->task, SF_NIO_STAGE_INIT) != 0) {
-            }
-        } else if (result != EINPROGRESS) {
-            logError("file: "__FILE__", line: %d, "
-                    "connect to %s:%d fail, time used: %ds, "
-                    "errno: %d, error info: %s", __LINE__,
-                    replication->connection_info.conn.ip_addr,
-                    replication->connection_info.conn.port, (int)
-                    (g_current_time - replication->connection_info.start_time),
-                    result, STRERROR(result));
+            replication->connection_info.fail_count++;
         }
+    }
+
+    for (i=0; i<success_array.count; i++) {
+        replication = success_array.replications[i];
+
+        if (replication->connection_info.fail_count > 0) {
+            sprintf(prompt, " after %d retries",
+                    replication->connection_info.fail_count);
+        } else {
+            *prompt = '\0';
+        }
+        logInfo("file: "__FILE__", line: %d, "
+                "connect to slave %s:%d successfully%s.", __LINE__,
+                replication->connection_info.conn.ip_addr,
+                replication->connection_info.conn.port, prompt);
+
+        if (remove_from_replication_ptr_array(&server_ctx->
+                    cluster.connectings, replication) == 0)
+        {
+            add_to_replication_ptr_array(&server_ctx->
+                    cluster.connected, replication);
+        }
+
+        replication->connection_info.fail_count = 0;
+        replication->task->event.fd = replication->
+            connection_info.conn.sock;
+        snprintf(replication->task->client_ip,
+                sizeof(replication->task->client_ip), "%s",
+                replication->connection_info.conn.ip_addr);
+        sf_nio_notify(replication->task, SF_NIO_STAGE_INIT);
+    }
+    return 0;
+}
+
+static void repush_to_replication_queue(FDIRSlaveReplication *replication,
+        ServerBinlogRecordBuffer *head, ServerBinlogRecordBuffer *tail)
+{
+    pthread_mutex_lock(&replication->queue.lock);
+    tail->nexts[replication->index] = replication->queue.head;
+    replication->queue.head = head;
+    if (replication->queue.tail == NULL) {
+        replication->queue.tail = tail;
+    }
+    pthread_mutex_unlock(&replication->queue.lock);
+}
+
+static int sync_binlog_record_to_slave(FDIRSlaveReplication *replication)
+{
+    ServerBinlogRecordBuffer *rb;
+    ServerBinlogRecordBuffer *head;
+    ServerBinlogRecordBuffer *tail;
+
+    if (!(replication->task->offset == 0 && replication->task->length == 0)) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&replication->queue.lock);
+    head = replication->queue.head;
+    tail = replication->queue.tail;
+    if (replication->queue.head != NULL) {
+        replication->queue.head = replication->queue.tail = NULL;
+    }
+    pthread_mutex_unlock(&replication->queue.lock);
+
+    if (head == NULL) {
+        return 0;
+    }
+
+    replication->task->length = sizeof(FDIRProtoHeader);
+    while (head != NULL) {
+        rb = head;
+
+        if (replication->task->length + rb->buffer.length >
+                replication->task->size)
+        {
+            break;
+        }
+
+        memcpy(replication->task->data + replication->task->length,
+                rb->buffer.data, rb->buffer.length);
+        replication->task->length += rb->buffer.length;
+
+        head = head->nexts[replication->index];
+        //DECREASE_TASK_WAITING_RPC_COUNT(rb);
+        server_binlog_release_rbuffer(rb);
+    }
+
+    //TODO send data
+
+    if (head != NULL) {
+        repush_to_replication_queue(replication, head, tail);
     }
 
     return 0;
@@ -418,24 +538,26 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
 
 static int deal_connected_replication(FDIRSlaveReplication *replication)
 {
-    return 0;
+    if (0) {
+        return sync_binlog_record_to_slave(replication);
+    } else {
+        replication_queue_discard(replication);
+        return 0;
+    }
 }
 
 static int deal_replication_connected(FDIRServerContext *server_ctx)
 {
-    FDIRSlaveReplicationPtrArray *array;
     FDIRSlaveReplication *replication;
+    int i;
 
-    array = &server_ctx->cluster.connected;
-    if (array->count == 0) {
+    if (server_ctx->cluster.connected.count == 0) {
         return 0;
     }
 
-    array->index = 0;
-    while ((replication=replication_array_next(array)) != NULL) {
+    for (i=0; i<server_ctx->cluster.connected.count; i++) {
+        replication = server_ctx->cluster.connected.replications[i];
         if (deal_connected_replication(replication) != 0) {
-            //TODO
-            //array->index--; //rewind index
         }
     }
 
@@ -445,6 +567,12 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
 int binlog_replication_process(FDIRServerContext *server_ctx)
 {
     int result;
+    static int count = 0;
+
+    if (++count % 100 == 0) {
+        logInfo("file: "__FILE__", line: %d, count: %d, g_current_time: %d",
+                __LINE__, count, (int)g_current_time);
+    }
 
     if ((result=deal_replication_connectings(server_ctx)) != 0) {
         return result;

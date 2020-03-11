@@ -8,6 +8,8 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fdir_types.h"
 
+#define FDIR_STATUS_MASTER_INCONSISTENT     9999
+
 #define FDIR_PROTO_ACK                      6
 
 #define FDIR_PROTO_ACTIVE_TEST_REQ         35
@@ -149,6 +151,10 @@ typedef struct fdir_proto_join_slave_req {
 } FDIRProtoJoinSlaveReq;
 
 typedef struct fdir_proto_join_slave_resp {
+    struct {
+        char index[4];   //binlog file index
+        char offset[8];  //binlog file offset
+    } binlog_pos_hint;
     char last_data_version[8];   //the slave's last data version
 } FDIRProtoJoinSlaveResp;
 

@@ -164,14 +164,15 @@ static int open_next_binlog()
 static int binlog_write_to_file()
 {
     int result;
+    int len;
 
-    if (writer_context.binlog_buffer.length == 0) {
+    len = BINLOG_BUFFER_LENGTH(writer_context.binlog_buffer);
+    if (len == 0) {
         return 0;
     }
 
-    if (fc_safe_write(writer_context.fd, writer_context.binlog_buffer.buff,
-                writer_context.binlog_buffer.length) !=
-            writer_context.binlog_buffer.length)
+    if (fc_safe_write(writer_context.fd, writer_context.
+                binlog_buffer.buff, len) != len)
     {
         logError("file: "__FILE__", line: %d, "
                 "write to binlog file \"%s\" fail, fd: %d, "
@@ -187,7 +188,7 @@ static int binlog_write_to_file()
                 errno, STRERROR(errno));
         result = errno != 0 ? errno : EIO;
     } else {
-        writer_context.file_size += writer_context.binlog_buffer.length;
+        writer_context.file_size += len;
         if (writer_context.file_size >= BINLOG_FILE_MAX_SIZE) {
             writer_context.binlog_index++;  //rotate
             if ((result=write_to_binlog_index_file()) == 0) {
@@ -204,7 +205,7 @@ static int binlog_write_to_file()
         }
     }
 
-    writer_context.binlog_buffer.length = 0;  //reset cache buff
+    writer_context.binlog_buffer.end = writer_context.binlog_buffer.buff;
     return result;
 }
 
@@ -235,21 +236,26 @@ int binlog_get_current_write_index()
     return writer_context.binlog_index;
 }
 
+void binlog_get_current_write_position(FDIRBinlogFilePosition *position)
+{
+    position->index = writer_context.binlog_index;
+    position->offset = writer_context.file_size;
+}
+
 static inline int deal_binlog_one_record(ServerBinlogRecordBuffer *rb)
 {
     int result;
-    if (writer_context.binlog_buffer.size - writer_context.binlog_buffer.length
-            < rb->buffer.length)
+    if (writer_context.binlog_buffer.size - BINLOG_BUFFER_LENGTH(
+                writer_context.binlog_buffer) < rb->buffer.length)
     {
         if ((result=binlog_write_to_file()) != 0) {
             return result;
         }
     }
 
-    memcpy(writer_context.binlog_buffer.buff +
-            writer_context.binlog_buffer.length,
+    memcpy(writer_context.binlog_buffer.end,
             rb->buffer.data, rb->buffer.length);
-    writer_context.binlog_buffer.length += rb->buffer.length;
+    writer_context.binlog_buffer.end += rb->buffer.length;
     return 0;
 }
 

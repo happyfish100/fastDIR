@@ -9,14 +9,9 @@
 #define BINLOG_FILE_EXT_FMT    ".%05d"
 
 typedef struct {
-    int index;      //current binlog file
-    int64_t offset; //current file offset
-} ServerBinlogFilePosition;
-
-typedef struct {
     char filename[PATH_MAX];
     int fd;
-    ServerBinlogFilePosition position;
+    FDIRBinlogFilePosition position;
     ServerBinlogBuffer binlog_buffer;
 } ServerBinlogReader;
 
@@ -25,10 +20,13 @@ extern "C" {
 #endif
 
 int binlog_reader_init(ServerBinlogReader *reader,
-        const ServerBinlogFilePosition *hint_pos,
+        const FDIRBinlogFilePosition *hint_pos,
         const int64_t last_data_version);
 
 int binlog_reader_read(ServerBinlogReader *reader);
+
+int binlog_reader_integral_read(ServerBinlogReader *reader,
+        char *buff, const int size, int *read_bytes);
 
 int binlog_reader_next_record(ServerBinlogReader *reader,
         FDIRBinlogRecord *record);

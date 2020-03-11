@@ -30,6 +30,5 @@ int binlog_buffer_init(ServerBinlogBuffer *buffer)
 
     buffer->current = buffer->end = buffer->buff;
     buffer->size = BINLOG_BUFFER_SIZE;
-    buffer->length = 0;
     return 0;
 }

@@ -29,6 +29,9 @@
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
+#define BINLOG_BUFFER_LENGTH(buffer) ((buffer).end - (buffer).buff)
+#define BINLOG_BUFFER_REMAIN(buffer) ((buffer).end - (buffer).current)
+
 typedef void (*data_thread_notify_func)(const int result, void *args);
 
 typedef struct fdir_binlog_record {
@@ -71,7 +74,6 @@ typedef struct server_binlog_buffer {
     char *buff;    //the buffer pointer
     char *current; //for the consumer
     char *end;     //data end ptr
-    int length;    //the content length
     int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;
 

@@ -18,10 +18,11 @@
 #include "sf/sf_global.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
+#include "server_binlog.h"
 #include "cluster_topology.h"
 #include "cluster_relationship.h"
 
-static FDIRClusterServerInfo *g_next_master = NULL;
+FDIRClusterServerInfo *g_next_master = NULL;
 
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
@@ -357,6 +358,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     if (master_self) {
         ct_reset_slave_arrays();
         MYSELF_IS_MASTER = true;
+        binlog_consumer_replication_start();
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
