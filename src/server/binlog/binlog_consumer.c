@@ -78,38 +78,17 @@ static int init_binlog_consumer_array()
     return 0;
 }
 
-static int binlog_write_thread_start()
-{
-    int result;
-    pthread_t tid;
-    pthread_attr_t thread_attr;
-
-    if ((result=init_pthread_attr(&thread_attr, SF_G_THREAD_STACK_SIZE)) != 0) {
-        logError("file: "__FILE__", line: %d, "
-                "init_pthread_attr fail, program exit!", __LINE__);
-        return result;
-    }
-    if ((result=pthread_create(&tid, &thread_attr,
-                    binlog_write_thread_func, NULL)) != 0)
-    {
-        logError("file: "__FILE__", line: %d, "
-                "create thread failed, errno: %d, error info: %s",
-                __LINE__, result, STRERROR(result));
-        return result;
-    }
-    pthread_attr_destroy(&thread_attr);
-    return 0;
-}
-
 int binlog_consumer_init()
 {
     int result;
+    pthread_t tid;
 
     if ((result=binlog_write_thread_init()) != 0) {
         return result;
     }
 
-    return binlog_write_thread_start();
+    return fc_create_thread(&tid, binlog_write_thread_func, NULL,
+            SF_G_THREAD_STACK_SIZE);
 }
 
 int binlog_consumer_replication_start()

@@ -159,45 +159,19 @@ static int init_data_thread_array()
     return 0;
 }
 
-static int data_thread_start()
-{
-    int result;
-    pthread_t tid;
-    pthread_attr_t thread_attr;
-    FDIRDataThreadContext *context;
-    FDIRDataThreadContext *end;
-
-    if ((result=init_pthread_attr(&thread_attr, SF_G_THREAD_STACK_SIZE)) != 0) {
-        logError("file: "__FILE__", line: %d, "
-            "init_pthread_attr fail, program exit!", __LINE__);
-        return result;
-    }
-
-    end = g_data_thread_array.contexts + g_data_thread_array.count;
-    for (context=g_data_thread_array.contexts; context<end; context++) {
-        if ((result=pthread_create(&tid, &thread_attr, data_thread_func,
-                        context)) != 0)
-        {
-            logError("file: "__FILE__", line: %d, "
-                    "create thread failed, errno: %d, error info: %s",
-                    __LINE__, result, STRERROR(result));
-            return result;
-        }
-    }
-
-    pthread_attr_destroy(&thread_attr);
-    return 0;
-}
-
 int data_thread_init()
 {
     int result;
+    int count;
 
     if ((result=init_data_thread_array()) != 0) {
         return result;
     }
 
-    return data_thread_start();
+    count = g_data_thread_array.count;
+    return create_work_threads_ex(&count, data_thread_func,
+            g_data_thread_array.contexts, sizeof(FDIRDataThreadContext),
+            NULL, SF_G_THREAD_STACK_SIZE);
 }
 
 void data_thread_destroy()

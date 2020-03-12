@@ -615,27 +615,10 @@ static void *cluster_thread_entrance(void* arg)
 
 int cluster_relationship_init()
 {
-	int result;
 	pthread_t tid;
-	pthread_attr_t thread_attr;
 
-	if ((result=init_pthread_attr(&thread_attr, SF_G_THREAD_STACK_SIZE)) != 0) {
-		logError("file: "__FILE__", line: %d, "
-			"init_pthread_attr fail, program exit!", __LINE__);
-		return result;
-	}
-
-	if ((result=pthread_create(&tid, &thread_attr,
-			cluster_thread_entrance, NULL)) != 0)
-	{
-		logError("file: "__FILE__", line: %d, "
-			"create thread failed, errno: %d, error info: %s",
-			__LINE__, result, STRERROR(result));
-		return result;
-	}
-
-	pthread_attr_destroy(&thread_attr);
-	return 0;
+	return fc_create_thread(&tid, cluster_thread_entrance, NULL,
+            SF_G_THREAD_STACK_SIZE);
 }
 
 int cluster_relationship_destroy()
