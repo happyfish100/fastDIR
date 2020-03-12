@@ -23,6 +23,12 @@
 #define FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP  1
 #define FDIR_CLUSTER_TASK_TYPE_REPLICATION   2
 
+#define FDIR_REPLICATION_STAGE_NONE               0
+#define FDIR_REPLICATION_STAGE_CONNECTING         1
+#define FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP  2
+#define FDIR_REPLICATION_STAGE_SYNC_FROM_DISK     3
+#define FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE    4
+
 #define TASK_STATUS_CONTINUE   12345
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
@@ -67,8 +73,8 @@ typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
     char status;                       //the slave status
-    FDIRBinlogFilePosition binlog_pos_hint;
-    int64_t last_data_version;
+    FDIRBinlogFilePosition binlog_pos_hint;  //for replication
+    int64_t last_data_version;  //for replication
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {
@@ -84,9 +90,20 @@ typedef struct fdir_record_buffer_queue {
     pthread_mutex_t lock;
 } FDIRRecordBufferQueue; 
 
+struct binlog_read_thread_context;
+typedef struct fdir_replication_context {
+    FDIRRecordBufferQueue queue;
+    struct binlog_read_thread_context *reader_ctx;
+    struct {
+        int64_t by_queue;
+        int64_t by_replica;
+    } last_data_versions;
+} FDIRReplicationContext;
+
 typedef struct fdir_slave_replication {
     struct fast_task_info *task;
     FDIRClusterServerInfo *slave;
+    int stage;
     int index;  //for next links
     struct {
         int start_time;
@@ -96,7 +113,7 @@ typedef struct fdir_slave_replication {
         ConnectionInfo conn;
     } connection_info;
 
-    FDIRRecordBufferQueue queue;
+    FDIRReplicationContext context;
 } FDIRSlaveReplication;
 
 typedef struct fdir_slave_replication_array {

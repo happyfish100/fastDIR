@@ -273,6 +273,13 @@ static void record_deal_done_notify(const int result, void *args)
 
 static int cluster_deal_push_binlog(struct fast_task_info *task)
 {
+    int result;
+
+    if ((result=server_check_min_body_length(task, 1)) != 0) {
+        return result;
+    }
+
+    logInfo("push_binlog body length: %d", REQUEST.header.body_len);
     return 0;
 }
 
@@ -606,6 +613,10 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
 int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
+
+    if (!MYSELF_IS_MASTER) {
+        return 0;
+    }
  
     server_ctx = (FDIRServerContext *)thread_data->arg;
     return binlog_replication_process(server_ctx);

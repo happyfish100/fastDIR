@@ -10,12 +10,14 @@
 
 typedef struct binlog_read_thread_result {
     int err_no;
+    int64_t last_data_version;
     BufferInfo buffer;
 } BinlogReadThreadResult;
 
 typedef struct binlog_read_thread_context {
-    ServerBinlogReader *reader;
+    ServerBinlogReader reader;
     volatile bool continue_flag;
+    bool running;
     pthread_t tid;
     BinlogReadThreadResult results[BINLOG_READ_THREAD_BUFFER_COUNT];
     struct {
@@ -29,12 +31,13 @@ extern "C" {
 #endif
 
 int binlog_read_thread_init(BinlogReadThreadContext *ctx,
-        ServerBinlogReader *reader, const int buffer_size);
+        const FDIRBinlogFilePosition *hint_pos, const int64_t
+        last_data_version, const int buffer_size);
 
 static inline int binlog_read_thread_return_result_buffer(
-        BinlogReadThreadContext *ctx, BinlogReadThreadResult *result)
+        BinlogReadThreadContext *ctx, BinlogReadThreadResult *r)
 {
-    return common_blocked_queue_push(&ctx->queues.waiting, result);
+    return common_blocked_queue_push(&ctx->queues.waiting, r);
 }
 
 static inline BinlogReadThreadResult *binlog_read_thread_fetch_result_ex(

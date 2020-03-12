@@ -65,7 +65,7 @@ static int init_binlog_consumer_array()
         replication->index = replication - slave_replication_array.replications;
         replication->slave = server++;
         replication->connection_info.conn.sock = -1;
-        if ((result=init_pthread_lock(&replication->queue.lock)) != 0) {
+        if ((result=init_pthread_lock(&replication->context.queue.lock)) != 0) {
             logError("file: "__FILE__", line: %d, "
                     "init_pthread_lock fail, errno: %d, error info: %s",
                     __LINE__, result, STRERROR(result));
@@ -125,7 +125,7 @@ void binlog_consumer_destroy()
     for (replication=slave_replication_array.replications; replication<end;
             replication++)
     {
-        pthread_mutex_destroy(&replication->queue.lock);
+        pthread_mutex_destroy(&replication->context.queue.lock);
         //TODO remove from nio task
     }
     free(slave_replication_array.replications);
@@ -154,17 +154,17 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     bool notify;
 
     rbuffer->nexts[replication->index] = NULL;
-    pthread_mutex_lock(&replication->queue.lock);
-    if (replication->queue.tail == NULL) {
-        replication->queue.head = rbuffer;
+    pthread_mutex_lock(&replication->context.queue.lock);
+    if (replication->context.queue.tail == NULL) {
+        replication->context.queue.head = rbuffer;
         notify = true;
     } else {
-        replication->queue.tail->nexts[replication->index] = rbuffer;
+        replication->context.queue.tail->nexts[replication->index] = rbuffer;
         notify = false;
     }
 
-    replication->queue.tail = rbuffer;
-    pthread_mutex_unlock(&replication->queue.lock);
+    replication->context.queue.tail = rbuffer;
+    pthread_mutex_unlock(&replication->context.queue.lock);
 
     if (notify) {
         iovent_notify_thread(replication->task->thread_data);

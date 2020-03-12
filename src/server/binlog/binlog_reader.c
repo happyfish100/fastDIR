@@ -175,12 +175,13 @@ int binlog_read_to_buffer(ServerBinlogReader *reader,
     return result;
 }
 
-int binlog_reader_integral_read(ServerBinlogReader *reader,
-        char *buff, const int size, int *read_bytes)
+int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
+        const int size, int *read_bytes, int64_t *data_version)
 {
     int result;
-    char *rec_end;
     int remain_len;
+    char *rec_end;
+    char error_info[FDIR_ERROR_INFO_SIZE];
 
     if ((result=binlog_read_to_buffer(reader, buff, size,
                     read_bytes)) != 0)
@@ -188,8 +189,8 @@ int binlog_reader_integral_read(ServerBinlogReader *reader,
         return result;
     }
 
-    if ((result=binlog_detect_last_record_end(buff, *read_bytes,
-                    (const char **)&rec_end)) != 0)
+    if ((result=binlog_detect_record_reverse(buff, *read_bytes,
+                    data_version, (const char **)&rec_end, error_info)) != 0)
     {
         return result == ENOENT ? EFAULT : result;
     }
@@ -318,7 +319,6 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
 {
     int64_t min_data_version;
     int64_t max_data_version;
-    int64_t offset;
     int dirction;
     int binlog_write_index;
     int result;
@@ -334,7 +334,7 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
         }
 
         if ((result=binlog_get_last_record_version(reader->position.index,
-                        &max_data_version, &offset)) != 0)
+                        &max_data_version)) != 0)
         {
             return result;
         }
@@ -439,6 +439,16 @@ int binlog_reader_init(ServerBinlogReader *reader,
     return binlog_reader_detect_open(reader, last_data_version);
 }
 
+void binlog_reader_destroy(ServerBinlogReader *reader)
+{
+    if (reader->fd >= 0) {
+        close(reader->fd);
+        reader->fd = -1;
+    }
+
+    binlog_buffer_destroy(&reader->binlog_buffer);
+}
+
 int binlog_get_first_record_version(const int file_index,
         int64_t *data_version)
 {
@@ -499,13 +509,13 @@ int binlog_get_first_record_version(const int file_index,
 }
 
 int binlog_get_last_record_version(const int file_index,
-        int64_t *data_version, int64_t *offset)
+        int64_t *data_version)
 {
     char filename[PATH_MAX];
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
     char error_info[FDIR_ERROR_INFO_SIZE];
     int result;
-    int buff_off;
+    int offset;
     int64_t file_size = 0;
     int64_t bytes;
 
@@ -527,15 +537,15 @@ int binlog_get_last_record_version(const int file_index,
     }
 
     bytes = file_size < sizeof(buff) - 1 ? file_size : sizeof(buff) - 1;
-    *offset = file_size - bytes;
+    offset = file_size - bytes;
     bytes += 1;   //for last \0
-    if ((result=getFileContentEx(filename, buff, *offset, &bytes)) != 0) {
+    if ((result=getFileContentEx(filename, buff, offset, &bytes)) != 0) {
         return result;
     }
 
     *error_info = '\0';
     if ((result=binlog_detect_record_reverse(buff, bytes,
-                    data_version, &buff_off, error_info)) != 0)
+                    data_version, NULL, error_info)) != 0)
     {
         if (*error_info != '\0') {
             logError("file: "__FILE__", line: %d, "
@@ -550,27 +560,25 @@ int binlog_get_last_record_version(const int file_index,
         }
     }
 
-    *offset = file_size - bytes + buff_off;
     return result;
 }
 
-int binlog_get_max_record_version(int64_t *data_version, int64_t *offset)
+int binlog_get_max_record_version(int64_t *data_version)
 {
     int file_index;
     int result;
 
     file_index = binlog_get_current_write_index();
-    if ((result=binlog_get_last_record_version(file_index, data_version,
-                    offset)) == ENOENT)
+    if ((result=binlog_get_last_record_version(file_index,
+                    data_version)) == ENOENT)
     {
         if (file_index == 0) {
             *data_version = 0;
-            *offset = 0;
             return 0;
         }
 
         result = binlog_get_last_record_version(file_index - 1,
-                data_version, offset);
+                data_version);
     }
 
     return result;

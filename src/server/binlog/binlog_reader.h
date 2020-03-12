@@ -23,10 +23,12 @@ int binlog_reader_init(ServerBinlogReader *reader,
         const FDIRBinlogFilePosition *hint_pos,
         const int64_t last_data_version);
 
+void binlog_reader_destroy(ServerBinlogReader *reader);
+
 int binlog_reader_read(ServerBinlogReader *reader);
 
-int binlog_reader_integral_read(ServerBinlogReader *reader,
-        char *buff, const int size, int *read_bytes);
+int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
+        const int size, int *read_bytes, int64_t *data_version);
 
 int binlog_reader_next_record(ServerBinlogReader *reader,
         FDIRBinlogRecord *record);
@@ -35,9 +37,9 @@ int binlog_get_first_record_version(const int file_index,
         int64_t *data_version);
 
 int binlog_get_last_record_version(const int file_index,
-        int64_t *data_version, int64_t *offset);
+        int64_t *data_version);
 
-int binlog_get_max_record_version(int64_t *data_version, int64_t *offset);
+int binlog_get_max_record_version(int64_t *data_version);
 
 #define GET_BINLOG_FILENAME(filename, size, binlog_index) \
     snprintf(filename, size, "%s/%s"BINLOG_FILE_EXT_FMT,  \

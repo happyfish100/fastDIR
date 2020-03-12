@@ -6,6 +6,7 @@
 #include "binlog/binlog_types.h"
 #include "binlog/binlog_consumer.h"
 #include "binlog/binlog_write_thread.h"
+#include "binlog/binlog_read_thread.h"
 
 #ifdef __cplusplus
 extern "C" {

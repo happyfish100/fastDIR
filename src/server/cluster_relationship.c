@@ -471,7 +471,7 @@ static int cluster_select_master()
             break;
         }
 
-        if (++i == 5) {
+        if (++i == 3) {
             break;
         }
 

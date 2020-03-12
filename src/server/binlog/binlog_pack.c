@@ -766,12 +766,13 @@ int binlog_detect_record_forward(const char *str, const int len,
 }
 
 int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, int *offset, char *error_info)
+        int64_t *data_version, const char **rec_end, char *error_info)
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
     const char *start;
     const char *rec_start;
+    int offset;
     int l;
     int result;
 
@@ -780,7 +781,7 @@ int binlog_detect_record_reverse(const char *str, const int len,
         return result;
     }
 
-    *offset = -1;
+    offset = -1;
     l = len;
     while (l > 0 && (rec_start=fc_memrchr(str,
                     BINLOG_RECORD_START_TAG_CHAR, l)) != NULL)
@@ -789,18 +790,21 @@ int binlog_detect_record_reverse(const char *str, const int len,
         if ((start >= str) && binlog_is_record_start(
                     start, len - (start - str), &pcontext))
         {
-            *offset = start - str;
+            offset = start - str;
             break;
         }
 
         l = (rec_start - 1) - str;
     }
 
-    if (*offset < 0) {
+    if (offset < 0) {
         sprintf(error_info, "can't found record start");
         return ENOENT;
     }
 
+    if (rec_end != NULL) {
+        *rec_end = pcontext.rec_end;
+    }
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }

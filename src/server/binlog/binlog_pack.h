@@ -29,7 +29,7 @@ int binlog_detect_record_forward(const char *str, const int len,
         char *error_info);
 
 int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, int *offset, char *error_info);
+        int64_t *data_version, const char **rec_end, char *error_info);
 
 int binlog_detect_last_record_end(const char *str, const int len,
         const char **rec_end);

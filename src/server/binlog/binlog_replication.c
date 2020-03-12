@@ -21,67 +21,8 @@
 #include "../server_global.h"
 #include "binlog_func.h"
 #include "binlog_producer.h"
+#include "binlog_read_thread.h"
 #include "binlog_replication.h"
-
-/*
-static int binlog_sync_to_server(BinlogSyncContext *sync_context)
-{
-    if (sync_context->binlog_buffer.length == 0) {
-        return 0;
-    }
-
-    //TODO
-    //int64_t last_data_version;
-    sync_context->binlog_buffer.length = 0;  //reset cache buff
-
-    return 0;
-}
-
-static inline int deal_binlog_one_record(BinlogSyncContext *sync_context,
-        ServerBinlogRecordBuffer *rb)
-{
-    int result;
-    if (sync_context->binlog_buffer.size - sync_context->binlog_buffer.length
-            < rb->buffer.length)
-    {
-        if ((result=binlog_sync_to_server(sync_context)) != 0) {
-            return result;
-        }
-    }
-
-    //TODO
-    if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)rb->task->arg)->context.
-            service.waiting_rpc_count, 1) == 0)
-    {
-        sf_nio_notify(rb->task, SF_NIO_STAGE_CONTINUE);
-    }
-
-    memcpy(sync_context->binlog_buffer.buff +
-            sync_context->binlog_buffer.length,
-            rb->buffer.data, rb->buffer.length);
-    sync_context->binlog_buffer.length += rb->buffer.length;
-    return 0;
-}
-
-static int deal_binlog_records(BinlogSyncContext *sync_context,
-        struct common_blocked_node *node)
-{
-    ServerBinlogRecordBuffer *rb;
-    int result;
-
-    do {
-        rb = (ServerBinlogRecordBuffer *)node->data;
-        if ((result=deal_binlog_one_record(sync_context, rb)) != 0) {
-            return result;
-        }
-
-        server_binlog_release_rbuffer(rb);
-        node = node->next;
-    } while (node != NULL);
-
-    return binlog_sync_to_server(sync_context);
-}
-*/
 
 static int check_alloc_ptr_array(FDIRSlaveReplicationPtrArray *array)
 {
@@ -151,6 +92,8 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
 
+    replication->stage = FDIR_REPLICATION_STAGE_NONE;
+    replication->context.last_data_versions.by_queue = DATA_CURRENT_VERSION;
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICATION;
     CLUSTER_REPLICA = replication;
     replication->connection_info.conn.sock = -1;
@@ -370,17 +313,18 @@ static void replication_queue_discard(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *current;
 
-    pthread_mutex_lock(&replication->queue.lock);
-    current = replication->queue.head;
-    if (replication->queue.head != NULL) {
-        replication->queue.head = replication->queue.tail = NULL;
+    pthread_mutex_lock(&replication->context.queue.lock);
+    current = replication->context.queue.head;
+    if (replication->context.queue.head != NULL) {
+        replication->context.queue.head = replication->context.queue.tail = NULL;
     }
-    pthread_mutex_unlock(&replication->queue.lock);
+    pthread_mutex_unlock(&replication->context.queue.lock);
 
     while (current != NULL) {
         rb = current;
         current = current->nexts[replication->index];
 
+        replication->context.last_data_versions.by_queue = rb->data_version;
         DECREASE_TASK_WAITING_RPC_COUNT(rb);
         server_binlog_release_rbuffer(rb);
     }
@@ -424,7 +368,10 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
             if (success_array.count < SUCCESS_ARRAY_ELEMENT_MAX) {
                 success_array.replications[success_array.count++] = replication;
             }
-        } else if (!(result == EINPROGRESS || result == EAGAIN)) {
+            replication->stage = FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP;
+        } else if (result == EINPROGRESS) {
+            replication->stage = FDIR_REPLICATION_STAGE_CONNECTING;
+        } else if (result != EAGAIN) {
             if (result != replication->connection_info.last_errno
                     || replication->connection_info.fail_count % 1 == 0)
             {
@@ -459,6 +406,10 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
         if (remove_from_replication_ptr_array(&server_ctx->
                     cluster.connectings, replication) == 0)
         {
+            replication->slave->last_data_version = -1;
+            replication->slave->binlog_pos_hint.index = -1;
+            replication->slave->binlog_pos_hint.offset = -1;
+
             add_to_replication_ptr_array(&server_ctx->
                     cluster.connected, replication);
         }
@@ -477,34 +428,34 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
 static void repush_to_replication_queue(FDIRSlaveReplication *replication,
         ServerBinlogRecordBuffer *head, ServerBinlogRecordBuffer *tail)
 {
-    pthread_mutex_lock(&replication->queue.lock);
-    tail->nexts[replication->index] = replication->queue.head;
-    replication->queue.head = head;
-    if (replication->queue.tail == NULL) {
-        replication->queue.tail = tail;
+    pthread_mutex_lock(&replication->context.queue.lock);
+    tail->nexts[replication->index] = replication->context.queue.head;
+    replication->context.queue.head = head;
+    if (replication->context.queue.tail == NULL) {
+        replication->context.queue.tail = tail;
     }
-    pthread_mutex_unlock(&replication->queue.lock);
+    pthread_mutex_unlock(&replication->context.queue.lock);
 }
 
-static int sync_binlog_record_to_slave(FDIRSlaveReplication *replication)
+static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
 {
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
 
-    if (!(replication->task->offset == 0 && replication->task->length == 0)) {
-        return 0;
+    pthread_mutex_lock(&replication->context.queue.lock);
+    head = replication->context.queue.head;
+    tail = replication->context.queue.tail;
+    if (replication->context.queue.head != NULL) {
+        replication->context.queue.head = replication->context.queue.tail = NULL;
     }
-
-    pthread_mutex_lock(&replication->queue.lock);
-    head = replication->queue.head;
-    tail = replication->queue.tail;
-    if (replication->queue.head != NULL) {
-        replication->queue.head = replication->queue.tail = NULL;
-    }
-    pthread_mutex_unlock(&replication->queue.lock);
+    pthread_mutex_unlock(&replication->context.queue.lock);
 
     if (head == NULL) {
+        static int count = 0;
+        if (++count % 100 == 0) {
+            logInfo("empty queue");
+        }
         return 0;
     }
 
@@ -518,30 +469,124 @@ static int sync_binlog_record_to_slave(FDIRSlaveReplication *replication)
             break;
         }
 
+        replication->context.last_data_versions.by_queue = rb->data_version;
         memcpy(replication->task->data + replication->task->length,
                 rb->buffer.data, rb->buffer.length);
         replication->task->length += rb->buffer.length;
 
         head = head->nexts[replication->index];
-        //DECREASE_TASK_WAITING_RPC_COUNT(rb);
         server_binlog_release_rbuffer(rb);
     }
 
-    //TODO send data
+    FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+            FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ,
+            replication->task->length - sizeof(FDIRProtoHeader));
+    sf_send_add_event(replication->task);
 
     if (head != NULL) {
         repush_to_replication_queue(replication, head, tail);
     }
+    return 0;
+}
 
+static int start_binlog_read_thread(FDIRSlaveReplication *replication)
+{
+    replication->context.reader_ctx = (BinlogReadThreadContext *)malloc(
+            sizeof(BinlogReadThreadContext));
+    if (replication->context.reader_ctx == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "malloc %d bytes fail", __LINE__,
+                (int)sizeof(BinlogReadThreadContext));
+        return ENOMEM;
+    }
+
+    return binlog_read_thread_init(replication->context.reader_ctx,
+            &replication->slave->binlog_pos_hint, 
+            replication->slave->last_data_version,
+            replication->task->size - sizeof(FDIRProtoHeader));
+}
+
+static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
+        BufferInfo *buffer)
+{
+    FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+            FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ, buffer->length);
+    memcpy(replication->task->data + sizeof(FDIRProtoHeader),
+            buffer->buff, buffer->length);
+    replication->task->length = sizeof(FDIRProtoHeader) + buffer->length;
+    sf_send_add_event(replication->task);
+}
+
+static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
+{
+    BinlogReadThreadResult *r;
+    const bool block = false;
+
+    r = binlog_read_thread_fetch_result_ex(replication->context.
+            reader_ctx, block);
+    if (r == NULL) {
+        return 0;
+    }
+
+    logInfo("r: %p, buffer length: %d, result: %d, last_data_version: %"PRId64
+            ", task offset: %d, length: %d", r, r->buffer.length,
+            r->err_no, r->last_data_version, replication->task->offset,
+            replication->task->length);
+
+    if (r->err_no == 0) {
+        replication->context.last_data_versions.by_replica =
+            r->last_data_version;
+        sync_binlog_to_slave(replication, &r->buffer);
+    }
+    binlog_read_thread_return_result_buffer(replication->context.reader_ctx, r);
+
+    if (r->err_no == ENOENT && replication->context.last_data_versions.
+            by_queue <= replication->context.last_data_versions.by_replica)
+    {
+        binlog_read_thread_terminate(replication->context.reader_ctx);
+        free(replication->context.reader_ctx);
+        replication->context.reader_ctx = NULL;
+
+        replication->stage = FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE;
+    }
     return 0;
 }
 
 static int deal_connected_replication(FDIRSlaveReplication *replication)
 {
-    if (0) {
-        return sync_binlog_record_to_slave(replication);
-    } else {
+    int result;
+
+    //logInfo("replication stage: %d", replication->stage);
+
+    if (replication->stage != FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         replication_queue_discard(replication);
+    }
+
+    if (replication->stage == FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP) {
+        if (replication->slave->last_data_version < 0 ||
+                replication->slave->binlog_pos_hint.index < 0 ||
+                replication->slave->binlog_pos_hint.offset < 0)
+        {
+            return 0;
+        }
+
+        replication->context.last_data_versions.by_replica =
+            replication->slave->last_data_version;
+        if ((result=start_binlog_read_thread(replication)) == 0) {
+            replication->stage = FDIR_REPLICATION_STAGE_SYNC_FROM_DISK;
+        }
+        return result;
+    }
+
+    if (!(replication->task->offset == 0 && replication->task->length == 0)) {
+        return 0;
+    }
+
+    if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
+        return sync_binlog_from_disk(replication);
+    } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
+        return sync_binlog_from_queue(replication);
+    } else {
         return 0;
     }
 }
@@ -550,6 +595,12 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
 {
     FDIRSlaveReplication *replication;
     int i;
+
+    static int count = 0;
+
+    if (++count % 100 == 0) {
+        logInfo("connected.count: %d", server_ctx->cluster.connected.count);
+    }
 
     if (server_ctx->cluster.connected.count == 0) {
         return 0;
@@ -569,7 +620,7 @@ int binlog_replication_process(FDIRServerContext *server_ctx)
     int result;
     static int count = 0;
 
-    if (++count % 100 == 0) {
+    if (++count % 1000 == 0) {
         logInfo("file: "__FILE__", line: %d, count: %d, g_current_time: %d",
                 __LINE__, count, (int)g_current_time);
     }

@@ -4,6 +4,7 @@
 #define _BINLOG_TYPES_H_
 
 #include <time.h>
+#include <limits.h>
 #include <pthread.h>
 #include "fastcommon/fast_buffer.h"
 #include "fastcommon/common_blocked_queue.h"

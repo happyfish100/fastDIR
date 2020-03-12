@@ -49,7 +49,6 @@ int binlog_producer_init()
 {
     int result;
     int element_size;
-    int64_t offset;
 
     element_size = sizeof(ServerBinlogRecordBuffer) +
         sizeof(struct server_binlog_record_buffer *) *
@@ -61,7 +60,7 @@ int binlog_producer_init()
     }
 
     if ((result=binlog_get_max_record_version((int64_t *)
-                    &DATA_CURRENT_VERSION, &offset)) != 0)
+                    &DATA_CURRENT_VERSION)) != 0)
     {
         return result;
     }
