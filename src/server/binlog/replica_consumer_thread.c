@@ -20,67 +20,99 @@
 #include "binlog_func.h"
 #include "binlog_reader.h"
 #include "binlog_producer.h"
+#include "binlog_write_thread.h"
 #include "replica_consumer_thread.h"
 
 static void *deal_binlog_thread_func(void *arg);
 static void *collect_results_thread_func(void *arg);
 
-int replica_consumer_thread_init(ReplicaConsumerThreadContext *ctx,
+static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer, void *args)
+{
+    if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
+        logInfo("file: "__FILE__", line: %d, "
+                "free record buffer: %p", __LINE__, rbuffer);
+        replica_consumer_thread_free_binlog_buffer(
+                (ReplicaConsumerThreadContext *)args, rbuffer);
+    }
+}
+
+static int alloc_record_buffer(ServerBinlogRecordBuffer *rb,
         const int buffer_size)
 {
-    int result;
+    rb->release_func = release_record_buffer;
+    return fast_buffer_init_ex(&rb->buffer, buffer_size);
+}
+
+ReplicaConsumerThreadContext *replica_consumer_thread_init(
+        const int buffer_size, int *err_no)
+{
+    ReplicaConsumerThreadContext *ctx;
     int i;
 
-    if ((result=fast_mblock_init_ex(&ctx->result_allocater,
+    ctx = (ReplicaConsumerThreadContext *)malloc(
+            sizeof(ReplicaConsumerThreadContext));
+    if (ctx == NULL) {
+
+        logError("file: "__FILE__", line: %d, "
+                "malloc %d bytes fail", __LINE__, (int)
+                sizeof(ReplicaConsumerThreadContext));
+        *err_no = ENOMEM;
+        return NULL;
+    }
+
+    memset(ctx, 0, sizeof(ReplicaConsumerThreadContext));
+    if ((*err_no=fast_mblock_init_ex(&ctx->result_allocater,
                     sizeof(RecordProcessResult), 4096,
                     NULL, NULL, true)) != 0)
     {
-        return result;
+        return NULL;
     }
 
     ctx->runnings[0] = ctx->runnings[1] = false;
     ctx->continue_flag = true;
 
-    if ((result=common_blocked_queue_init_ex(&ctx->queues.free,
+    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.free,
                     REPLICA_CONSUMER_THREAD_BUFFER_COUNT)) != 0)
     {
-        return result;
+        return NULL;
     }
-    if ((result=common_blocked_queue_init_ex(&ctx->queues.input,
+    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.input,
                     REPLICA_CONSUMER_THREAD_BUFFER_COUNT)) != 0)
     {
-        return result;
+        return NULL;
     }
-    if ((result=common_blocked_queue_init_ex(&ctx->queues.output,
+    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.output,
                     REPLICA_CONSUMER_THREAD_BUFFER_COUNT)) != 0)
     {
-        return result;
+        return NULL;
     }
-    if ((result=common_blocked_queue_init_ex(&ctx->queues.result,
+    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.result,
                     4096)) != 0)
     {
-        return result;
+        return NULL;
     }
 
     for (i=0; i<REPLICA_CONSUMER_THREAD_BUFFER_COUNT; i++) {
-        if ((result=fc_init_buffer(ctx->binlog_buffer + i,
+        if ((*err_no=alloc_record_buffer(ctx->binlog_buffers + i,
                         buffer_size)) != 0)
         {
-            return result;
+            return NULL;
         }
+        ctx->binlog_buffers[i].args = ctx;
     }
 
-    if ((result=fc_create_thread(&ctx->tids[0], deal_binlog_thread_func,
+    if ((*err_no=fc_create_thread(&ctx->tids[0], deal_binlog_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
-        return result;
+        return NULL;
     }
-    if ((result=fc_create_thread(&ctx->tids[1], collect_results_thread_func,
+    if ((*err_no=fc_create_thread(&ctx->tids[1], collect_results_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
-        return result;
+        return NULL;
     }
-    return 0;
+
+    return ctx;
 }
 
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
@@ -104,32 +136,55 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
                 "wait thread exit timeout", __LINE__);
     }
     for (i=0; i<REPLICA_CONSUMER_THREAD_BUFFER_COUNT; i++) {
-        free(ctx->binlog_buffer[i].buff);
-        ctx->binlog_buffer[i].buff = NULL;
+        fast_buffer_destroy(&ctx->binlog_buffers[i].buffer);
     }
 
     common_blocked_queue_destroy(&ctx->queues.free);
     common_blocked_queue_destroy(&ctx->queues.input);
     common_blocked_queue_destroy(&ctx->queues.output);
     common_blocked_queue_destroy(&ctx->queues.result);
+
+    free(ctx);
+    logInfo("file: "__FILE__", line: %d, "
+            "replica_consumer_thread_terminated", __LINE__);
+}
+
+int push_to_replica_consumer_queues(ReplicaConsumerThreadContext *ctx,
+        ServerBinlogRecordBuffer *rbuffer)
+{
+    int result;
+
+    __sync_add_and_fetch(&rbuffer->reffer_count, 2);
+    if ((result=push_to_binlog_write_queue(rbuffer)) != 0) {
+        logCrit("file: "__FILE__", line: %d, "
+                "push_to_binlog_write_queue fail, program exit!",
+                __LINE__);
+        SF_G_CONTINUE_FLAG = false;
+        return result;
+    }
+
+    return common_blocked_queue_push(&ctx->queues.input, rbuffer);
 }
 
 static void *deal_binlog_thread_func(void *arg)
 {
     ReplicaConsumerThreadContext *ctx;
-    BufferInfo *buffer;
+    ServerBinlogRecordBuffer *rb;
+
+    logInfo("file: "__FILE__", line: %d, "
+            "deal_binlog_thread_func start", __LINE__);
 
     ctx = (ReplicaConsumerThreadContext *)arg;
     ctx->runnings[0] = true;
     while (ctx->continue_flag) {
-        buffer = (BufferInfo *)common_blocked_queue_pop(
+        rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop(
                 &ctx->queues.input);
-        if (buffer == NULL) {
+        if (rb == NULL) {
             continue;
         }
 
         //TODO
-        replica_consumer_thread_free_binlog_buffer(ctx, buffer);
+        rb->release_func(rb, ctx);
     }
 
     ctx->runnings[0] = false;
@@ -139,20 +194,24 @@ static void *deal_binlog_thread_func(void *arg)
 static void *collect_results_thread_func(void *arg)
 {
     ReplicaConsumerThreadContext *ctx;
-    BufferInfo *buffer;
+    ServerBinlogRecordBuffer *rbuffer;
+    RecordProcessResult *r;
 
     ctx = (ReplicaConsumerThreadContext *)arg;
     ctx->runnings[1] = true;
     while (ctx->continue_flag) {
-        buffer = replica_consumer_thread_alloc_binlog_buffer(ctx);
-        buffer = (BufferInfo *)common_blocked_queue_pop(
-                &ctx->queues.result);
-        if (buffer == NULL) {
+        rbuffer = replica_consumer_thread_alloc_binlog_buffer(ctx);
+        if (rbuffer == NULL) {
+            usleep(1000);
             continue;
         }
 
-        //TODO
-        replica_consumer_thread_free_binlog_buffer(ctx, buffer);
+        r = (RecordProcessResult *)common_blocked_queue_pop(
+                &ctx->queues.result);
+        if (r == NULL) {
+            replica_consumer_thread_free_binlog_buffer(ctx, rbuffer);
+            continue;
+        }
     }
 
     ctx->runnings[1] = false;

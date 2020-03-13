@@ -192,7 +192,7 @@ static int server_binlog_produce(struct fast_task_info *task)
 
     TASK_ARG->context.deal_func = NULL;
     rbuffer->data_version = RECORD->data_version;
-    //rbuffer->task = task;
+    rbuffer->args = task;
     RECORD->timestamp = g_current_time;
 
     fast_buffer_reset(&rbuffer->buffer);

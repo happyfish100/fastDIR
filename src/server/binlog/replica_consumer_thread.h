@@ -18,11 +18,11 @@ typedef struct replica_consumer_thread_context {
     bool runnings[2];
     pthread_t tids[2];
     struct fast_mblock_man result_allocater;
-    BufferInfo binlog_buffer[REPLICA_CONSUMER_THREAD_BUFFER_COUNT];
+    ServerBinlogRecordBuffer binlog_buffers[REPLICA_CONSUMER_THREAD_BUFFER_COUNT];
     struct {
-        struct common_blocked_queue free;   //free BufferInfo ptr
-        struct common_blocked_queue input;  //input BufferInfo ptr
-        struct common_blocked_queue output; //output BufferInfo ptr
+        struct common_blocked_queue free;   //free ServerBinlogRecordBuffer ptr
+        struct common_blocked_queue input;  //input ServerBinlogRecordBuffer ptr
+        struct common_blocked_queue output; //output ServerBinlogRecordBuffer ptr
 
         struct common_blocked_queue result; //record deal result
     } queues;
@@ -32,26 +32,29 @@ typedef struct replica_consumer_thread_context {
 extern "C" {
 #endif
 
-int replica_consumer_thread_init(ReplicaConsumerThreadContext *ctx,
-        const int buffer_size);
+ReplicaConsumerThreadContext *replica_consumer_thread_init(
+        const int buffer_size, int *err_no);
 
-static inline BufferInfo *replica_consumer_thread_alloc_binlog_buffer(
+static inline ServerBinlogRecordBuffer *replica_consumer_thread_alloc_binlog_buffer(
         ReplicaConsumerThreadContext *ctx)
 {
-    return (BufferInfo *)common_blocked_queue_pop_ex(
+    return (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
             &ctx->queues.free, false);
 }
 
 static inline int replica_consumer_thread_free_binlog_buffer(
-        ReplicaConsumerThreadContext *ctx, BufferInfo *buffer)
+        ReplicaConsumerThreadContext *ctx, ServerBinlogRecordBuffer *rbuffer)
 {
-    return common_blocked_queue_push(&ctx->queues.free, buffer);
+    return common_blocked_queue_push(&ctx->queues.free, rbuffer);
 }
 
-static inline BufferInfo *replica_consumer_thread_fetch_result_buffer(
+int push_to_replica_consumer_queues(ReplicaConsumerThreadContext *ctx,
+        ServerBinlogRecordBuffer *rbuffer);
+
+static inline ServerBinlogRecordBuffer *replica_consumer_thread_fetch_result_buffer(
         ReplicaConsumerThreadContext *ctx)
 {
-    return (BufferInfo *)common_blocked_queue_pop_ex(
+    return (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
             &ctx->queues.output, false);
 }
 

@@ -175,20 +175,27 @@ int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
 {
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
+    struct fast_task_info *task;
     int result;
 
     __sync_add_and_fetch(&rbuffer->reffer_count,
             slave_replication_array.count + 1);
-    __sync_add_and_fetch(&((FDIRServerTaskArg *)rbuffer->task->arg)->context.
-            service.waiting_rpc_count, slave_replication_array.count);
 
-    if ((result=common_blocked_queue_push(g_writer_queue, rbuffer)) != 0) {
+     if ((result=push_to_binlog_write_queue(rbuffer)) != 0) {
         logCrit("file: "__FILE__", line: %d, "
-                "common_blocked_queue_push fail, program exit!",
+                "push_to_binlog_write_queue fail, program exit!",
                 __LINE__);
         SF_G_CONTINUE_FLAG = false;
         return result;
     }
+
+    if (slave_replication_array.count == 0) {
+        return 0;
+    }
+
+    task = (struct fast_task_info *)rbuffer->args;
+    __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->context.
+            service.waiting_rpc_count, slave_replication_array.count);
 
     end = slave_replication_array.replications + slave_replication_array.count;
     for (replication=slave_replication_array.replications; replication<end;

@@ -94,7 +94,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 
     replication->stage = FDIR_REPLICATION_STAGE_NONE;
     replication->context.last_data_versions.by_queue = DATA_CURRENT_VERSION;
-    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICATION;
+    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER;
     CLUSTER_REPLICA = replication;
     replication->connection_info.conn.sock = -1;
     replication->task = task;
@@ -301,10 +301,12 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
 
 #define DECREASE_TASK_WAITING_RPC_COUNT(rb) \
     do { \
-        if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)rb->task->arg)-> \
-                    context.service.waiting_rpc_count, 1) == 0) \
+        struct fast_task_info *task;   \
+        task = (struct fast_task_info *)rb->args;  \
+        if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)-> \
+                        context.service.waiting_rpc_count, 1) == 0) \
         { \
-            sf_nio_notify(rb->task, SF_NIO_STAGE_CONTINUE);  \
+            sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);  \
         } \
     } while (0)
 
@@ -326,7 +328,7 @@ static void replication_queue_discard(FDIRSlaveReplication *replication)
 
         replication->context.last_data_versions.by_queue = rb->data_version;
         DECREASE_TASK_WAITING_RPC_COUNT(rb);
-        rb->release_func(rb);
+        rb->release_func(rb, rb->args);
     }
 }
 
@@ -475,7 +477,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         replication->task->length += rb->buffer.length;
 
         head = head->nexts[replication->index];
-        rb->release_func(rb);
+        rb->release_func(rb, rb->args);
     }
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,

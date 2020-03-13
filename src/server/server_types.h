@@ -19,9 +19,10 @@
 #define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
 #define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
-#define FDIR_CLUSTER_TASK_TYPE_NONE          0
-#define FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP  1
-#define FDIR_CLUSTER_TASK_TYPE_REPLICATION   2
+#define FDIR_CLUSTER_TASK_TYPE_NONE               0
+#define FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP       1   //slave  -> master
+#define FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER     2   //[Master] -> slave
+#define FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE      3   //master -> [Slave]
 
 #define FDIR_REPLICATION_STAGE_NONE               0
 #define FDIR_REPLICATION_STAGE_CONNECTING         1
@@ -40,6 +41,7 @@
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
 #define CLUSTER_REPLICA   TASK_ARG->context.cluster.replica
+#define CLUSTER_CONSUMER_CTX  TASK_ARG->context.cluster.consumer_ctx
 #define CLUSTER_TASK_TYPE TASK_ARG->context.cluster.task_type
 
 typedef void (*server_free_func)(void *ptr);
@@ -157,10 +159,9 @@ typedef struct server_task_arg {
 
             struct {
                 int task_type;
-                union {
-                    FDIRClusterServerInfo *peer;  //the peer server in the cluster
-                    FDIRSlaveReplication *replica;
-                };
+                FDIRClusterServerInfo *peer;  //the peer server in the cluster
+                FDIRSlaveReplication *replica;  //master side
+                struct replica_consumer_thread_context *consumer_ctx;//slave side
             } cluster;
         };
     } context;
@@ -174,8 +175,8 @@ typedef struct fdir_server_context {
         } service;
 
         struct {
-            FDIRSlaveReplicationPtrArray connectings;
-            FDIRSlaveReplicationPtrArray connected;
+            FDIRSlaveReplicationPtrArray connectings;  //for master
+            FDIRSlaveReplicationPtrArray connected;    //for master
         } cluster;
     };
 } FDIRServerContext;

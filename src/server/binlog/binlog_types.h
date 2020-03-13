@@ -8,7 +8,6 @@
 #include <pthread.h>
 #include "fastcommon/fast_buffer.h"
 #include "fastcommon/common_blocked_queue.h"
-#include "fastcommon/fast_task_queue.h"
 #include "../server_types.h"
 
 #define BINLOG_OP_NONE_INT           0
@@ -37,7 +36,7 @@ struct server_binlog_record_buffer;
 
 typedef void (*data_thread_notify_func)(const int result, void *args);
 typedef void (*release_binlog_rbuffer_func)(
-        struct server_binlog_record_buffer *rbuffer);
+        struct server_binlog_record_buffer *rbuffer, void *args);
 
 typedef struct fdir_binlog_record {
     int64_t data_version;
@@ -85,7 +84,7 @@ typedef struct server_binlog_buffer {
 typedef struct server_binlog_record_buffer {
     int64_t data_version; //for idempotency (slave only)
     volatile int reffer_count;
-    struct fast_task_info *task;  //for notify / callback
+    void *args;  //for notify & release 
     release_binlog_rbuffer_func release_func;
     FastBuffer buffer;
     struct server_binlog_record_buffer *nexts[0];  //for slave replications
