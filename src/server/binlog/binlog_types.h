@@ -78,16 +78,6 @@ typedef struct server_binlog_buffer {
     int size;      //the buffer size (capacity)
 } ServerBinlogBuffer;
 
-typedef struct server_binlog_consumer_context {
-    struct common_blocked_queue queue;
-    FDIRClusterServerInfo *server;   //which slave
-} ServerBinlogConsumerContext;
-
-typedef struct server_binlog_consumer_array {
-    ServerBinlogConsumerContext *contexts;
-    int count;
-} ServerBinlogConsumerArray;
-
 typedef struct server_binlog_record_buffer {
     int64_t data_version; //for idempotency (slave only)
     volatile int reffer_count;

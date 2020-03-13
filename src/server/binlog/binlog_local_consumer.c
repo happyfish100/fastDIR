@@ -19,11 +19,11 @@
 #include "../server_global.h"
 #include "binlog_write_thread.h"
 #include "binlog_replication.h"
-#include "binlog_consumer.h"
+#include "binlog_local_consumer.h"
 
 static FDIRSlaveReplicationArray slave_replication_array;
 
-static int init_binlog_consumer_array()
+static int init_binlog_local_consumer_array()
 {
     static bool inited = false;
     int result;
@@ -78,7 +78,7 @@ static int init_binlog_consumer_array()
     return 0;
 }
 
-int binlog_consumer_init()
+int binlog_local_consumer_init()
 {
     int result;
     pthread_t tid;
@@ -91,13 +91,13 @@ int binlog_consumer_init()
             SF_G_THREAD_STACK_SIZE);
 }
 
-int binlog_consumer_replication_start()
+int binlog_local_consumer_replication_start()
 {
     int result;
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
 
-    if ((result=init_binlog_consumer_array()) != 0) {
+    if ((result=init_binlog_local_consumer_array()) != 0) {
         return result;
     }
 
@@ -113,7 +113,7 @@ int binlog_consumer_replication_start()
     return 0;
 }
 
-void binlog_consumer_destroy()
+void binlog_local_consumer_destroy()
 {
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
@@ -132,7 +132,7 @@ void binlog_consumer_destroy()
     slave_replication_array.replications = NULL;
 }
 
-void binlog_consumer_terminate()
+void binlog_local_consumer_terminate()
 {
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
@@ -171,7 +171,7 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     }
 }
 
-int binlog_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
+int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
 {
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;

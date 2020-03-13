@@ -534,14 +534,14 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
             replication->task->length);
 
     if (r->err_no == 0) {
-        replication->context.last_data_versions.by_replica =
+        replication->context.last_data_versions.by_disk =
             r->last_data_version;
         sync_binlog_to_slave(replication, &r->buffer);
     }
     binlog_read_thread_return_result_buffer(replication->context.reader_ctx, r);
 
     if (r->err_no == ENOENT && replication->context.last_data_versions.
-            by_queue <= replication->context.last_data_versions.by_replica)
+            by_queue <= replication->context.last_data_versions.by_disk)
     {
         binlog_read_thread_terminate(replication->context.reader_ctx);
         free(replication->context.reader_ctx);
@@ -570,7 +570,8 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
             return 0;
         }
 
-        replication->context.last_data_versions.by_replica =
+        replication->context.last_data_versions.by_resp = 0;
+        replication->context.last_data_versions.by_disk =
             replication->slave->last_data_version;
         if ((result=start_binlog_read_thread(replication)) == 0) {
             replication->stage = FDIR_REPLICATION_STAGE_SYNC_FROM_DISK;
@@ -583,12 +584,17 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
     }
 
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
-        return sync_binlog_from_disk(replication);
+        if (replication->context.last_data_versions.by_resp == 0 ||
+                replication->context.last_data_versions.by_resp >=
+                replication->context.last_data_versions.by_disk)
+        {
+            return sync_binlog_from_disk(replication);
+        }
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         return sync_binlog_from_queue(replication);
-    } else {
-        return 0;
     }
+
+    return 0;
 }
 
 static int deal_replication_connected(FDIRServerContext *server_ctx)
@@ -598,8 +604,8 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
 
     static int count = 0;
 
-    if (++count % 100 == 0) {
-        logInfo("connected.count: %d", server_ctx->cluster.connected.count);
+    if (++count % 1000 == 0) {
+        logInfo("server_ctx %p, connected.count: %d", server_ctx, server_ctx->cluster.connected.count);
     }
 
     if (server_ctx->cluster.connected.count == 0) {

@@ -96,7 +96,8 @@ typedef struct fdir_replication_context {
     struct binlog_read_thread_context *reader_ctx;
     struct {
         int64_t by_queue;
-        int64_t by_replica;
+        int64_t by_disk;
+        int64_t by_resp;
     } last_data_versions;
 } FDIRReplicationContext;
 

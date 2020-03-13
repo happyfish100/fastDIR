@@ -16,7 +16,7 @@
 #include "fastcommon/pthread_func.h"
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
-#include "binlog/binlog_consumer.h"
+#include "binlog/binlog_local_consumer.h"
 #include "binlog/binlog_write_thread.h"
 #include "server_global.h"
 #include "server_binlog.h"
@@ -32,7 +32,7 @@ int server_binlog_init()
         return result;
     }
 
-    if ((result=binlog_consumer_init()) != 0) {
+    if ((result=binlog_local_consumer_init()) != 0) {
         return result;
     }
 
@@ -42,11 +42,11 @@ int server_binlog_init()
 void server_binlog_destroy()
 {
     binlog_producer_destroy();
-    binlog_consumer_destroy();
+    binlog_local_consumer_destroy();
 }
  
 void server_binlog_terminate()
 {
-    binlog_consumer_terminate();
+    binlog_local_consumer_terminate();
     binlog_write_thread_finish();
 }

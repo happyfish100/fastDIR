@@ -17,7 +17,7 @@
 #include "sf/sf_global.h"
 #include "../server_global.h"
 #include "binlog_reader.h"
-#include "binlog_consumer.h"
+#include "binlog_local_consumer.h"
 #include "binlog_producer.h"
 
 #define SLEEP_NANO_SECONDS   (50 * 1000)
@@ -126,7 +126,7 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
         }
     }
 
-    result = binlog_consumer_push_to_queues(rbuffer);
+    result = binlog_local_consumer_push_to_queues(rbuffer);
     if (count < MAX_SLEEP_COUNT) {  //normal
         __sync_add_and_fetch(&next_data_version, 1);
     } else {  //on exception
