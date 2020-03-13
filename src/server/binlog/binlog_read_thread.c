@@ -24,19 +24,6 @@
 
 static void *binlog_read_thread_func(void *arg);
 
-static int binlog_rt_alloc_buffer(BufferInfo *buffer, const int buffer_size)
-{
-    buffer->buff = (char *)malloc(buffer_size);
-    if (buffer->buff == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, buffer_size);
-        return ENOMEM;
-    }
-    buffer->alloc_size = buffer_size;
-    buffer->length = 0;
-    return 0;
-}
-
 int binlog_read_thread_init(BinlogReadThreadContext *ctx,
         const FDIRBinlogFilePosition *hint_pos, const int64_t
         last_data_version, const int buffer_size)
@@ -64,7 +51,7 @@ int binlog_read_thread_init(BinlogReadThreadContext *ctx,
     }
 
     for (i=0; i<BINLOG_READ_THREAD_BUFFER_COUNT; i++) {
-        if ((result=binlog_rt_alloc_buffer(&ctx->results[i].buffer,
+        if ((result=fc_init_buffer(&ctx->results[i].buffer,
                         buffer_size)) != 0)
         {
             return result;

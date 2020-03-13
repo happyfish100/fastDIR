@@ -28,6 +28,8 @@ static struct fast_mblock_man record_buffer_allocator;
 static volatile int64_t next_data_version = 0;
 static struct timespec sleep_ts;
 
+static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer);
+
 int record_buffer_alloc_init_func(void *element, void *args)
 {
     FastBuffer *buffer;
@@ -42,6 +44,8 @@ int record_buffer_alloc_init_func(void *element, void *args)
         init_capacity *= 2;
     }
 
+    ((ServerBinlogRecordBuffer *)element)->release_func =
+        server_binlog_release_rbuffer;
     return fast_buffer_init_ex(buffer, init_capacity);
 }
 
@@ -91,7 +95,7 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
     return rbuffer;
 }
 
-void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
+static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
         logInfo("file: "__FILE__", line: %d, "

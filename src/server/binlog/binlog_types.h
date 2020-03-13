@@ -33,7 +33,11 @@
 #define BINLOG_BUFFER_LENGTH(buffer) ((buffer).end - (buffer).buff)
 #define BINLOG_BUFFER_REMAIN(buffer) ((buffer).end - (buffer).current)
 
+struct server_binlog_record_buffer;
+
 typedef void (*data_thread_notify_func)(const int result, void *args);
+typedef void (*release_binlog_rbuffer_func)(
+        struct server_binlog_record_buffer *rbuffer);
 
 typedef struct fdir_binlog_record {
     int64_t data_version;
@@ -82,8 +86,9 @@ typedef struct server_binlog_record_buffer {
     int64_t data_version; //for idempotency (slave only)
     volatile int reffer_count;
     struct fast_task_info *task;  //for notify / callback
+    release_binlog_rbuffer_func release_func;
     FastBuffer buffer;
-    struct server_binlog_record_buffer *nexts[0];
+    struct server_binlog_record_buffer *nexts[0];  //for slave replications
 } ServerBinlogRecordBuffer;
 
 #endif

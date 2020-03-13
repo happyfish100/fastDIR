@@ -270,7 +270,7 @@ static int deal_binlog_records(struct common_blocked_node *node)
             return result;
         }
 
-        server_binlog_release_rbuffer(rb);
+        rb->release_func(rb);
         node = node->next;
     } while (node != NULL);
 

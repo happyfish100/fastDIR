@@ -619,5 +619,6 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     }
  
     server_ctx = (FDIRServerContext *)thread_data->arg;
-    return binlog_replication_process(server_ctx);
+    return 0;
+    //return binlog_replication_process(server_ctx);
 }

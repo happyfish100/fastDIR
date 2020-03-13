@@ -326,7 +326,7 @@ static void replication_queue_discard(FDIRSlaveReplication *replication)
 
         replication->context.last_data_versions.by_queue = rb->data_version;
         DECREASE_TASK_WAITING_RPC_COUNT(rb);
-        server_binlog_release_rbuffer(rb);
+        rb->release_func(rb);
     }
 }
 
@@ -475,7 +475,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         replication->task->length += rb->buffer.length;
 
         head = head->nexts[replication->index];
-        server_binlog_release_rbuffer(rb);
+        rb->release_func(rb);
     }
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
