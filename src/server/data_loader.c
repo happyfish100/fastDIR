@@ -29,6 +29,7 @@ typedef struct data_loader_context {
     struct timespec ts;
     int last_errno;
     int error_count;
+    int64_t record_count;
 } DataLoaderContext;
 
 static void data_thread_deal_done_callback(const int result, void *args)
@@ -41,6 +42,8 @@ static void data_thread_deal_done_callback(const int result, void *args)
         loader_ctx->error_count++;
     }
     __sync_sub_and_fetch(&loader_ctx->waiting_count, 1);
+
+    //logInfo("deal_done_callback, waiting_count: %d, result: %d", __sync_sub_and_fetch(&loader_ctx->waiting_count, 1), result);
 }
 
 static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
@@ -68,6 +71,7 @@ static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
         }
         p = rend;
 
+        loader_ctx->record_count++;
         __sync_add_and_fetch(&loader_ctx->waiting_count, 1);
 
         record->notify.args = loader_ctx;
@@ -77,21 +81,26 @@ static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
         }
 
         if (++count == loader_ctx->record_array.count) {
-            logInfo("waiting_count: %d", __sync_add_and_fetch(&loader_ctx->waiting_count, 0));
             while (__sync_add_and_fetch(&loader_ctx->waiting_count, 0) != 0) {
                 nanosleep(&loader_ctx->ts, NULL);
             }
+            /*
             if (loader_ctx->error_count > 0) {
                 return loader_ctx->last_errno;
             }
+            */
             count = 0;
         }
     }
+
+    logInfo("record_count: %"PRId64", waiting_count: %d", loader_ctx->record_count,
+            __sync_add_and_fetch(&loader_ctx->waiting_count, 0));
 
     while (__sync_add_and_fetch(&loader_ctx->waiting_count, 0) != 0) {
         nanosleep(&loader_ctx->ts, NULL);
     }
     return 0;
+    //return loader_ctx->error_count > 0 ? loader_ctx->last_errno : 0;
 }
 
 int server_load_data()
@@ -108,6 +117,7 @@ int server_load_data()
         return result;
     }
 
+    loader_ctx.record_count = 0;
     loader_ctx.last_errno = 0;
     loader_ctx.error_count = 0;
     loader_ctx.waiting_count = 0;
@@ -143,6 +153,9 @@ int server_load_data()
 
         binlog_read_thread_return_result_buffer(&reader_ctx, r);
     }
+
+    logInfo("record_count: %"PRId64", result: %d", loader_ctx.record_count,
+            result);
 
     free(loader_ctx.record_array.records);
     binlog_read_thread_terminate(&reader_ctx);

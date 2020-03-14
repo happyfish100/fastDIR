@@ -116,19 +116,19 @@ static inline const char *get_operation_caption(const int operation)
 static inline int get_operation_integer(const string_t *operation)
 {
     if (fc_string_equal2(operation, BINLOG_OP_UPDATE_DENTRY_STR,
-                BINLOG_OP_UPDATE_DENTRY_LEN) == 0)
+                BINLOG_OP_UPDATE_DENTRY_LEN))
     {
         return BINLOG_OP_UPDATE_DENTRY_INT;
     } else if (fc_string_equal2(operation, BINLOG_OP_CREATE_DENTRY_STR,
-                BINLOG_OP_CREATE_DENTRY_LEN) == 0)
+                BINLOG_OP_CREATE_DENTRY_LEN))
     {
         return BINLOG_OP_CREATE_DENTRY_INT;
     } else if (fc_string_equal2(operation, BINLOG_OP_REMOVE_DENTRY_STR,
-                BINLOG_OP_REMOVE_DENTRY_LEN) == 0)
+                BINLOG_OP_REMOVE_DENTRY_LEN))
     {
         return BINLOG_OP_REMOVE_DENTRY_INT;
     } else if (fc_string_equal2(operation, BINLOG_OP_RENAME_DENTRY_STR,
-                BINLOG_OP_RENAME_DENTRY_LEN) == 0)
+                BINLOG_OP_RENAME_DENTRY_LEN))
     {
         return BINLOG_OP_RENAME_DENTRY_INT;
     } else {
@@ -333,13 +333,17 @@ static int binlog_get_next_field_value(FieldParserContext *pcontext)
 
         fast_char_unescape(&char_converter, pcontext->fv.value.s.str,
                 &pcontext->fv.value.s.len);
-    } else if (*endptr == ' ') {
+    } else if ((*endptr == ' ') || (*endptr == '/' && pcontext->rec_end -
+                endptr == BINLOG_RECORD_END_TAG_LEN))
+    {
         pcontext->fv.type = BINLOG_FIELD_TYPE_INTEGER;
         pcontext->fv.value.n = n;
         pcontext->p = endptr;
     } else {
-        sprintf(pcontext->error_info, "unexpect char: %c(0x%02X), "
-                "expect comma or space char", *endptr, (unsigned char)*endptr);
+        snprintf(pcontext->error_info, pcontext->error_size,
+                "unexpect char: %c(0x%02X), expect comma or space char, "
+                "record segment: %.*s", *endptr, (unsigned char)*endptr,
+                (int)(pcontext->rec_end - pcontext->p), pcontext->p);
         return EINVAL;
     }
 

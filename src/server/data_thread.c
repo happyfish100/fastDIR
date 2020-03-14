@@ -218,17 +218,16 @@ void data_thread_terminate()
     }
 }
 
-static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
+static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result = 0;
 
     /*
-    logInfo("file: "__FILE__", line: %d, "
-            "inode: %"PRId64", data_version: %"PRId64,
-            __LINE__, record->inode, record->data_version);
-            */
-
+    logInfo("file: "__FILE__", line: %d, record: %p, "
+            "operation: %d, hash code: %u, inode: %"PRId64", data_version: %"PRId64,
+            __LINE__, record, record->operation, record->hash_code, record->inode, record->data_version);
+    */
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             result = dentry_create(thread_ctx, record);
@@ -270,22 +269,17 @@ static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-static int deal_binlog_records(FDIRDataThreadContext *thread_ctx,
+static void deal_binlog_records(FDIRDataThreadContext *thread_ctx,
         struct common_blocked_node *node)
 {
     FDIRBinlogRecord *record;
-    int result;
 
     do {
         record = (FDIRBinlogRecord *)node->data;
-        if ((result=deal_binlog_one_record(thread_ctx, record)) != 0) {
-            return result;
-        }
+        deal_binlog_one_record(thread_ctx, record);
 
         node = node->next;
     } while (node != NULL);
-
-    return 0;
 }
 
 static void *data_thread_func(void *arg)
