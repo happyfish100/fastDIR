@@ -128,6 +128,26 @@ static int find_myself_in_cluster_config(const char *filename)
     return 0;
 }
 
+static int get_bytes_item_config(IniContext *ini_context,
+        const char *filename, const char *item_name,
+        const int64_t default_value, int64_t *bytes)
+{
+    int result;
+    char *value;
+
+    value = iniGetStrValue(NULL, item_name, ini_context);
+    if (value == NULL) {
+        *bytes = default_value;
+        return 0;
+    }
+    if ((result=parse_bytes(value, 1, bytes)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, item: %s, value: %s is invalid",
+                __LINE__, filename, item_name, value);
+    }
+    return result;
+}
+
 static void log_cluster_server_config()
 {
     FastBuffer buffer;
@@ -362,22 +382,19 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
 static int load_dentry_max_data_size(IniContext *ini_context,
         const char *filename)
 {
-    char *dentry_max_data_size;
     int64_t bytes;
     int result;
 
-    dentry_max_data_size = iniGetStrValue(NULL,
-            "dentry_max_data_size", ini_context);
-    if (dentry_max_data_size == NULL) {
-        bytes = 256;
-    } else if ((result=parse_bytes(dentry_max_data_size, 1, &bytes)) != 0) {
+    if ((result=get_bytes_item_config(ini_context, filename,
+                    "dentry_max_data_size", 256, &bytes)) != 0)
+    {
         return result;
     }
 
     DENTRY_MAX_DATA_SIZE = bytes;
-    if (DENTRY_MAX_DATA_SIZE < 0) {
+    if (DENTRY_MAX_DATA_SIZE <= 0) {
         logError("file: "__FILE__", line: %d, "
-                "config file: %s , dentry_max_data_size: %d < 0",
+                "config file: %s , dentry_max_data_size: %d <= 0",
                 __LINE__, filename, DENTRY_MAX_DATA_SIZE);
         return EINVAL;
     }
@@ -446,6 +463,7 @@ static void server_log_configs()
 int server_load_config(const char *filename)
 {
     IniContext ini_context;
+    int64_t bytes;
     int result;
 
     memset(&ini_context, 0, sizeof(IniContext));
@@ -489,10 +507,16 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    BINLOG_BUFFER_SIZE = iniGetIntValue(NULL, "binlog_buffer_size",
-            &ini_context, FDIR_DEFAULT_BINLOG_BUFFER_SIZE);
-    if (BINLOG_BUFFER_SIZE <= 0) {
+    if ((result=get_bytes_item_config(&ini_context, filename,
+                    "binlog_buffer_size", FDIR_DEFAULT_BINLOG_BUFFER_SIZE,
+                    &bytes)) != 0)
+    {
+        return result;
+    }
+    if (bytes <= 0) {
         BINLOG_BUFFER_SIZE = FDIR_DEFAULT_BINLOG_BUFFER_SIZE;
+    } else {
+        BINLOG_BUFFER_SIZE = bytes;
     }
     if (BINLOG_BUFFER_SIZE > g_sf_global_vars.max_buff_size) {
         logWarning("file: "__FILE__", line: %d, "

@@ -445,6 +445,18 @@ static inline void init_task_context(struct fast_task_info *task)
     REQUEST.body = task->data + sizeof(FDIRProtoHeader);
 }
 
+static inline int service_check_master(struct fast_task_info *task)
+{
+    if (!MYSELF_IS_MASTER) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
 static int deal_task_done(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
@@ -528,10 +540,14 @@ int server_deal_task(struct fast_task_info *task)
                 result = server_deal_actvie_test(task);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY:
-                result = server_deal_create_dentry(task);
+                if ((result=service_check_master(task)) == 0) {
+                    result = server_deal_create_dentry(task);
+                }
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
-                result = server_deal_remove_dentry(task);
+                if ((result=service_check_master(task)) == 0) {
+                    result = server_deal_remove_dentry(task);
+                }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
                 result = server_deal_list_dentry_first(task);

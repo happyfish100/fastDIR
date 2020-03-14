@@ -262,6 +262,7 @@ static int find_data_version(ServerBinlogReader *reader,
         const int64_t last_data_version)
 {
     int result;
+    bool found;
     int64_t data_version;
     char *rec_end;
     char error_info[FDIR_ERROR_INFO_SIZE];
@@ -271,14 +272,23 @@ static int find_data_version(ServerBinlogReader *reader,
         return result;
     }
 
+    found = false;
     while ((result=do_binlog_read(reader)) == 0) {
+        logInfo("binlog size: %d, offset: %"PRId64", buffer length: %d, last_data_version: %"PRId64,
+                reader->binlog_buffer.size, reader->position.offset,
+                (int)BINLOG_BUFFER_LENGTH(reader->binlog_buffer), last_data_version);
+
         while ((result=binlog_detect_record(reader->binlog_buffer.current,
                         BINLOG_BUFFER_REMAIN(reader->binlog_buffer),
                         &data_version, (const char **)&rec_end,
                         error_info)) == 0)
         {
+            logInfo("data_version==%"PRId64", record end offset: %d",
+                    data_version, (int)(rec_end - reader->binlog_buffer.buff));
+
             if (last_data_version == data_version) {
                 reader->position.offset -= reader->binlog_buffer.end - rec_end;
+                found = true;
                 break;
             } else if (last_data_version < data_version) {
                 logWarning("file: "__FILE__", line: %d, "
@@ -287,11 +297,21 @@ static int find_data_version(ServerBinlogReader *reader,
                         __LINE__, last_data_version, data_version);
                 reader->position.offset -= BINLOG_BUFFER_REMAIN(
                         reader->binlog_buffer);
+                found = true;
                 break;
             }
+
             reader->binlog_buffer.current = rec_end;
         }
 
+        if (result == 0) {
+            if (found) {
+                break;
+            }
+            continue;
+        }
+
+        logInfo("binlog_detect_record result: %d", result);
         if (result == EAGAIN || result == EOVERFLOW) {
             continue;
         }
@@ -311,6 +331,13 @@ static int find_data_version(ServerBinlogReader *reader,
         return result;
     }
 
+    if (result != 0) {
+        return result;
+    }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "found position, index: %d, offset: %"PRId64, __LINE__,
+            reader->position.index, reader->position.offset);
     return open_readable_binlog(reader);
 }
 
@@ -338,6 +365,9 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
         {
             return result;
         }
+
+        logInfo("min_data_version: %"PRId64", max_data_version: %"PRId64,
+                min_data_version,  max_data_version);
 
         if (last_data_version < min_data_version) {
             if (dirction == 0) {
@@ -376,11 +406,13 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 {
     int result;
     int bytes;
+    int remain;
     int rstart_offset;
     int rend_offset;
     int64_t data_version;
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
     char error_info[FDIR_ERROR_INFO_SIZE];
+    char *p;
 
     if ((result=open_readable_binlog(reader)) != 0) {
         if (result == ENOENT) {
@@ -406,12 +438,28 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         return result;
     }
 
-    result = binlog_detect_record_forward(buff, bytes,
-            &data_version, &rstart_offset, &rend_offset, error_info);
-    if (result == 0) {
-        if (last_data_version == data_version) {
-            reader->position.offset += rend_offset;
-            return open_readable_binlog(reader);
+    p = buff;
+    remain = bytes;
+    while (remain > 32) {
+        result = binlog_detect_record_forward(p, remain, &data_version,
+                &rstart_offset, &rend_offset, error_info);
+        if (result == 0) {
+            if (last_data_version == data_version) {
+                reader->position.offset += (p - buff) + rend_offset;
+
+                logInfo("file: "__FILE__", line: %d, "
+                        "found position, index: %d, offset: %"PRId64, __LINE__,
+                        reader->position.index, reader->position.offset);
+                return open_readable_binlog(reader);
+            }
+
+            p += rend_offset;
+            remain -= rend_offset;
+
+            logInfo("file: "__FILE__", line: %d, "
+                    "====remain length: %d", __LINE__, remain);
+        } else {
+            break;
         }
     }
 
@@ -436,6 +484,11 @@ int binlog_reader_init(ServerBinlogReader *reader,
     }
 
     reader->position = *hint_pos;
+    if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 2) {
+        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 2;
+    } else if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 8) {
+        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 8;
+    }
     return binlog_reader_detect_open(reader, last_data_version);
 }
 

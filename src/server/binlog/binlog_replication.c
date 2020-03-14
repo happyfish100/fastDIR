@@ -61,6 +61,9 @@ static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
     }
 
     if (i == array->count) {
+        logError("file: "__FILE__", line: %d, "
+                "can't found replication slave id: %d",
+                __LINE__, replication->slave->server->id);
         return ENOENT;
     }
 
@@ -501,6 +504,10 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
                 (int)sizeof(BinlogReadThreadContext));
         return ENOMEM;
     }
+
+    logInfo("file: "__FILE__", line: %d, binlog index: %d, offset: %"PRId64,
+            __LINE__, replication->slave->binlog_pos_hint.index,
+            replication->slave->binlog_pos_hint.offset);
 
     return binlog_read_thread_init(replication->context.reader_ctx,
             &replication->slave->binlog_pos_hint, 

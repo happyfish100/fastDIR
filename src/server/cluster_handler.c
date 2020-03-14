@@ -34,13 +34,6 @@
 #include "cluster_topology.h"
 #include "cluster_handler.h"
 
-#define TASK_STATUS_CONTINUE   12345
-
-#define TASK_ARG ((FDIRServerTaskArg *)task->arg)
-#define REQUEST  TASK_ARG->context.request
-#define RESPONSE TASK_ARG->context.response
-#define RESPONSE_STATUS RESPONSE.header.status
-
 int cluster_handler_init()
 {
     return 0;
@@ -76,6 +69,8 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             if (CLUSTER_CONSUMER_CTX != NULL) {
                 replica_consumer_thread_terminate(CLUSTER_CONSUMER_CTX);
                 CLUSTER_CONSUMER_CTX = NULL;
+                ((FDIRServerContext *)task->thread_data->arg)->
+                    cluster.consumer_ctx = NULL;
             }
             CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
             break;
@@ -291,8 +286,23 @@ static int cluster_deal_push_binlog(struct fast_task_info *task)
         return result;
     }
 
+    if (CLUSTER_TASK_TYPE != FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid task type: %d != %d", CLUSTER_TASK_TYPE,
+                FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE);
+        return EINVAL;
+    }
+    if (CLUSTER_CONSUMER_CTX == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "please join first");
+        return EINVAL;
+    }
+
     logInfo("push_binlog body length: %d", REQUEST.header.body_len);
-    return 0;
+    result = deal_replica_push_request(CLUSTER_CONSUMER_CTX);
+    return result == EAGAIN ? 0 : result;
 }
 
 static inline int cluster_check_replication_task(struct fast_task_info *task)
@@ -319,6 +329,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int result;
     int cluster_id;
     int server_id;
+    FDIRServerContext *server_ctx;
     FDIRBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
     FDIRClusterServerInfo *peer;
@@ -384,12 +395,21 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EEXIST;
     }
 
+    server_ctx = (FDIRServerContext *)task->thread_data->arg;
+    if (server_ctx->cluster.consumer_ctx != NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "replica consumer thread already exist");
+        return EEXIST;
+    }
+
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE;
-    CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(
+    CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
         task->size - sizeof(FDIRProtoHeader), &result);
     if (CLUSTER_CONSUMER_CTX == NULL) {
         return result;
     }
+    server_ctx->cluster.consumer_ctx = CLUSTER_CONSUMER_CTX;
 
     binlog_get_current_write_position(&bf_position);
 
@@ -597,6 +617,7 @@ int cluster_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ:
                 result = cluster_deal_push_binlog(task);
+                TASK_ARG->context.need_response = false;
                 break;
             case FDIR_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
@@ -641,10 +662,20 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
 
-    if (!MYSELF_IS_MASTER) {
+    server_ctx = (FDIRServerContext *)thread_data->arg;
+    if (MYSELF_IS_MASTER) {
+        return binlog_replication_process(server_ctx);
+    } else {
+        if (server_ctx->cluster.consumer_ctx != NULL) {
+            //TODO
+            static int count = 0;
+            if (count++ % 100 == 0) {
+            logInfo("consumer_ctx: %p", server_ctx->cluster.consumer_ctx);
+            }
+
+            return deal_replica_push_result(server_ctx->cluster.consumer_ctx);
+        }
+
         return 0;
     }
- 
-    server_ctx = (FDIRServerContext *)thread_data->arg;
-    return binlog_replication_process(server_ctx);
 }

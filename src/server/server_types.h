@@ -175,8 +175,9 @@ typedef struct fdir_server_context {
         } service;
 
         struct {
-            FDIRSlaveReplicationPtrArray connectings;  //for master
-            FDIRSlaveReplicationPtrArray connected;    //for master
+            FDIRSlaveReplicationPtrArray connectings;  //master side
+            FDIRSlaveReplicationPtrArray connected;    //master side
+            struct replica_consumer_thread_context *consumer_ctx;//slave side
         } cluster;
     };
 } FDIRServerContext;

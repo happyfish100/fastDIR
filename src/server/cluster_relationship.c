@@ -357,8 +357,8 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     CLUSTER_MASTER_PTR = master;
     if (master_self) {
         ct_reset_slave_arrays();
-        MYSELF_IS_MASTER = true;
         binlog_local_consumer_replication_start();
+        MYSELF_IS_MASTER = true;
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",

@@ -18,17 +18,16 @@
 #include "../server_global.h"
 #include "binlog_func.h"
 
-int binlog_buffer_init(ServerBinlogBuffer *buffer)
+int binlog_buffer_init_ex(ServerBinlogBuffer *buffer, const int size)
 {
-    buffer->buff = (char *)malloc(BINLOG_BUFFER_SIZE);
+    buffer->buff = (char *)malloc(size);
     if (buffer->buff == NULL) {
         logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__,
-                BINLOG_BUFFER_SIZE);
+                "malloc %d bytes fail", __LINE__, size);
         return ENOMEM;
     }
 
     buffer->current = buffer->end = buffer->buff;
-    buffer->size = BINLOG_BUFFER_SIZE;
+    buffer->size = size;
     return 0;
 }

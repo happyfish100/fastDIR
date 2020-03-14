@@ -26,6 +26,7 @@ typedef struct replica_consumer_thread_context {
 
         struct common_blocked_queue result; //record deal result
     } queues;
+    struct fast_task_info *task;
 } ReplicaConsumerThreadContext;
 
 #ifdef __cplusplus
@@ -33,30 +34,10 @@ extern "C" {
 #endif
 
 ReplicaConsumerThreadContext *replica_consumer_thread_init(
-        const int buffer_size, int *err_no);
+        struct fast_task_info *task, const int buffer_size, int *err_no);
 
-static inline ServerBinlogRecordBuffer *replica_consumer_thread_alloc_binlog_buffer(
-        ReplicaConsumerThreadContext *ctx)
-{
-    return (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
-            &ctx->queues.free, false);
-}
-
-static inline int replica_consumer_thread_free_binlog_buffer(
-        ReplicaConsumerThreadContext *ctx, ServerBinlogRecordBuffer *rbuffer)
-{
-    return common_blocked_queue_push(&ctx->queues.free, rbuffer);
-}
-
-int push_to_replica_consumer_queues(ReplicaConsumerThreadContext *ctx,
-        ServerBinlogRecordBuffer *rbuffer);
-
-static inline ServerBinlogRecordBuffer *replica_consumer_thread_fetch_result_buffer(
-        ReplicaConsumerThreadContext *ctx)
-{
-    return (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
-            &ctx->queues.output, false);
-}
+int deal_replica_push_request(ReplicaConsumerThreadContext *ctx);
+int deal_replica_push_result(ReplicaConsumerThreadContext *ctx);
 
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx);
 

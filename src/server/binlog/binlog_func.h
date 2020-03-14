@@ -10,7 +10,13 @@
 extern "C" {
 #endif
 
-int binlog_buffer_init(ServerBinlogBuffer *buffer);
+int binlog_buffer_init_ex(ServerBinlogBuffer *buffer, const int size);
+
+static inline int binlog_buffer_init(ServerBinlogBuffer *buffer)
+{
+    const int size = BINLOG_BUFFER_SIZE;
+    return binlog_buffer_init_ex(buffer, size);
+}
 
 static inline void binlog_buffer_destroy(ServerBinlogBuffer *buffer)
 {
