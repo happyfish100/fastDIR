@@ -19,17 +19,19 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer);
 
 int binlog_unpack_record(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
-        char *error_info);
+        char *error_info, const int error_size);
 
 int binlog_detect_record(const char *str, const int len,
-        int64_t *data_version, const char **rec_end, char *error_info);
+        int64_t *data_version, const char **rec_end,
+        char *error_info, const int error_size);
 
 int binlog_detect_record_forward(const char *str, const int len,
         int64_t *data_version, int *rstart_offset, int *rend_offset,
-        char *error_info);
+        char *error_info, const int error_size);
 
 int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, const char **rec_end, char *error_info);
+        int64_t *data_version, const char **rec_end,
+        char *error_info, const int error_size);
 
 int binlog_detect_last_record_end(const char *str, const int len,
         const char **rec_end);

@@ -21,6 +21,7 @@
 #include "data_thread.h"
 
 DataThreadArray g_data_thread_array;
+static volatile int running_thread_count = 0;
 static void *data_thread_func(void *arg);
 
 static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
@@ -169,9 +170,18 @@ int data_thread_init()
     }
 
     count = g_data_thread_array.count;
-    return create_work_threads_ex(&count, data_thread_func,
+    if ((result=create_work_threads_ex(&count, data_thread_func,
             g_data_thread_array.contexts, sizeof(FDIRDataThreadContext),
-            NULL, SF_G_THREAD_STACK_SIZE);
+            NULL, SF_G_THREAD_STACK_SIZE)) == 0)
+    {
+        count = 0;
+        while (__sync_add_and_fetch(&running_thread_count, 0) <
+                g_data_thread_array.count && count++ < 100)
+        {
+            usleep(1000);
+        }
+    }
+    return result;
 }
 
 void data_thread_destroy()
@@ -193,10 +203,18 @@ void data_thread_terminate()
 {
     FDIRDataThreadContext *context;
     FDIRDataThreadContext *end;
+    int count;
 
     end = g_data_thread_array.contexts + g_data_thread_array.count;
     for (context=g_data_thread_array.contexts; context<end; context++) {
         common_blocked_queue_terminate(&context->queue);
+    }
+
+    count = 0;
+    while (__sync_add_and_fetch(&running_thread_count, 0) != 0 &&
+            count++ < 100)
+    {
+        usleep(1000);
     }
 }
 
@@ -226,10 +244,21 @@ static inline int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             break;
     }
 
-    if (record->notify.func != NULL) {
-        if (result == 0 && record->data_version == 0) {
-            record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+    if (result == 0) {
+        if (record->data_version == 0) {
+            record->data_version = __sync_add_and_fetch(
+                    &DATA_CURRENT_VERSION, 1);
+        } else {
+            int64_t old_version;
+            old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
+            if (record->data_version > old_version) {
+                __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
+                        old_version, record->data_version);
+            }
         }
+    }
+
+    if (record->notify.func != NULL) {
         record->notify.func(result, record->notify.args);
     }
 
@@ -265,6 +294,7 @@ static void *data_thread_func(void *arg)
     struct common_blocked_node *node;
     FDIRDataThreadContext *thread_ctx;
 
+    __sync_add_and_fetch(&running_thread_count, 1);
     thread_ctx = (FDIRDataThreadContext *)arg;
     queue = &thread_ctx->queue;
     while (SF_G_CONTINUE_FLAG) {
@@ -278,6 +308,6 @@ static void *data_thread_func(void *arg)
 
         deal_delay_free_queque(thread_ctx);
     }
-
+    __sync_sub_and_fetch(&running_thread_count, 1);
     return NULL;
 }

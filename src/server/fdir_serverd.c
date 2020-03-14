@@ -32,6 +32,7 @@
 #include "inode_generator.h"
 #include "server_binlog.h"
 #include "data_thread.h"
+#include "data_loader.h"
 #include "service_handler.h"
 #include "cluster_handler.h"
 
@@ -120,6 +121,9 @@ int main(int argc, char *argv[])
 
     r = data_thread_init();
     gofailif(r, "data thread init error");
+
+    r = server_load_data();
+    gofailif(r, "load data error");
 
     r = sf_service_init_ex(&CLUSTER_SF_CTX, cluster_alloc_thread_extra_data,
             cluster_thread_loop_callback, NULL, fdir_proto_set_body_length,

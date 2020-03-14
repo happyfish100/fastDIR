@@ -74,6 +74,7 @@ typedef struct {
     const char *rec_end;
     BinlogFieldValue fv;
     char *error_info;
+    int error_size;
 } FieldParserContext;
 
 static FastCharConverter char_converter;
@@ -645,15 +646,22 @@ static int binlog_check_record(const char *str, const int len,
     return 0;
 }
 
+#define BINLOG_PACK_SET_ERROR_INFO(pcontext, errinfo, errsize) \
+    do { \
+        *errinfo = '\0';   \
+        pcontext.error_info = errinfo;  \
+        pcontext.error_size = errsize;  \
+    } while (0)
+
 int binlog_unpack_record(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
-        char *error_info)
+        char *error_info, const int error_size)
 {
     FieldParserContext pcontext;
     int result;
 
     memset(record, 0, sizeof(*record));
-    pcontext.error_info = error_info;
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
         *record_end = NULL;
         return result;
@@ -664,13 +672,14 @@ int binlog_unpack_record(const char *str, const int len,
 }
 
 int binlog_detect_record(const char *str, const int len,
-        int64_t *data_version, const char **rec_end, char *error_info)
+        int64_t *data_version, const char **rec_end,
+        char *error_info, const int error_size)
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
     int result;
 
-    pcontext.error_info = error_info;
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
         return result;
     }
@@ -722,7 +731,7 @@ static bool binlog_is_record_start(const char *str, const int len,
 
 int binlog_detect_record_forward(const char *str, const int len,
         int64_t *data_version, int *rstart_offset, int *rend_offset,
-        char *error_info)
+        char *error_info, const int error_size)
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
@@ -731,7 +740,7 @@ int binlog_detect_record_forward(const char *str, const int len,
     const char *end;
     int result;
 
-    pcontext.error_info = error_info;
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     *rstart_offset = -1;
     p = str;
     end = str + len;
@@ -766,7 +775,8 @@ int binlog_detect_record_forward(const char *str, const int len,
 }
 
 int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, const char **rec_end, char *error_info)
+        int64_t *data_version, const char **rec_end,
+        char *error_info, const int error_size)
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
@@ -776,7 +786,7 @@ int binlog_detect_record_reverse(const char *str, const int len,
     int l;
     int result;
 
-    pcontext.error_info = error_info;
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_rec_length(len, &pcontext)) != 0) {
         return result;
     }

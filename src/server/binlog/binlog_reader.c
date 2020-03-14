@@ -190,7 +190,8 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     }
 
     if ((result=binlog_detect_record_reverse(buff, *read_bytes,
-                    data_version, (const char **)&rec_end, error_info)) != 0)
+                    data_version, (const char **)&rec_end,
+                    error_info, sizeof(error_info))) != 0)
     {
         return result == ENOENT ? EFAULT : result;
     }
@@ -227,7 +228,7 @@ int binlog_reader_next_record(ServerBinlogReader *reader,
     }
 
     result = binlog_unpack_record(reader->binlog_buffer.current, len,
-            record, (const char **)&rec_end, error_info);
+            record, (const char **)&rec_end, error_info, sizeof(error_info));
     if (result == EAGAIN || result == EOVERFLOW) {
         if ((result=binlog_reader_read(reader)) != 0) {
             return result;
@@ -235,7 +236,8 @@ int binlog_reader_next_record(ServerBinlogReader *reader,
 
         len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
         result = binlog_unpack_record(reader->binlog_buffer.current, len,
-                record, (const char **)&rec_end, error_info);
+                record, (const char **)&rec_end,
+                error_info, sizeof(error_info));
     }
 
     if (result != 0) {
@@ -281,7 +283,7 @@ static int find_data_version(ServerBinlogReader *reader,
         while ((result=binlog_detect_record(reader->binlog_buffer.current,
                         BINLOG_BUFFER_REMAIN(reader->binlog_buffer),
                         &data_version, (const char **)&rec_end,
-                        error_info)) == 0)
+                        error_info, sizeof(error_info))) == 0)
         {
             logInfo("data_version==%"PRId64", record end offset: %d",
                     data_version, (int)(rec_end - reader->binlog_buffer.buff));
@@ -442,7 +444,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
     remain = bytes;
     while (remain > 32) {
         result = binlog_detect_record_forward(p, remain, &data_version,
-                &rstart_offset, &rend_offset, error_info);
+                &rstart_offset, &rend_offset, error_info, sizeof(error_info));
         if (result == 0) {
             if (last_data_version == data_version) {
                 reader->position.offset += (p - buff) + rend_offset;
@@ -530,7 +532,8 @@ int binlog_get_first_record_version(const int file_index,
 
         *error_info = '\0';
         result = binlog_detect_record(buff, offset,
-                data_version, (const char **)&rec_end, error_info);
+                data_version, (const char **)&rec_end,
+                error_info, sizeof(error_info));
         if (result == 0) {
             break;
         } else if (result != EOVERFLOW) {
@@ -598,7 +601,8 @@ int binlog_get_last_record_version(const int file_index,
 
     *error_info = '\0';
     if ((result=binlog_detect_record_reverse(buff, bytes,
-                    data_version, NULL, error_info)) != 0)
+                    data_version, NULL, error_info,
+                    sizeof(error_info))) != 0)
     {
         if (*error_info != '\0') {
             logError("file: "__FILE__", line: %d, "

@@ -8,6 +8,7 @@
 #include "binlog/binlog_write_thread.h"
 #include "binlog/binlog_read_thread.h"
 #include "binlog/replica_consumer_thread.h"
+#include "binlog/binlog_pack.h"
 
 #ifdef __cplusplus
 extern "C" {
