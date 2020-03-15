@@ -108,14 +108,6 @@ int main(int argc, char *argv[])
     r = service_handler_init();
     gofailif(r, "server handler init error");
 
-    fdir_proto_init();
-
-    r = cluster_top_init();
-    gofailif(r, "cluster topology init error");
-
-    r = cluster_relationship_init();
-    gofailif(r, "cluster relationship init error");
-
     r = server_binlog_init();
     gofailif(r, "server binlog init error");
 
@@ -124,6 +116,14 @@ int main(int argc, char *argv[])
 
     r = server_load_data();
     gofailif(r, "load data error");
+
+    fdir_proto_init();
+
+    r = cluster_top_init();
+    gofailif(r, "cluster topology init error");
+
+    r = cluster_relationship_init();
+    gofailif(r, "cluster relationship init error");
 
     r = sf_service_init_ex(&CLUSTER_SF_CTX, cluster_alloc_thread_extra_data,
             cluster_thread_loop_callback, NULL, fdir_proto_set_body_length,

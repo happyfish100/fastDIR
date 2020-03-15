@@ -163,6 +163,15 @@ typedef struct fdir_proto_ping_master_resp {
     char your_status;  //tell the status of the slave
 } FDIRProtoPingMasterResp;
 
+typedef struct fdir_proto_push_binlog_resp_body_header {
+    char count[4];
+} FDIRProtoPushBinlogRespBodyHeader;
+
+typedef struct fdir_proto_push_binlog_resp_body_part {
+    char data_version[8];
+    char err_no[2];
+} FDIRProtoPushBinlogRespBodyPart;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

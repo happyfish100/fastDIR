@@ -9,6 +9,7 @@
 #include "binlog/binlog_read_thread.h"
 #include "binlog/replica_consumer_thread.h"
 #include "binlog/binlog_pack.h"
+#include "binlog/binlog_replay.h"
 
 #ifdef __cplusplus
 extern "C" {

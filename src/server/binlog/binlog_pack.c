@@ -664,7 +664,7 @@ int binlog_unpack_record(const char *str, const int len,
     FieldParserContext pcontext;
     int result;
 
-    memset(record, 0, sizeof(*record));
+    memset(record, 0, (long)(&((FDIRBinlogRecord*)0)->notify));
     BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
         *record_end = NULL;

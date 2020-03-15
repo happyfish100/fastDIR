@@ -13,7 +13,8 @@ ALL_OBJS = ../common/fdir_proto.o server_func.o service_handler.o \
            binlog/binlog_producer.o binlog/binlog_local_consumer.o \
            binlog/binlog_write_thread.o binlog/binlog_read_thread.o \
            binlog/binlog_replication.o binlog/replica_consumer_thread.o \
-           binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o
+           binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o \
+           binlog/binlog_replay.o
 
 ALL_PRGS = fdir_serverd
 

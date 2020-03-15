@@ -5,11 +5,12 @@
 
 #include "fastcommon/fast_mblock.h"
 #include "binlog_types.h"
+#include "binlog_replay.h"
 
 #define REPLICA_CONSUMER_THREAD_BUFFER_COUNT   4  //double buffers
 
 typedef struct replica_consumer_thread_result {
-    int err_no;
+    short err_no;
     int64_t data_version;
 } RecordProcessResult;
 
@@ -27,6 +28,7 @@ typedef struct replica_consumer_thread_context {
         struct common_blocked_queue result; //record deal result
     } queues;
     struct fast_task_info *task;
+    BinlogReplayContext replay_ctx;
 } ReplicaConsumerThreadContext;
 
 #ifdef __cplusplus

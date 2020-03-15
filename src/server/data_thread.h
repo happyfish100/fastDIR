@@ -7,8 +7,8 @@
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
 
-#define FDIR_DATA_ERROR_MODE_STRICT   1
-#define FDIR_DATA_ERROR_MODE_LOOSE    2
+#define FDIR_DATA_ERROR_MODE_STRICT   1   //for master update operations
+#define FDIR_DATA_ERROR_MODE_LOOSE    2   //for data load or binlog replication
 
 struct fdir_data_thread_context;
 typedef struct fdir_dentry_context {
