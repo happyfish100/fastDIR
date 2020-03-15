@@ -228,10 +228,11 @@ static inline int alloc_record_object(struct fast_task_info *task)
     return 0;
 }
 
-static void record_deal_done_notify(const int result, void *args)
+static void record_deal_done_notify(const int result, FDIRBinlogRecord *record)
 {
     struct fast_task_info *task;
-    task = (struct fast_task_info *)args;
+
+    task = (struct fast_task_info *)record->notify.args;
     RESPONSE_STATUS = result;
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }

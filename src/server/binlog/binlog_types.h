@@ -34,7 +34,9 @@
 
 struct server_binlog_record_buffer;
 
-typedef void (*data_thread_notify_func)(const int result, void *args);
+typedef void (*data_thread_notify_func)(const int result,
+        struct fdir_binlog_record *record);
+
 typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer, void *args);
 

@@ -20,7 +20,7 @@
 #include "dentry.h"
 #include "data_thread.h"
 
-DataThreadArray g_data_thread_array;
+FDIRDataThreadVariables g_data_thread_vars;
 static volatile int running_thread_count = 0;
 static void *data_thread_func(void *arg);
 
@@ -142,21 +142,24 @@ static int init_data_thread_array()
     FDIRDataThreadContext *end;
 
     bytes = sizeof(FDIRDataThreadContext) * DATA_THREAD_COUNT;
-    g_data_thread_array.contexts = (FDIRDataThreadContext *)malloc(bytes);
-    if (g_data_thread_array.contexts == NULL) {
+    g_data_thread_vars.thread_array.contexts =
+        (FDIRDataThreadContext *)malloc(bytes);
+    if (g_data_thread_vars.thread_array.contexts == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
-    memset(g_data_thread_array.contexts, 0, bytes);
+    memset(g_data_thread_vars.thread_array.contexts, 0, bytes);
 
-    end = g_data_thread_array.contexts + DATA_THREAD_COUNT;
-    for (context=g_data_thread_array.contexts; context<end; context++) {
+    end = g_data_thread_vars.thread_array.contexts + DATA_THREAD_COUNT;
+    for (context=g_data_thread_vars.thread_array.contexts;
+            context<end; context++)
+    {
         if ((result=init_thread_ctx(context)) != 0) {
             return result;
         }
     }
-    g_data_thread_array.count = DATA_THREAD_COUNT;
+    g_data_thread_vars.thread_array.count = DATA_THREAD_COUNT;
     return 0;
 }
 
@@ -169,14 +172,16 @@ int data_thread_init()
         return result;
     }
 
-    count = g_data_thread_array.count;
+    g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
+    count = g_data_thread_vars.thread_array.count;
     if ((result=create_work_threads_ex(&count, data_thread_func,
-            g_data_thread_array.contexts, sizeof(FDIRDataThreadContext),
-            NULL, SF_G_THREAD_STACK_SIZE)) == 0)
+            g_data_thread_vars.thread_array.contexts,
+            sizeof(FDIRDataThreadContext), NULL,
+            SF_G_THREAD_STACK_SIZE)) == 0)
     {
         count = 0;
         while (__sync_add_and_fetch(&running_thread_count, 0) <
-                g_data_thread_array.count && count++ < 100)
+                g_data_thread_vars.thread_array.count && count++ < 100)
         {
             usleep(1000);
         }
@@ -186,16 +191,19 @@ int data_thread_init()
 
 void data_thread_destroy()
 {
-    if (g_data_thread_array.contexts != NULL) {
+    if (g_data_thread_vars.thread_array.contexts != NULL) {
         FDIRDataThreadContext *context;
         FDIRDataThreadContext *end;
 
-        end = g_data_thread_array.contexts + g_data_thread_array.count;
-        for (context=g_data_thread_array.contexts; context<end; context++) {
+        end = g_data_thread_vars.thread_array.contexts +
+            g_data_thread_vars.thread_array.count;
+        for (context=g_data_thread_vars.thread_array.contexts;
+                context<end; context++)
+        {
             common_blocked_queue_destroy(&context->queue);
         }
-        free(g_data_thread_array.contexts);
-        g_data_thread_array.contexts = NULL;
+        free(g_data_thread_vars.thread_array.contexts);
+        g_data_thread_vars.thread_array.contexts = NULL;
     }
 }
 
@@ -205,8 +213,11 @@ void data_thread_terminate()
     FDIRDataThreadContext *end;
     int count;
 
-    end = g_data_thread_array.contexts + g_data_thread_array.count;
-    for (context=g_data_thread_array.contexts; context<end; context++) {
+    end = g_data_thread_vars.thread_array.contexts +
+        g_data_thread_vars.thread_array.count;
+    for (context=g_data_thread_vars.thread_array.contexts;
+            context<end; context++)
+    {
         common_blocked_queue_terminate(&context->queue);
     }
 
@@ -217,6 +228,15 @@ void data_thread_terminate()
         usleep(1000);
     }
 }
+
+#define IGNORE_ERROR_BY_MODE(result, ignore_errno) \
+    do { \
+        if ((result == ignore_errno) && (g_data_thread_vars.error_mode == \
+                FDIR_DATA_ERROR_MODE_LOOSE))  \
+        {  \
+            result = 0;  \
+        }  \
+    } while (0)
 
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
@@ -231,9 +251,11 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             result = dentry_create(thread_ctx, record);
+            IGNORE_ERROR_BY_MODE(result, EEXIST);
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
             result = dentry_remove(thread_ctx, record);
+            IGNORE_ERROR_BY_MODE(result, ENOENT);
             break;
         case BINLOG_OP_RENAME_DENTRY_INT:
             break;
@@ -258,7 +280,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     }
 
     if (record->notify.func != NULL) {
-        record->notify.func(result, record->notify.args);
+        record->notify.func(result, record);
     }
 
     /*

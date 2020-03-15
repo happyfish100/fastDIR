@@ -19,6 +19,7 @@
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "server_binlog.h"
+#include "data_thread.h"
 #include "cluster_topology.h"
 #include "cluster_relationship.h"
 
@@ -358,6 +359,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     if (master_self) {
         ct_reset_slave_arrays();
         binlog_local_consumer_replication_start();
+        g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
         MYSELF_IS_MASTER = true;
     } else {
         logInfo("file: "__FILE__", line: %d, "

@@ -28,22 +28,21 @@ typedef struct data_loader_context {
     volatile int waiting_count;
     struct timespec ts;
     int last_errno;
-    int error_count;
+    volatile int fail_count;
     int64_t record_count;
 } DataLoaderContext;
 
-static void data_thread_deal_done_callback(const int result, void *args)
+static void data_thread_deal_done_callback(const int result,
+        FDIRBinlogRecord *record)
 {
     DataLoaderContext *loader_ctx;
 
-    loader_ctx = (DataLoaderContext *)args;
+    loader_ctx = (DataLoaderContext *)record->notify.args;
     if (result != 0) {
         loader_ctx->last_errno = result;
-        loader_ctx->error_count++;
+        __sync_add_and_fetch(&loader_ctx->fail_count, 1);
     }
     __sync_sub_and_fetch(&loader_ctx->waiting_count, 1);
-
-    //logInfo("deal_done_callback, waiting_count: %d, result: %d", __sync_sub_and_fetch(&loader_ctx->waiting_count, 1), result);
 }
 
 static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
@@ -84,11 +83,9 @@ static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
             while (__sync_add_and_fetch(&loader_ctx->waiting_count, 0) != 0) {
                 nanosleep(&loader_ctx->ts, NULL);
             }
-            /*
-            if (loader_ctx->error_count > 0) {
+            if (loader_ctx->fail_count > 0) {
                 return loader_ctx->last_errno;
             }
-            */
             count = 0;
         }
     }
@@ -99,8 +96,7 @@ static int server_deal_binlog_buffer(DataLoaderContext *loader_ctx,
     while (__sync_add_and_fetch(&loader_ctx->waiting_count, 0) != 0) {
         nanosleep(&loader_ctx->ts, NULL);
     }
-    return 0;
-    //return loader_ctx->error_count > 0 ? loader_ctx->last_errno : 0;
+    return loader_ctx->fail_count > 0 ? loader_ctx->last_errno : 0;
 }
 
 int server_load_data()
@@ -108,8 +104,12 @@ int server_load_data()
     DataLoaderContext loader_ctx;
     BinlogReadThreadContext reader_ctx;
     BinlogReadThreadResult *r;
+    int64_t start_time;
+    int64_t end_time;
     int result;
     int bytes;
+
+    start_time = get_current_time_ms();
 
     if ((result=binlog_read_thread_init(&reader_ctx, NULL, 0,
                     BINLOG_BUFFER_SIZE)) != 0)
@@ -119,11 +119,11 @@ int server_load_data()
 
     loader_ctx.record_count = 0;
     loader_ctx.last_errno = 0;
-    loader_ctx.error_count = 0;
+    loader_ctx.fail_count = 0;
     loader_ctx.waiting_count = 0;
     loader_ctx.ts.tv_sec = 0;
     loader_ctx.ts.tv_nsec = 10 * 1000;
-    loader_ctx.record_array.count = 4 * g_data_thread_array.count;
+    loader_ctx.record_array.count = 8 * DATA_THREAD_COUNT;
     bytes = sizeof(FDIRBinlogRecord) * loader_ctx.record_array.count;
     loader_ctx.record_array.records = (FDIRBinlogRecord *)malloc(bytes);
     if (loader_ctx.record_array.records == NULL) {
@@ -154,10 +154,13 @@ int server_load_data()
         binlog_read_thread_return_result_buffer(&reader_ctx, r);
     }
 
-    logInfo("record_count: %"PRId64", result: %d", loader_ctx.record_count,
-            result);
-
     free(loader_ctx.record_array.records);
     binlog_read_thread_terminate(&reader_ctx);
+
+    end_time = get_current_time_ms();
+    logInfo("file: "__FILE__", line: %d, "
+            "load data done. record count: %"PRId64", fail count: %d, "
+            "time used: %"PRId64"ms", __LINE__, loader_ctx.record_count,
+            loader_ctx.fail_count, end_time - start_time);
     return result;
 }

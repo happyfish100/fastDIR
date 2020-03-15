@@ -7,6 +7,9 @@
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
 
+#define FDIR_DATA_ERROR_MODE_STRICT   1
+#define FDIR_DATA_ERROR_MODE_LOOSE    2
+
 struct fdir_data_thread_context;
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
@@ -41,16 +44,21 @@ typedef struct fdir_data_thread_context {
     ServerDelayFreeContext delay_free_context;
 } FDIRDataThreadContext;
 
-typedef struct data_thread_array {
+typedef struct fdir_data_thread_array {
     FDIRDataThreadContext *contexts;
     int count;
-} DataThreadArray;
+} FDIRDataThreadArray;
+
+typedef struct fdir_data_thread_variables {
+    FDIRDataThreadArray thread_array;
+    int error_mode;
+} FDIRDataThreadVariables;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    extern DataThreadArray g_data_thread_array;
+    extern FDIRDataThreadVariables g_data_thread_vars;
 
     int data_thread_init();
     void data_thread_destroy();
@@ -67,8 +75,8 @@ extern "C" {
     static inline int push_to_data_thread_queue(FDIRBinlogRecord *record)
     {
         FDIRDataThreadContext *context;
-        context = g_data_thread_array.contexts + 
-            record->hash_code % g_data_thread_array.count;
+        context = g_data_thread_vars.thread_array.contexts +
+            record->hash_code % g_data_thread_vars.thread_array.count;
         return common_blocked_queue_push(&context->queue, record);
     }
 
