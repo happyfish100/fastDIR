@@ -46,9 +46,11 @@ int cluster_handler_destroy()
 
 void cluster_task_finish_cleanup(struct fast_task_info *task)
 {
+    /*
     FDIRServerTaskArg *task_arg;
 
     task_arg = (FDIRServerTaskArg *)task->arg;
+    */
 
     switch (CLUSTER_TASK_TYPE) {
         case FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP:
@@ -697,6 +699,7 @@ int cluster_deal_task(struct fast_task_info *task)
             case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP:
                 result = cluster_deal_push_binlog_resp(task);
                 TASK_ARG->context.need_response = false;
+                break;
             case FDIR_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
                 TASK_ARG->context.need_response = false;

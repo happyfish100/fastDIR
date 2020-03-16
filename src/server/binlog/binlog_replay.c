@@ -51,6 +51,7 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     replay_ctx->ts.tv_sec = 0;
     replay_ctx->ts.tv_nsec = 10 * 1000;
     replay_ctx->notify.func = notify_func;
+    replay_ctx->notify.args  = args;
     replay_ctx->record_array.size = batch_size * DATA_THREAD_COUNT;
     bytes = sizeof(FDIRBinlogRecord) * replay_ctx->record_array.size;
     replay_ctx->record_array.records = (FDIRBinlogRecord *)malloc(bytes);
@@ -63,8 +64,8 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
 
     rend = replay_ctx->record_array.records + replay_ctx->record_array.size;
     for (record=replay_ctx->record_array.records; record<rend; record++) {
-        record->notify.args = replay_ctx;
         record->notify.func = data_thread_deal_done_callback;
+        record->notify.args = replay_ctx;
     }
 
     return 0;

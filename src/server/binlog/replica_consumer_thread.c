@@ -14,7 +14,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
-#include "fastcommon/sched_thread.h"
+#include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
 #include "sf/sf_nio.h"
 #include "common/fdir_proto.h"
@@ -232,8 +232,8 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
         return EAGAIN;
     }
 
-    memcpy(ctx->task->data + sizeof(FDIRProtoHeader), rb->buffer.data,
-            rb->buffer.length);
+    memcpy(ctx->task->data + sizeof(FDIRProtoHeader),
+            rb->buffer.data, rb->buffer.length);
     ctx->task->length = sizeof(FDIRProtoHeader) + rb->buffer.length;
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->data,
@@ -262,6 +262,11 @@ static void *deal_binlog_thread_func(void *arg)
             continue;
         }
 
+        /*
+        logInfo("file: "__FILE__", line: %d, "
+                "replay binlog buffer length: %d", __LINE__, rb->buffer.length);
+                */
+
         binlog_replay_deal_buffer(&ctx->replay_ctx,
                 rb->buffer.data, rb->buffer.length);
 
@@ -275,16 +280,19 @@ static void *deal_binlog_thread_func(void *arg)
 static inline ServerBinlogRecordBuffer *alloc_binlog_buffer(
         ReplicaConsumerThreadContext *ctx)
 {
-    ServerBinlogRecordBuffer *rbuffer = NULL;
+    ServerBinlogRecordBuffer *rbuffer;
 
     while (ctx->continue_flag) {
         rbuffer = replica_consumer_thread_alloc_binlog_buffer(ctx);
-        if (rbuffer == NULL) {
-            usleep(1000);
-            continue;
+        if (rbuffer != NULL) {
+            return rbuffer;
         }
+
+        usleep(1000);
+        continue;
     }
-    return rbuffer;
+
+    return NULL;
 }
 
 static void combine_push_results(ReplicaConsumerThreadContext *ctx,
@@ -323,6 +331,7 @@ static void combine_push_results(ReplicaConsumerThreadContext *ctx,
                 rbuffer->buffer.data)->count);
     rbuffer->buffer.length = p - rbuffer->buffer.data;
     common_blocked_queue_push(&ctx->queues.output, rbuffer);
+    iovent_notify_thread(ctx->task->thread_data);
 }
 
 static void *collect_results_thread_func(void *arg)
@@ -337,6 +346,9 @@ static void *collect_results_thread_func(void *arg)
         if (node == NULL) {
             continue;
         }
+
+        logInfo("file: "__FILE__", line: %d, func: %s, "
+                "node: %p", __LINE__, __FUNCTION__, node);
 
         combine_push_results(ctx, node);
         common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
