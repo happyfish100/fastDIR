@@ -83,13 +83,6 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     struct fast_task_info *task;
     FDIRServerContext *server_ctx;
 
-    alloc_size = 2 * replication->task->size / BINLOG_RECORD_MIN_SIZE;
-    if ((result=push_result_ring_check_init(&replication->
-                    context.push_result_ring, alloc_size)) != 0)
-    {
-        return result;
-    }
-
     task = free_queue_pop();
     if (task == NULL) {
         logError("file: "__FILE__", line: %d, "
@@ -97,6 +90,13 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
                 "increase the parameter: max_connections",
                 __LINE__);
         return ENOMEM;
+    }
+
+    alloc_size = 2 * task->size / BINLOG_RECORD_MIN_SIZE;
+    if ((result=push_result_ring_check_init(&replication->
+                    context.push_result_ctx, alloc_size)) != 0)
+    {
+        return result;
     }
 
     task->canceled = false;
@@ -138,6 +138,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     if ((result=remove_from_replication_ptr_array(&server_ctx->
                 cluster.connected, replication)) == 0)
     {
+        push_result_ring_clear(&replication->context.push_result_ctx);
         result = binlog_replication_bind_thread(replication);
     }
 
@@ -459,6 +460,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
+    int result;
 
     pthread_mutex_lock(&replication->context.queue.lock);
     head = replication->context.queue.head;
@@ -490,6 +492,15 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         memcpy(replication->task->data + replication->task->length,
                 rb->buffer.data, rb->buffer.length);
         replication->task->length += rb->buffer.length;
+
+        logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
+
+        if ((result=push_result_ring_add(&replication->context.
+                        push_result_ctx, rb->data_version,
+                        (struct fast_task_info *)rb->args)) != 0)
+        {
+            return result;
+        }
 
         head = head->nexts[replication->index];
         rb->release_func(rb, rb->args);

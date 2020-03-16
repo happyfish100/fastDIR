@@ -9,18 +9,18 @@
 extern "C" {
 #endif
 
-
-int push_result_ring_check_init(FDIRBinlogPushResultRing *ring,
+int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
         const int alloc_size);
 
-static inline void push_result_ring_destroy(FDIRBinlogPushResultRing *ring)
-{
-    if (ring->entries != NULL) {
-        free(ring->entries);
-        ring->start = ring->end = ring->entries = NULL;
-        ring->size = 0;
-    }
-}
+void push_result_ring_destroy(FDIRBinlogPushResultContext *ctx);
+
+int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
+        const uint64_t data_version, struct fast_task_info *waiting_task);
+
+int push_result_ring_remove(FDIRBinlogPushResultContext *ctx,
+        const uint64_t data_version);
+
+void push_result_ring_clear(FDIRBinlogPushResultContext *ctx);
 
 #ifdef __cplusplus
 }

@@ -324,6 +324,72 @@ static inline int cluster_check_replication_task(struct fast_task_info *task)
     return 0;
 }
 
+static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
+{
+    int result;
+    int count;
+    int expect_body_len;
+    int64_t data_version;
+    short err_no;
+    FDIRProtoPushBinlogRespBodyHeader *body_header;
+    FDIRProtoPushBinlogRespBodyPart *body_part;
+    FDIRProtoPushBinlogRespBodyPart *bp_end;
+
+    if ((result=cluster_check_replication_task(task)) != 0) {
+        return result;
+    }
+
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoPushBinlogRespBodyHeader) +
+                    sizeof(FDIRProtoPushBinlogRespBodyPart))) != 0)
+    {
+        return result;
+    }
+
+    body_header = (FDIRProtoPushBinlogRespBodyHeader *)REQUEST.body;
+    count = buff2int(body_header->count);
+
+    expect_body_len = sizeof(FDIRProtoPushBinlogRespBodyHeader) +
+        sizeof(FDIRProtoPushBinlogRespBodyPart) * count;
+    if (REQUEST.header.body_len != expect_body_len) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "body length: %d != expected: %d, results count: %d",
+                REQUEST.header.body_len, expect_body_len, count);
+        return EINVAL;
+    }
+
+    body_part = (FDIRProtoPushBinlogRespBodyPart *)(REQUEST.body +
+            sizeof(FDIRProtoPushBinlogRespBodyHeader));
+    bp_end = body_part + count;
+    for (; body_part<bp_end; body_part++) {
+        data_version = buff2long(body_part->data_version);
+        err_no = buff2short(body_part->err_no);
+        if (err_no != 0) {
+            result = err_no;
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "replica fail, data_version: %"PRId64
+                    ", result: %d", data_version, err_no);
+            break;
+        }
+
+        logInfo("push_binlog_resp data_version: %"PRId64", errno: %d", data_version, err_no);
+
+        if ((result=push_result_ring_remove(&CLUSTER_REPLICA->context.
+                        push_result_ctx, data_version)) != 0)
+        {
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "push_result_ring_remove fail, data_version: %"PRId64
+                    ", result: %d", data_version, err_no);
+            break;
+        }
+    }
+
+    return result;
+}
+
 static int cluster_deal_join_slave_req(struct fast_task_info *task)
 {
     int result;
@@ -456,53 +522,6 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
             req->binlog_pos_hint.index);
     CLUSTER_REPLICA->slave->binlog_pos_hint.offset = buff2long(
             req->binlog_pos_hint.offset);
-    return 0;
-}
-
-static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
-{
-    int result;
-    int count;
-    int expect_body_len;
-    int64_t data_version;
-    short err_no;
-    FDIRProtoPushBinlogRespBodyHeader *body_header;
-    FDIRProtoPushBinlogRespBodyPart *body_part;
-    FDIRProtoPushBinlogRespBodyPart *bp_end;
-
-    if ((result=cluster_check_replication_task(task)) != 0) {
-        return result;
-    }
-
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoPushBinlogRespBodyHeader) +
-                    sizeof(FDIRProtoPushBinlogRespBodyPart))) != 0)
-    {
-        return result;
-    }
-
-    body_header = (FDIRProtoPushBinlogRespBodyHeader *)REQUEST.body;
-    count = buff2int(body_header->count);
-
-    expect_body_len = sizeof(FDIRProtoPushBinlogRespBodyHeader) +
-        sizeof(FDIRProtoPushBinlogRespBodyPart) * count;
-    if (REQUEST.header.body_len != expect_body_len) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "body length: %d != expected: %d, results count: %d",
-                REQUEST.header.body_len, expect_body_len, count);
-        return EINVAL;
-    }
-
-    body_part = (FDIRProtoPushBinlogRespBodyPart *)(REQUEST.body +
-            sizeof(FDIRProtoPushBinlogRespBodyHeader));
-    bp_end = body_part + count;
-    for (; body_part<bp_end; body_part++) {
-        data_version = buff2long(body_part->data_version);
-        err_no = buff2short(body_part->err_no);
-        //TODO
-    }
-
     return 0;
 }
 

@@ -93,22 +93,31 @@ typedef struct fdir_record_buffer_queue {
 } FDIRRecordBufferQueue; 
 
 typedef struct fdir_binlog_push_result_entry {
-    int64_t data_version;
+    uint64_t data_version;
     struct fast_task_info *waiting_task;
+    struct fdir_binlog_push_result_entry *next;
 } FDIRBinlogPushResultEntry;
 
-typedef struct fdir_binlog_push_result_ring {
-    FDIRBinlogPushResultEntry *entries;
-    FDIRBinlogPushResultEntry *start;
-    FDIRBinlogPushResultEntry *end;
-    int size;
-} FDIRBinlogPushResultRing;
+typedef struct fdir_binlog_push_result_context {
+    struct {
+        FDIRBinlogPushResultEntry *entries;
+        FDIRBinlogPushResultEntry *start;   //for consumer
+        FDIRBinlogPushResultEntry *end;   //for producer
+        int size;
+    } ring;
+
+    struct {
+        FDIRBinlogPushResultEntry *head;
+        FDIRBinlogPushResultEntry *tail;
+        struct fast_mblock_man rentry_allocator;
+    } queue;   //for overflow exceptions
+} FDIRBinlogPushResultContext;
 
 struct binlog_read_thread_context;
 typedef struct fdir_replication_context {
     FDIRRecordBufferQueue queue;
     struct binlog_read_thread_context *reader_ctx;
-    FDIRBinlogPushResultRing push_result_ring;
+    FDIRBinlogPushResultContext push_result_ctx;
     struct {
         int64_t by_queue;
         int64_t by_disk;
