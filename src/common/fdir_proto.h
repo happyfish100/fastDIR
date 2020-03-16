@@ -147,6 +147,7 @@ typedef struct fdir_proto_join_master_req {
 typedef struct fdir_proto_join_slave_req {
     char cluster_id[4];  //the cluster id
     char server_id[4];   //the master server id
+    char buffer_size[4];   //the master task task size
     char key[FDIR_REPLICA_KEY_SIZE];  //the slave key passed / set by JOIN_MASTER
 } FDIRProtoJoinSlaveReq;
 

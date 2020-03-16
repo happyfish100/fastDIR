@@ -223,7 +223,9 @@ int binlog_reader_next_record(ServerBinlogReader *reader,
     char error_info[FDIR_ERROR_INFO_SIZE];
 
     len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
-    if (len <= 32 && (result=binlog_reader_read(reader)) != 0) {
+    if (len < BINLOG_RECORD_MIN_SIZE &&
+            (result=binlog_reader_read(reader)) != 0)
+    {
         return result;
     }
 
@@ -442,7 +444,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 
     p = buff;
     remain = bytes;
-    while (remain > 32) {
+    while (remain >= BINLOG_RECORD_MIN_SIZE) {
         result = binlog_detect_record_forward(p, remain, &data_version,
                 &rstart_offset, &rend_offset, error_info, sizeof(error_info));
         if (result == 0) {

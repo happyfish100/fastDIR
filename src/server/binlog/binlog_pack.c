@@ -574,9 +574,7 @@ static int binlog_parse_fields(FieldParserContext *pcontext,
 static inline int binlog_check_rec_length(const int len,
         FieldParserContext *pcontext)
 {
-    if (len <= 32 + BINLOG_RECORD_SIZE_STRLEN + BINLOG_RECORD_START_TAG_LEN
-            + BINLOG_RECORD_END_TAG_LEN)
-    {
+    if (len < BINLOG_RECORD_MIN_SIZE) {
         sprintf(pcontext->error_info, "string length: %d is too short", len);
         return EAGAIN;
     }
@@ -615,8 +613,7 @@ static int binlog_check_record(const char *str, const int len,
         return EINVAL;
     }
 
-    if (record_len <= 32 + BINLOG_RECORD_START_TAG_LEN +
-            BINLOG_RECORD_END_TAG_LEN)
+    if (record_len < BINLOG_RECORD_MIN_SIZE - BINLOG_RECORD_SIZE_STRLEN)
     {
         sprintf(pcontext->error_info, "record length: %d is too short",
                 record_len);
@@ -748,7 +745,7 @@ int binlog_detect_record_forward(const char *str, const int len,
     *rstart_offset = -1;
     p = str;
     end = str + len;
-    while ((end - p > 32 + BINLOG_RECORD_START_TAG_LEN) && (rec_start=
+    while ((end - p >= BINLOG_RECORD_MIN_SIZE) && (rec_start=
                 (const char *)memchr(p, BINLOG_RECORD_START_TAG_CHAR,
                     end - p)) != NULL)
     {

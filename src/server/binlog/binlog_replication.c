@@ -20,6 +20,8 @@
 #include "../../common/fdir_proto.h"
 #include "../server_global.h"
 #include "binlog_func.h"
+#include "binlog_pack.h"
+#include "push_result_ring.h"
 #include "binlog_producer.h"
 #include "binlog_read_thread.h"
 #include "binlog_replication.h"
@@ -77,8 +79,16 @@ static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
     int result;
+    int alloc_size;
     struct fast_task_info *task;
     FDIRServerContext *server_ctx;
+
+    alloc_size = 2 * replication->task->size / BINLOG_RECORD_MIN_SIZE;
+    if ((result=push_result_ring_check_init(&replication->
+                    context.push_result_ring, alloc_size)) != 0)
+    {
+        return result;
+    }
 
     task = free_queue_pop();
     if (task == NULL) {
@@ -101,6 +111,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     CLUSTER_REPLICA = replication;
     replication->connection_info.conn.sock = -1;
     replication->task = task;
+
     server_ctx = (FDIRServerContext *)task->thread_data->arg;
     if ((result=check_alloc_ptr_array(&server_ctx->
                     cluster.connectings)) != 0)
@@ -284,6 +295,7 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
     req = (FDIRProtoJoinSlaveReq *)(out_buff + sizeof(FDIRProtoHeader));
     int2buff(CLUSTER_ID, req->cluster_id);
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    int2buff(replication->task->size, req->buffer_size);
     memcpy(req->key, replication->slave->key, FDIR_REPLICA_KEY_SIZE);
 
     if ((result=tcpsenddata_nb(replication->connection_info.conn.sock,

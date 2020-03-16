@@ -92,10 +92,23 @@ typedef struct fdir_record_buffer_queue {
     pthread_mutex_t lock;
 } FDIRRecordBufferQueue; 
 
+typedef struct fdir_binlog_push_result_entry {
+    int64_t data_version;
+    struct fast_task_info *waiting_task;
+} FDIRBinlogPushResultEntry;
+
+typedef struct fdir_binlog_push_result_ring {
+    FDIRBinlogPushResultEntry *entries;
+    FDIRBinlogPushResultEntry *start;
+    FDIRBinlogPushResultEntry *end;
+    int size;
+} FDIRBinlogPushResultRing;
+
 struct binlog_read_thread_context;
 typedef struct fdir_replication_context {
     FDIRRecordBufferQueue queue;
     struct binlog_read_thread_context *reader_ctx;
+    FDIRBinlogPushResultRing push_result_ring;
     struct {
         int64_t by_queue;
         int64_t by_disk;
@@ -160,13 +173,16 @@ typedef struct server_task_arg {
             struct {
                 int task_type;
                 FDIRClusterServerInfo *peer;  //the peer server in the cluster
-                FDIRSlaveReplication *replica;  //master side
+
+                FDIRSlaveReplication *replica;             //master side
+
                 struct replica_consumer_thread_context *consumer_ctx;//slave side
             } cluster;
         };
     } context;
 
 } FDIRServerTaskArg;
+
 
 typedef struct fdir_server_context {
     union {
@@ -177,6 +193,7 @@ typedef struct fdir_server_context {
         struct {
             FDIRSlaveReplicationPtrArray connectings;  //master side
             FDIRSlaveReplicationPtrArray connected;    //master side
+
             struct replica_consumer_thread_context *consumer_ctx;//slave side
         } cluster;
     };

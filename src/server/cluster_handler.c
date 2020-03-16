@@ -278,7 +278,7 @@ static void record_deal_done_notify(const int result, void *args)
 }
 */
 
-static int cluster_deal_push_binlog(struct fast_task_info *task)
+static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {
     int result;
 
@@ -329,6 +329,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int result;
     int cluster_id;
     int server_id;
+    int buffer_size;
     FDIRServerContext *server_ctx;
     FDIRBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
@@ -346,11 +347,19 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     req = (FDIRProtoJoinSlaveReq *)REQUEST.body;
     cluster_id = buff2int(req->cluster_id);
     server_id = buff2int(req->server_id);
+    buffer_size = buff2int(req->buffer_size);
     if (cluster_id != CLUSTER_ID) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "peer cluster id: %d != mine: %d",
                 cluster_id, CLUSTER_ID);
+        return EINVAL;
+    }
+    if (buffer_size != task->size) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "peer task buffer size: %d != mine: %d",
+                buffer_size, task->size);
         return EINVAL;
     }
 
@@ -447,6 +456,53 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
             req->binlog_pos_hint.index);
     CLUSTER_REPLICA->slave->binlog_pos_hint.offset = buff2long(
             req->binlog_pos_hint.offset);
+    return 0;
+}
+
+static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
+{
+    int result;
+    int count;
+    int expect_body_len;
+    int64_t data_version;
+    short err_no;
+    FDIRProtoPushBinlogRespBodyHeader *body_header;
+    FDIRProtoPushBinlogRespBodyPart *body_part;
+    FDIRProtoPushBinlogRespBodyPart *bp_end;
+
+    if ((result=cluster_check_replication_task(task)) != 0) {
+        return result;
+    }
+
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoPushBinlogRespBodyHeader) +
+                    sizeof(FDIRProtoPushBinlogRespBodyPart))) != 0)
+    {
+        return result;
+    }
+
+    body_header = (FDIRProtoPushBinlogRespBodyHeader *)REQUEST.body;
+    count = buff2int(body_header->count);
+
+    expect_body_len = sizeof(FDIRProtoPushBinlogRespBodyHeader) +
+        sizeof(FDIRProtoPushBinlogRespBodyPart) * count;
+    if (REQUEST.header.body_len != expect_body_len) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "body length: %d != expected: %d, results count: %d",
+                REQUEST.header.body_len, expect_body_len, count);
+        return EINVAL;
+    }
+
+    body_part = (FDIRProtoPushBinlogRespBodyPart *)(REQUEST.body +
+            sizeof(FDIRProtoPushBinlogRespBodyHeader));
+    bp_end = body_part + count;
+    for (; body_part<bp_end; body_part++) {
+        data_version = buff2long(body_part->data_version);
+        err_no = buff2short(body_part->err_no);
+        //TODO
+    }
+
     return 0;
 }
 
@@ -616,9 +672,12 @@ int cluster_deal_task(struct fast_task_info *task)
                 TASK_ARG->context.need_response = false;
                 break;
             case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ:
-                result = cluster_deal_push_binlog(task);
+                result = cluster_deal_push_binlog_req(task);
                 TASK_ARG->context.need_response = false;
                 break;
+            case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP:
+                result = cluster_deal_push_binlog_resp(task);
+                TASK_ARG->context.need_response = false;
             case FDIR_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
                 TASK_ARG->context.need_response = false;
@@ -661,6 +720,7 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
 int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
+    int result;
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
     if (MYSELF_IS_MASTER) {
@@ -673,7 +733,8 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
             logInfo("consumer_ctx: %p", server_ctx->cluster.consumer_ctx);
             }
 
-            return deal_replica_push_result(server_ctx->cluster.consumer_ctx);
+            result = deal_replica_push_result(server_ctx->cluster.consumer_ctx);
+            return result == EAGAIN ? 0 : result;
         }
 
         return 0;

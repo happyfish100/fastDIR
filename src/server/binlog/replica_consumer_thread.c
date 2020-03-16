@@ -242,7 +242,6 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
 
     common_blocked_queue_push(&ctx->queues.free, rb);
     sf_send_add_event(ctx->task);
-
     return 0;
 }
 
