@@ -13,11 +13,13 @@ typedef struct binlog_replay_context {
         int size;
         FDIRBinlogRecord *records;
     } record_array;
+    int64_t data_current_version;
     volatile int waiting_count;
     struct timespec ts;
     int last_errno;
     volatile int fail_count;
     int64_t record_count;
+    int64_t invalid_count;
     struct {
         binlog_replay_notify_func func;
         void *args;

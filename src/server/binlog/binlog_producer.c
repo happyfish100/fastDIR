@@ -64,15 +64,6 @@ int binlog_producer_init()
         return result;
     }
 
-    if ((result=binlog_get_max_record_version((int64_t *)
-                    &DATA_CURRENT_VERSION)) != 0)
-    {
-        return result;
-    }
-
-    logInfo("DATA_CURRENT_VERSION == %"PRId64, DATA_CURRENT_VERSION);
-
-    next_data_version = DATA_CURRENT_VERSION + 1;
     sleep_ts.tv_sec = 0;
     sleep_ts.tv_nsec = SLEEP_NANO_SECONDS;
 	return 0;
@@ -81,6 +72,12 @@ int binlog_producer_init()
 void binlog_producer_destroy()
 {
     fast_mblock_destroy(&record_buffer_allocator);
+}
+
+void binlog_producer_init_next_data_version()
+{
+    logInfo("DATA_CURRENT_VERSION == %"PRId64, DATA_CURRENT_VERSION);
+    next_data_version = __sync_fetch_and_add(&DATA_CURRENT_VERSION, 0) + 1;
 }
 
 ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()

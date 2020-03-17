@@ -378,6 +378,12 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
 
         logInfo("push_binlog_resp data_version: %"PRId64", errno: %d", data_version, err_no);
 
+        if (data_version > CLUSTER_REPLICA->context.
+                last_data_versions.by_resp)
+        {
+            CLUSTER_REPLICA->context.last_data_versions.by_resp = data_version;
+        }
+
         if ((result=push_result_ring_remove(&CLUSTER_REPLICA->context.
                         push_result_ctx, data_version)) != 0)
         {
