@@ -21,6 +21,8 @@ int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master);
 int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
         const bool master_self);
 
+void cluster_relationship_trigger_reselect_master();
+
 #ifdef __cplusplus
 }
 #endif

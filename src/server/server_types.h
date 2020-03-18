@@ -31,6 +31,7 @@
 #define FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE    4
 
 #define TASK_STATUS_CONTINUE   12345
+
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
 #define RESPONSE          TASK_ARG->context.response
@@ -101,7 +102,7 @@ typedef struct fdir_binlog_push_result_entry {
 typedef struct fdir_binlog_push_result_context {
     struct {
         FDIRBinlogPushResultEntry *entries;
-        FDIRBinlogPushResultEntry *start;   //for consumer
+        FDIRBinlogPushResultEntry *start; //for consumer
         FDIRBinlogPushResultEntry *end;   //for producer
         int size;
     } ring;
@@ -115,9 +116,9 @@ typedef struct fdir_binlog_push_result_context {
 
 struct binlog_read_thread_context;
 typedef struct fdir_replication_context {
-    FDIRRecordBufferQueue queue;
-    struct binlog_read_thread_context *reader_ctx;
-    FDIRBinlogPushResultContext push_result_ctx;
+    FDIRRecordBufferQueue queue;  //push to the slave
+    struct binlog_read_thread_context *reader_ctx; //read from binlog file
+    FDIRBinlogPushResultContext push_result_ctx;   //push result recv from the slave
     struct {
         int64_t by_queue;
         int64_t by_disk;
@@ -181,9 +182,9 @@ typedef struct server_task_arg {
 
             struct {
                 int task_type;
-                FDIRClusterServerInfo *peer;  //the peer server in the cluster
+                FDIRClusterServerInfo *peer;   //the peer server in the cluster
 
-                FDIRSlaveReplication *replica;             //master side
+                FDIRSlaveReplication *replica; //master side
 
                 struct replica_consumer_thread_context *consumer_ctx;//slave side
             } cluster;
@@ -200,6 +201,7 @@ typedef struct fdir_server_context {
         } service;
 
         struct {
+            bool clean_connected_replicas;   //for cleanup connected array
             FDIRSlaveReplicationPtrArray connectings;  //master side
             FDIRSlaveReplicationPtrArray connected;    //master side
 

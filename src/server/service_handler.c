@@ -458,6 +458,20 @@ static inline int service_check_master(struct fast_task_info *task)
     return 0;
 }
 
+static inline int service_check_readable(struct fast_task_info *task)
+{
+    if (!(MYSELF_IS_MASTER || CLUSTER_MYSELF_PTR->status ==
+                FDIR_SERVER_STATUS_ACTIVE))
+    {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not active");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
 static int deal_task_done(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
@@ -551,10 +565,14 @@ int server_deal_task(struct fast_task_info *task)
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
-                result = server_deal_list_dentry_first(task);
+                if ((result=service_check_readable(task)) == 0) {
+                    result = server_deal_list_dentry_first(task);
+                }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
-                result = server_deal_list_dentry_next(task);
+                if ((result=service_check_readable(task)) == 0) {
+                    result = server_deal_list_dentry_next(task);
+                }
                 break;
             default:
                 RESPONSE.error.length = sprintf(

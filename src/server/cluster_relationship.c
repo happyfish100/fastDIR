@@ -164,9 +164,10 @@ static int proto_ping_master(ConnectionInfo *conn)
     if (inode_sn > CURRENT_INODE_SN) {
         CURRENT_INODE_SN = inode_sn;
     }
-    //TODO
-    //ping_resp.your_status;
-
+    if (CLUSTER_MYSELF_PTR->status != ping_resp.your_status) {
+        CLUSTER_MYSELF_PTR->status = ping_resp.your_status;
+        logInfo("my status: %d", CLUSTER_MYSELF_PTR->status);
+    }
     return 0;
 }
 
@@ -373,6 +374,24 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     return 0;
 }
 
+void cluster_relationship_trigger_reselect_master()
+{
+    struct nio_thread_data *thread_data;
+    struct nio_thread_data *data_end;
+
+    MYSELF_IS_MASTER = false;
+    CLUSTER_MASTER_PTR = NULL;
+    g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
+
+    data_end = CLUSTER_SF_CTX.thread_data + CLUSTER_SF_CTX.work_threads;
+    for (thread_data=CLUSTER_SF_CTX.thread_data;
+            thread_data<data_end; thread_data++)
+    {
+        ((FDIRServerContext *)thread_data->arg)->
+            cluster.clean_connected_replicas = true;
+    }
+}
+
 static int cluster_notify_next_master(FDIRClusterServerInfo *cs,
         FDIRClusterServerStatus *server_status, bool *bConnectFail)
 {
@@ -522,13 +541,6 @@ static int cluster_select_master()
 	return 0;
 }
 
-
-//CLUSTER_ACTIVE_SLAVES
-
-static int master_check_brain_split()
-{
-    return 0;
-}
 
 static int cluster_ping_master(ConnectionInfo *conn)
 {

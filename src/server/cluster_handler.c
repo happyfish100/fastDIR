@@ -553,7 +553,11 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
         }
 
         if (REQUEST_STATUS == FDIR_STATUS_MASTER_INCONSISTENT) {
-            //TODO  reselect master
+            logWarning("file: "__FILE__", line: %d, "
+                    "more than one masters occur, master brain-split maybe "
+                    "happened, will trigger reselecting master", __LINE__);
+            cluster_relationship_trigger_reselect_master();
+            REQUEST_STATUS = EEXIST;
         }
 
         return REQUEST_STATUS;
@@ -749,20 +753,28 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
     int result;
+    static int count = 0;
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
+
+    if (count++ % 100 == 0) {
+        logInfo("consumer_ctx: %p, connected.count: %d", server_ctx->cluster.consumer_ctx, server_ctx->cluster.connected.count);
+    }
+
     if (MYSELF_IS_MASTER) {
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {
-            //TODO
-            static int count = 0;
-            if (count++ % 100 == 0) {
-            logInfo("consumer_ctx: %p", server_ctx->cluster.consumer_ctx);
-            }
-
             result = deal_replica_push_result(server_ctx->cluster.consumer_ctx);
             return result == EAGAIN ? 0 : result;
+        } else if (server_ctx->cluster.clean_connected_replicas) {
+            logInfo("file: "__FILE__", line: %d, "
+                    "cluster thread #%d, will clean %d connected "
+                    "replications because i am no longer master",
+                    __LINE__, SF_THREAD_INDEX(CLUSTER_SF_CTX, thread_data),
+                    server_ctx->cluster.connected.count);
+            server_ctx->cluster.clean_connected_replicas = false;
+            clean_connected_replications(server_ctx);
         }
 
         return 0;

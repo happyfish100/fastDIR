@@ -126,7 +126,6 @@ void binlog_local_consumer_destroy()
             replication++)
     {
         pthread_mutex_destroy(&replication->context.queue.lock);
-        //TODO remove from nio task
     }
     free(slave_replication_array.replications);
     slave_replication_array.replications = NULL;

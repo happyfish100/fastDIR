@@ -119,11 +119,6 @@ void ct_slave_server_offline(FDIRClusterServerInfo *cs)
     pthread_mutex_unlock(&g_ct_lock);
 }
 
-static int ct_master_check_brain_split()
-{
-    return 0;
-}
-
 int cluster_top_init()
 {
     int result;

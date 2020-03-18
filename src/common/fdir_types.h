@@ -15,7 +15,11 @@
 #define FDIR_SERVER_DEFAULT_CLUSTER_PORT  11011
 #define FDIR_SERVER_DEFAULT_SERVICE_PORT  11012
 
-#define FDIR_MAX_PATH_COUNT  128
+#define FDIR_MAX_PATH_COUNT    128
+
+#define FDIR_SERVER_STATUS_OFFLINE   0
+#define FDIR_SERVER_STATUS_SYNCING   1
+#define FDIR_SERVER_STATUS_ACTIVE    2
 
 typedef struct {
     int body_len;      //body length

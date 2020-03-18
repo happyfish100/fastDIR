@@ -15,6 +15,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
+#include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
 #include "sf/sf_nio.h"
 #include "../../common/fdir_proto.h"
@@ -25,6 +26,8 @@
 #include "binlog_producer.h"
 #include "binlog_read_thread.h"
 #include "binlog_replication.h"
+
+static void replication_queue_discard_all(FDIRSlaveReplication *replication);
 
 static int check_alloc_ptr_array(FDIRSlaveReplicationPtrArray *array)
 {
@@ -76,6 +79,23 @@ static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
     return 0;
 }
 
+static inline void set_replication_stage(FDIRSlaveReplication *
+        replication, const int stage)
+{
+    switch (stage) {
+        case FDIR_REPLICATION_STAGE_SYNC_FROM_DISK:
+            replication->slave->status = FDIR_SERVER_STATUS_SYNCING;
+            break;
+        case FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE:
+            replication->slave->status = FDIR_SERVER_STATUS_ACTIVE;
+            break;
+        default:
+            replication->slave->status = FDIR_SERVER_STATUS_OFFLINE;
+            break;
+    }
+    replication->stage = stage;
+}
+
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
     int result;
@@ -105,7 +125,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
 
-    replication->stage = FDIR_REPLICATION_STAGE_NONE;
+    set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
     replication->context.last_data_versions.by_disk = 0;
     replication->context.last_data_versions.by_queue = 0;
     replication->context.last_data_versions.by_resp = 0;
@@ -140,8 +160,11 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     if ((result=remove_from_replication_ptr_array(&server_ctx->
                 cluster.connected, replication)) == 0)
     {
+        replication_queue_discard_all(replication);
         push_result_ring_clear(&replication->context.push_result_ctx);
-        result = binlog_replication_bind_thread(replication);
+        if (MYSELF_IS_MASTER) {
+            result = binlog_replication_bind_thread(replication);
+        }
     }
 
     return result;
@@ -428,9 +451,11 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
             if (success_array.count < SUCCESS_ARRAY_ELEMENT_MAX) {
                 success_array.replications[success_array.count++] = replication;
             }
-            replication->stage = FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP;
+            set_replication_stage(replication,
+                    FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP);
         } else if (result == EINPROGRESS) {
-            replication->stage = FDIR_REPLICATION_STAGE_CONNECTING;
+            set_replication_stage(replication,
+                    FDIR_REPLICATION_STAGE_CONNECTING);
         } else if (result != EAGAIN) {
             if (result != replication->connection_info.last_errno
                     || replication->connection_info.fail_count % 1 == 0)
@@ -483,6 +508,17 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
         sf_nio_notify(replication->task, SF_NIO_STAGE_INIT);
     }
     return 0;
+}
+
+void clean_connected_replications(FDIRServerContext *server_ctx)
+{
+    FDIRSlaveReplication *replication;
+    int i;
+
+    for (i=0; i<server_ctx->cluster.connected.count; i++) {
+        replication = server_ctx->cluster.connected.replications[i];
+        iovent_add_to_deleted_list(replication->task);
+    }
 }
 
 static void repush_to_replication_queue(FDIRSlaveReplication *replication,
@@ -624,7 +660,8 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         if (replication->context.last_data_versions.by_disk > 0) {
             replication_queue_discard_synced(replication);
         }
-        replication->stage = FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE;
+        set_replication_stage(replication,
+                FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE);
     }
     return 0;
 }
@@ -648,7 +685,8 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         }
 
         if ((result=start_binlog_read_thread(replication)) == 0) {
-            replication->stage = FDIR_REPLICATION_STAGE_SYNC_FROM_DISK;
+            set_replication_stage(replication,
+                    FDIR_REPLICATION_STAGE_SYNC_FROM_DISK);
         }
         return result;
     }
