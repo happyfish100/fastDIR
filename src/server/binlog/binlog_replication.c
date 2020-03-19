@@ -20,6 +20,7 @@
 #include "sf/sf_nio.h"
 #include "../../common/fdir_proto.h"
 #include "../server_global.h"
+#include "../cluster_info.h"
 #include "binlog_func.h"
 #include "binlog_pack.h"
 #include "push_result_ring.h"
@@ -84,13 +85,29 @@ static inline void set_replication_stage(FDIRSlaveReplication *
 {
     switch (stage) {
         case FDIR_REPLICATION_STAGE_SYNC_FROM_DISK:
-            replication->slave->status = FDIR_SERVER_STATUS_SYNCING;
+            if (replication->slave->status == FDIR_SERVER_STATUS_INIT) {
+                cluster_info_set_status(replication->slave,
+                        FDIR_SERVER_STATUS_BUILDING);
+            } else if (replication->slave->status !=
+                    FDIR_SERVER_STATUS_BUILDING)
+            {
+                cluster_info_set_status(replication->slave,
+                        FDIR_SERVER_STATUS_SYNCING);
+            }
             break;
         case FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE:
-            replication->slave->status = FDIR_SERVER_STATUS_ACTIVE;
+            cluster_info_set_status(replication->slave,
+                    FDIR_SERVER_STATUS_ACTIVE);
+            break;
+        case FDIR_REPLICATION_STAGE_NONE:
+            if (replication->slave->status == FDIR_SERVER_STATUS_SYNCING ||
+                    replication->slave->status == FDIR_SERVER_STATUS_ACTIVE)
+            {
+                cluster_info_set_status(replication->slave,
+                        FDIR_SERVER_STATUS_OFFLINE);
+            }
             break;
         default:
-            replication->slave->status = FDIR_SERVER_STATUS_OFFLINE;
             break;
     }
     replication->stage = stage;

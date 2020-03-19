@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
+#include "fastcommon/sched_thread.h"
 #include "fastcommon/local_ip_func.h"
 #include "server_global.h"
 #include "cluster_info.h"
@@ -18,6 +19,8 @@
 #define CLUSTER_INFO_ITEM_IS_MASTER          "is_master"
 #define CLUSTER_INFO_ITEM_STATUS             "status"
 #define CLUSTER_INFO_ITEM_LAST_DATA_VERSION  "last_data_version"
+
+static int cluster_info_write_to_file();
 
 static int init_cluster_server_array()
 {
@@ -131,13 +134,17 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
         sprintf(section_name, "%s%d",
                 SERVER_SECTION_PREFIX_STR,
                 cs->server->id);
-        cs->last_master = iniGetBoolValue(section_name,
+        cs->is_master = iniGetBoolValue(section_name,
                 CLUSTER_INFO_ITEM_IS_MASTER, ini_context, false);
         cs->status = iniGetIntValue(section_name,
                 CLUSTER_INFO_ITEM_STATUS, ini_context,
                 FDIR_SERVER_STATUS_INIT);
-        cs->last_data_version= iniGetInt64Value(section_name,
-                CLUSTER_INFO_ITEM_LAST_DATA_VERSION, ini_context, 0);
+
+        if (cs->status == FDIR_SERVER_STATUS_SYNCING ||
+                cs->status == FDIR_SERVER_STATUS_ACTIVE)
+        {
+            cs->status = FDIR_SERVER_STATUS_OFFLINE;
+        }
     }
 
     return 0;
@@ -188,7 +195,7 @@ int cluster_info_init(const char *cluster_config_filename)
     return 0;
 }
 
-int cluster_info_write_to_file()
+static int cluster_info_write_to_file()
 {
     char full_filename[PATH_MAX];
     char buff[8 * 1024];
@@ -201,20 +208,19 @@ int cluster_info_write_to_file()
     snprintf(full_filename, sizeof(full_filename),
             "%s/%s", DATA_PATH_STR, CLUSTER_INFO_FILENAME);
 
+    logInfo("full_filename: %s", full_filename);
+
     p = buff;
-    end = CLUSTER_SERVER_ARRAY.servers - CLUSTER_SERVER_ARRAY.count;
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
         p += sprintf(p,
                 "[%s%d]\n"
                 "%s=%d\n"
-                "%s=%d\n"
-                "%s=%"PRId64"\n\n",
+                "%s=%d\n\n",
                 SERVER_SECTION_PREFIX_STR, cs->server->id,
                 CLUSTER_INFO_ITEM_IS_MASTER,
                 cs == CLUSTER_MASTER_PTR ? 1 : 0,
-                CLUSTER_INFO_ITEM_STATUS, cs->status,
-                CLUSTER_INFO_ITEM_LAST_DATA_VERSION,
-                cs->last_data_version
+                CLUSTER_INFO_ITEM_STATUS, cs->status
                 );
     }
 
@@ -228,4 +234,35 @@ int cluster_info_write_to_file()
     }
 
     return result;
+}
+
+static int cluster_info_sync_to_file(void *args)
+{
+    static int last_synced_version = 0;
+
+    logInfo("last_synced_version: %d, change_version: %d",
+            last_synced_version, CLUSTER_SERVER_ARRAY.change_version);
+
+    if (last_synced_version == CLUSTER_SERVER_ARRAY.change_version) {
+        return 0;
+    }
+
+    last_synced_version = CLUSTER_SERVER_ARRAY.change_version;
+    return cluster_info_write_to_file();
+}
+
+int cluster_info_setup_sync_to_file_task()
+{
+    ScheduleEntry schedule_entry;
+    ScheduleArray schedule_array;
+
+    INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
+            0, 0, 0, 1, cluster_info_sync_to_file, NULL);
+
+
+    logInfo("setup cluster_info_sync_to_file: %p", cluster_info_sync_to_file);
+
+    schedule_array.count = 1;
+    schedule_array.entries = &schedule_entry;
+    return sched_add_entries(&schedule_array);
 }

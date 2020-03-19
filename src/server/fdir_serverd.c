@@ -32,6 +32,7 @@
 #include "server_binlog.h"
 #include "data_thread.h"
 #include "data_loader.h"
+#include "cluster_info.h"
 #include "service_handler.h"
 #include "cluster_handler.h"
 
@@ -83,11 +84,14 @@ int main(int argc, char *argv[])
     srand(time(NULL));
     //fast_mblock_manager_init();
 
-    //sched_set_delay_params(300, 1024);
+    sched_set_delay_params(300, 1024);
     r = setup_server_env(config_filename);
     gofailif(r, "");
 
     r = sf_startup_schedule(&schedule_tid);
+    gofailif(r, "");
+
+    r = cluster_info_setup_sync_to_file_task();
     gofailif(r, "");
 
     r = inode_generator_init();
@@ -141,6 +145,7 @@ int main(int argc, char *argv[])
     sf_set_remove_from_ready_list(false);
 
     setup_mblock_stat_task();
+    sched_print_all_entries();
 
     sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
     sf_accept_loop();

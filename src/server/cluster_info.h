@@ -5,7 +5,7 @@
 
 #include <time.h>
 #include <pthread.h>
-#include "server_types.h"
+#include "server_global.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +16,16 @@ int cluster_info_destroy();
 
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id);
 
-int cluster_info_write_to_file();
+int cluster_info_setup_sync_to_file_task();
+
+static inline void cluster_info_set_status(FDIRClusterServerInfo *cs,
+        const int status)
+{
+    if (cs->status != status) {
+        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
+        cs->status = status;
+    }
+}
 
 #ifdef __cplusplus
 }

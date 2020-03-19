@@ -166,7 +166,6 @@ typedef struct fdir_proto_cluster_stat_resp_body_part {
     char server_id[4];
     char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
-    char last_data_version[8];
 } FDIRProtoClusterStatRespBodyPart;
 
 typedef struct fdir_proto_get_server_status_req {

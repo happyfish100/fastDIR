@@ -115,21 +115,14 @@ static int server_deal_cluster_stat(struct fast_task_info *task)
 
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
-        if (cs == CLUSTER_MASTER_PTR) {
-            body_part->is_master = true;
-        } else {
-            body_part->is_master = false;
-        }
-        body_part->status = cs->status;
         int2buff(cs->server->id, body_part->server_id);
+        body_part->is_master = cs->is_master;
+        body_part->status = cs->status;
 
         snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
                 SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
         short2buff(SERVICE_GROUP_ADDRESS_FIRST_PORT(cs->server),
                 body_part->port);
-
-        //TODO
-        long2buff(DATA_CURRENT_VERSION, body_part->last_data_version);
     }
 
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;

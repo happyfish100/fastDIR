@@ -164,7 +164,7 @@ static int proto_ping_master(ConnectionInfo *conn)
         CURRENT_INODE_SN = inode_sn;
     }
     if (CLUSTER_MYSELF_PTR->status != ping_resp.your_status) {
-        CLUSTER_MYSELF_PTR->status = ping_resp.your_status;
+        cluster_info_set_status(CLUSTER_MYSELF_PTR, ping_resp.your_status);
         logInfo("my status: %d", CLUSTER_MYSELF_PTR->status);
     }
     return 0;
@@ -178,15 +178,15 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 
 	status1 = (FDIRClusterServerStatus *)p1;
 	status2 = (FDIRClusterServerStatus *)p2;
-	sub = status1->is_master - status2->is_master;
-	if (sub != 0) {
-		return sub;
-	}
-
 	if (status1->data_version < status2->data_version) {
         return -1;
     } else if (status1->data_version > status2->data_version) {
         return 1;
+	}
+
+	sub = status1->is_master - status2->is_master;
+	if (sub != 0) {
+		return sub;
 	}
 
 	return status1->server_id - status2->server_id;
@@ -356,10 +356,11 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     }
 
     CLUSTER_MASTER_PTR = master;
+    master->is_master = true;
+
     if (master_self) {
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
-        MYSELF_IS_MASTER = true;
         CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
     } else {
         logInfo("file: "__FILE__", line: %d, "
@@ -373,13 +374,23 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
     return 0;
 }
 
+static inline void cluster_unset_master()
+{
+    FDIRClusterServerInfo *old_master;
+
+    old_master = CLUSTER_MASTER_PTR;
+    if (old_master != NULL) {
+        old_master->is_master = false;
+        CLUSTER_MASTER_PTR = NULL;
+    }
+}
+
 void cluster_relationship_trigger_reselect_master()
 {
     struct nio_thread_data *thread_data;
     struct nio_thread_data *data_end;
 
-    MYSELF_IS_MASTER = false;
-    CLUSTER_MASTER_PTR = NULL;
+    cluster_unset_master();
     g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
 
     data_end = CLUSTER_SF_CTX.thread_data + CLUSTER_SF_CTX.work_threads;
@@ -540,7 +551,6 @@ static int cluster_select_master()
 	return 0;
 }
 
-
 static int cluster_ping_master(ConnectionInfo *conn)
 {
     int result;
@@ -613,7 +623,8 @@ static void *cluster_thread_entrance(void* arg)
 
                 sleep_seconds *= 2;
                 if (fail_count >= 4) {
-                    CLUSTER_MASTER_PTR = NULL;
+                    cluster_unset_master();
+
                     fail_count = 0;
                     sleep_seconds = 1;
                 }

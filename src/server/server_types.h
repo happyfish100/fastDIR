@@ -74,16 +74,17 @@ typedef struct fdir_binlog_file_position {
 
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
-    char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
-    char status;                       //the slave status
-    bool last_master;                  //for hint
+    char key[FDIR_REPLICA_KEY_SIZE];  //for slave server
+    char status;                      //the slave status
+    bool is_master;       //if I am master
     FDIRBinlogFilePosition binlog_pos_hint;  //for replication
     int64_t last_data_version;  //for replication
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {
-    int count;
     FDIRClusterServerInfo *servers;
+    int count;
+    volatile int change_version;
 } FDIRClusterServerArray;
 
 struct server_binlog_record_buffer;
