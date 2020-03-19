@@ -12,17 +12,26 @@
 
 #define FDIR_PROTO_ACK                      6
 
-#define FDIR_PROTO_ACTIVE_TEST_REQ         35
-#define FDIR_PROTO_ACTIVE_TEST_RESP        36
+#define FDIR_PROTO_ACTIVE_TEST_REQ         21
+#define FDIR_PROTO_ACTIVE_TEST_RESP        22
 
 //service commands
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY           41
-#define FDIR_SERVICE_PROTO_REMOVE_DENTRY           43
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY           25
+#define FDIR_SERVICE_PROTO_REMOVE_DENTRY           27
 
-#define FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ   45
-#define FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ    47
-#define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        48
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ   29
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ    31
+#define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        32
 
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        41
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       42
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ        43
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP       44
+
+#define FDIR_SERVICE_PROTO_GET_MASTER_REQ          45
+#define FDIR_SERVICE_PROTO_GET_MASTER_RESP         46
+#define FDIR_SERVICE_PROTO_GET_SLAVE_REQ           47
+#define FDIR_SERVICE_PROTO_GET_SLAVE_RESP          48
 
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
@@ -125,6 +134,40 @@ typedef struct fdir_proto_list_dentry_resp_body_part {
     unsigned char name_len;
     char name_str[0];
 } FDIRProtoListDEntryRespBodyPart;
+
+typedef struct fdir_proto_service_stat_resp {
+    char is_master;
+    char status;
+    char server_id[4];
+
+    struct {
+        char current_count[4];
+        char max_count[4];
+    } connection;
+
+    struct {
+        char current_data_version[8];
+        char current_inode_sn[8];
+        struct {
+            char ns[8];
+            char dir[8];
+            char file[8];
+        } counters;
+    } dentry;
+} FDIRProtoServiceStatResp;
+
+typedef struct fdir_proto_cluster_stat_resp_body_header {
+    char count[4];
+} FDIRProtoClusterStatRespBodyHeader;
+
+typedef struct fdir_proto_cluster_stat_resp_body_part {
+    char is_master;
+    char status;
+    char server_id[4];
+    char ip_addr[IP_ADDRESS_SIZE];
+    char port[2];
+    char last_data_version[8];
+} FDIRProtoClusterStatRespBodyPart;
 
 typedef struct fdir_proto_get_server_status_req {
     char server_id[4];

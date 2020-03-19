@@ -25,6 +25,8 @@
 
 FDIRClusterServerInfo *g_next_master = NULL;
 
+#define CLUSTER_DATA_FILENAME  "cluster.dat"
+
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
     bool is_master;
@@ -362,6 +364,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
         MYSELF_IS_MASTER = true;
+        CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",

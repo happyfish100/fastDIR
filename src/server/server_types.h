@@ -65,7 +65,7 @@ typedef struct fdir_server_dentry_array {
     int alloc;
     int count;
     struct fdir_server_dentry **entries;
-} FDIRServerDentryArray;
+} FDIRServerDentryArray;  //for list entry
 
 typedef struct fdir_binlog_file_position {
     int index;      //current binlog file

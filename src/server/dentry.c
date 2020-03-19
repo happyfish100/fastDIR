@@ -210,6 +210,8 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     entry->next = *bucket;
     *bucket = entry;
     *err_no = 0;
+
+    context->counters.ns++;
     return entry;
 }
 
@@ -339,6 +341,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
+    bool is_dir;
     int result;
 
     if ((record->stat.mode & S_IFMT) == 0) {
@@ -382,14 +385,15 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return ENOMEM;
     }
 
-    if ((record->stat.mode & S_IFDIR) == 0) {
-        current->children = NULL;
-    } else {
+    is_dir = (record->stat.mode & S_IFDIR) != 0;
+    if (is_dir) {
         current->children = uniq_skiplist_new(&db_context->
                 dentry_context.factory, INIT_LEVEL_COUNT);
         if (current->children == NULL) {
             return ENOMEM;
         }
+    } else {
+        current->children = NULL;
     }
 
     if ((result=dentry_strdup(&db_context->dentry_context,
@@ -414,6 +418,12 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     if (record->inode == 0) {
         record->inode = current->inode;
     }
+
+    if (is_dir) {
+        db_context->dentry_context.counters.dir++;
+    } else {
+        db_context->dentry_context.counters.file++;
+    }
     return 0;
 }
 
@@ -424,6 +434,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
+    bool is_dir;
     int result;
 
     if ((result=dentry_find_parent_and_me(&db_context->dentry_context,
@@ -441,10 +452,22 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         if (uniq_skiplist_count(current->children) > 0) {
             return ENOTEMPTY;
         }
+        is_dir = true;
+    } else {
+        is_dir = false;
     }
 
     record->inode = current->inode;
-    return uniq_skiplist_delete(parent->children, current);
+    if ((result=uniq_skiplist_delete(parent->children, current)) != 0) {
+        return result;
+    }
+
+    if (is_dir) {
+        db_context->dentry_context.counters.dir--;
+    } else {
+        db_context->dentry_context.counters.file--;
+    }
+    return result;
 }
 
 int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)

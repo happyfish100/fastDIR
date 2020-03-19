@@ -24,6 +24,25 @@ FDIRDataThreadVariables g_data_thread_vars;
 static volatile int running_thread_count = 0;
 static void *data_thread_func(void *arg);
 
+void data_thread_sum_counters(FDIRDentryCounters *counters)
+{
+    FDIRDataThreadContext *context;
+    FDIRDataThreadContext *end;
+
+    counters->ns = 0;
+    counters->dir = 0;
+    counters->file = 0;
+    end = g_data_thread_vars.thread_array.contexts +
+        g_data_thread_vars.thread_array.count;
+    for (context=g_data_thread_vars.thread_array.contexts;
+            context<end; context++)
+    {
+        counters->ns += context->dentry_context.counters.ns;
+        counters->dir += context->dentry_context.counters.dir;
+        counters->file += context->dentry_context.counters.file;
+    }
+}
+
 static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
         ServerDelayFreeNode *node, void *ptr, const int delay_seconds)
 {

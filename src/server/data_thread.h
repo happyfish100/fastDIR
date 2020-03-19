@@ -10,12 +10,19 @@
 #define FDIR_DATA_ERROR_MODE_STRICT   1   //for master update operations
 #define FDIR_DATA_ERROR_MODE_LOOSE    2   //for data load or binlog replication
 
+typedef struct fdir_dentry_counters {
+    int64_t ns;
+    int64_t dir;
+    int64_t file;
+} FDIRDentryCounters;
+
 struct fdir_data_thread_context;
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
     struct fast_allocator_context name_acontext;
     struct fdir_data_thread_context *db_context;
+    FDIRDentryCounters counters;
 } FDIRDentryContext;
 
 typedef struct server_delay_free_node {
@@ -63,6 +70,8 @@ extern "C" {
     int data_thread_init();
     void data_thread_destroy();
     void data_thread_terminate();
+
+    void data_thread_sum_counters(FDIRDentryCounters *counters);
 
     int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
             void *ptr, server_free_func free_func, const int delay_seconds);

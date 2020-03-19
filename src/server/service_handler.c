@@ -64,6 +64,82 @@ static int server_deal_actvie_test(struct fast_task_info *task)
     return server_expect_body_length(task, 0);
 }
 
+static int server_deal_service_stat(struct fast_task_info *task)
+{
+    int result;
+    FDIRDentryCounters counters;
+    FDIRProtoServiceStatResp *stat_resp;
+
+    if ((result=server_expect_body_length(task, 0)) != 0) {
+        return result;
+    }
+
+    data_thread_sum_counters(&counters);
+    stat_resp = (FDIRProtoServiceStatResp *)REQUEST.body;
+
+    stat_resp->is_master = MYSELF_IS_MASTER;
+    stat_resp->status = CLUSTER_MYSELF_PTR->status;
+    int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
+
+    int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
+    int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);
+    long2buff(DATA_CURRENT_VERSION, stat_resp->dentry.current_data_version);
+    long2buff(CURRENT_INODE_SN, stat_resp->dentry.current_inode_sn);
+    long2buff(counters.ns, stat_resp->dentry.counters.ns);
+    long2buff(counters.dir, stat_resp->dentry.counters.dir);
+    long2buff(counters.file, stat_resp->dentry.counters.file);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoServiceStatResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SERVICE_STAT_RESP;
+    TASK_ARG->context.response_done = true;
+
+    return 0;
+}
+
+static int server_deal_cluster_stat(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoClusterStatRespBodyHeader *body_header;
+    FDIRProtoClusterStatRespBodyPart *body_part;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *send;
+
+    if ((result=server_expect_body_length(task, 0)) != 0) {
+        return result;
+    }
+
+    body_header = (FDIRProtoClusterStatRespBodyHeader *)REQUEST.body;
+    body_part = (FDIRProtoClusterStatRespBodyPart *)(REQUEST.body +
+            sizeof(FDIRProtoClusterStatRespBodyHeader));
+
+    int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
+
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
+        if (cs == CLUSTER_MASTER_PTR) {
+            body_part->is_master = true;
+        } else {
+            body_part->is_master = false;
+        }
+        body_part->status = cs->status;
+        int2buff(cs->server->id, body_part->server_id);
+
+        snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
+                SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
+        short2buff(SERVICE_GROUP_ADDRESS_FIRST_PORT(cs->server),
+                body_part->port);
+
+        //TODO
+        long2buff(DATA_CURRENT_VERSION, body_part->last_data_version);
+    }
+
+    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
+    TASK_ARG->context.response_done = true;
+
+    return 0;
+}
+
 static int server_parse_dentry_info(struct fast_task_info *task,
         char *start, FDIRDEntryFullName *fullname)
 {
@@ -572,6 +648,14 @@ int server_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
                 if ((result=service_check_readable(task)) == 0) {
                     result = server_deal_list_dentry_next(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
+                result = server_deal_service_stat(task);
+                break;
+            case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = server_deal_cluster_stat(task);
                 }
                 break;
             default:
