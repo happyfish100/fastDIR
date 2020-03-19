@@ -76,6 +76,7 @@ typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];   //for slave server
     char status;                       //the slave status
+    bool last_master;                  //for hint
     FDIRBinlogFilePosition binlog_pos_hint;  //for replication
     int64_t last_data_version;  //for replication
 } FDIRClusterServerInfo;
@@ -209,19 +210,5 @@ typedef struct fdir_server_context {
         } cluster;
     };
 } FDIRServerContext;
-
-typedef struct fdir_slave_array {
-    int count;
-    FDIRClusterServerInfo **servers;
-} FDIRServerSlaveArray;
-
-typedef struct fdir_server_cluster {
-    int64_t version;
-    struct {
-        FDIRServerSlaveArray inactives;
-        FDIRServerSlaveArray actives;
-    } slaves;
-    FDIRClusterServerInfo *master;
-} FDIRServerCluster;
 
 #endif

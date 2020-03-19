@@ -29,7 +29,6 @@
 #include "server_func.h"
 #include "dentry.h"
 #include "cluster_relationship.h"
-#include "cluster_topology.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token;   //next token for dentry list

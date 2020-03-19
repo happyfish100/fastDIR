@@ -10,8 +10,6 @@ extern "C" {
 
 int server_load_config(const char *filename);
 
-FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id);
-
 static inline int server_expect_body_length(
         struct fast_task_info *task,
         const int expect_body_length)

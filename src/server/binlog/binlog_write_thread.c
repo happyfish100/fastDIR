@@ -73,7 +73,7 @@ static int write_to_binlog_index_file()
 static int get_binlog_index_from_file()
 {
     char full_filename[PATH_MAX];
-    IniContext iniContext;
+    IniContext ini_context;
     int result;
 
     snprintf(full_filename, sizeof(full_filename),
@@ -85,7 +85,7 @@ static int get_binlog_index_from_file()
         }
     }
 
-    if ((result=iniLoadFromFile(full_filename, &iniContext)) != 0) {
+    if ((result=iniLoadFromFile(full_filename, &ini_context)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "load from file \"%s\" fail, error code: %d",
                 __LINE__, full_filename, result);
@@ -93,11 +93,11 @@ static int get_binlog_index_from_file()
     }
 
     writer_context.binlog_index = iniGetIntValue(NULL,
-            BINLOG_INDEX_ITEM_CURRENT_WRITE, &iniContext, 0);
+            BINLOG_INDEX_ITEM_CURRENT_WRITE, &ini_context, 0);
     writer_context.binlog_compress_index = iniGetIntValue(NULL,
-            BINLOG_INDEX_ITEM_CURRENT_COMPRESS, &iniContext, 0);
+            BINLOG_INDEX_ITEM_CURRENT_COMPRESS, &ini_context, 0);
 
-    iniFreeContext(&iniContext);
+    iniFreeContext(&ini_context);
     return 0;
 }
 

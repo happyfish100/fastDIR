@@ -6,6 +6,7 @@
 #include <time.h>
 #include <pthread.h>
 #include "server_types.h"
+#include "cluster_info.h"
 
 #ifdef __cplusplus
 extern "C" {

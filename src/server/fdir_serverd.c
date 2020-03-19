@@ -28,7 +28,6 @@
 #include "server_func.h"
 #include "dentry.h"
 #include "cluster_relationship.h"
-#include "cluster_topology.h"
 #include "inode_generator.h"
 #include "server_binlog.h"
 #include "data_thread.h"
@@ -121,9 +120,6 @@ int main(int argc, char *argv[])
     binlog_producer_init_next_data_version();
 
     fdir_proto_init();
-
-    r = cluster_top_init();
-    gofailif(r, "cluster topology init error");
 
     r = cluster_relationship_init();
     gofailif(r, "cluster relationship init error");

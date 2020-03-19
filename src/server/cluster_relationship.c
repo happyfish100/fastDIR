@@ -20,12 +20,9 @@
 #include "server_global.h"
 #include "server_binlog.h"
 #include "data_thread.h"
-#include "cluster_topology.h"
 #include "cluster_relationship.h"
 
 FDIRClusterServerInfo *g_next_master = NULL;
-
-#define CLUSTER_DATA_FILENAME  "cluster.dat"
 
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
@@ -360,7 +357,6 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
 
     CLUSTER_MASTER_PTR = master;
     if (master_self) {
-        ct_reset_slave_arrays();
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
         MYSELF_IS_MASTER = true;

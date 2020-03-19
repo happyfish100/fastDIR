@@ -31,7 +31,6 @@
 #include "dentry.h"
 #include "server_binlog.h"
 #include "cluster_relationship.h"
-#include "cluster_topology.h"
 #include "cluster_handler.h"
 
 int cluster_handler_init()
@@ -55,7 +54,6 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     switch (CLUSTER_TASK_TYPE) {
         case FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
-                ct_slave_server_offline(CLUSTER_PEER);
                 CLUSTER_PEER = NULL;
             }
             CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
@@ -201,7 +199,6 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
-    ct_slave_server_online(peer);
     return 0;
 }
 

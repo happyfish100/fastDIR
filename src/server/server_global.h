@@ -24,6 +24,7 @@ typedef struct server_global_vars {
     struct {
         short id;  //cluster id for generate inode
         bool is_master;  //if I am master
+        FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
         struct {
             FCServerConfig ctx;
@@ -33,7 +34,6 @@ typedef struct server_global_vars {
         } config;
 
         FDIRClusterServerArray server_array;
-        FDIRServerCluster top; //topology
 
         SFContext sf_context;  //for cluster communication
     } cluster;
@@ -60,15 +60,13 @@ typedef struct server_global_vars {
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
 
 #define MYSELF_IS_MASTER        g_server_global_vars.cluster.is_master
+#define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.master
+
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
-#define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.top.master
 #define CLUSTER_SERVER_ARRAY    g_server_global_vars.cluster.server_array
 
 #define CLUSTER_ID              g_server_global_vars.cluster.id
 #define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
-
-#define CLUSTER_ACTIVE_SLAVES   g_server_global_vars.cluster.top.slaves.actives
-#define CLUSTER_INACTIVE_SLAVES g_server_global_vars.cluster.top.slaves.inactives
 
 #define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
 
