@@ -34,6 +34,8 @@ src/server/fdir_serverd
 src/client/tools/fdir_mkdir
 src/client/tools/fdir_list
 src/client/tools/fdir_remove
+src/client/tools/fdir_cluster_stat
+src/client/tools/fdir_service_stat
 
 # other
 logs

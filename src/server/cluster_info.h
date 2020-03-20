@@ -18,8 +18,6 @@ FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id);
 
 int cluster_info_setup_sync_to_file_task();
 
-const char *fdir_get_server_status_caption(const int status);
-
 static inline void cluster_info_set_status(FDIRClusterServerInfo *cs,
         const int status)
 {

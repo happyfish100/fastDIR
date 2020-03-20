@@ -111,27 +111,6 @@ static int find_myself_in_cluster_config(const char *filename)
     return 0;
 }
 
-const char *fdir_get_server_status_caption(const int status)
-{
-
-    switch (status) {
-        case FDIR_SERVER_STATUS_INIT:
-            return "init";
-        case FDIR_SERVER_STATUS_BUILDING:
-            return "building";
-        case FDIR_SERVER_STATUS_DUMPING:
-            return "dumping";
-        case FDIR_SERVER_STATUS_OFFLINE:
-            return "offline";
-        case FDIR_SERVER_STATUS_SYNCING:
-            return "syncing";
-        case FDIR_SERVER_STATUS_ACTIVE:
-            return "active";
-        default:
-            return "unkown";
-    }
-}
-
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 {
     FCServerInfo *server;

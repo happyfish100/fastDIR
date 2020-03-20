@@ -29,9 +29,9 @@ typedef struct fdir_client_dentry_array {
 } FDIRClientDentryArray;
 
 typedef struct fdir_client_service_stat {
+    int server_id;
     bool is_master;
     char status;
-    int server_id;
 
     struct {
         int current_count;
@@ -48,6 +48,14 @@ typedef struct fdir_client_service_stat {
         } counters;
     } dentry;
 } FDIRClientServiceStat;
+
+typedef struct fdir_client_cluster_stat_entry {
+    int server_id;
+    bool is_master;
+    char status;
+    char ip_addr[IP_ADDRESS_SIZE];
+    short port;
+} FDIRClientClusterStatEntry;
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,6 +76,9 @@ int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
 
 int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat);
+
+int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
+        FDIRClientClusterStatEntry *stats, const int size, int *count);
 
 #ifdef __cplusplus
 }

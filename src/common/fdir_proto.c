@@ -174,3 +174,24 @@ int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
 
     return ret;
 }
+
+const char *fdir_get_server_status_caption(const int status)
+{
+
+    switch (status) {
+        case FDIR_SERVER_STATUS_INIT:
+            return "INIT";
+        case FDIR_SERVER_STATUS_BUILDING:
+            return "BUILDING";
+        case FDIR_SERVER_STATUS_DUMPING:
+            return "DUMPING";
+        case FDIR_SERVER_STATUS_OFFLINE:
+            return "OFFLINE";
+        case FDIR_SERVER_STATUS_SYNCING:
+            return "SYNCING";
+        case FDIR_SERVER_STATUS_ACTIVE:
+            return "ACTIVE";
+        default:
+            return "UNKOWN";
+    }
+}

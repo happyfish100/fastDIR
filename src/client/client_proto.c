@@ -594,3 +594,102 @@ int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat)
 
     return 0;
 }
+
+int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
+        FDIRClientClusterStatEntry *stats, const int size, int *count)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoClusterStatRespBodyHeader *body_header;
+    FDIRProtoClusterStatRespBodyPart *body_part;
+    FDIRProtoClusterStatRespBodyPart *body_end;
+    FDIRClientClusterStatEntry *stat;
+    ConnectionInfo *conn;
+    char out_buff[sizeof(FDIRProtoHeader)];
+    char fixed_buff[8 * 1024];
+    char *in_buff;
+    FDIRResponseInfo response;
+    int result;
+    int calc_size;
+
+    if ((conn=get_master_connection(server_cluster, &result)) == NULL) {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+
+    in_buff = fixed_buff;
+    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+                    sizeof(out_buff), &response, g_client_global_vars.
+                    network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
+    {
+        if (response.header.body_len > sizeof(fixed_buff)) {
+            in_buff = (char *)malloc(response.header.body_len);
+            if (in_buff == NULL) {
+                response.error.length = sprintf(response.error.message,
+                        "malloc %d bytes fail", response.header.body_len);
+                result = ENOMEM;
+            }
+        }
+
+        if (result == 0) {
+            result = tcprecvdata_nb(conn->sock, in_buff,
+                    response.header.body_len, g_client_global_vars.
+                    network_timeout);
+        }
+    }
+
+    body_header = (FDIRProtoClusterStatRespBodyHeader *)in_buff;
+    body_part = (FDIRProtoClusterStatRespBodyPart *)(in_buff +
+            sizeof(FDIRProtoClusterStatRespBodyHeader));
+    if (result == 0) {
+        *count = buff2int(body_header->count);
+
+        calc_size = sizeof(FDIRProtoClusterStatRespBodyHeader) +
+            (*count) * sizeof(FDIRProtoClusterStatRespBodyPart);
+        if (calc_size != response.header.body_len) {
+            response.error.length = sprintf(response.error.message,
+                    "response body length: %d != calculate size: %d, "
+                    "server count: %d", response.header.body_len,
+                    calc_size, *count);
+            result = EINVAL;
+        } else if (size < *count) {
+            response.error.length = sprintf(response.error.message,
+                    "entry size %d too small < %d", size, *count);
+            *count = 0;
+            result = ENOSPC;
+        }
+    } else {
+        *count = 0;
+    }
+
+    if (result != 0) {
+        log_network_error(&response, conn, result);
+        if (is_network_error(result)) {
+            conn_pool_disconnect_server(conn);
+        }
+        if (in_buff != fixed_buff) {
+            if (in_buff != NULL) {
+                free(in_buff);
+            }
+        }
+        return result;
+    }
+
+    body_end = body_part + (*count);
+    for (stat=stats; body_part<body_end; body_part++, stat++) {
+        stat->is_master = body_part->is_master;
+        stat->status = body_part->status;
+        stat->server_id = buff2int(body_part->server_id);
+        memcpy(stat->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
+        *(stat->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        stat->port = buff2short(body_part->port);
+    }
+
+    if (in_buff != fixed_buff) {
+        free(in_buff);
+    }
+
+    return 0;
+}

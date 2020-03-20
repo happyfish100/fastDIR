@@ -280,6 +280,8 @@ static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
 int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout);
 
+const char *fdir_get_server_status_caption(const int status);
+
 #ifdef __cplusplus
 }
 #endif

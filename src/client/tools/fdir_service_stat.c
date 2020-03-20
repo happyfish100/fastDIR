@@ -27,8 +27,8 @@ static void output(FDIRClientServiceStat *stat)
             "ns_count: %"PRId64", "
             "dir_count: %"PRId64", "
             "file_count: %"PRId64"}\n\n",
-            stat->server_id,
-            stat->status, "",
+            stat->server_id, stat->status,
+            fdir_get_server_status_caption(stat->status),
             stat->is_master,
             stat->connection.current_count,
             stat->connection.max_count,
