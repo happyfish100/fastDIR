@@ -27,6 +27,7 @@ FDIRClusterServerInfo *g_next_master = NULL;
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
     bool is_master;
+    char status;
     int server_id;
     int64_t data_version;
 } FDIRClusterServerStatus;
@@ -97,6 +98,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
     resp = (FDIRProtoGetServerStatusResp *)in_body;
 
     server_status->is_master = resp->is_master;
+    server_status->status = resp->status;
     server_status->server_id = buff2int(resp->server_id);
     server_status->data_version = buff2long(resp->data_version);
     return 0;
@@ -189,6 +191,10 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 		return sub;
 	}
 
+	sub = status1->status - status2->status;
+    if (sub != 0) {
+        return sub;
+    }
 	return status1->server_id - status2->server_id;
 }
 
@@ -199,6 +205,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
         server_status->is_master = MYSELF_IS_MASTER;
+        server_status->status = CLUSTER_MYSELF_PTR->status;
         server_status->server_id = CLUSTER_MY_SERVER_ID;
         server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
@@ -271,11 +278,13 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 	for (i=0; i<*active_count; i++) {
         logInfo("file: "__FILE__", line: %d, "
                 "server_id: %d, ip addr %s:%d, is_master: %d, "
-                "data_version: %"PRId64, __LINE__,
+                "status: %d(%s), data_version: %"PRId64, __LINE__,
                 cs_status[i].server_id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
-                cs_status[i].is_master, cs_status[i].data_version);
+                cs_status[i].is_master, cs_status[i].status,
+                fdir_get_server_status_caption(cs_status[i].status),
+                cs_status[i].data_version);
     }
 
 	memcpy(server_status, cs_status + (*active_count - 1),
@@ -484,6 +493,7 @@ static int cluster_select_master()
     int active_count;
     int i;
     int sleep_secs;
+    char status_prompt[256];
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
 
@@ -502,16 +512,26 @@ static int cluster_select_master()
             break;
         }
 
-        if (++i == 3) {
+        ++i;
+        if (server_status.status < FDIR_SERVER_STATUS_OFFLINE) {
+            sprintf(status_prompt, "the last server status: %d (%s) "
+                    "does not match the selection rule. ",
+                    server_status.status, fdir_get_server_status_caption(
+                        server_status.status));
+        } else if (i == 3) {
+            *status_prompt = '\0';
             break;
         }
 
         logInfo("file: "__FILE__", line: %d, "
-                "round %dth, active server count: %d < server count: %d, "
-                "try again after %d seconds.", __LINE__, i, active_count,
-                CLUSTER_SERVER_ARRAY.count, sleep_secs);
+                "round %dth select master, alive server count: %d "
+                "< server count: %d, %stry again after %d seconds.",
+                __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
+                status_prompt, sleep_secs);
         sleep(sleep_secs);
-        sleep_secs *= 2;
+        if (sleep_secs < 32) {
+            sleep_secs *= 2;
+        }
     }
 
     next_master = server_status.cs;

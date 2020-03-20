@@ -111,6 +111,27 @@ static int find_myself_in_cluster_config(const char *filename)
     return 0;
 }
 
+const char *fdir_get_server_status_caption(const int status)
+{
+
+    switch (status) {
+        case FDIR_SERVER_STATUS_INIT:
+            return "init";
+        case FDIR_SERVER_STATUS_BUILDING:
+            return "building";
+        case FDIR_SERVER_STATUS_DUMPING:
+            return "dumping";
+        case FDIR_SERVER_STATUS_OFFLINE:
+            return "offline";
+        case FDIR_SERVER_STATUS_SYNCING:
+            return "syncing";
+        case FDIR_SERVER_STATUS_ACTIVE:
+            return "active";
+        default:
+            return "unkown";
+    }
+}
+
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 {
     FCServerInfo *server;
@@ -129,7 +150,9 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
     FDIRClusterServerInfo *end;
     char section_name[64];
     
-    end = CLUSTER_SERVER_ARRAY.servers - CLUSTER_SERVER_ARRAY.count;
+    logInfo("CLUSTER_SERVER_ARRAY.count: %d", CLUSTER_SERVER_ARRAY.count);
+
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
         sprintf(section_name, "%s%d",
                 SERVER_SECTION_PREFIX_STR,
@@ -145,6 +168,8 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
         {
             cs->status = FDIR_SERVER_STATUS_OFFLINE;
         }
+
+        logInfo("server_id: %d, status: %d", cs->server->id, cs->status);
     }
 
     return 0;

@@ -84,6 +84,15 @@ static inline void set_replication_stage(FDIRSlaveReplication *
         replication, const int stage)
 {
     switch (stage) {
+        case FDIR_REPLICATION_STAGE_NONE:
+            if (replication->slave->status == FDIR_SERVER_STATUS_SYNCING ||
+                    replication->slave->status == FDIR_SERVER_STATUS_ACTIVE)
+            {
+                cluster_info_set_status(replication->slave,
+                        FDIR_SERVER_STATUS_OFFLINE);
+            }
+            break;
+
         case FDIR_REPLICATION_STAGE_SYNC_FROM_DISK:
             if (replication->slave->status == FDIR_SERVER_STATUS_INIT) {
                 cluster_info_set_status(replication->slave,
@@ -95,18 +104,12 @@ static inline void set_replication_stage(FDIRSlaveReplication *
                         FDIR_SERVER_STATUS_SYNCING);
             }
             break;
+
         case FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE:
             cluster_info_set_status(replication->slave,
                     FDIR_SERVER_STATUS_ACTIVE);
             break;
-        case FDIR_REPLICATION_STAGE_NONE:
-            if (replication->slave->status == FDIR_SERVER_STATUS_SYNCING ||
-                    replication->slave->status == FDIR_SERVER_STATUS_ACTIVE)
-            {
-                cluster_info_set_status(replication->slave,
-                        FDIR_SERVER_STATUS_OFFLINE);
-            }
-            break;
+
         default:
             break;
     }

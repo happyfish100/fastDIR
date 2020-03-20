@@ -549,3 +549,48 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
 
     return result;
 }
+
+int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat)
+{
+    FDIRProtoHeader *header;
+    char out_buff[sizeof(FDIRProtoHeader)];
+    FDIRResponseInfo response;
+    FDIRProtoServiceStatResp stat_resp;
+    int result;
+
+    if ((result=make_connection(conn)) != 0) {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_client_global_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_SERVICE_STAT_RESP,
+                    (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
+    {
+        log_network_error(&response, conn, result);
+        if (is_network_error(result)) {
+            conn_pool_disconnect_server(conn);
+        }
+        return result;
+    }
+
+    stat->is_master = stat_resp.is_master;
+    stat->status = stat_resp.status;
+    stat->server_id = buff2int(stat_resp.server_id);
+    stat->connection.current_count = buff2int(
+            stat_resp.connection.current_count);
+    stat->connection.max_count = buff2int(stat_resp.connection.max_count);
+
+    stat->dentry.current_data_version = buff2long(
+            stat_resp.dentry.current_data_version);
+    stat->dentry.current_inode_sn = buff2long(
+            stat_resp.dentry.current_inode_sn);
+    stat->dentry.counters.ns = buff2long(stat_resp.dentry.counters.ns);
+    stat->dentry.counters.dir = buff2long(stat_resp.dentry.counters.dir);
+    stat->dentry.counters.file = buff2long(stat_resp.dentry.counters.file);
+
+    return 0;
+}

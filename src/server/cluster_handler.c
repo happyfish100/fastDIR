@@ -134,6 +134,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
 
     resp->is_master = MYSELF_IS_MASTER;
+    resp->status = CLUSTER_MYSELF_PTR->status;
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
     long2buff(DATA_CURRENT_VERSION, resp->data_version);
 
@@ -755,7 +756,9 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     server_ctx = (FDIRServerContext *)thread_data->arg;
 
     if (count++ % 100 == 0) {
-        logInfo("consumer_ctx: %p, connected.count: %d", server_ctx->cluster.consumer_ctx, server_ctx->cluster.connected.count);
+        logInfo("is_master: %d, consumer_ctx: %p, connected.count: %d",
+                MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
+                server_ctx->cluster.connected.count);
     }
 
     if (MYSELF_IS_MASTER) {

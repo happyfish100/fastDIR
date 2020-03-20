@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
     srand(time(NULL));
     //fast_mblock_manager_init();
 
-    sched_set_delay_params(300, 1024);
+    //sched_set_delay_params(300, 1024);
     r = setup_server_env(config_filename);
     gofailif(r, "");
 
@@ -93,6 +93,8 @@ int main(int argc, char *argv[])
 
     r = cluster_info_setup_sync_to_file_task();
     gofailif(r, "");
+
+    sched_print_all_entries();
 
     r = inode_generator_init();
     gofailif(r, "inode generator init error");

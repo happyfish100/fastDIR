@@ -28,6 +28,27 @@ typedef struct fdir_client_dentry_array {
     } name_allocator;
 } FDIRClientDentryArray;
 
+typedef struct fdir_client_service_stat {
+    bool is_master;
+    char status;
+    int server_id;
+
+    struct {
+        int current_count;
+        int max_count;
+    } connection;
+
+    struct {
+        int64_t current_data_version;
+        int64_t current_inode_sn;
+        struct {
+            int64_t ns;
+            int64_t dir;
+            int64_t file;
+        } counters;
+    } dentry;
+} FDIRClientServiceStat;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -45,6 +66,8 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
 int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
 
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
+
+int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat);
 
 #ifdef __cplusplus
 }
