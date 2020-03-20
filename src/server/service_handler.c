@@ -646,9 +646,7 @@ int server_deal_task(struct fast_task_info *task)
                 result = server_deal_service_stat(task);
                 break;
             case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = server_deal_cluster_stat(task);
-                }
+                result = server_deal_cluster_stat(task);
                 break;
             default:
                 RESPONSE.error.length = sprintf(

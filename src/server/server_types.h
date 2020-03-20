@@ -79,6 +79,7 @@ typedef struct fdir_cluster_server_info {
     bool is_master;       //if I am master
     FDIRBinlogFilePosition binlog_pos_hint;  //for replication
     int64_t last_data_version;  //for replication
+    int last_change_version;    //for push server status to the slave
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {

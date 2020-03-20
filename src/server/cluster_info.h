@@ -22,8 +22,8 @@ static inline void cluster_info_set_status(FDIRClusterServerInfo *cs,
         const int status)
 {
     if (cs->status != status) {
-        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
         cs->status = status;
+        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     }
 }
 

@@ -206,7 +206,10 @@ static int cluster_deal_join_master(struct fast_task_info *task)
 static int cluster_deal_ping_master(struct fast_task_info *task)
 {
     int result;
-    FDIRProtoPingMasterResp *resp;
+    FDIRProtoPingMasterRespHeader *resp_header;
+    FDIRProtoPingMasterRespBodyPart *body_part;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *end;
 
     if ((result=server_expect_body_length(task, 0)) != 0) {
         return result;
@@ -226,12 +229,26 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         return EINVAL;
     }
 
-    resp = (FDIRProtoPingMasterResp *)REQUEST.body;
-    long2buff(CURRENT_INODE_SN, resp->inode_sn);
-    resp->your_status = CLUSTER_PEER->status;
+    resp_header = (FDIRProtoPingMasterRespHeader *)REQUEST.body;
+    body_part = (FDIRProtoPingMasterRespBodyPart *)(REQUEST.body +
+            sizeof(FDIRProtoPingMasterRespHeader));
+    long2buff(CURRENT_INODE_SN, resp_header->inode_sn);
+    if (CLUSTER_PEER->last_change_version < CLUSTER_SERVER_ARRAY.change_version) {
+        CLUSTER_PEER->last_change_version = CLUSTER_SERVER_ARRAY.change_version;
+        int2buff(CLUSTER_SERVER_ARRAY.count, resp_header->server_count);
+
+        end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+        for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++, body_part++) {
+            int2buff(cs->server->id, body_part->server_id);
+            body_part->status = cs->status;
+        }
+    } else {
+        int2buff(0, resp_header->server_count);
+    }
+
     TASK_ARG->context.response_done = true;
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
-    RESPONSE.header.body_len = sizeof(FDIRProtoPingMasterResp);
+    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     return 0;
 }
 

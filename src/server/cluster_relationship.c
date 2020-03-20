@@ -147,28 +147,76 @@ static int proto_ping_master(ConnectionInfo *conn)
 {
     FDIRProtoHeader header;
     FDIRResponseInfo response;
-    FDIRProtoPingMasterResp ping_resp;
+    char in_buff[8 * 1024];
+    FDIRProtoPingMasterRespHeader *body_header;
+    FDIRProtoPingMasterRespBodyPart *body_part;
+    FDIRProtoPingMasterRespBodyPart *body_end;
+    FDIRClusterServerInfo *cs;
     int64_t inode_sn;
+    int server_count;
+    int server_id;
     int result;
 
     FDIR_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
-    if ((result=fdir_send_and_recv_response(conn, (char *)&header,
+
+    if ((result=fdir_send_and_check_response_header(conn, (char *)&header,
                     sizeof(header), &response, SF_G_NETWORK_TIMEOUT,
-                    FDIR_CLUSTER_PROTO_PING_MASTER_RESP, (char *)&ping_resp,
-                    sizeof(FDIRProtoPingMasterResp))) != 0)
+                    FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) == 0)
     {
+        if (response.header.body_len > sizeof(in_buff)) {
+            response.error.length = sprintf(response.error.message,
+                    "response body length: %d is too large",
+                    response.header.body_len);
+            result = EOVERFLOW;
+        } else {
+            result = tcprecvdata_nb(conn->sock, in_buff,
+                    response.header.body_len, SF_G_NETWORK_TIMEOUT);
+        }
+    }
+
+    body_header = (FDIRProtoPingMasterRespHeader *)in_buff;
+    if (result == 0) {
+        int calc_size;
+        server_count = buff2int(body_header->server_count);
+        calc_size = sizeof(FDIRProtoPingMasterRespHeader) +
+            server_count * sizeof(FDIRProtoPingMasterRespBodyPart);
+        if (calc_size != response.header.body_len) {
+            response.error.length = sprintf(response.error.message,
+                    "response body length: %d != calculate size: %d, "
+                    "server count: %d", response.header.body_len,
+                    calc_size, server_count);
+            result = EINVAL;
+        }
+    } else {
+        server_count = 0;
+    }
+
+    if (result != 0) {
         fdir_log_network_error(conn, &response, __LINE__, result);
         return result;
     }
 
-    inode_sn = buff2long(ping_resp.inode_sn);
+    inode_sn = buff2long(body_header->inode_sn);
     if (inode_sn > CURRENT_INODE_SN) {
         CURRENT_INODE_SN = inode_sn;
     }
-    if (CLUSTER_MYSELF_PTR->status != ping_resp.your_status) {
-        cluster_info_set_status(CLUSTER_MYSELF_PTR, ping_resp.your_status);
-        logInfo("my status: %d", CLUSTER_MYSELF_PTR->status);
+    if (server_count == 0) {
+        return 0;
     }
+
+    body_part = (FDIRProtoPingMasterRespBodyPart *)(in_buff +
+            sizeof(FDIRProtoPingMasterRespHeader));
+    body_end = body_part + server_count;
+    for (; body_part < body_end; body_part++) {
+        server_id = buff2int(body_part->server_id);
+        if ((cs=fdir_get_server_by_id(server_id)) != NULL) {
+            if (cs->status != body_part->status) {
+                cluster_info_set_status(cs, body_part->status);
+                //logInfo("server_id: %d, status: %d", server_id, body_part->status);
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -371,6 +419,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
         CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
+        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     } else {
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
@@ -400,6 +449,7 @@ void cluster_relationship_trigger_reselect_master()
     struct nio_thread_data *data_end;
 
     cluster_unset_master();
+    __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
 
     data_end = CLUSTER_SF_CTX.thread_data + CLUSTER_SF_CTX.work_threads;
