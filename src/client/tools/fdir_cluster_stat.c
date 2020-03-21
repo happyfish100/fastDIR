@@ -11,10 +11,8 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] "
-            "host[:port]\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-c config_filename]\n", argv[0]);
 }
-
 
 static void output(FDIRClientClusterStatEntry *stats, const int count)
 {
@@ -45,10 +43,12 @@ int main(int argc, char *argv[])
     FDIRClientClusterStatEntry stats[CLUSTER_MAX_SERVER_COUNT];
 	int result;
 
+    /*
     if (argc < 2) {
         usage(argv);
         return 1;
     }
+    */
 
     while ((ch=getopt(argc, argv, "hc:")) != -1) {
         switch (ch) {

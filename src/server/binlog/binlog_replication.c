@@ -636,6 +636,21 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
             replication->task->size - sizeof(FDIRProtoHeader));
 }
 
+int binlog_replications_check_response_data_version(
+        FDIRSlaveReplication *replication,
+        const int64_t data_version)
+{
+    if (data_version > replication->context.last_data_versions.by_resp) {
+        replication->context.last_data_versions.by_resp = data_version;
+    }
+
+    if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
+        return push_result_ring_remove(&replication->context.
+                push_result_ctx, data_version);
+    }
+    return 0;
+}
+
 static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
         BufferInfo *buffer)
 {
@@ -670,8 +685,10 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
     }
     binlog_read_thread_return_result_buffer(replication->context.reader_ctx, r);
 
-    if (r->err_no == ENOENT && replication->context.last_data_versions.
-            by_queue <= replication->context.last_data_versions.by_disk)
+    if ((r->err_no == ENOENT) && (replication->context.last_data_versions.
+            by_queue <= replication->context.last_data_versions.by_disk) &&
+            (replication->context.last_data_versions.by_resp >=
+            replication->context.last_data_versions.by_disk))
     {
         binlog_read_thread_terminate(replication->context.reader_ctx);
         free(replication->context.reader_ctx);

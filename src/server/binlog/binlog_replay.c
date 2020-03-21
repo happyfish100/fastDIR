@@ -34,6 +34,7 @@ static void data_thread_deal_done_callback(const int result,
         replay_ctx->notify.func(result, record, replay_ctx->notify.args);
     }
     __sync_sub_and_fetch(&replay_ctx->waiting_count, 1);
+    //logInfo("waiting_count: %d", __sync_sub_and_fetch(&replay_ctx->waiting_count, 1));
 }
 
 int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
@@ -89,57 +90,72 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     const char *end;
     const char *rend;
     FDIRBinlogRecord *record;
+    FDIRBinlogRecord *rec_end;
     char error_info[FDIR_ERROR_INFO_SIZE];
     int result;
-    int count;
 
-    count = 0;
     p = buff;
     end = p + len;
     while (p < end) {
-        record = replay_ctx->record_array.records + count;
-        if ((result=binlog_unpack_record(p, end - p, record,
-                        &rend, error_info, sizeof(error_info))) != 0)
-        {
-            logError("file: "__FILE__", line: %d, "
-                    "%s", __LINE__, error_info);
-            return result;
-        }
-        p = rend;
+        record = replay_ctx->record_array.records;
+        while (p < end) {
+            if ((result=binlog_unpack_record(p, end - p, record,
+                            &rend, error_info, sizeof(error_info))) != 0)
+            {
+                logError("file: "__FILE__", line: %d, "
+                        "%s", __LINE__, error_info);
+                return result;
+            }
+            p = rend;
 
-        replay_ctx->record_count++;
-        if (record->data_version > replay_ctx->data_current_version) {
+            replay_ctx->record_count++;
+            if (record->data_version <= replay_ctx->data_current_version) {
+                replay_ctx->invalid_count++;
+                if (replay_ctx->notify.func != NULL) {
+                    replay_ctx->notify.func(0, record, replay_ctx->notify.args);
+                }
+                continue;
+            }
+
             replay_ctx->data_current_version = record->data_version;
-            __sync_add_and_fetch(&replay_ctx->waiting_count, 1);
+            if (++record - replay_ctx->record_array.records ==
+                    replay_ctx->record_array.size)
+            {
+                break;
+            }
+        }
 
+        rec_end = record;
+        __sync_add_and_fetch(&replay_ctx->waiting_count,
+                rec_end - replay_ctx->record_array.records);
+        for (record=replay_ctx->record_array.records;
+                record<rec_end; record++)
+        {
             if ((result=push_to_data_thread_queue(record)) != 0) {
                 replay_ctx->fail_count++;
                 return result;
             }
-        } else {
-            replay_ctx->invalid_count++;
-            if (replay_ctx->notify.func != NULL) {
-                replay_ctx->notify.func(0, record, replay_ctx->notify.args);
-            }
         }
 
-        if (++count == replay_ctx->record_array.size) {
-            while (__sync_add_and_fetch(&replay_ctx->waiting_count, 0) != 0) {
-                nanosleep(&replay_ctx->ts, NULL);
-            }
-            if (replay_ctx->fail_count > 0) {
-                return replay_ctx->last_errno;
-            }
-            count = 0;
+        /*
+        logInfo("count2: %d, waiting_count: %d",
+                (int)(rec_end - replay_ctx->record_array.records),
+                replay_ctx->waiting_count);
+                */
+
+        while (__sync_add_and_fetch(&replay_ctx->waiting_count, 0) != 0) {
+            nanosleep(&replay_ctx->ts, NULL);
+        }
+        if (replay_ctx->fail_count > 0) {
+            return replay_ctx->last_errno;
         }
     }
 
+    /*
     logInfo("record_count: %"PRId64", waiting_count: %d, invalid_count: %"PRId64,
             replay_ctx->record_count, __sync_add_and_fetch(&replay_ctx->waiting_count, 0),
             replay_ctx->invalid_count);
+            */
 
-    while (__sync_add_and_fetch(&replay_ctx->waiting_count, 0) != 0) {
-        nanosleep(&replay_ctx->ts, NULL);
-    }
     return replay_ctx->fail_count > 0 ? replay_ctx->last_errno : 0;
 }
