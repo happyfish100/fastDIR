@@ -204,8 +204,10 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
+    /*
     logInfo("ns: %.*s, create_namespace: %.*s", ns->len, ns->str,
             entry->name.len, entry->name.str);
+            */
 
     entry->next = *bucket;
     *bucket = entry;

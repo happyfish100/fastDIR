@@ -128,8 +128,6 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *end;
     char section_name[64];
-    
-    logInfo("CLUSTER_SERVER_ARRAY.count: %d", CLUSTER_SERVER_ARRAY.count);
 
     end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
@@ -147,8 +145,6 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
         {
             cs->status = FDIR_SERVER_STATUS_OFFLINE;
         }
-
-        logInfo("server_id: %d, status: %d", cs->server->id, cs->status);
     }
 
     return 0;
@@ -212,8 +208,6 @@ static int cluster_info_write_to_file()
     snprintf(full_filename, sizeof(full_filename),
             "%s/%s", DATA_PATH_STR, CLUSTER_INFO_FILENAME);
 
-    logInfo("full_filename: %s", full_filename);
-
     p = buff;
     end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
@@ -244,9 +238,6 @@ static int cluster_info_sync_to_file(void *args)
 {
     static int last_synced_version = 0;
 
-    logInfo("last_synced_version: %d, change_version: %d",
-            last_synced_version, CLUSTER_SERVER_ARRAY.change_version);
-
     if (last_synced_version == CLUSTER_SERVER_ARRAY.change_version) {
         return 0;
     }
@@ -262,9 +253,6 @@ int cluster_info_setup_sync_to_file_task()
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
             0, 0, 0, 1, cluster_info_sync_to_file, NULL);
-
-
-    logInfo("setup cluster_info_sync_to_file: %p", cluster_info_sync_to_file);
 
     schedule_array.count = 1;
     schedule_array.entries = &schedule_entry;

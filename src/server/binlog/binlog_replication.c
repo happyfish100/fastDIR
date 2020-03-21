@@ -605,7 +605,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     }
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
-            FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ,
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ,
             replication->task->length - sizeof(FDIRProtoHeader));
     sf_send_add_event(replication->task);
 
@@ -640,7 +640,7 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
         BufferInfo *buffer)
 {
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
-            FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ, buffer->length);
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, buffer->length);
     memcpy(replication->task->data + sizeof(FDIRProtoHeader),
             buffer->buff, buffer->length);
     replication->task->length = sizeof(FDIRProtoHeader) + buffer->length;

@@ -152,7 +152,9 @@ static inline void log_network_error_ex(FDIRResponseInfo *response,
 {
     if (response->error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "%s", line, response->error.message);
+                "server %s:%d, %s", line,
+                conn->ip_addr, conn->port,
+                response->error.message);
     } else {
         logError("file: "__FILE__", line: %d, "
                 "communicate with dir server %s:%d fail, "

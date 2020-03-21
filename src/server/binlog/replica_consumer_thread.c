@@ -237,7 +237,7 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     ctx->task->length = sizeof(FDIRProtoHeader) + rb->buffer.length;
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->data,
-            FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP,
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP,
             rb->buffer.length);
 
     common_blocked_queue_push(&ctx->queues.free, rb);

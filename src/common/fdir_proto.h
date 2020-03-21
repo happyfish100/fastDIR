@@ -41,15 +41,12 @@
 #define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
 #define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     67  //notify next leader to other servers
 #define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      68  //commit next leader to other servers
-#define FDIR_CLUSTER_PROTO_NOTIFY_RESELECT_MASTER  69  //followers notify reselect leader when split-brain
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_CLUSTER_CHG 70
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ  71
-#define FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP 72
 
-
-//replication commands
-#define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ          81  //master -> slave
+//replication commands, master -> slave
+#define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ          81
 #define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP         82
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ         83
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP        84
 
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
@@ -286,6 +283,8 @@ int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout);
 
 const char *fdir_get_server_status_caption(const int status);
+
+const char *fdir_get_cmd_caption(const int cmd);
 
 #ifdef __cplusplus
 }

@@ -69,11 +69,10 @@ int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
         } else {
             response->error.length = snprintf(response->error.message,
                     sizeof(response->error.message),
-                    "recv error message from server %s:%d fail, "
+                    "recv error message fail, "
                     "recv bytes: %d, expect message length: %d, "
-                    "errno: %d, error info: %s", conn->ip_addr, conn->port,
-                    recv_bytes, response->error.length,
-                    result, STRERROR(result));
+                    "errno: %d, error info: %s", recv_bytes,
+                    response->error.length, result, STRERROR(result));
         }
     } else {
         response->error.length = 0;
@@ -92,9 +91,7 @@ int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
     if ((result=tcpsenddata_nb(conn->sock, data, len, network_timeout)) != 0) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "send data to server %s:%d fail, "
-                "errno: %d, error info: %s",
-                conn->ip_addr, conn->port,
+                "send data fail, errno: %d, error info: %s",
                 result, STRERROR(result));
         return result;
     }
@@ -104,9 +101,7 @@ int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
     {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "recv from server %s:%d fail, "
-                "errno: %d, error info: %s",
-                conn->ip_addr, conn->port,
+                "recv data fail, errno: %d, error info: %s",
                 result, STRERROR(result));
         return result;
     }
@@ -131,10 +126,9 @@ int fdir_send_and_recv_response(ConnectionInfo *conn, char *send_data,
     }
 
     if (response->header.body_len != expect_body_len) {
-        response->error.length = snprintf(response->error.message,
-                sizeof(response->error.message),
-                "server %s:%d, response body length: %d != %d",
-                conn->ip_addr, conn->port, response->header.body_len,
+        response->error.length = sprintf(response->error.message,
+                "response body length: %d != %d",
+                response->header.body_len,
                 expect_body_len);
         return EINVAL;
     }
@@ -147,11 +141,9 @@ int fdir_send_and_recv_response(ConnectionInfo *conn, char *send_data,
     {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "recv body from server %s:%d fail, "
-                "recv bytes: %d, expect body length: %d, "
-                "errno: %d, error info: %s",
-                conn->ip_addr, conn->port,
-                recv_bytes, response->header.body_len,
+                "recv body fail, recv bytes: %d, expect body length: %d, "
+                "errno: %d, error info: %s", recv_bytes,
+                response->header.body_len,
                 result, STRERROR(result));
     }
     return result;
@@ -191,6 +183,68 @@ const char *fdir_get_server_status_caption(const int status)
             return "SYNCING";
         case FDIR_SERVER_STATUS_ACTIVE:
             return "ACTIVE";
+        default:
+            return "UNKOWN";
+    }
+}
+
+const char *fdir_get_cmd_caption(const int cmd)
+{
+    switch (cmd) {
+        case FDIR_PROTO_ACK:
+            return "ACK";
+        case FDIR_PROTO_ACTIVE_TEST_REQ:
+            return "ACTIVE_TEST_REQ";
+        case FDIR_PROTO_ACTIVE_TEST_RESP:
+            return "ACTIVE_TEST_RESP";
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY:
+            return "CREATE_DENTRY";
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
+            return "REMOVE_DENTRY";
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
+            return "LIST_DENTRY_FIRST_REQ";
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
+            return "LIST_DENTRY_NEXT_REQ";
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_RESP:
+            return "LIST_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
+            return "SERVICE_STAT_REQ";
+        case FDIR_SERVICE_PROTO_SERVICE_STAT_RESP:
+            return "SERVICE_STAT_RESP";
+        case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
+            return "CLUSTER_STAT_REQ";
+        case FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP:
+            return "CLUSTER_STAT_RESP";
+        case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
+            return "GET_MASTER_REQ";
+        case FDIR_SERVICE_PROTO_GET_MASTER_RESP:
+            return "GET_MASTER_RESP";
+        case FDIR_SERVICE_PROTO_GET_SLAVE_REQ:
+            return "GET_SLAVE_REQ";
+        case FDIR_SERVICE_PROTO_GET_SLAVE_RESP:
+            return "GET_SLAVE_RESP";
+        case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
+            return "GET_SERVER_STATUS_REQ";
+        case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP:
+            return "GET_SERVER_STATUS_RESP";
+        case FDIR_CLUSTER_PROTO_JOIN_MASTER:
+            return "JOIN_MASTER";
+        case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
+            return "PING_MASTER_REQ";
+        case FDIR_CLUSTER_PROTO_PING_MASTER_RESP:
+            return "PING_MASTER_RESP";
+        case FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER:
+            return "PRE_SET_NEXT_MASTER";
+        case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
+            return "COMMIT_NEXT_MASTER";
+        case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
+            return "JOIN_SLAVE_REQ";
+        case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
+            return "JOIN_SLAVE_RESP";
+        case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
+            return "PUSH_BINLOG_REQ";
+        case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
+            return "PUSH_BINLOG_RESP";
         default:
             return "UNKOWN";
     }

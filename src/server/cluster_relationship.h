@@ -19,8 +19,7 @@ int cluster_relationship_destroy();
 
 int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master);
 
-int cluster_relationship_commit_master(FDIRClusterServerInfo *master,
-        const bool master_self);
+int cluster_relationship_commit_master(FDIRClusterServerInfo *master);
 
 void cluster_relationship_trigger_reselect_master();
 

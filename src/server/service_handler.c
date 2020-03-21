@@ -76,7 +76,7 @@ static int server_deal_service_stat(struct fast_task_info *task)
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)REQUEST.body;
 
-    stat_resp->is_master = MYSELF_IS_MASTER;
+    stat_resp->is_master = CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR ? 1 : 0;
     stat_resp->status = CLUSTER_MYSELF_PTR->status;
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
 
@@ -516,7 +516,7 @@ static inline void init_task_context(struct fast_task_info *task)
 
 static inline int service_check_master(struct fast_task_info *task)
 {
-    if (!MYSELF_IS_MASTER) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -528,8 +528,8 @@ static inline int service_check_master(struct fast_task_info *task)
 
 static inline int service_check_readable(struct fast_task_info *task)
 {
-    if (!(MYSELF_IS_MASTER || CLUSTER_MYSELF_PTR->status ==
-                FDIR_SERVER_STATUS_ACTIVE))
+    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR ||
+                CLUSTER_MYSELF_PTR->status == FDIR_SERVER_STATUS_ACTIVE))
     {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -548,8 +548,9 @@ static int deal_task_done(struct fast_task_info *task)
 
     if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d, req body length: %d, %s",
+                "client ip: %s, cmd: %d (%s), req body length: %d, %s",
                 __LINE__, task->client_ip, REQUEST.header.cmd,
+                fdir_get_cmd_caption(REQUEST.header.cmd),
                 REQUEST.header.body_len,
                 RESPONSE.error.message);
     }
@@ -573,19 +574,22 @@ static int deal_task_done(struct fast_task_info *task)
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
     if (time_used > 50 * 1000) {
         lwarning("process a request timed used: %d us, "
-                "cmd: %d, req body len: %d, resp body len: %d",
+                "cmd: %d (%s), req body len: %d, resp body len: %d",
                 time_used, REQUEST.header.cmd,
+                fdir_get_cmd_caption(REQUEST.header.cmd),
                 REQUEST.header.body_len,
                 RESPONSE.header.body_len);
     }
 
     if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
     logInfo("file: "__FILE__", line: %d, "
-            "client ip: %s, req cmd: %d, req body_len: %d, "
-            "resp cmd: %d, status: %d, resp body_len: %d, "
+            "client ip: %s, req cmd: %d (%s), req body_len: %d, "
+            "resp cmd: %d (%s), status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__,
             task->client_ip, REQUEST.header.cmd,
+            fdir_get_cmd_caption(REQUEST.header.cmd),
             REQUEST.header.body_len, RESPONSE.header.cmd,
+            fdir_get_cmd_caption(RESPONSE.header.cmd),
             RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
     }
 

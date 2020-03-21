@@ -183,7 +183,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
         return result;
     }
 
-    if (!MYSELF_IS_MASTER) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -222,7 +222,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if (!MYSELF_IS_MASTER) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -262,7 +262,7 @@ static int cluster_deal_next_master(struct fast_task_info *task)
         return result;
     }
 
-    if (MYSELF_IS_MASTER) {
+    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am already master");
@@ -281,7 +281,7 @@ static int cluster_deal_next_master(struct fast_task_info *task)
     if (REQUEST.header.cmd == FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER) {
         return cluster_relationship_pre_set_master(master);
     } else {
-        return cluster_relationship_commit_master(master, false);
+        return cluster_relationship_commit_master(master);
     }
 }
 
@@ -462,10 +462,13 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
 
     next_master = g_next_master;
     if (next_master != NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "master selection in progress, the candidate "
-                "master id: %d", next_master->server->id);
+        if (next_master != peer) {
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "master selection in progress, the candidate "
+                    "master id: %d", next_master->server->id);
+            return FDIR_STATUS_MASTER_INCONSISTENT;
+        }
         return EBUSY;
     }
 
@@ -615,8 +618,9 @@ static int deal_task_done(struct fast_task_info *task)
 
     if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d, req body length: %d, %s",
+                "client ip: %s, cmd: %d (%s), req body length: %d, %s",
                 __LINE__, task->client_ip, REQUEST.header.cmd,
+                fdir_get_cmd_caption(REQUEST.header.cmd),
                 REQUEST.header.body_len,
                 RESPONSE.error.message);
     }
@@ -648,19 +652,22 @@ static int deal_task_done(struct fast_task_info *task)
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
     if (time_used > 50 * 1000) {
         lwarning("process a request timed used: %d us, "
-                "cmd: %d, req body len: %d, resp body len: %d",
+                "cmd: %d (%s), req body len: %d, resp body len: %d",
                 time_used, REQUEST.header.cmd,
+                fdir_get_cmd_caption(REQUEST.header.cmd),
                 REQUEST.header.body_len,
                 RESPONSE.header.body_len);
     }
 
     if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
     logInfo("file: "__FILE__", line: %d, "
-            "client ip: %s, req cmd: %d, req body_len: %d, "
-            "resp cmd: %d, status: %d, resp body_len: %d, "
+            "client ip: %s, req cmd: %d (%s), req body_len: %d, "
+            "resp cmd: %d (%s), status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__,
             task->client_ip, REQUEST.header.cmd,
+            fdir_get_cmd_caption(REQUEST.header.cmd),
             REQUEST.header.body_len, RESPONSE.header.cmd,
+            fdir_get_cmd_caption(RESPONSE.header.cmd),
             RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
     }
 
@@ -717,11 +724,11 @@ int cluster_deal_task(struct fast_task_info *task)
                 result = cluster_deal_join_slave_resp(task);
                 TASK_ARG->context.need_response = false;
                 break;
-            case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_REQ:
+            case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
                 result = cluster_deal_push_binlog_req(task);
                 TASK_ARG->context.need_response = false;
                 break;
-            case FDIR_CLUSTER_PROTO_MASTER_PUSH_BINLOG_RESP:
+            case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
                 result = cluster_deal_push_binlog_resp(task);
                 TASK_ARG->context.need_response = false;
                 break;
@@ -778,7 +785,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
                 server_ctx->cluster.connected.count);
     }
 
-    if (MYSELF_IS_MASTER) {
+    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {
