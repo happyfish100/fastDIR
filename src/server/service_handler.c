@@ -296,11 +296,22 @@ static inline int alloc_record_object(struct fast_task_info *task)
     return 0;
 }
 
-static void record_deal_done_notify(const int result, FDIRBinlogRecord *record)
+static void record_deal_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
 {
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
+    logError("file: "__FILE__", line: %d, "
+            "client ip: %s, %s dentry fail, "
+            "errno: %d, error info: %s, "
+            "namespace: %.*s, path: %.*s",
+            __LINE__, task->client_ip,
+            get_operation_caption(record->operation),
+            result, STRERROR(result),
+            record->fullname.ns.len, record->fullname.ns.str,
+            record->fullname.path.len, record->fullname.path.str);
+
     RESPONSE_STATUS = result;
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }

@@ -248,39 +248,41 @@ void data_thread_terminate()
     }
 }
 
-#define IGNORE_ERROR_BY_MODE(result, ignore_errno) \
-    do { \
-        if ((result == ignore_errno) && (g_data_thread_vars.error_mode == \
-                FDIR_DATA_ERROR_MODE_LOOSE))  \
-        {  \
-            result = 0;  \
-        }  \
-    } while (0)
-
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    int result = 0;
+    int result;
+    int ignore_errno;
+    bool is_error;
 
     /*
     logInfo("file: "__FILE__", line: %d, record: %p, "
-            "operation: %d, hash code: %u, inode: %"PRId64", data_version: %"PRId64,
-            __LINE__, record, record->operation, record->hash_code, record->inode, record->data_version);
+            "operation: %d, hash code: %u, inode: %"PRId64
+             ", data_version: %"PRId64, __LINE__, record,
+             record->operation, record->hash_code,
+             record->inode, record->data_version);
     */
+
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             result = dentry_create(thread_ctx, record);
-            IGNORE_ERROR_BY_MODE(result, EEXIST);
+            ignore_errno = EEXIST;
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
             result = dentry_remove(thread_ctx, record);
-            IGNORE_ERROR_BY_MODE(result, ENOENT);
+            ignore_errno = ENOENT;
             break;
         case BINLOG_OP_RENAME_DENTRY_INT:
+            ignore_errno = 0;
+            result = 0;
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
+            ignore_errno = 0;
+            result = 0;
             break;
         default:
+            ignore_errno = 0;
+            result = 0;
             break;
     }
 
@@ -296,10 +298,14 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
                         old_version, record->data_version);
             }
         }
+        is_error = false;
+    } else {
+        is_error = !((result == ignore_errno) &&
+            (g_data_thread_vars.error_mode == FDIR_DATA_ERROR_MODE_LOOSE));
     }
 
     if (record->notify.func != NULL) {
-        record->notify.func(result, record);
+        record->notify.func(record, result, is_error);
     }
 
     /*

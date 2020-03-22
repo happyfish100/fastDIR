@@ -20,21 +20,37 @@
 #include "binlog_pack.h"
 #include "binlog_replay.h"
 
-static void data_thread_deal_done_callback(const int result,
-        FDIRBinlogRecord *record)
+static void data_thread_deal_done_callback(
+        struct fdir_binlog_record *record,
+        const int result, const bool is_error)
 {
     BinlogReplayContext *replay_ctx;
+    int log_level;
 
     replay_ctx = (BinlogReplayContext *)record->notify.args;
     if (result != 0) {
-        replay_ctx->last_errno = result;
-        __sync_add_and_fetch(&replay_ctx->fail_count, 1);
+        if (is_error) {
+            log_level = LOG_ERR;
+            replay_ctx->last_errno = result;
+            __sync_add_and_fetch(&replay_ctx->fail_count, 1);
+        } else {
+            log_level = LOG_WARNING;
+            __sync_add_and_fetch(&replay_ctx->warning_count, 1);
+        }
+
+        log_it_ex(&g_log_context, log_level,
+                "file: "__FILE__", line: %d, "
+                "%s dentry fail, errno: %d, error info: %s, "
+                "namespace: %.*s, path: %.*s",
+                __LINE__, get_operation_caption(record->operation),
+                result, STRERROR(result),
+                record->fullname.ns.len, record->fullname.ns.str,
+                record->fullname.path.len, record->fullname.path.str);
     }
     if (replay_ctx->notify.func != NULL) {
         replay_ctx->notify.func(result, record, replay_ctx->notify.args);
     }
     __sync_sub_and_fetch(&replay_ctx->waiting_count, 1);
-    //logInfo("waiting_count: %d", __sync_sub_and_fetch(&replay_ctx->waiting_count, 1));
 }
 
 int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
@@ -46,7 +62,8 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     int bytes;
 
     replay_ctx->record_count = 0;
-    replay_ctx->invalid_count = 0;
+    replay_ctx->skip_count = 0;
+    replay_ctx->warning_count = 0;
     replay_ctx->fail_count = 0;
     replay_ctx->last_errno = 0;
     replay_ctx->waiting_count = 0;
@@ -110,7 +127,7 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
 
             replay_ctx->record_count++;
             if (record->data_version <= replay_ctx->data_current_version) {
-                replay_ctx->invalid_count++;
+                replay_ctx->skip_count++;
                 if (replay_ctx->notify.func != NULL) {
                     replay_ctx->notify.func(0, record, replay_ctx->notify.args);
                 }
@@ -152,9 +169,9 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     }
 
     /*
-    logInfo("record_count: %"PRId64", waiting_count: %d, invalid_count: %"PRId64,
+    logInfo("record_count: %"PRId64", waiting_count: %d, skip_count: %"PRId64,
             replay_ctx->record_count, __sync_add_and_fetch(&replay_ctx->waiting_count, 0),
-            replay_ctx->invalid_count);
+            replay_ctx->skip_count);
             */
 
     return replay_ctx->fail_count > 0 ? replay_ctx->last_errno : 0;

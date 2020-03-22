@@ -71,9 +71,10 @@ int server_load_data()
     end_time = get_current_time_ms();
     logInfo("file: "__FILE__", line: %d, "
             "load data done. record count: %"PRId64", "
-            "invalid count: %"PRId64", fail count: %d, "
-            "time used: %"PRId64"ms", __LINE__, replay_ctx.record_count,
-            replay_ctx.invalid_count, replay_ctx.fail_count,
-            end_time - start_time);
+            "skip count: %"PRId64", warning count: %"PRId64
+            ", fail count: %"PRId64", time used: %"PRId64"ms",
+            __LINE__, replay_ctx.record_count,
+            replay_ctx.skip_count, replay_ctx.warning_count,
+            replay_ctx.fail_count, end_time - start_time);
     return result;
 }

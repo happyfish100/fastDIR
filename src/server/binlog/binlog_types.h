@@ -34,8 +34,8 @@
 
 struct server_binlog_record_buffer;
 
-typedef void (*data_thread_notify_func)(const int result,
-        struct fdir_binlog_record *record);
+typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
+        const int result, const bool is_error);
 
 typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer, void *args);
@@ -92,5 +92,29 @@ typedef struct server_binlog_record_buffer {
     FastBuffer buffer;
     struct server_binlog_record_buffer *nexts[0];  //for slave replications
 } ServerBinlogRecordBuffer;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+static inline const char *get_operation_caption(const int operation)
+{
+    switch (operation) {
+        case BINLOG_OP_CREATE_DENTRY_INT:
+            return "CREATE";
+        case BINLOG_OP_REMOVE_DENTRY_INT:
+            return "REMOVE";
+        case BINLOG_OP_RENAME_DENTRY_INT:
+            return "RENAME";
+        case BINLOG_OP_UPDATE_DENTRY_INT:
+            return "UPDATE";
+        default:
+            return "UNKOWN";
+    }
+}
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

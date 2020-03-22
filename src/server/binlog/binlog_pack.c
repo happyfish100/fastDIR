@@ -97,7 +97,7 @@ int binlog_pack_init()
             ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
 }
 
-static inline const char *get_operation_caption(const int operation)
+static inline const char *get_operation_label(const int operation)
 {
     switch (operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
@@ -208,7 +208,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     fast_buffer_append(buffer, " %s=%"PRId64,
             BINLOG_RECORD_FIELD_NAME_INODE, record->inode);
 
-    op_caption.str = (char *)get_operation_caption(record->operation);
+    op_caption.str = (char *)get_operation_label(record->operation);
     op_caption.len = strlen(op_caption.str);
     binlog_pack_stringl(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
             op_caption.str, op_caption.len, false);

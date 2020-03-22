@@ -17,9 +17,10 @@ typedef struct binlog_replay_context {
     volatile int waiting_count;
     struct timespec ts;
     int last_errno;
-    volatile int fail_count;
     int64_t record_count;
-    int64_t invalid_count;
+    int64_t skip_count;
+    int64_t warning_count;
+    volatile int64_t fail_count;
     struct {
         binlog_replay_notify_func func;
         void *args;
