@@ -3,6 +3,7 @@
 #ifndef _BINLOG_REPLAY_H_
 #define _BINLOG_REPLAY_H_
 
+#include <pthread.h>
 #include "binlog_types.h"
 
 typedef void (*binlog_replay_notify_func)(const int result,
@@ -21,6 +22,8 @@ typedef struct binlog_replay_context {
     int64_t skip_count;
     int64_t warning_count;
     volatile int64_t fail_count;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
     struct {
         binlog_replay_notify_func func;
         void *args;

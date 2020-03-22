@@ -48,9 +48,14 @@ static void data_thread_deal_done_callback(
                 record->fullname.path.len, record->fullname.path.str);
     }
     if (replay_ctx->notify.func != NULL) {
-        replay_ctx->notify.func(result, record, replay_ctx->notify.args);
+        replay_ctx->notify.func(is_error ? result : 0,
+                record, replay_ctx->notify.args);
     }
-    __sync_sub_and_fetch(&replay_ctx->waiting_count, 1);
+    pthread_mutex_lock(&(replay_ctx->lock));
+    if (--replay_ctx->waiting_count == 0) {
+        pthread_cond_signal(&(replay_ctx->cond));
+    }
+    pthread_mutex_unlock(&(replay_ctx->lock));
 }
 
 int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
@@ -59,6 +64,7 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
 {
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *rend;
+    int result;
     int bytes;
 
     replay_ctx->record_count = 0;
@@ -68,7 +74,7 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     replay_ctx->last_errno = 0;
     replay_ctx->waiting_count = 0;
     replay_ctx->ts.tv_sec = 0;
-    replay_ctx->ts.tv_nsec = 10 * 1000;
+    replay_ctx->ts.tv_nsec = 100 * 1000;
     replay_ctx->notify.func = notify_func;
     replay_ctx->notify.args  = args;
     replay_ctx->data_current_version = __sync_add_and_fetch(
@@ -82,6 +88,19 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
         return ENOMEM;
     }
     memset(replay_ctx->record_array.records, 0, bytes);
+
+    if ((result=init_pthread_lock(&(replay_ctx->lock))) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "init_pthread_lock fail, errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
+        return result;
+    }
+    if ((result=pthread_cond_init(&(replay_ctx->cond), NULL)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "pthread_cond_init fail, errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
+        return result;
+    }
 
     rend = replay_ctx->record_array.records + replay_ctx->record_array.size;
     for (record=replay_ctx->record_array.records; record<rend; record++) {
@@ -143,8 +162,11 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         }
 
         rec_end = record;
-        __sync_add_and_fetch(&replay_ctx->waiting_count,
-                rec_end - replay_ctx->record_array.records);
+        pthread_mutex_lock(&(replay_ctx->lock));
+        replay_ctx->waiting_count = rec_end -
+            replay_ctx->record_array.records;
+        pthread_mutex_unlock(&(replay_ctx->lock));
+
         for (record=replay_ctx->record_array.records;
                 record<rec_end; record++)
         {
@@ -160,9 +182,13 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
                 replay_ctx->waiting_count);
                 */
 
-        while (__sync_add_and_fetch(&replay_ctx->waiting_count, 0) != 0) {
-            nanosleep(&replay_ctx->ts, NULL);
+        pthread_mutex_lock(&(replay_ctx->lock));
+        while (replay_ctx->waiting_count != 0) {
+            pthread_cond_wait(&(replay_ctx->cond),
+                    &(replay_ctx->lock));
         }
+        pthread_mutex_unlock(&(replay_ctx->lock));
+
         if (replay_ctx->fail_count > 0) {
             return replay_ctx->last_errno;
         }
