@@ -44,7 +44,7 @@ int service_handler_destroy()
     return 0;
 }
 
-void server_task_finish_cleanup(struct fast_task_info *task)
+void service_task_finish_cleanup(struct fast_task_info *task)
 {
     //FDIRServerTaskArg *task_arg;
 
@@ -58,12 +58,12 @@ void server_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-static int server_deal_actvie_test(struct fast_task_info *task)
+static int service_deal_actvie_test(struct fast_task_info *task)
 {
     return server_expect_body_length(task, 0);
 }
 
-static int server_deal_service_stat(struct fast_task_info *task)
+static int service_deal_service_stat(struct fast_task_info *task)
 {
     int result;
     FDIRDentryCounters counters;
@@ -95,7 +95,7 @@ static int server_deal_service_stat(struct fast_task_info *task)
     return 0;
 }
 
-static int server_deal_cluster_stat(struct fast_task_info *task)
+static int service_deal_cluster_stat(struct fast_task_info *task)
 {
     int result;
     FDIRProtoClusterStatRespBodyHeader *body_header;
@@ -132,7 +132,7 @@ static int server_deal_cluster_stat(struct fast_task_info *task)
     return 0;
 }
 
-static int server_deal_get_master(struct fast_task_info *task)
+static int service_deal_get_master(struct fast_task_info *task)
 {
     int result;
     FDIRProtoGetServerResp *resp;
@@ -167,7 +167,7 @@ static int server_deal_get_master(struct fast_task_info *task)
     return 0;
 }
 
-static int server_deal_get_slaves(struct fast_task_info *task)
+static int service_deal_get_slaves(struct fast_task_info *task)
 {
     int result;
     FDIRProtoGetSlavesRespBodyHeader *body_header;
@@ -242,7 +242,7 @@ static FDIRClusterServerInfo *get_readable_server()
     return NULL;
 }
 
-static int server_deal_get_readable_server(struct fast_task_info *task)
+static int service_deal_get_readable_server(struct fast_task_info *task)
 {
     FDIRClusterServerInfo *cs;
     FDIRProtoGetServerResp *resp;
@@ -485,7 +485,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
         RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;  \
     } while (0)
 
-static int server_deal_create_dentry(struct fast_task_info *task)
+static int service_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
     FDIRProtoCreateDEntryFront *proto_front;
@@ -516,7 +516,7 @@ static int server_deal_create_dentry(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
-static int server_deal_remove_dentry(struct fast_task_info *task)
+static int service_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
 
@@ -589,7 +589,7 @@ static int server_list_dentry_output(struct fast_task_info *task)
     return 0;
 }
 
-static int server_deal_list_dentry_first(struct fast_task_info *task)
+static int service_deal_list_dentry_first(struct fast_task_info *task)
 {
     int result;
     FDIRDEntryFullName fullname;
@@ -609,7 +609,7 @@ static int server_deal_list_dentry_first(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
-static int server_deal_list_dentry_next(struct fast_task_info *task)
+static int service_deal_list_dentry_next(struct fast_task_info *task)
 {
     FDIRProtoListDEntryNextBody *next_body;
     int result;
@@ -746,7 +746,7 @@ static int deal_task_done(struct fast_task_info *task)
     return r == 0 ? RESPONSE_STATUS : r;
 }
 
-int server_deal_task(struct fast_task_info *task)
+int service_deal_task(struct fast_task_info *task)
 {
     int result;
 
@@ -774,42 +774,42 @@ int server_deal_task(struct fast_task_info *task)
         switch (REQUEST.header.cmd) {
             case FDIR_PROTO_ACTIVE_TEST_REQ:
                 RESPONSE.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
-                result = server_deal_actvie_test(task);
+                result = service_deal_actvie_test(task);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY:
                 if ((result=service_check_master(task)) == 0) {
-                    result = server_deal_create_dentry(task);
+                    result = service_deal_create_dentry(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
                 if ((result=service_check_master(task)) == 0) {
-                    result = server_deal_remove_dentry(task);
+                    result = service_deal_remove_dentry(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
                 if ((result=service_check_readable(task)) == 0) {
-                    result = server_deal_list_dentry_first(task);
+                    result = service_deal_list_dentry_first(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
                 if ((result=service_check_readable(task)) == 0) {
-                    result = server_deal_list_dentry_next(task);
+                    result = service_deal_list_dentry_next(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
-                result = server_deal_service_stat(task);
+                result = service_deal_service_stat(task);
                 break;
             case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
-                result = server_deal_cluster_stat(task);
+                result = service_deal_cluster_stat(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
-                result = server_deal_get_master(task);
+                result = service_deal_get_master(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
-                result = server_deal_get_slaves(task);
+                result = service_deal_get_slaves(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
-                result = server_deal_get_readable_server(task);
+                result = service_deal_get_readable_server(task);
                 break;
             default:
                 RESPONSE.error.length = sprintf(
@@ -828,7 +828,7 @@ int server_deal_task(struct fast_task_info *task)
     }
 }
 
-void *server_alloc_thread_extra_data(const int thread_index)
+void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
 
