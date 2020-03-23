@@ -9,8 +9,15 @@ struct fdir_client_context;
 
 typedef ConnectionInfo *(*fdir_get_connection_func)(
         struct fdir_client_context *client_ctx, int *err_no);
-typedef void (*fdir_release_connection_func)(ConnectionInfo *conn);
-typedef void (*fdir_close_connection_func)(ConnectionInfo *conn);
+
+typedef ConnectionInfo *(*fdir_get_spec_connection_func)(
+        struct fdir_client_context *client_ctx, const char *ip_addr,
+        const int port, int *err_no);
+
+typedef void (*fdir_release_connection_func)(
+        struct fdir_client_context *client_ctx, ConnectionInfo *conn);
+typedef void (*fdir_close_connection_func)(
+        struct fdir_client_context *client_ctx, ConnectionInfo *conn);
 
 typedef struct fdir_dstatus {
     int64_t inode;
@@ -35,13 +42,25 @@ typedef struct fdir_server_group {
 } FDIRServerGroup;
 
 typedef struct fdir_connection_manager {
-    fdir_get_connection_func get_connection;   //get connection by the config
+    /* get the specify connection by ip and port */
+    fdir_get_spec_connection_func get_spec_connection;
+
+    /* get one connection of the configured servers */
+    fdir_get_connection_func get_connection;
+
+    /* get the master connection from the server */
     fdir_get_connection_func get_master_connection;
+
+    /* get one readable connection from the server */
     fdir_get_connection_func get_readable_connection;
     
-    fdir_release_connection_func release_connection; //eg. push back pool
-    fdir_close_connection_func close_connection;     //should disconnect the conneciton
-    void *args;
+    /* push back to connection pool when use connection pool */
+    fdir_release_connection_func release_connection;
+
+     /* disconnect the connection */
+    fdir_close_connection_func close_connection;
+
+    void *args;   //extra data
 } FDIRConnectionManager;
 
 typedef struct fdir_client_context {

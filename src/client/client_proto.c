@@ -68,122 +68,6 @@ static int client_check_set_proto_dentry(const FDIRDEntryFullName *entry_info,
     return 0;
 }
 
-static inline int make_connection(ConnectionInfo *conn)
-{
-    if (conn->sock >= 0) {
-        return 0;
-    }
-
-    return conn_pool_connect_server(conn, g_client_global_vars.
-            network_timeout);
-}
-
-static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
-        int *err_no)
-{
-    int index;
-    int i;
-    ConnectionInfo *conn;
-
-    index = rand() % client_ctx->server_group.count;
-    conn = client_ctx->server_group.servers + index;
-    if ((*err_no=make_connection(conn)) == 0) {
-        return conn;
-    }
-
-    i = (index + 1) % client_ctx->server_group.count;
-    while (i != index) {
-        conn = client_ctx->server_group.servers + i;
-        if ((*err_no=make_connection(conn)) == 0) {
-            return conn;
-        }
-
-        i = (i + 1) % client_ctx->server_group.count;
-    }
-    return NULL;
-}
-
-static ConnectionInfo *match_connection(FDIRClientContext *client_ctx,
-        FDIRClientServerEntry *server)
-{
-    ConnectionInfo *conn;
-    ConnectionInfo *end;
-
-    end = client_ctx->server_group.servers +
-        client_ctx->server_group.count;
-    for (conn=client_ctx->server_group.servers; conn<end; conn++) {
-        if (strcmp(conn->ip_addr, server->ip_addr) == 0 &&
-                conn->port == server->port)
-        {
-            return conn;
-        }
-    }
-
-    return NULL;
-}
-
-static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
-        int *err_no)
-{
-    ConnectionInfo *conn; 
-    ConnectionInfo *mconn; 
-    FDIRClientServerEntry master;
-
-    if ((conn=get_connection(client_ctx, err_no)) == NULL) {
-        return NULL;
-    }
-
-    if ((*err_no=fdir_client_get_master(client_ctx, &master)) != 0) {
-        return NULL;
-    }
-
-    if ((mconn=match_connection(client_ctx, &master)) == NULL) {
-        *err_no = ENOENT;
-        return NULL;
-    }
-    if (mconn == conn) {
-        return mconn;
-    }
-
-    if ((*err_no=make_connection(mconn)) != 0) {
-        return NULL;
-    }
-
-    return mconn;
-}
-
-static ConnectionInfo *get_readable_connection(
-        FDIRClientContext *client_ctx, int *err_no)
-{
-    ConnectionInfo *conn; 
-    ConnectionInfo *sconn; 
-    FDIRClientServerEntry server;
-
-    if ((conn=get_connection(client_ctx, err_no)) == NULL) {
-        return NULL;
-    }
-
-    if ((*err_no=fdir_client_get_readable_server(
-                    client_ctx, &server)) != 0)
-    {
-        return NULL;
-    }
-
-    if ((sconn=match_connection(client_ctx, &server)) == NULL) {
-        *err_no = ENOENT;
-        return NULL;
-    }
-    if (sconn == conn) {
-        return sconn;
-    }
-
-    if ((*err_no=make_connection(sconn)) != 0) {
-        return NULL;
-    }
-
-    return sconn;
-}
-
 static inline void log_network_error_ex(FDIRResponseInfo *response,
         const ConnectionInfo *conn, const int result, const int line)
 {
@@ -203,6 +87,17 @@ static inline void log_network_error_ex(FDIRResponseInfo *response,
 
 #define log_network_error(response, conn, result) \
         log_network_error_ex(response, conn, result, __LINE__)
+ 
+static inline void fdir_client_release_connection(
+        FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const int result)
+{
+    if (result != 0 && is_network_error(result)) {
+        client_ctx->conn_manager.close_connection(client_ctx, conn);
+    } else if (client_ctx->conn_manager.release_connection != NULL) {
+        client_ctx->conn_manager.release_connection(client_ctx, conn);
+    }
+}
 
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info, const int flags,
@@ -226,7 +121,9 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
         return result;
     }
 
@@ -246,10 +143,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         log_network_error(&response, conn, result);
     }
 
-    if ((result != 0) && is_network_error(result)) {
-        conn_pool_disconnect_server(conn);
-    }
-
+    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
@@ -274,7 +168,9 @@ int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
         return result;
     }
 
@@ -292,10 +188,7 @@ int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         log_network_error(&response, conn, result);
     }
 
-    if ((result != 0) && is_network_error(result)) {
-        conn_pool_disconnect_server(conn);
-    }
-
+    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
@@ -557,7 +450,9 @@ int fdir_client_list_dentry(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if ((conn=get_readable_connection(client_ctx, &result)) == NULL) {
+    if ((conn=client_ctx->conn_manager.get_readable_connection(
+                    client_ctx, &result)) == NULL)
+    {
         return result;
     }
 
@@ -581,23 +476,25 @@ int fdir_client_list_dentry(FDIRClientContext *client_ctx,
 
     if (result != 0) {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
-        }
     }
 
+    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
-int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat)
+int fdir_client_service_stat(FDIRClientContext *client_ctx,
+        const char *ip_addr, const int port, FDIRClientServiceStat *stat)
 {
     FDIRProtoHeader *header;
+    ConnectionInfo *conn;
     char out_buff[sizeof(FDIRProtoHeader)];
     FDIRResponseInfo response;
     FDIRProtoServiceStatResp stat_resp;
     int result;
 
-    if ((result=make_connection(conn)) != 0) {
+    if ((conn=client_ctx->conn_manager.get_spec_connection(
+                    client_ctx, ip_addr, port, &result)) == NULL)
+    {
         return result;
     }
 
@@ -610,9 +507,10 @@ int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat)
                     (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
     {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
-        }
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    if (result != 0) {
         return result;
     }
 
@@ -650,7 +548,9 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     int result;
     int calc_size;
 
-    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
         return result;
     }
 
@@ -705,32 +605,26 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
 
     if (result != 0) {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
+    } else {
+        body_end = body_part + (*count);
+        for (stat=stats; body_part<body_end; body_part++, stat++) {
+            stat->is_master = body_part->is_master;
+            stat->status = body_part->status;
+            stat->server_id = buff2int(body_part->server_id);
+            memcpy(stat->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
+            *(stat->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+            stat->port = buff2short(body_part->port);
         }
-        if (in_buff != fixed_buff) {
-            if (in_buff != NULL) {
-                free(in_buff);
-            }
-        }
-        return result;
     }
 
-    body_end = body_part + (*count);
-    for (stat=stats; body_part<body_end; body_part++, stat++) {
-        stat->is_master = body_part->is_master;
-        stat->status = body_part->status;
-        stat->server_id = buff2int(body_part->server_id);
-        memcpy(stat->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
-        *(stat->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-        stat->port = buff2short(body_part->port);
-    }
-
+    fdir_client_release_connection(client_ctx, conn, result);
     if (in_buff != fixed_buff) {
-        free(in_buff);
+        if (in_buff != NULL) {
+            free(in_buff);
+        }
     }
 
-    return 0;
+    return result;
 }
 
 int fdir_client_get_master(FDIRClientContext *client_ctx,
@@ -743,7 +637,7 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
-    conn = get_connection(client_ctx, &result);
+    conn = client_ctx->conn_manager.get_connection(client_ctx, &result);
     if (conn == NULL) {
         return result;
     }
@@ -757,17 +651,15 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
-        }
-        return result;
+    } else {
+        master->server_id = buff2int(server_resp.server_id);
+        memcpy(master->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+        *(master->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        master->port = buff2short(server_resp.port);
     }
 
-    master->server_id = buff2int(server_resp.server_id);
-    memcpy(master->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
-    *(master->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-    master->port = buff2short(server_resp.port);
-    return 0;
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
 }
 
 int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
@@ -780,7 +672,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
-    conn = get_connection(client_ctx, &result);
+    conn = client_ctx->conn_manager.get_connection(client_ctx, &result);
     if (conn == NULL) {
         return result;
     }
@@ -794,17 +686,15 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
-        }
-        return result;
+    } else {
+        server->server_id = buff2int(server_resp.server_id);
+        memcpy(server->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+        *(server->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        server->port = buff2short(server_resp.port);
     }
 
-    server->server_id = buff2int(server_resp.server_id);
-    memcpy(server->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
-    *(server->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-    server->port = buff2short(server_resp.port);
-    return 0;
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
 }
 
 int fdir_client_get_slaves(FDIRClientContext *client_ctx,
@@ -823,7 +713,9 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     int result;
     int calc_size;
 
-    if ((conn=get_connection(client_ctx, &result)) == NULL) {
+    if ((conn=client_ctx->conn_manager.get_connection(
+                    client_ctx, &result)) == NULL)
+    {
         return result;
     }
 
@@ -878,29 +770,23 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 
     if (result != 0) {
         log_network_error(&response, conn, result);
-        if (is_network_error(result)) {
-            conn_pool_disconnect_server(conn);
+    } else {
+        body_end = body_part + (*count);
+        for (slave=slaves; body_part<body_end; body_part++, slave++) {
+            slave->server_id = buff2int(body_part->server_id);
+            memcpy(slave->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
+            *(slave->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+            slave->port = buff2short(body_part->port);
+            slave->status = body_part->status;
         }
-        if (in_buff != fixed_buff) {
-            if (in_buff != NULL) {
-                free(in_buff);
-            }
-        }
-        return result;
     }
 
-    body_end = body_part + (*count);
-    for (slave=slaves; body_part<body_end; body_part++, slave++) {
-        slave->server_id = buff2int(body_part->server_id);
-        memcpy(slave->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
-        *(slave->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-        slave->port = buff2short(body_part->port);
-        slave->status = body_part->status;
-    }
-
+    fdir_client_release_connection(client_ctx, conn, result);
     if (in_buff != fixed_buff) {
-        free(in_buff);
+        if (in_buff != NULL) {
+            free(in_buff);
+        }
     }
 
-    return 0;
+    return result;
 }

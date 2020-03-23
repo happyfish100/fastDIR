@@ -17,34 +17,6 @@ static inline int make_connection(ConnectionInfo *conn)
             network_timeout);
 }
 
-static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
-        int *err_no)
-{
-    int index;
-    int i;
-    ConnectionInfo *conn;
-
-    index = rand() % client_ctx->server_group.count;
-    conn = client_ctx->server_group.servers + index;
-    if ((*err_no=make_connection(conn)) == 0) {
-        return conn;
-    }
-
-    i = (index + 1) % client_ctx->server_group.count;
-    while (i != index) {
-        conn = client_ctx->server_group.servers + i;
-        if ((*err_no=make_connection(conn)) == 0) {
-            return conn;
-        }
-
-        i = (i + 1) % client_ctx->server_group.count;
-    }
-
-    logError("file: "__FILE__", line: %d, "
-            "get_connection fail", __LINE__);
-    return NULL;
-}
-
 static int check_realloc_group_servers(FDIRServerGroup *server_group)
 {
     int bytes;
@@ -79,8 +51,8 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
     return 0;
 }
 
-static ConnectionInfo *get_cluster_connection(FDIRClientContext *client_ctx,
-        FDIRClientServerEntry *server)
+static ConnectionInfo *get_spec_connection(FDIRClientContext *client_ctx,
+        const char *ip_addr, const int port, int *err_no)
 {
     FDIRServerGroup *cluster_sarray;
     ConnectionInfo *conn;
@@ -89,51 +61,79 @@ static ConnectionInfo *get_cluster_connection(FDIRClientContext *client_ctx,
     cluster_sarray = (FDIRServerGroup *)client_ctx->conn_manager.args;
     end = cluster_sarray->servers + cluster_sarray->count;
     for (conn=cluster_sarray->servers; conn<end; conn++) {
-        if (strcmp(conn->ip_addr, server->ip_addr) == 0 &&
-                conn->port == server->port)
-        {
-            return conn;
+        if (strcmp(conn->ip_addr, ip_addr) == 0 && conn->port == port) {
+            break;
         }
     }
 
-    if (check_realloc_group_servers(cluster_sarray) != 0) {
-        return NULL;
+    if (conn == end) {
+        if (check_realloc_group_servers(cluster_sarray) != 0) {
+            *err_no = ENOMEM;
+            return NULL;
+        }
+
+        conn = cluster_sarray->servers + cluster_sarray->count++;
+        conn_pool_set_server_info(conn, ip_addr, port);
     }
 
-    conn = cluster_sarray->servers + cluster_sarray->count++;
-    conn_pool_set_server_info(conn, server->ip_addr, server->port);
+    if ((*err_no=make_connection(conn)) != 0) {
+        return NULL;
+    }
     return conn;
+}
+
+static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
+        int *err_no)
+{
+    int index;
+    int i;
+    ConnectionInfo *server;
+    ConnectionInfo *conn;
+
+    index = rand() % client_ctx->server_group.count;
+    server = client_ctx->server_group.servers + index;
+    if ((conn=get_spec_connection(client_ctx, server->ip_addr,
+                    server->port, err_no)) != NULL)
+    {
+        return conn;
+    }
+
+    i = (index + 1) % client_ctx->server_group.count;
+    while (i != index) {
+        server = client_ctx->server_group.servers + i;
+        if ((conn=get_spec_connection(client_ctx, server->ip_addr,
+                        server->port, err_no)) != NULL)
+        {
+            return conn;
+        }
+
+        i = (i + 1) % client_ctx->server_group.count;
+    }
+
+    logError("file: "__FILE__", line: %d, "
+            "get_connection fail, configured server count: %d",
+            __LINE__, client_ctx->server_group.count);
+    return NULL;
 }
 
 static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
         int *err_no)
 {
     ConnectionInfo *conn; 
-    ConnectionInfo *mconn; 
     FDIRClientServerEntry master;
 
     do {
-        if ((conn=get_connection(client_ctx, err_no)) == NULL) {
-            break;
-        }
-
         if ((*err_no=fdir_client_get_master(client_ctx, &master)) != 0) {
             break;
         }
 
-        if ((mconn=get_cluster_connection(client_ctx, &master)) == NULL) {
-            *err_no = ENOMEM;
-            break;
-        }
-        if (mconn == conn) {
-            return mconn;
-        }
-
-        if ((*err_no=make_connection(mconn)) != 0) {
+        if ((conn=get_spec_connection(client_ctx, master.ip_addr,
+                        master.port, err_no)) == NULL)
+        {
             break;
         }
 
-        return mconn;
+        return conn;
     } while (0);
 
     logError("file: "__FILE__", line: %d, "
@@ -146,39 +146,34 @@ static ConnectionInfo *get_readable_connection(
         FDIRClientContext *client_ctx, int *err_no)
 {
     ConnectionInfo *conn; 
-    ConnectionInfo *sconn; 
     FDIRClientServerEntry server;
 
     do {
-        if ((conn=get_connection(client_ctx, err_no)) == NULL) {
-            break;
-        }
-
         if ((*err_no=fdir_client_get_readable_server(
                         client_ctx, &server)) != 0)
         {
             break;
         }
 
-        if ((sconn=get_cluster_connection(client_ctx, &server)) == NULL) {
-            *err_no = ENOMEM;
-            break;
-        }
-        if (sconn == conn) {
-            return sconn;
-        }
-
-        if ((*err_no=make_connection(sconn)) != 0) {
+        if ((conn=get_spec_connection(client_ctx, server.ip_addr,
+                        server.port, err_no)) == NULL)
+        {
             break;
         }
 
-        return sconn;
+        return conn;
     } while (0);
 
     logError("file: "__FILE__", line: %d, "
             "get_readable_connection fail, errno: %d",
             __LINE__, *err_no);
         return NULL;
+}
+
+static void close_connection(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn)
+{
+    conn_pool_disconnect_server(conn);
 }
 
 int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
@@ -200,11 +195,12 @@ int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
 
     conn_manager->args = cluster_sarray;
     conn_manager->get_connection = get_connection;
+    conn_manager->get_spec_connection = get_spec_connection;
     conn_manager->get_master_connection = get_master_connection;
     conn_manager->get_readable_connection = get_readable_connection;
 
     conn_manager->release_connection = NULL;
-    conn_manager->close_connection = conn_pool_disconnect_server;
+    conn_manager->close_connection = close_connection;
     return 0;
 }
 
