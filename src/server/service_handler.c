@@ -132,6 +132,145 @@ static int server_deal_cluster_stat(struct fast_task_info *task)
     return 0;
 }
 
+static int server_deal_get_master(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoGetServerResp *resp;
+    FDIRClusterServerInfo *master;
+    const FCAddressInfo *addr;
+
+    if ((result=server_expect_body_length(task, 0)) != 0) {
+        return result;
+    }
+
+    master = CLUSTER_MASTER_PTR;
+    if (master == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "the master NOT exist");
+        return ENOENT;
+    }
+
+    resp = (FDIRProtoGetServerResp *)REQUEST.body;
+    addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
+                master->server), task->client_ip);
+
+    int2buff(master->server->id, resp->server_id);
+    snprintf(resp->ip_addr, sizeof(resp->ip_addr), "%s",
+            addr->conn.ip_addr);
+    short2buff(addr->conn.port, resp->port);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;
+    TASK_ARG->context.response_done = true;
+
+    return 0;
+}
+
+static int server_deal_get_slaves(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoGetSlavesRespBodyHeader *body_header;
+    FDIRProtoGetSlavesRespBodyPart *part_start;
+    FDIRProtoGetSlavesRespBodyPart *body_part;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *send;
+    const FCAddressInfo *addr;
+
+    if ((result=server_expect_body_length(task, 0)) != 0) {
+        return result;
+    }
+
+    body_header = (FDIRProtoGetSlavesRespBodyHeader *)REQUEST.body;
+    part_start = body_part = (FDIRProtoGetSlavesRespBodyPart *)(
+            REQUEST.body + sizeof(FDIRProtoGetSlavesRespBodyHeader));
+
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
+        if (cs->is_master) {
+            continue;
+        }
+
+        int2buff(cs->server->id, body_part->server_id);
+        body_part->status = cs->status;
+
+        addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
+                cs->server), task->client_ip);
+        snprintf(body_part->ip_addr, sizeof(body_part->ip_addr),
+                "%s", addr->conn.ip_addr);
+        short2buff(addr->conn.port, body_part->port);
+
+        body_part++;
+    }
+    int2buff(body_part - part_start, body_header->count);
+
+    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_SLAVES_RESP;
+    TASK_ARG->context.response_done = true;
+
+    return 0;
+}
+
+static FDIRClusterServerInfo *get_readable_server()
+{
+    int index;
+    int old_index;
+    int acc_index;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *send;
+
+    index = rand() % CLUSTER_SERVER_ARRAY.count;
+    if (CLUSTER_SERVER_ARRAY.servers[index].status ==
+            FDIR_SERVER_STATUS_ACTIVE)
+    {
+        return CLUSTER_SERVER_ARRAY.servers + index;
+    }
+
+    acc_index = 0;
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    do {
+        old_index = acc_index;
+        for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
+            if (cs->status == FDIR_SERVER_STATUS_ACTIVE) {
+                if (acc_index++ == index) {
+                    return cs;
+                }
+            }
+        }
+    } while (acc_index - old_index > 0);
+
+    return NULL;
+}
+
+static int server_deal_get_readable_server(struct fast_task_info *task)
+{
+    FDIRClusterServerInfo *cs;
+    FDIRProtoGetServerResp *resp;
+    const FCAddressInfo *addr;
+
+    if ((cs=get_readable_server()) == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "no active server");
+        return ENOENT;
+    }
+
+    resp = (FDIRProtoGetServerResp *)REQUEST.body;
+    addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
+                cs->server), task->client_ip);
+
+    int2buff(cs->server->id, resp->server_id);
+    snprintf(resp->ip_addr, sizeof(resp->ip_addr), "%s",
+            addr->conn.ip_addr);
+    short2buff(addr->conn.port, resp->port);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP;
+    TASK_ARG->context.response_done = true;
+
+    return 0;
+}
+
 static int server_parse_dentry_info(struct fast_task_info *task,
         char *start, FDIRDEntryFullName *fullname)
 {
@@ -662,6 +801,15 @@ int server_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
                 result = server_deal_cluster_stat(task);
+                break;
+            case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
+                result = server_deal_get_master(task);
+                break;
+            case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
+                result = server_deal_get_slaves(task);
+                break;
+            case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
+                result = server_deal_get_readable_server(task);
                 break;
             default:
                 RESPONSE.error.length = sprintf(

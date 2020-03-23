@@ -117,6 +117,9 @@ void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
         free(replay_ctx->record_array.records);
         replay_ctx->record_array.records = NULL;
     }
+
+    pthread_cond_destroy(&(replay_ctx->cond));
+    pthread_mutex_destroy(&(replay_ctx->lock));
 }
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,

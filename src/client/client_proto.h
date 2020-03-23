@@ -57,6 +57,13 @@ typedef struct fdir_client_cluster_stat_entry {
     short port;
 } FDIRClientClusterStatEntry;
 
+typedef struct fdir_client_server_entry {
+    int server_id;
+    char ip_addr[IP_ADDRESS_SIZE];
+    short port;
+    char status;
+} FDIRClientServerEntry;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -79,6 +86,15 @@ int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat);
 
 int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
         FDIRClientClusterStatEntry *stats, const int size, int *count);
+
+int fdir_client_get_master(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *master);
+
+int fdir_client_get_slaves(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *slaves, const int size, int *count);
+
+int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *server);
 
 #ifdef __cplusplus
 }

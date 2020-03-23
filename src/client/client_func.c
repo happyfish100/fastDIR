@@ -157,6 +157,8 @@ int fdir_client_init_ex(FDIRServerCluster *server_cluster,
     result = fdir_client_do_init_ex(server_cluster, conf_filename,
                 &iniContext);
     iniFreeContext(&iniContext);
+
+    srand(time(NULL));
     return result;
 }
 

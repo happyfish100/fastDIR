@@ -78,73 +78,110 @@ static inline int make_connection(ConnectionInfo *conn)
             network_timeout);
 }
 
+static ConnectionInfo *get_connection(FDIRServerCluster *server_cluster,
+        int *err_no)
+{
+    int index;
+    int i;
+    ConnectionInfo *conn;
+
+    index = rand() % server_cluster->server_group.count;
+    conn = server_cluster->server_group.servers + index;
+    if ((*err_no=make_connection(conn)) == 0) {
+        return conn;
+    }
+
+    i = (index + 1) % server_cluster->server_group.count;
+    while (i != index) {
+        conn = server_cluster->server_group.servers + i;
+        if ((*err_no=make_connection(conn)) == 0) {
+            return conn;
+        }
+
+        i = (i + 1) % server_cluster->server_group.count;
+    }
+    return NULL;
+}
+
+static ConnectionInfo *match_connection(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *server)
+{
+    ConnectionInfo *conn;
+    ConnectionInfo *end;
+
+    end = server_cluster->server_group.servers +
+        server_cluster->server_group.count;
+    for (conn=server_cluster->server_group.servers; conn<end; conn++) {
+        if (strcmp(conn->ip_addr, server->ip_addr) == 0 &&
+                conn->port == server->port)
+        {
+            return conn;
+        }
+    }
+
+    return NULL;
+}
+
 static ConnectionInfo *get_master_connection(FDIRServerCluster *server_cluster,
         int *err_no)
 {
-    if (server_cluster->master == NULL) {
-        //TODO: fix me!!!
-        server_cluster->master = server_cluster->server_group.servers;
-    }
+    ConnectionInfo *conn; 
+    ConnectionInfo *mconn; 
+    FDIRClientServerEntry master;
 
-    if ((*err_no=make_connection(server_cluster->master)) != 0) {
+    if ((conn=get_connection(server_cluster, err_no)) == NULL) {
         return NULL;
     }
 
-    return server_cluster->master;
-}
-
-static ConnectionInfo *get_slave_connection(FDIRServerCluster *server_cluster,
-        int *err_no)
-{
-    ConnectionInfo *conn;
-
-    conn = NULL;
-    if (server_cluster->slave_group.count > 0) {
-        ConnectionInfo **pp;
-        ConnectionInfo **current;
-        ConnectionInfo **pp_end;
-
-        current = server_cluster->slave_group.servers + server_cluster->
-            slave_group.index;
-        if ((*err_no=make_connection(*current)) == 0) {
-            conn = *current;
-        } else {
-            pp_end = server_cluster->slave_group.servers +
-                server_cluster->slave_group.count;
-            for (pp=server_cluster->slave_group.servers; pp<pp_end; pp++) {
-                if (pp != current) {
-                    if ((*err_no=make_connection(*pp)) == 0) {
-                        conn = *pp;
-                        server_cluster->slave_group.index = pp -
-                            server_cluster->slave_group.servers;
-                        break;
-                    }
-                }
-            }
-        }
-
-        server_cluster->slave_group.index++;
-        if (server_cluster->slave_group.index >=
-                server_cluster->slave_group.count)
-        {
-            server_cluster->slave_group.index = 0;
-        }
-    } else {
-        //TODO: fix me
-        ConnectionInfo *p;
-        ConnectionInfo *end;
-
-        end = server_cluster->server_group.servers +
-            server_cluster->server_group.count;
-        for (p=server_cluster->server_group.servers; p<end; p++) {
-            if ((*err_no=make_connection(p)) == 0) {
-                conn = p;
-                break;
-            }
-        }
+    if ((*err_no=fdir_client_get_master(server_cluster, &master)) != 0) {
+        return NULL;
     }
 
-    return conn;
+    if ((mconn=match_connection(server_cluster, &master)) == NULL) {
+        *err_no = ENOENT;
+        return NULL;
+    }
+    if (mconn == conn) {
+        return mconn;
+    }
+
+    if ((*err_no=make_connection(mconn)) != 0) {
+        return NULL;
+    }
+
+    return mconn;
+}
+
+static ConnectionInfo *get_readable_connection(
+        FDIRServerCluster *server_cluster, int *err_no)
+{
+    ConnectionInfo *conn; 
+    ConnectionInfo *sconn; 
+    FDIRClientServerEntry server;
+
+    if ((conn=get_connection(server_cluster, err_no)) == NULL) {
+        return NULL;
+    }
+
+    if ((*err_no=fdir_client_get_readable_server(
+                    server_cluster, &server)) != 0)
+    {
+        return NULL;
+    }
+
+    if ((sconn=match_connection(server_cluster, &server)) == NULL) {
+        *err_no = ENOENT;
+        return NULL;
+    }
+    if (sconn == conn) {
+        return sconn;
+    }
+
+    if ((*err_no=make_connection(sconn)) != 0) {
+        return NULL;
+    }
+
+    return sconn;
 }
 
 static inline void log_network_error_ex(FDIRResponseInfo *response,
@@ -520,7 +557,7 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
         return result;
     }
 
-    if ((conn=get_slave_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_readable_connection(server_cluster, &result)) == NULL) {
         return result;
     }
 
@@ -687,6 +724,178 @@ int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
         memcpy(stat->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
         *(stat->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
         stat->port = buff2short(body_part->port);
+    }
+
+    if (in_buff != fixed_buff) {
+        free(in_buff);
+    }
+
+    return 0;
+}
+
+int fdir_client_get_master(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *master)
+{
+    int result;
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRResponseInfo response;
+    FDIRProtoGetServerResp server_resp;
+    char out_buff[sizeof(FDIRProtoHeader)];
+
+    conn = get_connection(server_cluster, &result);
+    if (conn == NULL) {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_MASTER_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_client_global_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_GET_MASTER_RESP,
+                    (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
+    {
+        log_network_error(&response, conn, result);
+        if (is_network_error(result)) {
+            conn_pool_disconnect_server(conn);
+        }
+        return result;
+    }
+
+    master->server_id = buff2int(server_resp.server_id);
+    memcpy(master->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+    *(master->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+    master->port = buff2short(server_resp.port);
+    return 0;
+}
+
+int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *server)
+{
+    int result;
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRResponseInfo response;
+    FDIRProtoGetServerResp server_resp;
+    char out_buff[sizeof(FDIRProtoHeader)];
+
+    conn = get_connection(server_cluster, &result);
+    if (conn == NULL) {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_client_global_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP,
+                    (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
+    {
+        log_network_error(&response, conn, result);
+        if (is_network_error(result)) {
+            conn_pool_disconnect_server(conn);
+        }
+        return result;
+    }
+
+    server->server_id = buff2int(server_resp.server_id);
+    memcpy(server->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+    *(server->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+    server->port = buff2short(server_resp.port);
+    return 0;
+}
+
+int fdir_client_get_slaves(FDIRServerCluster *server_cluster,
+        FDIRClientServerEntry *slaves, const int size, int *count)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoGetSlavesRespBodyHeader *body_header;
+    FDIRProtoGetSlavesRespBodyPart *body_part;
+    FDIRProtoGetSlavesRespBodyPart *body_end;
+    FDIRClientServerEntry *slave;
+    ConnectionInfo *conn;
+    char out_buff[sizeof(FDIRProtoHeader)];
+    char fixed_buff[8 * 1024];
+    char *in_buff;
+    FDIRResponseInfo response;
+    int result;
+    int calc_size;
+
+    if ((conn=get_connection(server_cluster, &result)) == NULL) {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_SLAVES_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+
+    in_buff = fixed_buff;
+    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+                    sizeof(out_buff), &response, g_client_global_vars.
+                    network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
+    {
+        if (response.header.body_len > sizeof(fixed_buff)) {
+            in_buff = (char *)malloc(response.header.body_len);
+            if (in_buff == NULL) {
+                response.error.length = sprintf(response.error.message,
+                        "malloc %d bytes fail", response.header.body_len);
+                result = ENOMEM;
+            }
+        }
+
+        if (result == 0) {
+            result = tcprecvdata_nb(conn->sock, in_buff,
+                    response.header.body_len, g_client_global_vars.
+                    network_timeout);
+        }
+    }
+
+    body_header = (FDIRProtoGetSlavesRespBodyHeader *)in_buff;
+    body_part = (FDIRProtoGetSlavesRespBodyPart *)(in_buff +
+            sizeof(FDIRProtoGetSlavesRespBodyHeader));
+    if (result == 0) {
+        *count = buff2short(body_header->count);
+
+        calc_size = sizeof(FDIRProtoGetSlavesRespBodyHeader) +
+            (*count) * sizeof(FDIRProtoGetSlavesRespBodyPart);
+        if (calc_size != response.header.body_len) {
+            response.error.length = sprintf(response.error.message,
+                    "response body length: %d != calculate size: %d, "
+                    "server count: %d", response.header.body_len,
+                    calc_size, *count);
+            result = EINVAL;
+        } else if (size < *count) {
+            response.error.length = sprintf(response.error.message,
+                    "entry size %d too small < %d", size, *count);
+            *count = 0;
+            result = ENOSPC;
+        }
+    } else {
+        *count = 0;
+    }
+
+    if (result != 0) {
+        log_network_error(&response, conn, result);
+        if (is_network_error(result)) {
+            conn_pool_disconnect_server(conn);
+        }
+        if (in_buff != fixed_buff) {
+            if (in_buff != NULL) {
+                free(in_buff);
+            }
+        }
+        return result;
+    }
+
+    body_end = body_part + (*count);
+    for (slave=slaves; body_part<body_end; body_part++, slave++) {
+        slave->server_id = buff2int(body_part->server_id);
+        memcpy(slave->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
+        *(slave->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        slave->port = buff2short(body_part->port);
+        slave->status = body_part->status;
     }
 
     if (in_buff != fixed_buff) {

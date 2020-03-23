@@ -28,10 +28,12 @@
 #define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ        43
 #define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP       44
 
-#define FDIR_SERVICE_PROTO_GET_MASTER_REQ          45
-#define FDIR_SERVICE_PROTO_GET_MASTER_RESP         46
-#define FDIR_SERVICE_PROTO_GET_SLAVE_REQ           47
-#define FDIR_SERVICE_PROTO_GET_SLAVE_RESP          48
+#define FDIR_SERVICE_PROTO_GET_MASTER_REQ           45
+#define FDIR_SERVICE_PROTO_GET_MASTER_RESP          46
+#define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           47
+#define FDIR_SERVICE_PROTO_GET_SLAVES_RESP          48
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  49
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 50
 
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
@@ -164,6 +166,26 @@ typedef struct fdir_proto_cluster_stat_resp_body_part {
     char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
 } FDIRProtoClusterStatRespBodyPart;
+
+/* for FDIR_SERVICE_PROTO_GET_MASTER_RESP and
+   FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP
+   */
+typedef struct fdir_proto_get_server_resp {
+    char server_id[4];
+    char ip_addr[IP_ADDRESS_SIZE];
+    char port[2];
+} FDIRProtoGetServerResp;
+
+typedef struct fdir_proto_get_slaves_resp_body_header {
+    char count[2];
+} FDIRProtoGetSlavesRespBodyHeader;
+
+typedef struct fdir_proto_get_slaves_resp_body_part {
+    char server_id[4];
+    char ip_addr[IP_ADDRESS_SIZE];
+    char port[2];
+    char status;
+} FDIRProtoGetSlavesRespBodyPart;
 
 typedef struct fdir_proto_get_server_status_req {
     char server_id[4];

@@ -219,10 +219,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "GET_MASTER_REQ";
         case FDIR_SERVICE_PROTO_GET_MASTER_RESP:
             return "GET_MASTER_RESP";
-        case FDIR_SERVICE_PROTO_GET_SLAVE_REQ:
+        case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
             return "GET_SLAVE_REQ";
-        case FDIR_SERVICE_PROTO_GET_SLAVE_RESP:
+        case FDIR_SERVICE_PROTO_GET_SLAVES_RESP:
             return "GET_SLAVE_RESP";
+        case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
+            return "GET_READABLE_SERVER_REQ";
+        case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP:
+            return "GET_READABLE_SERVER_RESP";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
             return "GET_SERVER_STATUS_REQ";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP:
