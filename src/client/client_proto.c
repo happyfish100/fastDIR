@@ -78,40 +78,40 @@ static inline int make_connection(ConnectionInfo *conn)
             network_timeout);
 }
 
-static ConnectionInfo *get_connection(FDIRServerCluster *server_cluster,
+static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
         int *err_no)
 {
     int index;
     int i;
     ConnectionInfo *conn;
 
-    index = rand() % server_cluster->server_group.count;
-    conn = server_cluster->server_group.servers + index;
+    index = rand() % client_ctx->server_group.count;
+    conn = client_ctx->server_group.servers + index;
     if ((*err_no=make_connection(conn)) == 0) {
         return conn;
     }
 
-    i = (index + 1) % server_cluster->server_group.count;
+    i = (index + 1) % client_ctx->server_group.count;
     while (i != index) {
-        conn = server_cluster->server_group.servers + i;
+        conn = client_ctx->server_group.servers + i;
         if ((*err_no=make_connection(conn)) == 0) {
             return conn;
         }
 
-        i = (i + 1) % server_cluster->server_group.count;
+        i = (i + 1) % client_ctx->server_group.count;
     }
     return NULL;
 }
 
-static ConnectionInfo *match_connection(FDIRServerCluster *server_cluster,
+static ConnectionInfo *match_connection(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server)
 {
     ConnectionInfo *conn;
     ConnectionInfo *end;
 
-    end = server_cluster->server_group.servers +
-        server_cluster->server_group.count;
-    for (conn=server_cluster->server_group.servers; conn<end; conn++) {
+    end = client_ctx->server_group.servers +
+        client_ctx->server_group.count;
+    for (conn=client_ctx->server_group.servers; conn<end; conn++) {
         if (strcmp(conn->ip_addr, server->ip_addr) == 0 &&
                 conn->port == server->port)
         {
@@ -122,22 +122,22 @@ static ConnectionInfo *match_connection(FDIRServerCluster *server_cluster,
     return NULL;
 }
 
-static ConnectionInfo *get_master_connection(FDIRServerCluster *server_cluster,
+static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
         int *err_no)
 {
     ConnectionInfo *conn; 
     ConnectionInfo *mconn; 
     FDIRClientServerEntry master;
 
-    if ((conn=get_connection(server_cluster, err_no)) == NULL) {
+    if ((conn=get_connection(client_ctx, err_no)) == NULL) {
         return NULL;
     }
 
-    if ((*err_no=fdir_client_get_master(server_cluster, &master)) != 0) {
+    if ((*err_no=fdir_client_get_master(client_ctx, &master)) != 0) {
         return NULL;
     }
 
-    if ((mconn=match_connection(server_cluster, &master)) == NULL) {
+    if ((mconn=match_connection(client_ctx, &master)) == NULL) {
         *err_no = ENOENT;
         return NULL;
     }
@@ -153,23 +153,23 @@ static ConnectionInfo *get_master_connection(FDIRServerCluster *server_cluster,
 }
 
 static ConnectionInfo *get_readable_connection(
-        FDIRServerCluster *server_cluster, int *err_no)
+        FDIRClientContext *client_ctx, int *err_no)
 {
     ConnectionInfo *conn; 
     ConnectionInfo *sconn; 
     FDIRClientServerEntry server;
 
-    if ((conn=get_connection(server_cluster, err_no)) == NULL) {
+    if ((conn=get_connection(client_ctx, err_no)) == NULL) {
         return NULL;
     }
 
     if ((*err_no=fdir_client_get_readable_server(
-                    server_cluster, &server)) != 0)
+                    client_ctx, &server)) != 0)
     {
         return NULL;
     }
 
-    if ((sconn=match_connection(server_cluster, &server)) == NULL) {
+    if ((sconn=match_connection(client_ctx, &server)) == NULL) {
         *err_no = ENOENT;
         return NULL;
     }
@@ -204,7 +204,7 @@ static inline void log_network_error_ex(FDIRResponseInfo *response,
 #define log_network_error(response, conn, result) \
         log_network_error_ex(response, conn, result, __LINE__)
 
-int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info, const int flags,
         const mode_t mode)
 {
@@ -226,7 +226,7 @@ int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
         return result;
     }
 
-    if ((conn=get_master_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
         return result;
     }
 
@@ -253,7 +253,7 @@ int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
     return result;
 }
 
-int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info)
 {
     FDIRProtoHeader *header;
@@ -274,7 +274,7 @@ int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
         return result;
     }
 
-    if ((conn=get_master_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
         return result;
     }
 
@@ -535,7 +535,7 @@ static int deal_list_dentry_response(ConnectionInfo *conn,
     return result;
 }
 
-int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_list_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info, FDIRClientDentryArray *array)
 {
     FDIRProtoHeader *header;
@@ -557,7 +557,7 @@ int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
         return result;
     }
 
-    if ((conn=get_readable_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_readable_connection(client_ctx, &result)) == NULL) {
         return result;
     }
 
@@ -634,7 +634,7 @@ int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat)
     return 0;
 }
 
-int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
+int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count)
 {
     FDIRProtoHeader *header;
@@ -650,7 +650,7 @@ int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
     int result;
     int calc_size;
 
-    if ((conn=get_master_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_master_connection(client_ctx, &result)) == NULL) {
         return result;
     }
 
@@ -733,7 +733,7 @@ int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
     return 0;
 }
 
-int fdir_client_get_master(FDIRServerCluster *server_cluster,
+int fdir_client_get_master(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *master)
 {
     int result;
@@ -743,7 +743,7 @@ int fdir_client_get_master(FDIRServerCluster *server_cluster,
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
-    conn = get_connection(server_cluster, &result);
+    conn = get_connection(client_ctx, &result);
     if (conn == NULL) {
         return result;
     }
@@ -770,7 +770,7 @@ int fdir_client_get_master(FDIRServerCluster *server_cluster,
     return 0;
 }
 
-int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
+int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server)
 {
     int result;
@@ -780,7 +780,7 @@ int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
-    conn = get_connection(server_cluster, &result);
+    conn = get_connection(client_ctx, &result);
     if (conn == NULL) {
         return result;
     }
@@ -807,7 +807,7 @@ int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
     return 0;
 }
 
-int fdir_client_get_slaves(FDIRServerCluster *server_cluster,
+int fdir_client_get_slaves(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *slaves, const int size, int *count)
 {
     FDIRProtoHeader *header;
@@ -823,7 +823,7 @@ int fdir_client_get_slaves(FDIRServerCluster *server_cluster,
     int result;
     int calc_size;
 
-    if ((conn=get_connection(server_cluster, &result)) == NULL) {
+    if ((conn=get_connection(client_ctx, &result)) == NULL) {
         return result;
     }
 

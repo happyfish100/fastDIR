@@ -10,7 +10,7 @@ typedef struct client_global_vars {
     int network_timeout;
     char base_path[MAX_PATH_SIZE];
 
-    FDIRServerCluster server_cluster;
+    FDIRClientContext client_ctx;
 } FDIRClientGlobalVars;
 
 #ifdef __cplusplus

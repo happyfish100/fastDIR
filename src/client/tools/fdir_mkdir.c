@@ -75,6 +75,6 @@ int main(int argc, char *argv[])
     mode |= S_IFDIR;
     FC_SET_STRING(entry_info.ns, ns);
     FC_SET_STRING(entry_info.path, path);
-    return fdir_client_create_dentry(&g_client_global_vars.server_cluster,
+    return fdir_client_create_dentry(&g_client_global_vars.client_ctx,
                     &entry_info, flags, mode);
 }

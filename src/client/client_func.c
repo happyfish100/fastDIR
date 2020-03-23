@@ -3,8 +3,8 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
-#include "fastcommon/connection_pool.h"
 #include "client_global.h"
+#include "simple_connection_manager.h"
 #include "client_func.h"
 
 static int copy_dir_servers(FDIRServerGroup *server_group,
@@ -38,11 +38,29 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
     return 0;
 }
 
+int fdir_alloc_group_servers(FDIRServerGroup *server_group,
+        const int alloc_size)
+{
+    int bytes;
+
+    bytes = sizeof(ConnectionInfo) * alloc_size;
+    server_group->servers = (ConnectionInfo *)malloc(bytes);
+    if (server_group->servers == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "malloc %d bytes fail", __LINE__, bytes);
+        return errno != 0 ? errno : ENOMEM;
+    }
+    memset(server_group->servers, 0, bytes);
+
+    server_group->alloc_size = alloc_size;
+    server_group->count = 0;
+    return 0;
+}
+
 int fdir_load_server_group_ex(FDIRServerGroup *server_group,
         const char *conf_filename, IniContext *pIniContext)
 {
     int result;
-    int bytes;
     IniItem *dir_servers;
     int count;
 
@@ -55,15 +73,10 @@ int fdir_load_server_group_ex(FDIRServerGroup *server_group,
         return ENOENT;
     }
 
-    bytes = sizeof(ConnectionInfo) * count;
-    server_group->servers = (ConnectionInfo *)malloc(bytes);
-    if (server_group->servers == NULL) {
-        logError("file: "__FILE__", line: %d, "
-            "malloc %d bytes fail", __LINE__, bytes);
-        return errno != 0 ? errno : ENOMEM;
+    if ((result=fdir_alloc_group_servers(server_group, count)) != 0) {
+        return result;
     }
 
-    memset(server_group->servers, 0, bytes);
     if ((result=copy_dir_servers(server_group, conf_filename,
             dir_servers, count)) != 0)
     {
@@ -76,7 +89,7 @@ int fdir_load_server_group_ex(FDIRServerGroup *server_group,
     return 0;
 }
 
-static int fdir_client_do_init_ex(FDIRServerCluster *server_cluster,
+static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         const char *conf_filename, IniContext *iniContext)
 {
     char *pBasePath;
@@ -117,7 +130,7 @@ static int fdir_client_do_init_ex(FDIRServerCluster *server_cluster,
         g_client_global_vars.network_timeout = DEFAULT_NETWORK_TIMEOUT;
     }
 
-    if ((result=fdir_load_server_group_ex(&server_cluster->server_group,
+    if ((result=fdir_load_server_group_ex(&client_ctx->server_group,
                     conf_filename, iniContext)) != 0)
     {
         return result;
@@ -134,19 +147,18 @@ static int fdir_client_do_init_ex(FDIRServerCluster *server_cluster,
             g_client_global_vars.base_path,
             g_client_global_vars.connect_timeout,
             g_client_global_vars.network_timeout,
-            server_cluster->server_group.count);
+            client_ctx->server_group.count);
 #endif
 
     return 0;
 }
 
-int fdir_client_init_ex(FDIRServerCluster *server_cluster,
+int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
         const char *conf_filename)
 {
     IniContext iniContext;
     int result;
 
-    memset(server_cluster, 0, sizeof(FDIRServerCluster));
     if ((result=iniLoadFromFile(conf_filename, &iniContext)) != 0) {
         logError("file: "__FILE__", line: %d, "
             "load conf file \"%s\" fail, ret code: %d",
@@ -154,23 +166,50 @@ int fdir_client_init_ex(FDIRServerCluster *server_cluster,
         return result;
     }
 
-    result = fdir_client_do_init_ex(server_cluster, conf_filename,
+    result = fdir_client_do_init_ex(client_ctx, conf_filename,
                 &iniContext);
     iniFreeContext(&iniContext);
 
-    srand(time(NULL));
     return result;
 }
 
-void fdir_client_destroy_ex(FDIRServerCluster *server_cluster)
+int fdir_client_init_ex(FDIRClientContext *client_ctx,
+        const char *conf_filename, const FDIRConnectionManager *conn_manager)
 {
-    if (server_cluster->server_group.servers == NULL) {
+    int result;
+    if ((result=fdir_client_load_from_file_ex(
+                    client_ctx, conf_filename)) != 0)
+    {
+        return result;
+    }
+
+    if (conn_manager == NULL) {
+        if ((result=fdir_simple_connection_manager_init(
+                        &client_ctx->conn_manager)) != 0)
+        {
+            return result;
+        }
+        client_ctx->is_simple_conn_mananger = true;
+    } else if (conn_manager != &client_ctx->conn_manager) {
+        client_ctx->conn_manager = *conn_manager;
+        client_ctx->is_simple_conn_mananger = false;
+    } else {
+        client_ctx->is_simple_conn_mananger = false;
+    }
+
+    srand(time(NULL));
+    return 0;
+}
+
+void fdir_client_destroy_ex(FDIRClientContext *client_ctx)
+{
+    if (client_ctx->server_group.servers == NULL) {
         return;
     }
 
-    free(server_cluster->server_group.servers);
-    if (server_cluster->slave_group.servers != NULL) {
-        free(server_cluster->slave_group.servers);
+    free(client_ctx->server_group.servers);
+    if (client_ctx->is_simple_conn_mananger) {
+        fdir_simple_connection_manager_destroy(&client_ctx->conn_manager);
     }
-    memset(server_cluster, 0, sizeof(FDIRServerCluster));
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
 }

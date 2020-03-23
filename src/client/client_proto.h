@@ -57,25 +57,18 @@ typedef struct fdir_client_cluster_stat_entry {
     short port;
 } FDIRClientClusterStatEntry;
 
-typedef struct fdir_client_server_entry {
-    int server_id;
-    char ip_addr[IP_ADDRESS_SIZE];
-    short port;
-    char status;
-} FDIRClientServerEntry;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int fdir_client_create_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info, const int flags,
         const mode_t mode);
 
-int fdir_client_remove_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info);
 
-int fdir_client_list_dentry(FDIRServerCluster *server_cluster,
+int fdir_client_list_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *entry_info, FDIRClientDentryArray *array);
 
 int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
@@ -84,16 +77,16 @@ void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
 
 int fdir_client_service_stat(ConnectionInfo *conn, FDIRClientServiceStat *stat);
 
-int fdir_client_cluster_stat(FDIRServerCluster *server_cluster,
+int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count);
 
-int fdir_client_get_master(FDIRServerCluster *server_cluster,
+int fdir_client_get_master(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *master);
 
-int fdir_client_get_slaves(FDIRServerCluster *server_cluster,
+int fdir_client_get_slaves(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *slaves, const int size, int *count);
 
-int fdir_client_get_readable_server(FDIRServerCluster *server_cluster,
+int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server);
 
 #ifdef __cplusplus

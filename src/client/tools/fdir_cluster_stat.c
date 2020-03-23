@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    if ((result=fdir_client_cluster_stat(&g_client_global_vars.server_cluster,
+    if ((result=fdir_client_cluster_stat(&g_client_global_vars.client_ctx,
                     stats, CLUSTER_MAX_SERVER_COUNT, &count)) != 0)
     {
         fprintf(stderr, "fdir_client_cluster_stat fail, "
