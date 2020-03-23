@@ -16,7 +16,6 @@ typedef struct binlog_replay_context {
     } record_array;
     int64_t data_current_version;
     volatile int waiting_count;
-    struct timespec ts;
     int last_errno;
     int64_t record_count;
     int64_t skip_count;

@@ -57,7 +57,7 @@ typedef struct fdir_connection_manager {
     /* push back to connection pool when use connection pool */
     fdir_release_connection_func release_connection;
 
-     /* disconnect the connection */
+     /* disconnect the connecton on network error */
     fdir_close_connection_func close_connection;
 
     void *args;   //extra data

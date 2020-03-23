@@ -391,7 +391,7 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
             break;
         }
 
-        logInfo("push_binlog_resp data_version: %"PRId64", errno: %d", data_version, err_no);
+        //logInfo("push_binlog_resp data_version: %"PRId64", errno: %d", data_version, err_no);
 
         if ((result=binlog_replications_check_response_data_version(
                         CLUSTER_REPLICA, data_version)) != 0)

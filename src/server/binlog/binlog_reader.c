@@ -460,8 +460,10 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
             p += rend_offset;
             remain -= rend_offset;
 
+            /*
             logInfo("file: "__FILE__", line: %d, "
                     "====remain length: %d", __LINE__, remain);
+                    */
         } else {
             break;
         }
@@ -488,8 +490,8 @@ int binlog_reader_init(ServerBinlogReader *reader,
     }
 
     reader->position = *hint_pos;
-    if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 2) {
-        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 2;
+    if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 4) {
+        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 4;
     } else if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 8) {
         reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 8;
     }

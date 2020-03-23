@@ -73,8 +73,6 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     replay_ctx->fail_count = 0;
     replay_ctx->last_errno = 0;
     replay_ctx->waiting_count = 0;
-    replay_ctx->ts.tv_sec = 0;
-    replay_ctx->ts.tv_nsec = 100 * 1000;
     replay_ctx->notify.func = notify_func;
     replay_ctx->notify.args  = args;
     replay_ctx->data_current_version = __sync_add_and_fetch(
