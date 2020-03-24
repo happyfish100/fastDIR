@@ -60,6 +60,9 @@ typedef struct fdir_connection_manager {
      /* disconnect the connecton on network error */
     fdir_close_connection_func close_connection;
 
+    /* master connection cache */
+    ConnectionInfo *master;
+
     void *args;   //extra data
 } FDIRConnectionManager;
 

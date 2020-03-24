@@ -12,7 +12,9 @@
 #include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
+#include "fastcommon/sched_thread.h"
 #include "sf/sf_nio.h"
+#include "sf/sf_global.h"
 #include "push_result_ring.h"
 
 int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
@@ -41,32 +43,152 @@ int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
         sizeof(FDIRBinlogPushResultEntry), 4096, NULL, NULL, false);
 }
 
-#define DESC_TASK_WAITING_RPC_COUNT(task) \
-    do { \
-        if (task != NULL) { \
-            if (__sync_sub_and_fetch(&((FDIRServerTaskArg *) \
-                            task->arg)->context.service.     \
-                        waiting_rpc_count, 1) == 0) \
-            { \
-                sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);  \
-            } \
-        }  \
-    } while (0)
+static inline void desc_task_waiting_rpc_count(
+        FDIRBinlogPushResultEntry *entry)
+{
+    FDIRServerTaskArg *task_arg;
 
-void push_result_ring_clear(FDIRBinlogPushResultContext *ctx)
+    if (entry->waiting_task == NULL) {
+        return;
+    }
+
+    task_arg = (FDIRServerTaskArg *)entry->waiting_task->arg;
+    if (entry->task_version != __sync_add_and_fetch(
+                &task_arg->task_version, 0))
+    {
+        logWarning("file: "__FILE__", line: %d, "
+                "task %p already cleanup",
+                __LINE__, entry->waiting_task);
+        return;
+    }
+
+    if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)
+                    entry->waiting_task->arg)->context.
+                service.waiting_rpc_count, 1) == 0)
+    {
+        sf_nio_notify(entry->waiting_task, SF_NIO_STAGE_CONTINUE);
+    }
+}
+
+static void push_result_ring_clear_queue_all(FDIRBinlogPushResultContext *ctx)
+{
+    FDIRBinlogPushResultEntry *current;
+    FDIRBinlogPushResultEntry *deleted;
+
+    if (ctx->queue.head == NULL) {
+        return;
+    }
+
+    current = ctx->queue.head;
+    while (current != NULL) {
+        deleted = current;
+        current = current->next;
+
+        desc_task_waiting_rpc_count(deleted);
+        fast_mblock_free_object(&ctx->queue.rentry_allocator, deleted);
+    }
+
+    ctx->queue.head = ctx->queue.tail = NULL;
+}
+
+void push_result_ring_clear_all(FDIRBinlogPushResultContext *ctx)
 {
     int index;
 
     if (ctx->ring.start == ctx->ring.end) {
+        push_result_ring_clear_queue_all(ctx);
         return;
     }
 
     index = ctx->ring.start - ctx->ring.entries;
     while (ctx->ring.start != ctx->ring.end) {
-        DESC_TASK_WAITING_RPC_COUNT(ctx->ring.start->waiting_task);
+        desc_task_waiting_rpc_count(ctx->ring.start);
+        ctx->ring.start->data_version = 0;
+        ctx->ring.start->waiting_task = NULL;
 
         ctx->ring.start = ctx->ring.entries +
             (++index % ctx->ring.size);
+    }
+
+    push_result_ring_clear_queue_all(ctx);
+}
+
+static int  push_result_ring_clear_queue_timeouts(
+        FDIRBinlogPushResultContext *ctx)
+{
+    FDIRBinlogPushResultEntry *current;
+    FDIRBinlogPushResultEntry *deleted;
+    int count;
+
+    if (ctx->queue.head == NULL) {
+        return 0;
+    }
+
+    if (ctx->queue.head->expires >= g_current_time) {
+        return 0;
+    }
+
+    count = 0;
+    current = ctx->queue.head;
+    while (current != NULL && current->expires < g_current_time) {
+        deleted = current;
+        current = current->next;
+
+        logWarning("file: "__FILE__", line: %d, "
+                "waiting push response timeout, "
+                "data_version: %"PRId64", task: %p",
+                __LINE__, deleted->data_version,
+                deleted->waiting_task);
+        desc_task_waiting_rpc_count(deleted);
+        fast_mblock_free_object(&ctx->queue.rentry_allocator, deleted);
+        ++count;
+    }
+
+    ctx->queue.head = current;
+    if (current == NULL) {
+        ctx->queue.tail = NULL;
+    }
+
+    return count;
+}
+
+void push_result_ring_clear_timeouts(FDIRBinlogPushResultContext *ctx)
+{
+    int index;
+    int clear_count;
+
+    if (ctx->last_check_timeout_time == g_current_time) {
+        return;
+    }
+
+    clear_count = 0;
+    ctx->last_check_timeout_time = g_current_time;
+    if (ctx->ring.start != ctx->ring.end) {
+        index = ctx->ring.start - ctx->ring.entries;
+        while (ctx->ring.start != ctx->ring.end &&
+                ctx->ring.start->expires < g_current_time)
+        {
+            logWarning("file: "__FILE__", line: %d, "
+                    "waiting push response timeout, "
+                    "data_version: %"PRId64", task: %p",
+                    __LINE__, ctx->ring.start->data_version,
+                    ctx->ring.start->waiting_task);
+
+            desc_task_waiting_rpc_count(ctx->ring.start);
+            ctx->ring.start->data_version = 0;
+            ctx->ring.start->waiting_task = NULL;
+
+            ctx->ring.start = ctx->ring.entries +
+                (++index % ctx->ring.size);
+            ++clear_count;
+        }
+    }
+
+    clear_count += push_result_ring_clear_queue_timeouts(ctx);
+    if (clear_count > 0) {
+        logWarning("file: "__FILE__", line: %d, "
+                "clear timeout push response waiting entries count: %d",
+                __LINE__, clear_count);
     }
 }
 
@@ -96,6 +218,9 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 
     entry->data_version = data_version;
     entry->waiting_task = waiting_task;
+    entry->task_version = __sync_add_and_fetch(&((FDIRServerTaskArg *)
+                waiting_task->arg)->task_version, 0);
+    entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
 
     if (ctx->queue.tail == NULL) {  //empty queue
         entry->next = NULL;
@@ -159,9 +284,15 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
     if (matched) {
         entry->data_version = data_version;
         entry->waiting_task = waiting_task;
+        entry->task_version = __sync_add_and_fetch(&((FDIRServerTaskArg *)
+                    waiting_task->arg)->task_version, 0);
+        entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         return 0;
     }
 
+    logWarning("file: "__FILE__", line: %d, "
+            "can't found data version %"PRId64", in the ring",
+            __LINE__, data_version);
     return add_to_queue(ctx, data_version, waiting_task);
 }
 
@@ -201,7 +332,7 @@ static int remove_from_queue(FDIRBinlogPushResultContext *ctx,
         }
     }
 
-    DESC_TASK_WAITING_RPC_COUNT(entry->waiting_task);
+    desc_task_waiting_rpc_count(entry);
     fast_mblock_free_object(&ctx->queue.rentry_allocator, entry);
     return 0;
 }
@@ -228,7 +359,7 @@ int push_result_ring_remove(FDIRBinlogPushResultContext *ctx,
                 }
             }
 
-            DESC_TASK_WAITING_RPC_COUNT(entry->waiting_task);
+            desc_task_waiting_rpc_count(entry);
             entry->data_version = 0;
             entry->waiting_task = NULL;
             return 0;

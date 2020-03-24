@@ -122,6 +122,10 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
     ConnectionInfo *conn; 
     FDIRClientServerEntry master;
 
+    if (client_ctx->conn_manager.master != NULL) {
+        return client_ctx->conn_manager.master;
+    }
+
     do {
         if ((*err_no=fdir_client_get_master(client_ctx, &master)) != 0) {
             break;
@@ -133,6 +137,7 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
             break;
         }
 
+        client_ctx->conn_manager.master = conn;
         return conn;
     } while (0);
 
@@ -173,6 +178,10 @@ static ConnectionInfo *get_readable_connection(
 static void close_connection(FDIRClientContext *client_ctx,
         ConnectionInfo *conn)
 {
+    if (client_ctx->conn_manager.master == conn) {
+        client_ctx->conn_manager.master = NULL;
+    }
+
     conn_pool_disconnect_server(conn);
 }
 
@@ -201,6 +210,7 @@ int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
 
     conn_manager->release_connection = NULL;
     conn_manager->close_connection = close_connection;
+    conn_manager->master = NULL;
     return 0;
 }
 

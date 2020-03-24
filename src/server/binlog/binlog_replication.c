@@ -132,7 +132,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
         return ENOMEM;
     }
 
-    alloc_size = 2 * task->size / BINLOG_RECORD_MIN_SIZE;
+    alloc_size = 4 * task->size / BINLOG_RECORD_MIN_SIZE;
     if ((result=push_result_ring_check_init(&replication->
                     context.push_result_ctx, alloc_size)) != 0)
     {
@@ -187,7 +187,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
                 cluster.connected, replication)) == 0)
     {
         replication_queue_discard_all(replication);
-        push_result_ring_clear(&replication->context.push_result_ctx);
+        push_result_ring_clear_all(&replication->context.push_result_ctx);
         if (MYSELF_IS_MASTER) {
             result = binlog_replication_bind_thread(replication);
         }
@@ -484,7 +484,7 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
                     FDIR_REPLICATION_STAGE_CONNECTING);
         } else if (result != EAGAIN) {
             if (result != replication->connection_info.last_errno
-                    || replication->connection_info.fail_count % 1 == 0)
+                    || replication->connection_info.fail_count % 100 == 0)
             {
                 replication->connection_info.last_errno = result;
                 logError("file: "__FILE__", line: %d, "
@@ -575,11 +575,13 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     pthread_mutex_unlock(&replication->context.queue.lock);
 
     if (head == NULL) {
+        /*
         //TODO
         static int count = 0;
-        if (++count % 1000 == 0) {
+        if (++count % 10000 == 0) {
             logInfo("empty queue");
         }
+        */
         return 0;
     }
 
@@ -775,6 +777,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
             return sync_binlog_from_disk(replication);
         }
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
+        push_result_ring_clear_timeouts(&replication->context.push_result_ctx);
         return sync_binlog_from_queue(replication);
     }
 
@@ -786,11 +789,13 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
     FDIRSlaveReplication *replication;
     int i;
 
+    /*
     static int count = 0;
 
-    if (++count % 1000 == 0) {
+    if (++count % 10000 == 0) {
         logInfo("server_ctx %p, connected.count: %d", server_ctx, server_ctx->cluster.connected.count);
     }
+    */
 
     if (server_ctx->cluster.connected.count == 0) {
         return 0;
@@ -808,12 +813,15 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
 int binlog_replication_process(FDIRServerContext *server_ctx)
 {
     int result;
+
+    /*
     static int count = 0;
 
-    if (++count % 1000 == 0) {
+    if (++count % 10000 == 0) {
         logInfo("file: "__FILE__", line: %d, count: %d, g_current_time: %d",
                 __LINE__, count, (int)g_current_time);
     }
+    */
 
     if ((result=deal_replication_connectings(server_ctx)) != 0) {
         return result;

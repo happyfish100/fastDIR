@@ -783,10 +783,12 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
 
-    if (count++ % 10000 == 0) {
+    if (count++ % 100000 == 0) {
+        /*
         logInfo("is_master: %d, consumer_ctx: %p, connected.count: %d",
                 MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);
+                */
     }
 
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {

@@ -98,6 +98,8 @@ typedef struct fdir_record_buffer_queue {
 
 typedef struct fdir_binlog_push_result_entry {
     uint64_t data_version;
+    int64_t task_version;
+    time_t expires;
     struct fast_task_info *waiting_task;
     struct fdir_binlog_push_result_entry *next;
 } FDIRBinlogPushResultEntry;
@@ -115,6 +117,8 @@ typedef struct fdir_binlog_push_result_context {
         FDIRBinlogPushResultEntry *tail;
         struct fast_mblock_man rentry_allocator;
     } queue;   //for overflow exceptions
+
+    time_t last_check_timeout_time;
 } FDIRBinlogPushResultContext;
 
 struct binlog_read_thread_context;

@@ -20,7 +20,9 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
 int push_result_ring_remove(FDIRBinlogPushResultContext *ctx,
         const uint64_t data_version);
 
-void push_result_ring_clear(FDIRBinlogPushResultContext *ctx);
+void push_result_ring_clear_all(FDIRBinlogPushResultContext *ctx);
+
+void push_result_ring_clear_timeouts(FDIRBinlogPushResultContext *ctx);
 
 #ifdef __cplusplus
 }
