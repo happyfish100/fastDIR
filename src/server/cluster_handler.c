@@ -556,12 +556,22 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
 
     if (REQUEST_STATUS != 0) {
         if (REQUEST.header.body_len > 0) {
-            if (REQUEST.header.body_len >= sizeof(RESPONSE.error.message)) {
-                RESPONSE.error.length = sizeof(RESPONSE.error.message) - 1;
+            int remain_size;
+            int len;
+
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "message from peer %s: ", task->client_ip);
+            remain_size = sizeof(RESPONSE.error.message) -
+                RESPONSE.error.length;
+            if (REQUEST.header.body_len >= remain_size) {
+                len = remain_size - 1;
             } else {
-                RESPONSE.error.length = REQUEST.header.body_len;
+                len = REQUEST.header.body_len;
             }
-            memcpy(RESPONSE.error.message, REQUEST.body, RESPONSE.error.length);
+
+            memcpy(RESPONSE.error.message + RESPONSE.error.length,
+                    REQUEST.body, len);
+            RESPONSE.error.length += len;
             *(RESPONSE.error.message + RESPONSE.error.length) = '\0';
         }
 
@@ -613,11 +623,10 @@ static int deal_task_done(struct fast_task_info *task)
 
     if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d (%s), req body length: %d, %s",
+                "peer ip: %s, cmd: %d (%s), req body length: %d, %s",
                 __LINE__, task->client_ip, REQUEST.header.cmd,
                 fdir_get_cmd_caption(REQUEST.header.cmd),
-                REQUEST.header.body_len,
-                RESPONSE.error.message);
+                REQUEST.header.body_len, RESPONSE.error.message);
     }
 
     if (!TASK_ARG->context.need_response) {

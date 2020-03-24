@@ -186,6 +186,7 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     if ((result=binlog_read_to_buffer(reader, buff, size,
                     read_bytes)) != 0)
     {
+        *data_version = 0;
         return result;
     }
 
@@ -193,6 +194,7 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
                     data_version, (const char **)&rec_end,
                     error_info, sizeof(error_info))) != 0)
     {
+        *data_version = 0;
         return result == ENOENT ? EFAULT : result;
     }
 

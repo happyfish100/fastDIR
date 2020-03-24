@@ -124,9 +124,18 @@ typedef struct fdir_replication_context {
     FDIRBinlogPushResultContext push_result_ctx;   //push result recv from the slave
     struct {
         int64_t by_queue;
-        int64_t by_disk;
+        struct {
+            int64_t previous;
+            int64_t current;
+        } by_disk;
         int64_t by_resp;  //for flow control
     } last_data_versions;
+
+    struct {
+        int64_t start_time_ms;
+        int64_t binlog_size;
+        int64_t record_count;
+    } sync_by_disk_stat;
 } FDIRReplicationContext;
 
 typedef struct fdir_slave_replication {

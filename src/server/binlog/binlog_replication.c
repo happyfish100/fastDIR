@@ -146,9 +146,15 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
         replication->index % CLUSTER_SF_CTX.work_threads;
 
     set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
-    replication->context.last_data_versions.by_disk = 0;
+    replication->context.last_data_versions.by_disk.previous = 0;
+    replication->context.last_data_versions.by_disk.current = 0;
     replication->context.last_data_versions.by_queue = 0;
     replication->context.last_data_versions.by_resp = 0;
+
+    replication->context.sync_by_disk_stat.start_time_ms = 0;
+    replication->context.sync_by_disk_stat.binlog_size = 0;
+    replication->context.sync_by_disk_stat.record_count = 0;
+
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER;
     CLUSTER_REPLICA = replication;
     replication->connection_info.conn.sock = -1;
@@ -381,7 +387,7 @@ static void discard_queue(FDIRSlaveReplication *replication,
 
         replication->context.last_data_versions.by_queue = rb->data_version;
         DECREASE_TASK_WAITING_RPC_COUNT(rb);
-        rb->release_func(rb, rb->args);
+        rb->release_func(rb);
     }
 }
 
@@ -416,7 +422,7 @@ static void replication_queue_discard_synced(FDIRSlaveReplication *replication)
 
         tail = head;
         while ((tail != NULL) && (tail->data_version <=
-                    replication->context.last_data_versions.by_disk))
+                    replication->context.last_data_versions.by_disk.current))
         {
             tail = tail->nexts[replication->index];
         }
@@ -569,6 +575,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     pthread_mutex_unlock(&replication->context.queue.lock);
 
     if (head == NULL) {
+        //TODO
         static int count = 0;
         if (++count % 100 == 0) {
             logInfo("empty queue");
@@ -601,7 +608,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         }
 
         head = head->nexts[replication->index];
-        rb->release_func(rb, rb->args);
+        rb->release_func(rb);
     }
 
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
@@ -647,7 +654,10 @@ int binlog_replications_check_response_data_version(
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         return push_result_ring_remove(&replication->context.
                 push_result_ctx, data_version);
+    } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
+        replication->context.sync_by_disk_stat.record_count++;
     }
+
     return 0;
 }
 
@@ -679,26 +689,50 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
             replication->task->length);
 
     if (r->err_no == 0) {
-        replication->context.last_data_versions.by_disk =
-            r->last_data_version;
+        if (r->last_data_version > replication->context.
+                last_data_versions.by_disk.current)
+        {
+            replication->context.last_data_versions.by_disk.previous =
+                replication->context.last_data_versions.by_disk.current;
+            replication->context.last_data_versions.by_disk.current =
+                r->last_data_version;
+        }
+
+        replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
         sync_binlog_to_slave(replication, &r->buffer);
     }
     binlog_read_thread_return_result_buffer(replication->context.reader_ctx, r);
 
     if ((r->err_no == ENOENT) && (replication->context.last_data_versions.
-            by_queue <= replication->context.last_data_versions.by_disk) &&
-            (replication->context.last_data_versions.by_resp >=
-            replication->context.last_data_versions.by_disk))
+            by_queue <= replication->context.last_data_versions.by_disk.current)
+            && (replication->context.last_data_versions.by_resp >=
+            replication->context.last_data_versions.by_disk.current))
     {
+        int64_t time_used;
+        char time_buff[32];
+        char size_buff[32];
+
         binlog_read_thread_terminate(replication->context.reader_ctx);
         free(replication->context.reader_ctx);
         replication->context.reader_ctx = NULL;
 
-        if (replication->context.last_data_versions.by_disk > 0) {
+        if (replication->context.last_data_versions.by_disk.current > 0) {
             replication_queue_discard_synced(replication);
         }
         set_replication_stage(replication,
                 FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE);
+
+        time_used = get_current_time_ms() - replication->context.
+            sync_by_disk_stat.start_time_ms;
+        logInfo("file: "__FILE__", line: %d, "
+                "sync to slave %s:%d by disk done, record_count: %"PRId64", "
+                "binlog_size: %s, time used: %s ms", __LINE__,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->slave->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(replication->slave->server),
+                replication->context.sync_by_disk_stat.record_count,
+                long_to_comma_str(replication->context.sync_by_disk_stat.
+                    binlog_size, size_buff),
+                long_to_comma_str(time_used, time_buff));
     }
     return 0;
 }
@@ -724,6 +758,8 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         if ((result=start_binlog_read_thread(replication)) == 0) {
             set_replication_stage(replication,
                     FDIR_REPLICATION_STAGE_SYNC_FROM_DISK);
+            replication->context.sync_by_disk_stat.start_time_ms =
+                get_current_time_ms();
         }
         return result;
     }
@@ -734,7 +770,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
 
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
         if (replication->context.last_data_versions.by_resp >=
-                replication->context.last_data_versions.by_disk) //flow control
+                replication->context.last_data_versions.by_disk.previous) //flow control
         {
             return sync_binlog_from_disk(replication);
         }

@@ -288,7 +288,7 @@ static int deal_binlog_records(struct common_blocked_node *node)
             return result;
         }
 
-        rb->release_func(rb, rb->args);
+        rb->release_func(rb);
         node = node->next;
     } while (node != NULL);
 
