@@ -318,8 +318,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
     }
 
     //logInfo("push_binlog body length: %d", REQUEST.header.body_len);
-    result = deal_replica_push_request(CLUSTER_CONSUMER_CTX);
-    return result == EAGAIN ? 0 : result;
+    return deal_replica_push_request(CLUSTER_CONSUMER_CTX);
 }
 
 static inline int cluster_check_replication_task(struct fast_task_info *task)

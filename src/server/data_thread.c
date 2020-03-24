@@ -255,14 +255,6 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     int ignore_errno;
     bool is_error;
 
-    /*
-    logInfo("file: "__FILE__", line: %d, record: %p, "
-            "operation: %d, hash code: %u, inode: %"PRId64
-             ", data_version: %"PRId64, __LINE__, record,
-             record->operation, record->hash_code,
-             record->inode, record->data_version);
-    */
-
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             result = dentry_create(thread_ctx, record);
@@ -309,10 +301,13 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     }
 
     /*
-    logInfo("file: "__FILE__", line: %d, "
-            "result: %d, data_version: %"PRId64,
-            __LINE__, result, record->data_version);
-            */
+    logInfo("file: "__FILE__", line: %d, record: %p, "
+            "operation: %d, hash code: %u, inode: %"PRId64
+             ", data_version: %"PRId64", result: %d", __LINE__,
+             record, record->operation, record->hash_code,
+             record->inode, record->data_version, result);
+             */
+
     return result;
 }
 

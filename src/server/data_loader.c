@@ -27,6 +27,7 @@ int server_load_data()
     BinlogReadThreadResult *r;
     int64_t start_time;
     int64_t end_time;
+    char time_buff[32];
     int result;
 
     start_time = get_current_time_ms();
@@ -72,9 +73,10 @@ int server_load_data()
     logInfo("file: "__FILE__", line: %d, "
             "load data done. record count: %"PRId64", "
             "skip count: %"PRId64", warning count: %"PRId64
-            ", fail count: %"PRId64", time used: %"PRId64"ms",
+            ", fail count: %"PRId64", time used: %s ms",
             __LINE__, replay_ctx.record_count,
             replay_ctx.skip_count, replay_ctx.warning_count,
-            replay_ctx.fail_count, end_time - start_time);
+            replay_ctx.fail_count, long_to_comma_str(
+                end_time - start_time, time_buff));
     return result;
 }

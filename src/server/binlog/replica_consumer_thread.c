@@ -218,8 +218,26 @@ static inline int push_to_replica_consumer_queues(
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx)
 {
     ServerBinlogRecordBuffer *rb;
-    if ((rb=(ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
-            &ctx->queues.input_free, false)) == NULL) {
+    int count;
+
+    count = 0;
+    while (ctx->continue_flag) {
+        rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
+                &ctx->queues.input_free, false);
+        if (rb != NULL) {
+            break;
+        }
+
+        ++count;
+        usleep(100);
+    }
+
+    if (count > 0) {
+        logWarning("file: "__FILE__", line: %d, "
+                "alloc record buffer after %d times sleep",
+                __LINE__, count);
+    }
+    if (rb == NULL) {
         return EAGAIN;
     }
 
