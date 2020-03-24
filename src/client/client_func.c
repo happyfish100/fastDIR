@@ -26,6 +26,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
     }
     server_group->count = count;
 
+    /*
     {
         printf("dir_server count: %d\n", server_group->count);
         for (server=server_group->servers; server<server_group->servers+
@@ -34,6 +35,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
             printf("dir_server=%s:%d\n", server->ip_addr, server->port);
         }
     }
+    */
 
     return 0;
 }

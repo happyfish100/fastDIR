@@ -317,7 +317,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return EINVAL;
     }
 
-    logInfo("push_binlog body length: %d", REQUEST.header.body_len);
+    //logInfo("push_binlog body length: %d", REQUEST.header.body_len);
     result = deal_replica_push_request(CLUSTER_CONSUMER_CTX);
     return result == EAGAIN ? 0 : result;
 }
@@ -783,7 +783,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
 
-    if (count++ % 100 == 0) {
+    if (count++ % 10000 == 0) {
         logInfo("is_master: %d, consumer_ctx: %p, connected.count: %d",
                 MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);

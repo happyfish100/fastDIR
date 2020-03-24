@@ -20,8 +20,8 @@
 #include "binlog_local_consumer.h"
 #include "binlog_producer.h"
 
-#define SLEEP_NANO_SECONDS   (50 * 1000)
-#define MAX_SLEEP_COUNT      (20 * 1000)
+#define SLEEP_NANO_SECONDS   (10 * 1000)
+#define MAX_SLEEP_COUNT      (50 * 1000)
 
 static struct fast_mblock_man record_buffer_allocator;
 
@@ -95,8 +95,10 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
 static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
+        /*
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
+                */
         fast_mblock_free_object(&record_buffer_allocator, rbuffer);
     }
 }
@@ -114,7 +116,7 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
         nanosleep(&sleep_ts, NULL);
     }
 
-    if (count >= 1) {
+    if (count >= 2) {
         if (count == MAX_SLEEP_COUNT) {
             logError("file: "__FILE__", line: %d, "
                     "waiting for my turn timeout, my data version: %"PRId64", "

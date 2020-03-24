@@ -115,10 +115,10 @@ static int deal_delay_free_queque(FDIRDataThreadContext *thread_ctx)
     while ((node != NULL) && (node->expires < g_current_time)) {
         if (node->free_func != NULL) {
             node->free_func(node->ptr);
-            logInfo("free ptr: %p", node->ptr);
+            //logInfo("free ptr: %p", node->ptr);
         } else {
             node->free_func_ex(node->ctx, node->ptr);
-            logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
+            //logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
         }
 
         deleted = node;

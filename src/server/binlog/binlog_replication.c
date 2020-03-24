@@ -577,7 +577,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     if (head == NULL) {
         //TODO
         static int count = 0;
-        if (++count % 100 == 0) {
+        if (++count % 1000 == 0) {
             logInfo("empty queue");
         }
         return 0;
@@ -598,7 +598,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
                 rb->buffer.data, rb->buffer.length);
         replication->task->length += rb->buffer.length;
 
-        logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
+        //logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
 
         if ((result=push_result_ring_add(&replication->context.
                         push_result_ctx, rb->data_version,
@@ -725,8 +725,8 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         time_used = get_current_time_ms() - replication->context.
             sync_by_disk_stat.start_time_ms;
         logInfo("file: "__FILE__", line: %d, "
-                "sync to slave %s:%d by disk done, record_count: %"PRId64", "
-                "binlog_size: %s, time used: %s ms", __LINE__,
+                "sync to slave %s:%d by disk done, record count: %"PRId64", "
+                "binlog size: %s, time used: %s ms", __LINE__,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->slave->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(replication->slave->server),
                 replication->context.sync_by_disk_stat.record_count,

@@ -31,8 +31,10 @@ static void *collect_results_thread_func(void *arg);
 static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
+        /*
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
+                */
 
         common_blocked_queue_push((struct common_blocked_queue *)
                 rbuffer->args, rbuffer);
@@ -367,9 +369,11 @@ static void combine_push_results(ReplicaConsumerThreadContext *ctx,
 
         rbuffer->buffer.length = p - rbuffer->buffer.data;
 
+        /*
         logInfo("file: "__FILE__", line: %d, "
                 "result count: %d, data length: %d",
                 __LINE__, count, rbuffer->buffer.length);
+                */
 
         common_blocked_queue_push(&ctx->queues.output, rbuffer);
         iovent_notify_thread(ctx->task->thread_data);

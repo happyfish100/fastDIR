@@ -50,8 +50,6 @@ void service_task_finish_cleanup(struct fast_task_info *task)
 
     //task_arg = (FDIRServerTaskArg *)task->arg;
 
-    logInfo("file: "__FILE__", line: %d task: %p", __LINE__, task);
-
     dentry_array_free(&DENTRY_LIST_CACHE.array);
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
@@ -441,15 +439,25 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    logError("file: "__FILE__", line: %d, "
-            "client ip: %s, %s dentry fail, "
-            "errno: %d, error info: %s, "
-            "namespace: %.*s, path: %.*s",
-            __LINE__, task->client_ip,
-            get_operation_caption(record->operation),
-            result, STRERROR(result),
-            record->fullname.ns.len, record->fullname.ns.str,
-            record->fullname.path.len, record->fullname.path.str);
+    if (result != 0) {
+        int log_level;
+
+        if (is_error) {
+            log_level = LOG_ERR;
+        } else {
+            log_level = LOG_WARNING;
+        }
+        log_it_ex(&g_log_context, log_level,
+                "file: "__FILE__", line: %d, "
+                "client ip: %s, %s dentry fail, "
+                "errno: %d, error info: %s, "
+                "namespace: %.*s, path: %.*s",
+                __LINE__, task->client_ip,
+                get_operation_caption(record->operation),
+                result, STRERROR(result),
+                record->fullname.ns.len, record->fullname.ns.str,
+                record->fullname.path.len, record->fullname.path.str);
+    }
 
     RESPONSE_STATUS = result;
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
@@ -722,7 +730,7 @@ static int deal_task_done(struct fast_task_info *task)
 
     r = sf_send_add_event(task);
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
-    if (time_used > 50 * 1000) {
+    if (time_used > 10 * 1000) {
         lwarning("process a request timed used: %d us, "
                 "cmd: %d (%s), req body len: %d, resp body len: %d",
                 time_used, REQUEST.header.cmd,
@@ -732,7 +740,7 @@ static int deal_task_done(struct fast_task_info *task)
     }
 
     if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
-    logInfo("file: "__FILE__", line: %d, "
+    logDebug("file: "__FILE__", line: %d, "
             "client ip: %s, req cmd: %d (%s), req body_len: %d, "
             "resp cmd: %d (%s), status: %d, resp body_len: %d, "
             "time used: %d us", __LINE__,
