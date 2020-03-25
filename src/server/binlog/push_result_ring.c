@@ -204,7 +204,8 @@ void push_result_ring_destroy(FDIRBinlogPushResultContext *ctx)
 }
 
 static int add_to_queue(FDIRBinlogPushResultContext *ctx,
-            const uint64_t data_version, struct fast_task_info *waiting_task)
+            const uint64_t data_version, struct fast_task_info *waiting_task,
+            const int64_t task_version)
 {
     FDIRBinlogPushResultEntry *entry;
     FDIRBinlogPushResultEntry *previous;
@@ -218,8 +219,7 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 
     entry->data_version = data_version;
     entry->waiting_task = waiting_task;
-    entry->task_version = __sync_add_and_fetch(&((FDIRServerTaskArg *)
-                waiting_task->arg)->task_version, 0);
+    entry->task_version = task_version;
     entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
 
     if (ctx->queue.tail == NULL) {  //empty queue
@@ -254,7 +254,8 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 }
 
 int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
-        const uint64_t data_version, struct fast_task_info *waiting_task)
+        const uint64_t data_version, struct fast_task_info *waiting_task,
+        const int64_t task_version)
 {
     FDIRBinlogPushResultEntry *entry;
     FDIRBinlogPushResultEntry *previous;
@@ -284,8 +285,7 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
     if (matched) {
         entry->data_version = data_version;
         entry->waiting_task = waiting_task;
-        entry->task_version = __sync_add_and_fetch(&((FDIRServerTaskArg *)
-                    waiting_task->arg)->task_version, 0);
+        entry->task_version = task_version;
         entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         return 0;
     }
@@ -293,7 +293,7 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
     logWarning("file: "__FILE__", line: %d, "
             "can't found data version %"PRId64", in the ring",
             __LINE__, data_version);
-    return add_to_queue(ctx, data_version, waiting_task);
+    return add_to_queue(ctx, data_version, waiting_task, task_version);
 }
 
 static int remove_from_queue(FDIRBinlogPushResultContext *ctx,

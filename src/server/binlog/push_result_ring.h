@@ -15,7 +15,8 @@ int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
 void push_result_ring_destroy(FDIRBinlogPushResultContext *ctx);
 
 int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
-        const uint64_t data_version, struct fast_task_info *waiting_task);
+        const uint64_t data_version, struct fast_task_info *waiting_task,
+        const int64_t task_version);
 
 int push_result_ring_remove(FDIRBinlogPushResultContext *ctx,
         const uint64_t data_version);

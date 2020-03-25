@@ -366,16 +366,25 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
     return result;
 }
 
-#define DECREASE_TASK_WAITING_RPC_COUNT(rb) \
-    do { \
-        struct fast_task_info *task;   \
-        task = (struct fast_task_info *)rb->args;  \
-        if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)-> \
-                        context.service.waiting_rpc_count, 1) == 0) \
-        { \
-            sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);  \
-        } \
-    } while (0)
+static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
+{
+    struct fast_task_info *task;
+    task = (struct fast_task_info *)rb->args;
+
+    if (rb->task_version != __sync_add_and_fetch(&((FDIRServerTaskArg *)
+                    task->arg)->task_version, 0))
+    {
+        logWarning("file: "__FILE__", line: %d, "
+                "task %p already cleanup", __LINE__, task);
+        return;
+    }
+
+    if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)->
+                context.service.waiting_rpc_count, 1) == 0)
+    {
+        sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+    }
+}
 
 static void discard_queue(FDIRSlaveReplication *replication,
         ServerBinlogRecordBuffer *head, ServerBinlogRecordBuffer *tail)
@@ -386,7 +395,7 @@ static void discard_queue(FDIRSlaveReplication *replication,
         head = head->nexts[replication->index];
 
         replication->context.last_data_versions.by_queue = rb->data_version;
-        DECREASE_TASK_WAITING_RPC_COUNT(rb);
+        decrease_task_waiting_rpc_count(rb);
         rb->release_func(rb);
     }
 }
@@ -564,6 +573,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
+    struct fast_task_info *waiting_task;
     int result;
 
     pthread_mutex_lock(&replication->context.queue.lock);
@@ -589,24 +599,32 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     while (head != NULL) {
         rb = head;
 
-        if (replication->task->length + rb->buffer.length >
-                replication->task->size)
+        waiting_task = (struct fast_task_info *)rb->args;
+        if (rb->task_version != __sync_add_and_fetch(&((FDIRServerTaskArg *)
+                        waiting_task->arg)->task_version, 0))
         {
-            break;
-        }
+            logWarning("file: "__FILE__", line: %d, "
+                    "task %p already cleanup", __LINE__, waiting_task);
+        } else {
+            if (replication->task->length + rb->buffer.length >
+                    replication->task->size)
+            {
+                break;
+            }
 
-        replication->context.last_data_versions.by_queue = rb->data_version;
-        memcpy(replication->task->data + replication->task->length,
-                rb->buffer.data, rb->buffer.length);
-        replication->task->length += rb->buffer.length;
+            replication->context.last_data_versions.by_queue = rb->data_version;
+            memcpy(replication->task->data + replication->task->length,
+                    rb->buffer.data, rb->buffer.length);
+            replication->task->length += rb->buffer.length;
 
-        //logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
+            //logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
 
-        if ((result=push_result_ring_add(&replication->context.
-                        push_result_ctx, rb->data_version,
-                        (struct fast_task_info *)rb->args)) != 0)
-        {
-            return result;
+            if ((result=push_result_ring_add(&replication->context.
+                            push_result_ctx, rb->data_version,
+                            waiting_task, rb->task_version)) != 0)
+            {
+                return result;
+            }
         }
 
         head = head->nexts[replication->index];
