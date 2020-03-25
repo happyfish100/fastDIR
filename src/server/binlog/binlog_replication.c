@@ -574,6 +574,9 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
     struct fast_task_info *waiting_task;
+    FDIRProtoPushBinlogReqBodyHeader *body_header;
+    uint64_t last_data_version;
+    int body_len;
     int result;
 
     pthread_mutex_lock(&replication->context.queue.lock);
@@ -585,17 +588,12 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     pthread_mutex_unlock(&replication->context.queue.lock);
 
     if (head == NULL) {
-        /*
-        //TODO
-        static int count = 0;
-        if (++count % 10000 == 0) {
-            logInfo("empty queue");
-        }
-        */
         return 0;
     }
 
-    replication->task->length = sizeof(FDIRProtoHeader);
+    last_data_version = 0;
+    replication->task->length = sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoPushBinlogReqBodyHeader);
     while (head != NULL) {
         rb = head;
 
@@ -612,6 +610,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
                 break;
             }
 
+            last_data_version = rb->data_version;
             replication->context.last_data_versions.by_queue = rb->data_version;
             memcpy(replication->task->data + replication->task->length,
                     rb->buffer.data, rb->buffer.length);
@@ -631,9 +630,15 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         rb->release_func(rb);
     }
 
+    body_header = (FDIRProtoPushBinlogReqBodyHeader *)
+        (replication->task->data + sizeof(FDIRProtoHeader));
+    body_len = replication->task->length - sizeof(FDIRProtoHeader);
+    int2buff(body_len - sizeof(FDIRProtoPushBinlogReqBodyHeader),
+            body_header->binlog_length);
+    long2buff(last_data_version, body_header->last_data_version);
+
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
-            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ,
-            replication->task->length - sizeof(FDIRProtoHeader));
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
     sf_send_add_event(replication->task);
 
     if (head != NULL) {
@@ -660,7 +665,8 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
     return binlog_read_thread_init(replication->context.reader_ctx,
             &replication->slave->binlog_pos_hint, 
             replication->slave->last_data_version,
-            replication->task->size - sizeof(FDIRProtoHeader));
+            replication->task->size - (sizeof(FDIRProtoHeader) +
+                sizeof(FDIRProtoPushBinlogReqBodyHeader)));
 }
 
 int binlog_replications_check_response_data_version(
@@ -682,13 +688,23 @@ int binlog_replications_check_response_data_version(
 }
 
 static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
-        BufferInfo *buffer)
+        BinlogReadThreadResult *r)
 {
+    int body_len;
+    FDIRProtoPushBinlogReqBodyHeader *body_header;
+
+    body_header = (FDIRProtoPushBinlogReqBodyHeader *)
+        (replication->task->data + sizeof(FDIRProtoHeader));
+    body_len = sizeof(FDIRProtoPushBinlogReqBodyHeader) + r->buffer.length;
     FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
-            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, buffer->length);
-    memcpy(replication->task->data + sizeof(FDIRProtoHeader),
-            buffer->buff, buffer->length);
-    replication->task->length = sizeof(FDIRProtoHeader) + buffer->length;
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
+
+    int2buff(r->buffer.length, body_header->binlog_length);
+    long2buff(r->last_data_version, body_header->last_data_version);
+    memcpy(replication->task->data + sizeof(FDIRProtoHeader) +
+            sizeof(FDIRProtoPushBinlogReqBodyHeader),
+            r->buffer.buff, r->buffer.length);
+    replication->task->length = sizeof(FDIRProtoHeader) + body_len;
     sf_send_add_event(replication->task);
 }
 
@@ -719,7 +735,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         }
 
         replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
-        sync_binlog_to_slave(replication, &r->buffer);
+        sync_binlog_to_slave(replication, r);
     }
     binlog_read_thread_return_result_buffer(replication->context.reader_ctx, r);
 

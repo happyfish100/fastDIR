@@ -43,7 +43,7 @@ typedef struct server_global_vars {
     } inode_generator;
 
     struct {
-        volatile int64_t current_version; //binlog version
+        volatile uint64_t current_version; //binlog version
         string_t path;   //data path
         int binlog_buffer_size;
         int thread_count;

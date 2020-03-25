@@ -281,9 +281,34 @@ static int deal_binlog_records(struct common_blocked_node *node)
 {
     ServerBinlogRecordBuffer *rb;
     int result;
+    static int max_wait_count = 0;
+    int wait_count;
 
     do {
         rb = (ServerBinlogRecordBuffer *)node->data;
+
+        wait_count = 0;
+        while ((rb->data_version > DATA_CURRENT_VERSION) &&
+                (++wait_count < 100))
+        {
+            usleep(1000);
+        }
+
+        if (wait_count > 0) {
+            if (max_wait_count < wait_count) {
+                max_wait_count = wait_count;
+                logWarning("file: "__FILE__", line: %d, "
+                        "curent write data version: %"PRId64" "
+                        "reach max wait count: %d", __LINE__,
+                        rb->data_version, wait_count);
+            }
+            if (wait_count == 100) {
+                logError("file: "__FILE__", line: %d, "
+                        "wait curent write data version: %"PRId64" "
+                        "timeout", __LINE__, rb->data_version);
+            }
+        }
+
         if ((result=deal_binlog_one_record(rb)) != 0) {
             return result;
         }

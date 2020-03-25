@@ -215,9 +215,12 @@ static inline int push_to_replica_consumer_queues(
     return common_blocked_queue_push(&ctx->queues.input, rbuffer);
 }
 
-int deal_replica_push_request(ReplicaConsumerThreadContext *ctx)
+int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
+        char *binlog_buff, const int length,
+        const uint64_t last_data_version)
 {
     ServerBinlogRecordBuffer *rb;
+    int result;
     int count;
 
     count = 0;
@@ -241,9 +244,15 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx)
         return EAGAIN;
     }
 
-    rb->buffer.length = ctx->task->length - sizeof(FDIRProtoHeader);
-    memcpy(rb->buffer.data, ctx->task->data + sizeof(FDIRProtoHeader),
-            rb->buffer.length);
+    if (rb->buffer.alloc_size < length) {
+        if ((result=fast_buffer_check_capacity(&rb->buffer, length)) != 0) {
+            return result;
+        }
+    }
+
+    rb->data_version = last_data_version;
+    rb->buffer.length = length;
+    memcpy(rb->buffer.data, binlog_buff, rb->buffer.length);
     return push_to_replica_consumer_queues(ctx, rb);
 }
 

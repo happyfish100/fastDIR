@@ -44,7 +44,10 @@ extern "C" {
 ReplicaConsumerThreadContext *replica_consumer_thread_init(
         struct fast_task_info *task, const int buffer_size, int *err_no);
 
-int deal_replica_push_request(ReplicaConsumerThreadContext *ctx);
+int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
+        char *binlog_buff, const int length,
+        const uint64_t last_data_version);
+
 int deal_replica_push_result(ReplicaConsumerThreadContext *ctx);
 
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx);

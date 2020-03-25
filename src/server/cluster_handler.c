@@ -298,8 +298,14 @@ static void record_deal_done_notify(const int result, void *args)
 static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {
     int result;
+    int binlog_length;
+    uint64_t last_data_version;
+    FDIRProtoPushBinlogReqBodyHeader *body_header;
 
-    if ((result=server_check_min_body_length(task, 1)) != 0) {
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoPushBinlogReqBodyHeader) +
+                    BINLOG_RECORD_MIN_SIZE)) != 0)
+    {
         return result;
     }
 
@@ -308,17 +314,33 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
                 RESPONSE.error.message,
                 "invalid task type: %d != %d", CLUSTER_TASK_TYPE,
                 FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE);
-        return EINVAL;
+        return -EINVAL;
     }
     if (CLUSTER_CONSUMER_CTX == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "please join first");
-        return EINVAL;
+        return -EINVAL;
+    }
+
+    body_header = (FDIRProtoPushBinlogReqBodyHeader *)(task->data +
+            sizeof(FDIRProtoHeader));
+    binlog_length = buff2int(body_header->binlog_length);
+    last_data_version = buff2long(body_header->last_data_version);
+    if (sizeof(FDIRProtoPushBinlogReqBodyHeader) + binlog_length !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "body length: %d != expect: %d", REQUEST.header.body_len,
+                (int)(sizeof(FDIRProtoPushBinlogReqBodyHeader) +
+                    binlog_length));
+        return -EINVAL;
     }
 
     //logInfo("push_binlog body length: %d", REQUEST.header.body_len);
-    return deal_replica_push_request(CLUSTER_CONSUMER_CTX);
+    return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
+            (body_header + 1), binlog_length, last_data_version);
 }
 
 static inline int cluster_check_replication_task(struct fast_task_info *task)

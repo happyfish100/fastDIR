@@ -231,6 +231,11 @@ typedef struct fdir_proto_ping_master_resp_body_part {
     char status;
 } FDIRProtoPingMasterRespBodyPart;
 
+typedef struct fdir_proto_push_binlog_req_body_header {
+    char binlog_length[4];
+    char last_data_version[8];
+} FDIRProtoPushBinlogReqBodyHeader;
+
 typedef struct fdir_proto_push_binlog_resp_body_header {
     char count[4];
 } FDIRProtoPushBinlogRespBodyHeader;
