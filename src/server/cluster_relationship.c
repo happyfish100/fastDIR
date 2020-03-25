@@ -418,9 +418,22 @@ static void cluster_relationship_set_master(FDIRClusterServerInfo *master)
     }
 }
 
+static inline void cluster_unset_master()
+{
+    FDIRClusterServerInfo *old_master;
+
+    old_master = CLUSTER_MASTER_PTR;
+    if (old_master != NULL) {
+        old_master->is_master = false;
+        CLUSTER_MASTER_PTR = NULL;
+    }
+}
+
 int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
 {
     FDIRClusterServerInfo *next_master;
+    int result;
+
     next_master = g_next_master;
     if (next_master == NULL) {
         logError("file: "__FILE__", line: %d, "
@@ -437,6 +450,11 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
 
     cluster_relationship_set_master(master);
     if (CLUSTER_MYSELF_PTR == master) {
+        if ((result=binlog_producer_init()) != 0) {
+            cluster_unset_master();
+            return result;
+        }
+
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
         CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
@@ -445,17 +463,6 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
 
     g_next_master = NULL;
     return 0;
-}
-
-static inline void cluster_unset_master()
-{
-    FDIRClusterServerInfo *old_master;
-
-    old_master = CLUSTER_MASTER_PTR;
-    if (old_master != NULL) {
-        old_master->is_master = false;
-        CLUSTER_MASTER_PTR = NULL;
-    }
 }
 
 void cluster_relationship_trigger_reselect_master()
@@ -474,6 +481,7 @@ void cluster_relationship_trigger_reselect_master()
         ((FDIRServerContext *)thread_data->arg)->
             cluster.clean_connected_replicas = true;
     }
+    binlog_producer_destroy();
 }
 
 static int cluster_notify_next_master(FDIRClusterServerInfo *cs,

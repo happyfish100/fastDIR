@@ -94,7 +94,7 @@ typedef struct fdir_record_buffer_queue {
     struct server_binlog_record_buffer *head;
     struct server_binlog_record_buffer *tail;
     pthread_mutex_t lock;
-} FDIRRecordBufferQueue; 
+} FDIRRecordBufferQueue;
 
 typedef struct fdir_binlog_push_result_entry {
     uint64_t data_version;

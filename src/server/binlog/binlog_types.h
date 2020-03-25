@@ -41,7 +41,7 @@ typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
 
 typedef struct fdir_binlog_record {
-    int64_t data_version;
+    uint64_t data_version;
     int64_t inode;
     unsigned int hash_code;
     int operation;
@@ -85,11 +85,12 @@ typedef struct server_binlog_buffer {
 } ServerBinlogBuffer;
 
 typedef struct server_binlog_record_buffer {
-    int64_t data_version; //for idempotency (slave only)
+    uint64_t data_version; //for idempotency (slave only)
     volatile int reffer_count;
     void *args;  //for notify & release 
     release_binlog_rbuffer_func release_func;
     FastBuffer buffer;
+    struct server_binlog_record_buffer *next;      //for producer
     struct server_binlog_record_buffer *nexts[0];  //for slave replications
 } ServerBinlogRecordBuffer;
 

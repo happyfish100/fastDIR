@@ -28,10 +28,6 @@ int server_binlog_init()
     if ((result=binlog_pack_init()) != 0) {
         return result;
     }
-    if ((result=binlog_producer_init()) != 0) {
-        return result;
-    }
-
     if ((result=binlog_local_consumer_init()) != 0) {
         return result;
     }
@@ -41,7 +37,6 @@ int server_binlog_init()
 
 void server_binlog_destroy()
 {
-    binlog_producer_destroy();
     binlog_local_consumer_destroy();
 }
  

@@ -129,8 +129,6 @@ int main(int argc, char *argv[])
     r = server_load_data();
     gofailif(r, "load data error");
 
-    binlog_producer_init_next_data_version();
-
     fdir_proto_init();
 
     r = cluster_relationship_init();

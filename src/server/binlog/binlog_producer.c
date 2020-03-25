@@ -23,12 +23,36 @@
 #define SLEEP_NANO_SECONDS   (10 * 1000)
 #define MAX_SLEEP_COUNT      (50 * 1000)
 
-static struct fast_mblock_man record_buffer_allocator;
+typedef struct producer_record_buffer_queue {
+    struct server_binlog_record_buffer *head;
+    struct server_binlog_record_buffer *tail;
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+} ProducerRecordBufferQueue;
 
-static volatile int64_t next_data_version = 0;
-static struct timespec sleep_ts;
+typedef struct binlog_producer_context {
+    struct {
+        ServerBinlogRecordBuffer **entries;
+        ServerBinlogRecordBuffer **start; //for consumer
+        ServerBinlogRecordBuffer **end;   //for producer
+        int count;
+        int size;
+    } ring;
+
+    ProducerRecordBufferQueue queue;
+
+    struct fast_mblock_man rb_allocator;
+} BinlogProducerContext;
+
+static BinlogProducerContext proceduer_ctx = {
+    {NULL, NULL, NULL, 0, 0}, {NULL, NULL}
+};
+
+static uint64_t next_data_version = 0;
+static bool running = false;
 
 static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer * rbuffer);
+static void *producer_thread_func(void *arg);
 
 int record_buffer_alloc_init_func(void *element, void *args)
 {
@@ -49,34 +73,93 @@ int record_buffer_alloc_init_func(void *element, void *args)
     return fast_buffer_init_ex(buffer, init_capacity);
 }
 
+static int binlog_producer_init_queue()
+{
+    int result;
+
+    if ((result=init_pthread_lock(&(proceduer_ctx.queue.lock))) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "init_pthread_lock fail, errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
+        return result;
+    }
+
+    if ((result=pthread_cond_init(&(proceduer_ctx.queue.cond), NULL)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "pthread_cond_init fail, "
+                "errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
+        return result;
+    }
+
+    return 0;
+}
+
+static int binlog_producer_init_ring()
+{
+    int bytes;
+
+    proceduer_ctx.ring.size = 8192;
+    bytes = sizeof(ServerBinlogRecordBuffer *) * proceduer_ctx.ring.size;
+    proceduer_ctx.ring.entries = (ServerBinlogRecordBuffer **)malloc(bytes);
+    if (proceduer_ctx.ring.entries == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "malloc %d bytes fail", __LINE__, bytes);
+        return ENOMEM;
+    }
+    memset(proceduer_ctx.ring.entries, 0, bytes);
+
+    proceduer_ctx.ring.start = proceduer_ctx.ring.end =
+        proceduer_ctx.ring.entries;
+    return 0;
+}
+
 int binlog_producer_init()
 {
+    pthread_t tid;
     int result;
     int element_size;
 
     element_size = sizeof(ServerBinlogRecordBuffer) +
         sizeof(struct server_binlog_record_buffer *) *
         CLUSTER_SERVER_ARRAY.count;
-    if ((result=fast_mblock_init_ex(&record_buffer_allocator, element_size,
+    if ((result=fast_mblock_init_ex(&proceduer_ctx.rb_allocator, element_size,
                     1024, record_buffer_alloc_init_func, NULL, true)) != 0)
     {
         return result;
     }
 
-    sleep_ts.tv_sec = 0;
-    sleep_ts.tv_nsec = SLEEP_NANO_SECONDS;
-	return 0;
+    if ((result=binlog_producer_init_queue()) != 0) {
+        return result;
+    }
+
+    if ((result=binlog_producer_init_ring()) != 0) {
+        return result;
+    }
+
+    return fc_create_thread(&tid, producer_thread_func, NULL,
+            SF_G_THREAD_STACK_SIZE);
 }
 
 void binlog_producer_destroy()
 {
-    fast_mblock_destroy(&record_buffer_allocator);
-}
+    int count;
 
-void binlog_producer_init_next_data_version()
-{
-    logInfo("DATA_CURRENT_VERSION == %"PRId64, DATA_CURRENT_VERSION);
-    next_data_version = __sync_fetch_and_add(&DATA_CURRENT_VERSION, 0) + 1;
+    pthread_cond_signal(&proceduer_ctx.queue.cond);
+    count = 0;
+    while (running && count++ < 100) {
+        usleep(1000);
+    }
+
+    pthread_cond_destroy(&proceduer_ctx.queue.cond);
+    pthread_mutex_destroy(&proceduer_ctx.queue.lock);
+    fast_mblock_destroy(&proceduer_ctx.rb_allocator);
+
+    //TODO  notify task in entryes
+    free(proceduer_ctx.ring.entries);
+    proceduer_ctx.ring.entries = NULL;
+
+    proceduer_ctx.queue.head = proceduer_ctx.queue.tail = NULL;
 }
 
 ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
@@ -84,7 +167,7 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
     ServerBinlogRecordBuffer *rbuffer;
 
     rbuffer = (ServerBinlogRecordBuffer *)fast_mblock_alloc_object(
-            &record_buffer_allocator);
+            &proceduer_ctx.rb_allocator);
     if (rbuffer == NULL) {
         return NULL;
     }
@@ -99,10 +182,11 @@ static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
                 */
-        fast_mblock_free_object(&record_buffer_allocator, rbuffer);
+        fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
     }
 }
 
+    /*
 int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
 {
     int count;
@@ -141,11 +225,186 @@ int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
         }
     }
 
-    /*
     current_version=__sync_fetch_and_add(&next_data_version, 0);
     logInfo("file: "__FILE__", line: %d, "
             "=======my data version: %"PRId64", next: %"PRId64", current: %"PRId64"=====",
             __LINE__, rbuffer->data_version, current_version, DATA_CURRENT_VERSION);
-            */
     return result;
+}
+            */
+
+void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer)
+{
+    bool notify;
+
+    rbuffer->next = NULL;
+    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    if (proceduer_ctx.queue.tail == NULL) {
+        proceduer_ctx.queue.head = rbuffer;
+        notify = true;
+    } else {
+        proceduer_ctx.queue.tail->next = rbuffer;
+        notify = false;
+    }
+
+    proceduer_ctx.queue.tail = rbuffer;
+    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+
+    if (notify) {
+        pthread_cond_signal(&proceduer_ctx.queue.cond);
+    }
+}
+
+static void repush_to_queue(ServerBinlogRecordBuffer *rb)
+{
+    ServerBinlogRecordBuffer *previous;
+    ServerBinlogRecordBuffer *current;
+
+    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    if (proceduer_ctx.queue.head == NULL) {
+        rb->next = NULL;
+        proceduer_ctx.queue.head = proceduer_ctx.queue.tail = rb;
+    } else if (rb->data_version <= proceduer_ctx.queue.head->data_version) {
+        rb->next = proceduer_ctx.queue.head;
+        proceduer_ctx.queue.head = rb;
+    } else if (rb->data_version > proceduer_ctx.queue.tail->data_version) {
+        rb->next = NULL;
+        proceduer_ctx.queue.tail->next = rb;
+        proceduer_ctx.queue.tail = rb;
+    } else {
+        previous = proceduer_ctx.queue.head;
+        current = proceduer_ctx.queue.head->next;
+        while (current != NULL && rb->data_version > current->data_version) {
+            previous = current;
+            current = current->next;
+        }
+
+        rb->next = previous->next;
+        previous->next = rb;
+    }
+    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+}
+
+#define PUSH_TO_CONSUMER_QUEQUES(rb) \
+    do { \
+        binlog_local_consumer_push_to_queues(rb); \
+        ++next_data_version;  \
+    } while (0)
+
+static void deal_record(ServerBinlogRecordBuffer *rb)
+{
+    int64_t distance;
+    int index;
+    bool expand;
+    ServerBinlogRecordBuffer **current;
+
+    distance = rb->data_version - next_data_version;
+    if (distance >= (proceduer_ctx.ring.size -1)) {
+        logWarning("file: "__FILE__", line: %d, "
+                "data_version: %"PRId64", is too large, "
+                "exceeds %"PRId64" + %d", __LINE__,
+                rb->data_version, next_data_version,
+                proceduer_ctx.ring.size - 1);
+        repush_to_queue(rb);
+        return;
+    }
+
+    current = proceduer_ctx.ring.entries + rb->data_version %
+        proceduer_ctx.ring.size;
+    if (current == proceduer_ctx.ring.start) {
+        PUSH_TO_CONSUMER_QUEQUES(rb);
+
+        index = proceduer_ctx.ring.start - proceduer_ctx.ring.entries;
+        if (proceduer_ctx.ring.start == proceduer_ctx.ring.end) {
+            proceduer_ctx.ring.start = proceduer_ctx.ring.end =
+                proceduer_ctx.ring.entries +
+                (++index) % proceduer_ctx.ring.size;
+            return;
+        }
+
+        proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
+            (++index) % proceduer_ctx.ring.size;
+        while (proceduer_ctx.ring.start != proceduer_ctx.ring.end &&
+                *(proceduer_ctx.ring.start) != NULL)
+        {
+            PUSH_TO_CONSUMER_QUEQUES(*(proceduer_ctx.ring.start));
+            *(proceduer_ctx.ring.start) = NULL;
+
+            proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
+                (++index) % proceduer_ctx.ring.size;
+            proceduer_ctx.ring.count--;
+        }
+        return;
+    }
+
+    *current = rb;
+    proceduer_ctx.ring.count++;
+    if (proceduer_ctx.ring.start == proceduer_ctx.ring.end) { //empty
+        expand = true;
+    } else if (proceduer_ctx.ring.end > proceduer_ctx.ring.start) {
+        expand = !(current > proceduer_ctx.ring.start &&
+                current < proceduer_ctx.ring.end);
+    } else {
+        expand = (current >= proceduer_ctx.ring.end &&
+                current < proceduer_ctx.ring.start);
+    }
+
+    if (expand) {
+        proceduer_ctx.ring.end = proceduer_ctx.ring.entries +
+            (rb->data_version + 1) % proceduer_ctx.ring.size;
+    }
+}
+
+static void deal_queue()
+{
+    ServerBinlogRecordBuffer *rb;
+    ServerBinlogRecordBuffer *head;
+    ServerBinlogRecordBuffer *tail;
+
+    if (proceduer_ctx.ring.count > 0) {
+        logInfo("proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
+    }
+
+    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    if (proceduer_ctx.queue.head == NULL) {
+        pthread_cond_wait(&proceduer_ctx.queue.cond,
+                &proceduer_ctx.queue.lock);
+    }
+
+    head = proceduer_ctx.queue.head;
+    tail = proceduer_ctx.queue.tail;
+    proceduer_ctx.queue.head = proceduer_ctx.queue.tail = NULL;
+    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+
+    if (head == NULL) {
+        return;
+    }
+
+    while (head != NULL) {
+        rb = head;
+        deal_record(rb);
+        head = head->next;
+    }
+}
+
+static void *producer_thread_func(void *arg)
+{
+    logInfo("file: "__FILE__", line: %d, "
+            "producer_thread_func start", __LINE__);
+
+    running = true;
+
+    next_data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0) + 1;
+    proceduer_ctx.ring.start = proceduer_ctx.ring.end =
+        proceduer_ctx.ring.entries + next_data_version %
+        proceduer_ctx.ring.size;
+
+    while (SF_G_CONTINUE_FLAG && CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
+        deal_queue();
+    }
+    running = false;
+
+    logInfo("file: "__FILE__", line: %d, "
+            "producer_thread_func exit", __LINE__);
+    return NULL;
 }

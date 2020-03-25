@@ -14,9 +14,8 @@ void binlog_producer_destroy();
 
 ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer();
 
-void binlog_producer_init_next_data_version();
-
-int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer);
+//int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer);
+void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer);
 
 #ifdef __cplusplus
 }

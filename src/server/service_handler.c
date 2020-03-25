@@ -408,10 +408,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     RECORD = NULL;
 
     if (result == 0) {
-        result = server_binlog_dispatch(rbuffer);
-    }
-
-    if (result == 0) {
+        binlog_push_to_producer_queue(rbuffer);
         return SLAVE_SERVER_COUNT > 0 ? TASK_STATUS_CONTINUE : result;
     } else {
         return result;
