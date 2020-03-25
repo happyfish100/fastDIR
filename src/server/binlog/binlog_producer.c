@@ -99,7 +99,7 @@ static int binlog_producer_init_ring()
 {
     int bytes;
 
-    proceduer_ctx.ring.size = 8192;
+    proceduer_ctx.ring.size = 4096;
     bytes = sizeof(ServerBinlogRecordBuffer *) * proceduer_ctx.ring.size;
     proceduer_ctx.ring.entries = (ServerBinlogRecordBuffer **)malloc(bytes);
     if (proceduer_ctx.ring.entries == NULL) {
@@ -360,9 +360,11 @@ static void deal_queue()
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
+    static int max_ring_count = 0;
 
-    if (proceduer_ctx.ring.count > 0) {
-        logInfo("proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
+    if (proceduer_ctx.ring.count > max_ring_count) {
+        max_ring_count = proceduer_ctx.ring.count;
+        logInfo("max proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
     }
 
     pthread_mutex_lock(&proceduer_ctx.queue.lock);
@@ -382,8 +384,9 @@ static void deal_queue()
 
     while (head != NULL) {
         rb = head;
-        deal_record(rb);
         head = head->next;
+
+        deal_record(rb);
     }
 }
 
