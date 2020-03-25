@@ -186,52 +186,10 @@ static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
     }
 }
 
-    /*
-int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer)
+void server_binlog_free_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
-    int count;
-    int result;
-    int64_t current_version;
-
-    count = 0;
-    while ((rbuffer->data_version != (current_version=__sync_fetch_and_add(
-                &next_data_version, 0))) && (++count < MAX_SLEEP_COUNT))
-    {
-        nanosleep(&sleep_ts, NULL);
-    }
-
-    if (count >= 2) {
-        if (count == MAX_SLEEP_COUNT) {
-            logError("file: "__FILE__", line: %d, "
-                    "waiting for my turn timeout, my data version: %"PRId64", "
-                    "maybe some mistakes happened, next data version: %"PRId64,
-                    __LINE__, rbuffer->data_version, current_version);
-        } else {
-            logWarning("file: "__FILE__", line: %d, "
-                    "waiting for my turn count: %d, my data version: %"PRId64,
-                    __LINE__, count, rbuffer->data_version);
-        }
-    }
-
-    result = binlog_local_consumer_push_to_queues(rbuffer);
-    if (count < MAX_SLEEP_COUNT) {  //normal
-        __sync_add_and_fetch(&next_data_version, 1);
-    } else {  //on exception
-        int64_t old_data_version;
-        old_data_version = __sync_fetch_and_add(&next_data_version, 0);
-        if (old_data_version <= rbuffer->data_version) {
-            __sync_bool_compare_and_swap(&next_data_version, old_data_version,
-                    rbuffer->data_version + 1);
-        }
-    }
-
-    current_version=__sync_fetch_and_add(&next_data_version, 0);
-    logInfo("file: "__FILE__", line: %d, "
-            "=======my data version: %"PRId64", next: %"PRId64", current: %"PRId64"=====",
-            __LINE__, rbuffer->data_version, current_version, DATA_CURRENT_VERSION);
-    return result;
+    fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
 }
-            */
 
 void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer)
 {

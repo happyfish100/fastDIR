@@ -397,7 +397,6 @@ static int server_binlog_produce(struct fast_task_info *task)
 
     TASK_ARG->context.deal_func = NULL;
     rbuffer->data_version = RECORD->data_version;
-    rbuffer->args = task;
     RECORD->timestamp = g_current_time;
 
     fast_buffer_reset(&rbuffer->buffer);
@@ -408,9 +407,13 @@ static int server_binlog_produce(struct fast_task_info *task)
     RECORD = NULL;
 
     if (result == 0) {
+        rbuffer->args = task;
+        rbuffer->task_version = __sync_add_and_fetch(
+                &((FDIRServerTaskArg *)task->arg)->task_version, 0);
         binlog_push_to_producer_queue(rbuffer);
         return SLAVE_SERVER_COUNT > 0 ? TASK_STATUS_CONTINUE : result;
     } else {
+        server_binlog_free_rbuffer(rbuffer);
         return result;
     }
 }
