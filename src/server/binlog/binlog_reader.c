@@ -323,10 +323,10 @@ static int find_data_version(ServerBinlogReader *reader,
             continue;
         }
 
-        logInfo("binlog_detect_record result: %d", result);
         if (result == EAGAIN || result == EOVERFLOW) {
             continue;
         }
+        logInfo("binlog_detect_record result: %d", result);
 
         if (*error_info != '\0') {
             logError("file: "__FILE__", line: %d, "

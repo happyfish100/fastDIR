@@ -522,7 +522,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
 
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE;
     CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
-        task->size - sizeof(FDIRProtoHeader), &result);
+         BINLOG_BUFFER_INIT_SIZE, &result);
     if (CLUSTER_CONSUMER_CTX == NULL) {
         return result;
     }

@@ -245,9 +245,25 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
     }
 
     if (rb->buffer.alloc_size < length) {
-        if ((result=fast_buffer_check_capacity(&rb->buffer, length)) != 0) {
+        rb->buffer.length = 0;
+        if ((result=fast_buffer_set_capacity(&rb->buffer, length)) != 0) {
             return result;
         }
+        logDebug("file: "__FILE__", line: %d, "
+                "data length: %d, expand buffer size to %d",
+                __LINE__, length, rb->buffer.alloc_size);
+    } else if ((rb->buffer.alloc_size > 2 * BINLOG_BUFFER_INIT_SIZE) &&
+            (length * 10 < rb->buffer.alloc_size))
+    {
+        rb->buffer.length = 0;
+        if ((result=fast_buffer_set_capacity(&rb->buffer,
+                        length > BINLOG_BUFFER_INIT_SIZE ?
+                        length : BINLOG_BUFFER_INIT_SIZE)) != 0) {
+            return result;
+        }
+        logDebug("file: "__FILE__", line: %d, "
+                "data length: %d, shrink buffer size to %d",
+                __LINE__, length, rb->buffer.alloc_size);
     }
 
     rb->data_version = last_data_version;
