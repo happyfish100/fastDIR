@@ -42,6 +42,9 @@ int server_load_data()
         return result;
     }
 
+    logInfo("file: "__FILE__", line: %d, "
+            "loading data ...", __LINE__);
+
     result = 0;
     while (SF_G_CONTINUE_FLAG) {
         if ((r=binlog_read_thread_fetch_result(&reader_ctx)) == NULL) {
@@ -49,7 +52,7 @@ int server_load_data()
             break;
         }
 
-        logInfo("errno: %d, buffer length: %d", r->err_no, r->buffer.length);
+        //logInfo("errno: %d, buffer length: %d", r->err_no, r->buffer.length);
         if (r->err_no == ENOENT) {
             break;
         } else if (r->err_no != 0) {

@@ -280,17 +280,23 @@ static int find_data_version(ServerBinlogReader *reader,
 
     found = false;
     while ((result=do_binlog_read(reader)) == 0) {
-        logInfo("binlog size: %d, offset: %"PRId64", buffer length: %d, last_data_version: %"PRId64,
-                reader->binlog_buffer.size, reader->position.offset,
-                (int)BINLOG_BUFFER_LENGTH(reader->binlog_buffer), last_data_version);
+        /*
+        logInfo("binlog index: %d, binlog size: %d, offset: %"PRId64", "
+                "buffer length: %d, last_data_version: %"PRId64,
+                reader->position.index, reader->binlog_buffer.size,
+                reader->position.offset, (int)BINLOG_BUFFER_LENGTH(
+                    reader->binlog_buffer), last_data_version);
+                    */
 
         while ((result=binlog_detect_record(reader->binlog_buffer.current,
                         BINLOG_BUFFER_REMAIN(reader->binlog_buffer),
                         &data_version, (const char **)&rec_end,
                         error_info, sizeof(error_info))) == 0)
         {
+            /*
             logInfo("data_version==%"PRId64", record end offset: %d",
                     data_version, (int)(rec_end - reader->binlog_buffer.buff));
+                    */
 
             if (last_data_version == data_version) {
                 reader->position.offset -= reader->binlog_buffer.end - rec_end;
@@ -372,7 +378,8 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
             return result;
         }
 
-        logInfo("min_data_version: %"PRId64", max_data_version: %"PRId64,
+        logInfo("binlog index: %d, min_data_version: %"PRId64", "
+                "max_data_version: %"PRId64, reader->position.index,
                 min_data_version,  max_data_version);
 
         if (last_data_version < min_data_version) {
@@ -471,6 +478,9 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         }
     }
 
+    logInfo("binlog index: %d, reader->position.offset: %"PRId64", "
+                "last_data_version: %"PRId64, reader->position.index,
+                reader->position.offset,  last_data_version);
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 

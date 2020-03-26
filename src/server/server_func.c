@@ -9,6 +9,7 @@
 #include "fastcommon/local_ip_func.h"
 #include "sf/sf_global.h"
 #include "sf/sf_service.h"
+#include "common/fdir_proto.h"
 #include "server_global.h"
 #include "cluster_info.h"
 #include "server_func.h"
@@ -348,10 +349,34 @@ static void server_log_configs()
     log_cluster_server_config();
 }
 
+static int load_binlog_buffer_size(IniContext *ini_context,
+        const char *filename)
+{
+    int64_t bytes;
+    int result;
+
+    if ((result=get_bytes_item_config(ini_context, filename,
+                    "binlog_buffer_size", FDIR_DEFAULT_BINLOG_BUFFER_SIZE,
+                    &bytes)) != 0)
+    {
+        return result;
+    }
+    if (bytes < 4096) {
+        logWarning("file: "__FILE__", line: %d, "
+                "config file: %s , binlog_buffer_size: %d is too small, "
+                "set it to default: %d", __LINE__, filename,
+                BINLOG_BUFFER_SIZE, FDIR_DEFAULT_BINLOG_BUFFER_SIZE);
+        BINLOG_BUFFER_SIZE = FDIR_DEFAULT_BINLOG_BUFFER_SIZE;
+    } else {
+        BINLOG_BUFFER_SIZE = bytes;
+    }
+
+    return 0;
+}
+
 int server_load_config(const char *filename)
 {
     IniContext ini_context;
-    int64_t bytes;
     int result;
 
     memset(&ini_context, 0, sizeof(IniContext));
@@ -395,24 +420,8 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    if ((result=get_bytes_item_config(&ini_context, filename,
-                    "binlog_buffer_size", FDIR_DEFAULT_BINLOG_BUFFER_SIZE,
-                    &bytes)) != 0)
-    {
+    if ((result=load_binlog_buffer_size(&ini_context, filename)) != 0) {
         return result;
-    }
-    if (bytes <= 0) {
-        BINLOG_BUFFER_SIZE = FDIR_DEFAULT_BINLOG_BUFFER_SIZE;
-    } else {
-        BINLOG_BUFFER_SIZE = bytes;
-    }
-    if (BINLOG_BUFFER_SIZE > g_sf_global_vars.max_buff_size) {
-        logWarning("file: "__FILE__", line: %d, "
-                "config file: %s , binlog_buffer_size: %d > "
-                "max_buff_size: %d, set it to max_buff_size",
-                __LINE__, filename, BINLOG_BUFFER_SIZE,
-                g_sf_global_vars.max_buff_size);
-        BINLOG_BUFFER_SIZE = g_sf_global_vars.max_buff_size;
     }
 
     g_server_global_vars.reload_interval_ms = iniGetIntValue(NULL,

@@ -540,6 +540,7 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
         snprintf(replication->task->client_ip,
                 sizeof(replication->task->client_ip), "%s",
                 replication->connection_info.conn.ip_addr);
+        replication->task->port = replication->connection_info.conn.port;
         sf_nio_notify(replication->task, SF_NIO_STAGE_INIT);
     }
     return 0;
@@ -649,6 +650,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
 
 static int start_binlog_read_thread(FDIRSlaveReplication *replication)
 {
+    int result;
     replication->context.reader_ctx = (BinlogReadThreadContext *)malloc(
             sizeof(BinlogReadThreadContext));
     if (replication->context.reader_ctx == NULL) {
@@ -662,6 +664,9 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
             __LINE__, replication->slave->binlog_pos_hint.index,
             replication->slave->binlog_pos_hint.offset);
 
+    if ((result=free_queue_realloc_max_buffer(replication->task)) != 0) {
+        return result;
+    }
     return binlog_read_thread_init(replication->context.reader_ctx,
             &replication->slave->binlog_pos_hint, 
             replication->slave->last_data_version,
@@ -719,10 +724,12 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         return 0;
     }
 
+    /*
     logInfo("r: %p, buffer length: %d, result: %d, last_data_version: %"PRId64
             ", task offset: %d, length: %d", r, r->buffer.length,
             r->err_no, r->last_data_version, replication->task->offset,
             replication->task->length);
+            */
 
     if (r->err_no == 0) {
         if (r->last_data_version > replication->context.
@@ -838,6 +845,7 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
     for (i=0; i<server_ctx->cluster.connected.count; i++) {
         replication = server_ctx->cluster.connected.replications[i];
         if (deal_connected_replication(replication) != 0) {
+            iovent_add_to_deleted_list(replication->task);
         }
     }
 

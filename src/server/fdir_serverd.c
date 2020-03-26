@@ -141,7 +141,6 @@ int main(int argc, char *argv[])
     gofailif(r, "cluster service init error");
     sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
     sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
-    sf_enable_realloc_task_buffer_ex(&CLUSTER_SF_CTX, false);
 
     r = sf_service_init(service_alloc_thread_extra_data, NULL,
             NULL, fdir_proto_set_body_length, service_deal_task,
