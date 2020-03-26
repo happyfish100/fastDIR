@@ -26,7 +26,6 @@
 #include "replica_consumer_thread.h"
 
 static void *deal_binlog_thread_func(void *arg);
-static void *collect_results_thread_func(void *arg);
 
 static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
 {
@@ -53,13 +52,17 @@ static void replay_done_callback(const int result,
 {
     ReplicaConsumerThreadContext *ctx;
     RecordProcessResult *r;
+    bool notify;
 
     ctx = (ReplicaConsumerThreadContext *)args;
     r = fast_mblock_alloc_object(&ctx->result_allocater);
     if (r != NULL) {
         r->err_no = result;
         r->data_version = record->data_version;
-        common_blocked_queue_push(&ctx->queues.result, r);
+        common_blocked_queue_push_ex(&ctx->queues.result, r, &notify);
+        if (notify) {
+            iovent_notify_thread(ctx->task->thread_data);
+        }
     }
 }
    
@@ -102,24 +105,14 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
         return NULL;
     }
 
-    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.input_free,
+    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.free,
                     REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT)) != 0)
-    {
-        return NULL;
-    }
-    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.output_free,
-                    REPLICA_CONSUMER_THREAD_OUTPUT_BUFFER_COUNT)) != 0)
     {
         return NULL;
     }
 
     if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.input,
                     REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT)) != 0)
-    {
-        return NULL;
-    }
-    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.output,
-                    REPLICA_CONSUMER_THREAD_OUTPUT_BUFFER_COUNT)) != 0)
     {
         return NULL;
     }
@@ -134,23 +127,11 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
         if ((*err_no=alloc_record_buffer(rbuffer, buffer_size)) != 0) {
             return NULL;
         }
-        rbuffer->args = &ctx->queues.input_free;
-        common_blocked_queue_push(&ctx->queues.input_free, rbuffer);
-    }
-    for (i=0; i<REPLICA_CONSUMER_THREAD_OUTPUT_BUFFER_COUNT; i++, rbuffer++) {
-        if ((*err_no=alloc_record_buffer(rbuffer, buffer_size)) != 0) {
-            return NULL;
-        }
-        rbuffer->args = &ctx->queues.output_free;
-        common_blocked_queue_push(&ctx->queues.output_free, rbuffer);
+        rbuffer->args = &ctx->queues.free;
+        common_blocked_queue_push(&ctx->queues.free, rbuffer);
     }
 
     if ((*err_no=fc_create_thread(&ctx->tids[0], deal_binlog_thread_func,
-        ctx, SF_G_THREAD_STACK_SIZE)) != 0)
-    {
-        return NULL;
-    }
-    if ((*err_no=fc_create_thread(&ctx->tids[1], collect_results_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
         return NULL;
@@ -165,10 +146,8 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     int i;
 
     ctx->continue_flag = false;
-    common_blocked_queue_terminate(&ctx->queues.input_free);
-    common_blocked_queue_terminate(&ctx->queues.output_free);
+    common_blocked_queue_terminate(&ctx->queues.free);
     common_blocked_queue_terminate(&ctx->queues.input);
-    common_blocked_queue_terminate(&ctx->queues.output);
     common_blocked_queue_terminate(&ctx->queues.result);
 
     count = 0;
@@ -184,10 +163,8 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
         fast_buffer_destroy(&ctx->binlog_buffers[i].buffer);
     }
 
-    common_blocked_queue_destroy(&ctx->queues.input_free);
-    common_blocked_queue_destroy(&ctx->queues.output_free);
+    common_blocked_queue_destroy(&ctx->queues.free);
     common_blocked_queue_destroy(&ctx->queues.input);
-    common_blocked_queue_destroy(&ctx->queues.output);
     common_blocked_queue_destroy(&ctx->queues.result);
 
     binlog_replay_destroy(&ctx->replay_ctx);
@@ -219,14 +196,14 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
         const uint64_t last_data_version)
 {
-    ServerBinlogRecordBuffer *rb;
+    ServerBinlogRecordBuffer *rb = NULL;
     int result;
     int count;
 
     count = 0;
     while (ctx->continue_flag) {
         rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
-                &ctx->queues.input_free, false);
+                &ctx->queues.free, false);
         if (rb != NULL) {
             break;
         }
@@ -275,7 +252,9 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
 int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
 {
     struct common_blocked_node *node;
-    ServerBinlogRecordBuffer *rb;
+    struct common_blocked_node *current;
+    struct common_blocked_node *last;
+    RecordProcessResult *r;
     char *p;
     int count;
 
@@ -284,7 +263,7 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     }
 
     if ((node=common_blocked_queue_try_pop_all_nodes(
-                    &ctx->queues.output)) == NULL)
+                    &ctx->queues.result)) == NULL)
     {
         return EAGAIN;
     }
@@ -292,20 +271,37 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     count = 0;
     p = ctx->task->data + sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogRespBodyHeader);
+
+    current = node;
     do {
-        rb = (ServerBinlogRecordBuffer *)node->data;
-        if ((p - ctx->task->data) + rb->buffer.length > ctx->task->size) {
-            common_blocked_queue_return_nodes(&ctx->queues.output, node);
+        r = (RecordProcessResult *)current->data;
+
+        long2buff(r->data_version, ((FDIRProtoPushBinlogRespBodyPart *)
+                    p)->data_version);
+        short2buff(r->err_no, ((FDIRProtoPushBinlogRespBodyPart *)p)->
+                err_no);
+        p += sizeof(FDIRProtoPushBinlogRespBodyPart);
+
+        fast_mblock_free_object(&ctx->result_allocater, r);
+        ++count;
+
+        if ((p - ctx->task->data) + sizeof(FDIRProtoPushBinlogRespBodyPart) >
+                ctx->task->size)
+        {
+            last = current;
+            current = current->next;
+
+            last->next = NULL;
+            if (current != NULL) {
+                common_blocked_queue_return_nodes(
+                        &ctx->queues.result, current);
+            }
             break;
         }
 
-        count += rb->buffer.length / sizeof(FDIRProtoPushBinlogRespBodyPart);
-        memcpy(p, rb->buffer.data, rb->buffer.length);
-        p += rb->buffer.length;
-
-        common_blocked_queue_push(&ctx->queues.output_free, rb);
-        node = node->next;
-    } while (node != NULL);
+        current = current->next;
+    } while (current != NULL);
+    common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
 
     int2buff(count, ((FDIRProtoPushBinlogRespBodyHeader *)
                 (ctx->task->data + sizeof(FDIRProtoHeader)))->count);
@@ -322,6 +318,7 @@ static void *deal_binlog_thread_func(void *arg)
 {
     ReplicaConsumerThreadContext *ctx;
     struct common_blocked_node *node;
+    struct common_blocked_node *current;
     ServerBinlogRecordBuffer *rb;
 
     logInfo("file: "__FILE__", line: %d, "
@@ -335,116 +332,23 @@ static void *deal_binlog_thread_func(void *arg)
             continue;
         }
 
+        current = node;
         do {
             /*
                logInfo("file: "__FILE__", line: %d, "
                "replay binlog buffer length: %d", __LINE__, rb->buffer.length);
              */
 
-            rb = (ServerBinlogRecordBuffer *)node->data;
+            rb = (ServerBinlogRecordBuffer *)current->data;
             binlog_replay_deal_buffer(&ctx->replay_ctx,
                     rb->buffer.data, rb->buffer.length);
 
             rb->release_func(rb);
-            node = node->next;
-        } while (node != NULL);
-
+            current = current->next;
+        } while (current != NULL);
         common_blocked_queue_free_all_nodes(&ctx->queues.input, node);
     }
 
     ctx->runnings[0] = false;
-    return NULL;
-}
-
-static inline ServerBinlogRecordBuffer *alloc_output_binlog_buffer(
-        ReplicaConsumerThreadContext *ctx)
-{
-    ServerBinlogRecordBuffer *rbuffer;
-
-    while (ctx->continue_flag) {
-        rbuffer = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
-            &ctx->queues.output_free, false);
-        if (rbuffer != NULL) {
-            return rbuffer;
-        }
-
-        usleep(1000);
-        continue;
-    }
-
-    return NULL;
-}
-
-static void combine_push_results(ReplicaConsumerThreadContext *ctx,
-        struct common_blocked_node *node)
-{
-    ServerBinlogRecordBuffer *rbuffer;
-    RecordProcessResult *r;
-    char *p;
-    int count;
-
-    do {
-        if ((rbuffer=alloc_output_binlog_buffer(ctx)) == NULL) {
-            return;
-        }
-
-        count = 0;
-        p = rbuffer->buffer.data;
-        do {
-            if (((p - rbuffer->buffer.data) +
-                    sizeof(FDIRProtoPushBinlogRespBodyPart)) >
-                    rbuffer->buffer.alloc_size)
-            {
-                break;
-            }
-
-            r = (RecordProcessResult *)node->data;
-            long2buff(r->data_version, ((FDIRProtoPushBinlogRespBodyPart *)
-                        p)->data_version);
-            short2buff(r->err_no, ((FDIRProtoPushBinlogRespBodyPart *)p)->
-                    err_no);
-            p += sizeof(FDIRProtoPushBinlogRespBodyPart);
-
-            fast_mblock_free_object(&ctx->result_allocater, r);
-            node = node->next;
-            ++count;
-        } while (node != NULL);
-
-        rbuffer->buffer.length = p - rbuffer->buffer.data;
-
-        /*
-        logInfo("file: "__FILE__", line: %d, "
-                "result count: %d, data length: %d",
-                __LINE__, count, rbuffer->buffer.length);
-                */
-
-        common_blocked_queue_push(&ctx->queues.output, rbuffer);
-        iovent_notify_thread(ctx->task->thread_data);
-    } while (node != NULL);
-}
-
-static void *collect_results_thread_func(void *arg)
-{
-    ReplicaConsumerThreadContext *ctx;
-    struct common_blocked_node *node;
-
-    ctx = (ReplicaConsumerThreadContext *)arg;
-    ctx->runnings[1] = true;
-    while (ctx->continue_flag) {
-        node = common_blocked_queue_pop_all_nodes(&ctx->queues.result);
-        if (node == NULL) {
-            continue;
-        }
-
-        /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "node: %p", __LINE__, __FUNCTION__, node);
-                */
-
-        combine_push_results(ctx, node);
-        common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
-    }
-
-    ctx->runnings[1] = false;
     return NULL;
 }

@@ -317,7 +317,6 @@ static void deal_queue()
 {
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
-    ServerBinlogRecordBuffer *tail;
     static int max_ring_count = 0;
 
     if (proceduer_ctx.ring.count > max_ring_count) {
@@ -332,7 +331,6 @@ static void deal_queue()
     }
 
     head = proceduer_ctx.queue.head;
-    tail = proceduer_ctx.queue.tail;
     proceduer_ctx.queue.head = proceduer_ctx.queue.tail = NULL;
     pthread_mutex_unlock(&proceduer_ctx.queue.lock);
 
