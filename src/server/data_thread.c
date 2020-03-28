@@ -141,8 +141,9 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
         return result;
     }
 
-    if ((result=fast_mblock_init(&context->delay_free_context.allocator,
-                    sizeof(ServerDelayFreeNode), 16 * 1024)) != 0)
+    if ((result=fast_mblock_init_ex2(&context->delay_free_context.allocator,
+                    "delay_free_node", sizeof(ServerDelayFreeNode), 16 * 1024,
+                    NULL, NULL, true, NULL, NULL, NULL)) != 0)
     {
         return result;
     }

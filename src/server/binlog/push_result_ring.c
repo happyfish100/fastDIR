@@ -39,8 +39,9 @@ int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
     ctx->ring.size = alloc_size;
 
     ctx->queue.head = ctx->queue.tail = NULL;
-    return fast_mblock_init_ex(&ctx->queue.rentry_allocator,
-        sizeof(FDIRBinlogPushResultEntry), 4096, NULL, NULL, false);
+    return fast_mblock_init_ex2(&ctx->queue.rentry_allocator,
+        "push_result", sizeof(FDIRBinlogPushResultEntry), 4096,
+        NULL, NULL, false, NULL, NULL, NULL);
 }
 
 static inline void desc_task_waiting_rpc_count(

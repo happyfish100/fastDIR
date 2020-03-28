@@ -52,9 +52,9 @@ int dentry_init()
     int bytes;
 
     memset(&fdir_manager, 0, sizeof(fdir_manager));
-
-    if ((result=fast_mblock_init(&fdir_manager.hashtable.allocator,
-                    sizeof(FDIRNamespaceEntry), 4096)) != 0)
+    if ((result=fast_mblock_init_ex2(&fdir_manager.hashtable.allocator,
+                    "ns_htable", sizeof(FDIRNamespaceEntry), 4096,
+                    NULL, NULL, true, NULL, NULL, NULL)) != 0)
     {
         return result;
     }
@@ -141,9 +141,9 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
         return result;
     }
 
-    if ((result=fast_mblock_init_ex(&context->dentry_allocator,
-                    sizeof(FDIRServerDentry), 8 * 1024,
-                    dentry_init_obj, context, false)) != 0)
+    if ((result=fast_mblock_init_ex2(&context->dentry_allocator,
+                    "dentry", sizeof(FDIRServerDentry), 8 * 1024,
+                    dentry_init_obj, context, false, NULL, NULL, NULL)) != 0)
     {
         return result;
     }

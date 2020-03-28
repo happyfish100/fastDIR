@@ -387,20 +387,6 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    if ((result=load_data_path_config(&ini_context, filename)) != 0) {
-        return result;
-    }
-
-    if ((result=load_dentry_max_data_size(&ini_context, filename)) != 0) {
-        return result;
-    }
-
-    DATA_THREAD_COUNT = iniGetIntValue(NULL, "data_threads",
-            &ini_context, FDIR_DEFAULT_DATA_THREAD_COUNT);
-    if (DATA_THREAD_COUNT <= 0) {
-        DATA_THREAD_COUNT = FDIR_DEFAULT_DATA_THREAD_COUNT;
-    }
-
     if ((result=sf_load_config_ex("fdir_serverd", filename, &ini_context,
                     "service", FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
@@ -414,6 +400,20 @@ int server_load_config(const char *filename)
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
     {
         return result;
+    }
+
+    if ((result=load_data_path_config(&ini_context, filename)) != 0) {
+        return result;
+    }
+
+    if ((result=load_dentry_max_data_size(&ini_context, filename)) != 0) {
+        return result;
+    }
+
+    DATA_THREAD_COUNT = iniGetIntValue(NULL, "data_threads",
+            &ini_context, FDIR_DEFAULT_DATA_THREAD_COUNT);
+    if (DATA_THREAD_COUNT <= 0) {
+        DATA_THREAD_COUNT = FDIR_DEFAULT_DATA_THREAD_COUNT;
     }
 
     if ((result=server_load_admin_config(&ini_context)) != 0) {

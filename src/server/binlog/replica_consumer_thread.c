@@ -87,9 +87,9 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     }
 
     memset(ctx, 0, sizeof(ReplicaConsumerThreadContext));
-    if ((*err_no=fast_mblock_init_ex(&ctx->result_allocater,
-                    sizeof(RecordProcessResult), 8192,
-                    NULL, NULL, true)) != 0)
+    if ((*err_no=fast_mblock_init_ex2(&ctx->result_allocater,
+                    "process_result", sizeof(RecordProcessResult), 8192,
+                    NULL, NULL, true, NULL, NULL, NULL)) != 0)
     {
         return NULL;
     }
@@ -168,6 +168,7 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_destroy(&ctx->queues.result);
 
     binlog_replay_destroy(&ctx->replay_ctx);
+    fast_mblock_destroy(&ctx->result_allocater);
 
     free(ctx);
     logInfo("file: "__FILE__", line: %d, "

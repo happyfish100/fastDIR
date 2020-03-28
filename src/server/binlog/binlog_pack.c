@@ -10,6 +10,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <assert.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/char_converter.h"
@@ -700,8 +701,11 @@ static bool binlog_is_record_start(const char *str, const int len,
     int record_len;
     const char *rec_start;
 
-    rec_start = NULL;
-    record_len  = strtol(str, (char **)&rec_start, 10);
+    if (len < BINLOG_RECORD_MIN_SIZE) {
+        return false;
+    }
+
+    record_len = strtol(str, (char **)&rec_start, 10);
     if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
        return false;
     }
@@ -709,13 +713,13 @@ static bool binlog_is_record_start(const char *str, const int len,
         return false;
     }
 
-    if (memcmp(rec_start, BINLOG_RECORD_START_TAG_STR,
-                BINLOG_RECORD_START_TAG_LEN) != 0)
-    {
+    if (record_len > len - BINLOG_RECORD_SIZE_STRLEN) {
         return false;
     }
 
-    if (record_len > len - BINLOG_RECORD_SIZE_STRLEN) {
+    if (memcmp(rec_start, BINLOG_RECORD_START_TAG_STR,
+                BINLOG_RECORD_START_TAG_LEN) != 0)
+    {
         return false;
     }
 
@@ -816,6 +820,7 @@ int binlog_detect_record_reverse(const char *str, const int len,
     if (rec_end != NULL) {
         *rec_end = pcontext.rec_end;
     }
+
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }
