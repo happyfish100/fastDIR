@@ -82,13 +82,7 @@ int main(int argc, char *argv[])
     }
 
     srand(time(NULL));
-    //fast_mblock_manager_init();
-
-    /*
-    if (daemon_mode) {
-        daemon_init(false);
-    }
-    */
+    fast_mblock_manager_init();
 
     //sched_set_delay_params(300, 1024);
     r = setup_server_env(config_filename);
@@ -100,7 +94,9 @@ int main(int argc, char *argv[])
     r = cluster_info_setup_sync_to_file_task();
     gofailif(r, "");
 
-    //sched_print_all_entries();
+    logInfo("sizeof(FDIRServerDentry): %d, sizeof(UniqSkiplist): %d",
+            (int)sizeof(FDIRServerDentry), (int)sizeof(UniqSkiplist));
+    sched_print_all_entries();
 
     r = inode_generator_init();
     gofailif(r, "inode generator init error");
@@ -131,6 +127,8 @@ int main(int argc, char *argv[])
 
     fdir_proto_init();
 
+    sched_print_all_entries();
+
     r = cluster_relationship_init();
     gofailif(r, "cluster relationship init error");
 
@@ -150,7 +148,7 @@ int main(int argc, char *argv[])
     sf_set_remove_from_ready_list(false);
 
     setup_mblock_stat_task();
-    //sched_print_all_entries();
+    sched_print_all_entries();
 
     sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
     sf_accept_loop();
@@ -187,6 +185,7 @@ FAIL_:
 
 static int mblock_stat_task_func(void *args)
 {
+    logInfo("file: "__FILE__", line: %d, func: %s", __LINE__, __FUNCTION__);
     fast_mblock_manager_stat_print_ex(false, FAST_MBLOCK_ORDER_BY_ELEMENT_SIZE);
     return 0;
 }
@@ -196,10 +195,10 @@ static int setup_mblock_stat_task()
     ScheduleEntry schedule_entry;
     ScheduleArray schedule_array;
 
-    return 0;   //disabled for DEBUG
-
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
             0, 0, 0, 60,  mblock_stat_task_func, NULL);
+
+    schedule_entry.new_thread = true;
 
     schedule_array.count = 1;
     schedule_array.entries = &schedule_entry;
@@ -223,6 +222,7 @@ static int setup_server_env(const char *config_filename)
 
     result = sf_setup_signal_handler();
 
-    log_set_cache(true);
+    //TODO
+    //log_set_cache(true);
     return result;
 }
