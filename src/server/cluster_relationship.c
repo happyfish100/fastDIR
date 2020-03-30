@@ -20,6 +20,7 @@
 #include "server_global.h"
 #include "server_binlog.h"
 #include "data_thread.h"
+#include "inode_generator.h"
 #include "cluster_relationship.h"
 
 FDIRClusterServerInfo *g_next_master = NULL;
@@ -399,12 +400,38 @@ int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master)
     return 0;
 }
 
-static void cluster_relationship_set_master(FDIRClusterServerInfo *master)
+static inline void cluster_unset_master()
 {
+    FDIRClusterServerInfo *old_master;
+
+    old_master = CLUSTER_MASTER_PTR;
+    if (old_master != NULL) {
+        old_master->is_master = false;
+        CLUSTER_MASTER_PTR = NULL;
+    }
+}
+
+static int cluster_relationship_set_master(FDIRClusterServerInfo *master)
+{
+    int result;
+
+    if (CLUSTER_MYSELF_PTR == master) {
+        inode_generator_skip();  //skip SN avoid conflict
+    }
+
     CLUSTER_MASTER_PTR = master;
     master->is_master = true;
+    if (CLUSTER_MYSELF_PTR == master) {
+        if ((result=binlog_producer_init()) != 0) {
+            cluster_unset_master();
+            return result;
+        }
 
-    if (CLUSTER_MYSELF_PTR != master) {
+        binlog_local_consumer_replication_start();
+        g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
+        CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
+        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
+    } else {
         if (MYSELF_IS_MASTER) {
             MYSELF_IS_MASTER = false;
             __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
@@ -416,17 +443,8 @@ static void cluster_relationship_set_master(FDIRClusterServerInfo *master)
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
     }
-}
 
-static inline void cluster_unset_master()
-{
-    FDIRClusterServerInfo *old_master;
-
-    old_master = CLUSTER_MASTER_PTR;
-    if (old_master != NULL) {
-        old_master->is_master = false;
-        CLUSTER_MASTER_PTR = NULL;
-    }
+    return 0;
 }
 
 int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
@@ -448,21 +466,9 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
         return EBUSY;
     }
 
-    cluster_relationship_set_master(master);
-    if (CLUSTER_MYSELF_PTR == master) {
-        if ((result=binlog_producer_init()) != 0) {
-            cluster_unset_master();
-            return result;
-        }
-
-        binlog_local_consumer_replication_start();
-        g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
-        CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
-        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
-    }
-
+    result = cluster_relationship_set_master(master);
     g_next_master = NULL;
-    return 0;
+    return result;
 }
 
 void cluster_relationship_trigger_reselect_master()

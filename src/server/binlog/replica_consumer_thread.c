@@ -198,10 +198,11 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         const uint64_t last_data_version)
 {
     ServerBinlogRecordBuffer *rb = NULL;
+    static int max_waiting_count = 0;
     int result;
-    int count;
+    int waiting_count;
 
-    count = 0;
+    waiting_count = 0;
     while (ctx->continue_flag) {
         rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
                 &ctx->queues.free, false);
@@ -209,14 +210,15 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
             break;
         }
 
-        ++count;
+        ++waiting_count;
         usleep(100);
     }
 
-    if (count > 0) {
+    if (waiting_count > max_waiting_count) {
+        max_waiting_count = waiting_count;
         logWarning("file: "__FILE__", line: %d, "
-                "alloc record buffer after %d times sleep",
-                __LINE__, count);
+                "alloc record buffer reachs max waiting count: %d",
+                __LINE__, max_waiting_count);
     }
     if (rb == NULL) {
         return EAGAIN;

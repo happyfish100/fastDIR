@@ -148,7 +148,7 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
         return result;
     }
 
-    FAST_ALLOCATOR_INIT_REGION(regions[0], 0, 64, 4, 8 * 1024);
+    FAST_ALLOCATOR_INIT_REGION(regions[0], 0, 64, 8, 8 * 1024);
     if (DENTRY_MAX_DATA_SIZE <= NAME_MAX + 1) {
         FAST_ALLOCATOR_INIT_REGION(regions[1], 64, NAME_MAX + 1, 8, 4 * 1024);
         count = 2;
@@ -167,7 +167,7 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     }
 
     if ((result=fast_allocator_init_ex(&context->name_acontext,
-                    regions, count, 0, 0.00, 0, false)) != 0)
+                    "name", regions, count, 0, 0.00, 0, false)) != 0)
     {
         return result;
     }

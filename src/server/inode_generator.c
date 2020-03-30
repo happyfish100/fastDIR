@@ -18,7 +18,6 @@
 #include "inode_generator.h"
 
 #define INODE_SN_FILENAME  ".inode.sn"
-#define INODE_SN_MAX_QPS   (1000 * 1000)
 
 #define GET_INODE_SN_FILENAME(filename, size) \
     snprintf(filename, size, "%s/%s", DATA_PATH_STR, INODE_SN_FILENAME)
@@ -78,7 +77,6 @@ int inode_generator_init()
                     __LINE__, filename, content);
             return EINVAL;
         }
-        CURRENT_INODE_SN += INODE_SN_MAX_QPS;  //skip avoid conflict
     } else {
         CURRENT_INODE_SN = 0;
     }

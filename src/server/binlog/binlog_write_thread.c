@@ -18,12 +18,12 @@
 #include "sf/sf_global.h"
 #include "../server_global.h"
 #include "binlog_func.h"
+#include "binlog_pack.h"
 #include "binlog_reader.h"
 #include "binlog_producer.h"
 #include "binlog_write_thread.h"
 
 #define BINLOG_FILE_MAX_SIZE   (1024 * 1024 * 1024)
-
 #define BINLOG_INDEX_FILENAME  BINLOG_FILE_PREFIX"_index.dat"
 
 #define BINLOG_INDEX_ITEM_CURRENT_WRITE     "current_write"
@@ -165,20 +165,6 @@ static int do_write_to_file(char *buff, const int len)
 {
     int result;
 
-    if (writer_context.file_size + len > BINLOG_FILE_MAX_SIZE) {
-        writer_context.binlog_index++;  //rotate
-        if ((result=write_to_binlog_index_file()) == 0) {
-            result = open_next_binlog();
-        }
-
-        if (result != 0) {
-            logError("file: "__FILE__", line: %d, "
-                    "open binlog file \"%s\" fail",
-                    __LINE__, writer_context.filename);
-            return result;
-        }
-    }
-
     if (fc_safe_write(writer_context.fd, buff, len) != len) {
         result = errno != 0 ? errno : EIO;
         logError("file: "__FILE__", line: %d, "
@@ -201,6 +187,58 @@ static int do_write_to_file(char *buff, const int len)
     return 0;
 }
 
+static int check_write_to_file(char *buff, const int len)
+{
+    int result;
+    int front_len;
+    int64_t data_version;
+    char *p;
+    char *buff_end;
+    char *rec_end;
+    char error_info[FDIR_ERROR_INFO_SIZE];
+
+    if (writer_context.file_size + len <= BINLOG_FILE_MAX_SIZE) {
+        return do_write_to_file(buff, len);
+    }
+
+    /* try to keep the binlog file size consistent within the cluster */
+    buff_end = buff + len;
+    p = buff;
+    while (binlog_detect_record(p, buff_end - p,
+                &data_version, (const char **)&rec_end,
+                error_info, sizeof(error_info)) == 0)
+    {
+        if (writer_context.file_size + (rec_end - buff) >
+                BINLOG_FILE_MAX_SIZE)
+        {
+            break;
+        }
+
+        p = rec_end;
+    }
+
+    front_len = p - buff;
+    if (front_len > 0) {
+        if ((result=do_write_to_file(buff, front_len)) != 0) {
+            return result;
+        }
+    }
+
+    writer_context.binlog_index++;  //binlog rotate
+    if ((result=write_to_binlog_index_file()) == 0) {
+        result = open_next_binlog();
+    }
+
+    if (result != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "open binlog file \"%s\" fail",
+                __LINE__, writer_context.filename);
+        return result;
+    }
+
+    return do_write_to_file(p, buff_end - p);
+}
+
 static int binlog_write_to_file()
 {
     int result;
@@ -211,7 +249,7 @@ static int binlog_write_to_file()
         return 0;
     }
 
-    result = do_write_to_file(writer_context.binlog_buffer.buff, len);
+    result = check_write_to_file(writer_context.binlog_buffer.buff, len);
     writer_context.binlog_buffer.end = writer_context.binlog_buffer.buff;
     return result;
 }
@@ -260,10 +298,16 @@ static inline int deal_binlog_one_record(ServerBinlogRecordBuffer *rb)
             }
         }
 
-        return do_write_to_file(rb->buffer.data, rb->buffer.length);
+        return check_write_to_file(rb->buffer.data, rb->buffer.length);
     }
 
-    if (writer_context.binlog_buffer.size - BINLOG_BUFFER_LENGTH(
+    if (writer_context.file_size + BINLOG_BUFFER_LENGTH(writer_context.
+                binlog_buffer) + rb->buffer.length > BINLOG_FILE_MAX_SIZE)
+    {
+        if ((result=binlog_write_to_file()) != 0) {
+            return result;
+        }
+    } else if (writer_context.binlog_buffer.size - BINLOG_BUFFER_LENGTH(
                 writer_context.binlog_buffer) < rb->buffer.length)
     {
         if ((result=binlog_write_to_file()) != 0) {

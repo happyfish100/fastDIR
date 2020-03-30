@@ -185,8 +185,8 @@ FAIL_:
 
 static int mblock_stat_task_func(void *args)
 {
-    logInfo("file: "__FILE__", line: %d, func: %s", __LINE__, __FUNCTION__);
-    fast_mblock_manager_stat_print_ex(false, FAST_MBLOCK_ORDER_BY_ELEMENT_SIZE);
+    //fast_mblock_manager_stat_print_ex(false, FAST_MBLOCK_ORDER_BY_ELEMENT_SIZE);
+    fast_mblock_manager_stat_print_ex(true, FAST_MBLOCK_ORDER_BY_ALLOC_BYTES);
     return 0;
 }
 
@@ -196,7 +196,7 @@ static int setup_mblock_stat_task()
     ScheduleArray schedule_array;
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
-            0, 0, 0, 60,  mblock_stat_task_func, NULL);
+            0, 0, 0, 300,  mblock_stat_task_func, NULL);
 
     schedule_entry.new_thread = true;
 
