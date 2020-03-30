@@ -817,7 +817,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {
-            result = deal_replica_push_result(server_ctx->cluster.consumer_ctx);
+            result = deal_replica_push_task(server_ctx->cluster.consumer_ctx);
             return result == EAGAIN ? 0 : result;
         } else if (server_ctx->cluster.clean_connected_replicas) {
             logInfo("file: "__FILE__", line: %d, "

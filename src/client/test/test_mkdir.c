@@ -10,7 +10,7 @@
 #include "fastcommon/logger.h"
 #include "fastdir/fdir_client.h"
 
-#define SUBDIR_COUNT  300
+#define SUBDIR_COUNT  200
 
 static char *ns = "test";
 static char *base_path = "/test";

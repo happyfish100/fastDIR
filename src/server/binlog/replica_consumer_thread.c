@@ -29,14 +29,20 @@ static void *deal_binlog_thread_func(void *arg);
 
 static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
 {
+    ReplicaConsumerThreadContext *ctx;
+    bool notify;
+
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
         /*
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
                 */
 
-        common_blocked_queue_push((struct common_blocked_queue *)
-                rbuffer->args, rbuffer);
+        ctx = (ReplicaConsumerThreadContext *)rbuffer->args;
+        common_blocked_queue_push_ex(&ctx->queues.free, rbuffer, &notify);
+        if (notify) {
+            iovent_notify_thread(ctx->task->thread_data);
+        }
     }
 }
 
@@ -127,9 +133,12 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
         if ((*err_no=alloc_record_buffer(rbuffer, buffer_size)) != 0) {
             return NULL;
         }
-        rbuffer->args = &ctx->queues.free;
+        rbuffer->args = ctx;
         common_blocked_queue_push(&ctx->queues.free, rbuffer);
     }
+
+    ctx->recv_rbuffer = (ServerBinlogRecordBuffer *)common_blocked_queue_pop(
+                &ctx->queues.free);
 
     if ((*err_no=fc_create_thread(&ctx->tids[0], deal_binlog_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
@@ -193,6 +202,39 @@ static inline int push_to_replica_consumer_queues(
     return common_blocked_queue_push(&ctx->queues.input, rbuffer);
 }
 
+static inline int push_and_set_next_recv_buffer(
+        ReplicaConsumerThreadContext *ctx,
+        ServerBinlogRecordBuffer *rb)
+{
+    int result;
+    int binlog_length;
+
+    binlog_length = ctx->recv_rbuffer->buffer.length;
+    if ((result=push_to_replica_consumer_queues(ctx,
+                    ctx->recv_rbuffer)) != 0)
+    {
+        common_blocked_queue_push(&ctx->queues.free, rb);
+        return result;
+    }
+
+    rb->buffer.length = 0;
+    if ((rb->buffer.alloc_size > 2 * BINLOG_BUFFER_INIT_SIZE) &&
+            (binlog_length * 10 < rb->buffer.alloc_size))
+    {
+        if ((result=fast_buffer_set_capacity(&rb->buffer,
+                        binlog_length > BINLOG_BUFFER_INIT_SIZE ?
+                        binlog_length : BINLOG_BUFFER_INIT_SIZE)) != 0) {
+            return result;
+        }
+        logDebug("file: "__FILE__", line: %d, "
+                "data length: %d, shrink buffer size to %d",
+                __LINE__, binlog_length, rb->buffer.alloc_size);
+    }
+
+    ctx->recv_rbuffer = rb;
+    return 0;
+}
+
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
         const uint64_t last_data_version)
@@ -201,6 +243,28 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
     static int max_waiting_count = 0;
     int result;
     int waiting_count;
+
+    ctx->recv_rbuffer->data_version = last_data_version;
+    if ((result=fast_buffer_check(&ctx->recv_rbuffer->buffer,
+                    length)) != 0)
+    {
+        return result;
+    }
+
+    memcpy(ctx->recv_rbuffer->buffer.data +
+            ctx->recv_rbuffer->buffer.length,
+            binlog_buff, length);
+    ctx->recv_rbuffer->buffer.length += length;
+
+    rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
+                &ctx->queues.free, false);
+    if (rb != NULL) {
+        return push_and_set_next_recv_buffer(ctx, rb);
+    }
+
+    if (ctx->recv_rbuffer->buffer.length < ctx->task->size) { //flow control
+        return 0;
+    }
 
     waiting_count = 0;
     while (ctx->continue_flag) {
@@ -217,42 +281,32 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
     if (waiting_count > max_waiting_count) {
         max_waiting_count = waiting_count;
         logWarning("file: "__FILE__", line: %d, "
-                "alloc record buffer reachs max waiting count: %d",
-                __LINE__, max_waiting_count);
+                "alloc record buffer reachs max waiting count: %d, "
+                "buffer length: %d", __LINE__, max_waiting_count, length);
     }
     if (rb == NULL) {
         return EAGAIN;
     }
 
-    if (rb->buffer.alloc_size < length) {
-        rb->buffer.length = 0;
-        if ((result=fast_buffer_set_capacity(&rb->buffer, length)) != 0) {
-            return result;
-        }
-        logDebug("file: "__FILE__", line: %d, "
-                "data length: %d, expand buffer size to %d",
-                __LINE__, length, rb->buffer.alloc_size);
-    } else if ((rb->buffer.alloc_size > 2 * BINLOG_BUFFER_INIT_SIZE) &&
-            (length * 10 < rb->buffer.alloc_size))
-    {
-        rb->buffer.length = 0;
-        if ((result=fast_buffer_set_capacity(&rb->buffer,
-                        length > BINLOG_BUFFER_INIT_SIZE ?
-                        length : BINLOG_BUFFER_INIT_SIZE)) != 0) {
-            return result;
-        }
-        logDebug("file: "__FILE__", line: %d, "
-                "data length: %d, shrink buffer size to %d",
-                __LINE__, length, rb->buffer.alloc_size);
-    }
-
-    rb->data_version = last_data_version;
-    rb->buffer.length = length;
-    memcpy(rb->buffer.data, binlog_buff, rb->buffer.length);
-    return push_to_replica_consumer_queues(ctx, rb);
+    return push_and_set_next_recv_buffer(ctx, rb);
 }
 
-int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
+static inline int check_retry_push_request(ReplicaConsumerThreadContext *ctx)
+{
+    ServerBinlogRecordBuffer *rb;
+
+    if (ctx->recv_rbuffer->buffer.length > 0) {
+        rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
+                &ctx->queues.free, false);
+        if (rb != NULL) {
+            return push_and_set_next_recv_buffer(ctx, rb);
+        }
+    }
+
+    return 0;
+}
+
+static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
 {
     struct common_blocked_node *node;
     struct common_blocked_node *current;
@@ -315,6 +369,16 @@ int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
             ctx->task->length - sizeof(FDIRProtoHeader));
     sf_send_add_event(ctx->task);
     return 0;
+}
+
+int deal_replica_push_task(ReplicaConsumerThreadContext *ctx)
+{
+    int result;
+
+    if ((result=check_retry_push_request(ctx)) != 0) {
+        return result;
+    }
+    return deal_replica_push_result(ctx);
 }
 
 static void *deal_binlog_thread_func(void *arg)

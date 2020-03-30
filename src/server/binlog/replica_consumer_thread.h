@@ -7,7 +7,7 @@
 #include "binlog_types.h"
 #include "binlog_replay.h"
 
-#define REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT   32
+#define REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT   64
 #define REPLICA_CONSUMER_THREAD_BUFFER_COUNT      \
     REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT
 
@@ -27,7 +27,10 @@ typedef struct replica_consumer_thread_context {
         struct common_blocked_queue input;  //input ServerBinlogRecordBuffer ptr
         struct common_blocked_queue result; //record deal result
     } queues;
+
     struct fast_task_info *task;
+    ServerBinlogRecordBuffer *recv_rbuffer;
+
     BinlogReplayContext replay_ctx;
 } ReplicaConsumerThreadContext;
 
@@ -42,7 +45,7 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
         const uint64_t last_data_version);
 
-int deal_replica_push_result(ReplicaConsumerThreadContext *ctx);
+int deal_replica_push_task(ReplicaConsumerThreadContext *ctx);
 
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx);
 

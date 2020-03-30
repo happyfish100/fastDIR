@@ -731,7 +731,7 @@ static int deal_task_done(struct fast_task_info *task)
 
     r = sf_send_add_event(task);
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
-    if (time_used > 10 * 1000) {
+    if (time_used > 20 * 1000) {
         lwarning("process a request timed used: %s us, "
                 "cmd: %d (%s), req body len: %d, resp body len: %d",
                 long_to_comma_str(time_used, time_buff),
