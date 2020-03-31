@@ -18,6 +18,7 @@
 #include "../server_global.h"
 #include "../data_thread.h"
 #include "binlog_pack.h"
+#include "binlog_reader.h"
 #include "binlog_replay.h"
 
 static void data_thread_deal_done_callback(
@@ -121,7 +122,8 @@ void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
 }
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
-         const char *buff, const int len)
+         const char *buff, const int len,
+         FDIRBinlogFilePosition *binlog_position)
 {
     const char *p;
     const char *end;
@@ -131,6 +133,7 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     char error_info[FDIR_ERROR_INFO_SIZE];
     int result;
 
+    *error_info = '\0';
     p = buff;
     end = p + len;
     while (p < end) {
@@ -139,8 +142,24 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
             if ((result=binlog_unpack_record(p, end - p, record,
                             &rend, error_info, sizeof(error_info))) != 0)
             {
-                logError("file: "__FILE__", line: %d, "
-                        "%s", __LINE__, error_info);
+                if (binlog_position != NULL) {
+                    char filename[PATH_MAX];
+                    int64_t line_count;
+
+                    GET_BINLOG_FILENAME(filename, sizeof(filename),
+                            binlog_position->index);
+                    if (fc_get_file_line_count_ex(filename, binlog_position->
+                            offset + (p - buff), &line_count) == 0)
+                    {
+                        ++line_count;
+                    }
+                    logError("file: "__FILE__", line: %d, "
+                            "binlog file: %s, line no: %"PRId64", %s",
+                            __LINE__, filename, line_count, error_info);
+                } else {
+                    logError("file: "__FILE__", line: %d, "
+                            "%s", __LINE__, error_info);
+                }
                 return result;
             }
             p = rend;

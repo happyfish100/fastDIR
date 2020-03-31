@@ -408,7 +408,7 @@ static void *deal_binlog_thread_func(void *arg)
 
             rb = (ServerBinlogRecordBuffer *)current->data;
             binlog_replay_deal_buffer(&ctx->replay_ctx,
-                    rb->buffer.data, rb->buffer.length);
+                    rb->buffer.data, rb->buffer.length, NULL);
 
             rb->release_func(rb);
             current = current->next;

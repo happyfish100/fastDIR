@@ -106,6 +106,7 @@ static void *binlog_read_thread_func(void *arg)
             continue;
         }
 
+        r->binlog_position = ctx->reader.position;
         r->err_no = binlog_reader_integral_read(&ctx->reader,
                 r->buffer.buff, r->buffer.alloc_size,
                 &r->buffer.length, &r->last_data_version);

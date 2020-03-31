@@ -60,8 +60,8 @@ int server_load_data()
             break;
         }
 
-        if ((result=binlog_replay_deal_buffer(&replay_ctx,
-                        r->buffer.buff, r->buffer.length)) != 0)
+        if ((result=binlog_replay_deal_buffer(&replay_ctx, r->buffer.buff,
+                        r->buffer.length, &r->binlog_position)) != 0)
         {
             break;
         }
@@ -72,14 +72,16 @@ int server_load_data()
     binlog_replay_destroy(&replay_ctx);
     binlog_read_thread_terminate(&reader_ctx);
 
-    end_time = get_current_time_ms();
-    logInfo("file: "__FILE__", line: %d, "
-            "load data done. record count: %"PRId64", "
-            "skip count: %"PRId64", warning count: %"PRId64
-            ", fail count: %"PRId64", time used: %s ms",
-            __LINE__, replay_ctx.record_count,
-            replay_ctx.skip_count, replay_ctx.warning_count,
-            replay_ctx.fail_count, long_to_comma_str(
-                end_time - start_time, time_buff));
+    if (result == 0) {
+        end_time = get_current_time_ms();
+        logInfo("file: "__FILE__", line: %d, "
+                "load data done. record count: %"PRId64", "
+                "skip count: %"PRId64", warning count: %"PRId64
+                ", fail count: %"PRId64", time used: %s ms",
+                __LINE__, replay_ctx.record_count,
+                replay_ctx.skip_count, replay_ctx.warning_count,
+                replay_ctx.fail_count, long_to_comma_str(
+                    end_time - start_time, time_buff));
+    }
     return result;
 }

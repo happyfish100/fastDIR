@@ -194,6 +194,19 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
                     data_version, (const char **)&rec_end,
                     error_info, sizeof(error_info))) != 0)
     {
+        int64_t line_count;
+
+        fc_get_file_line_count_ex(reader->filename, reader->position.
+                offset + *read_bytes, &line_count);
+        if (*error_info == '\0') {
+            snprintf(error_info, sizeof(error_info),
+                    "%s", STRERROR(result));
+        }
+        logError("file: "__FILE__", line: %d, "
+                "binlog_detect_record_reverse fail, "
+                "binlog file: %s, line no: %"PRId64", error info: %s",
+                __LINE__, reader->filename, line_count, error_info);
+
         *data_version = 0;
         return result == ENOENT ? EFAULT : result;
     }
