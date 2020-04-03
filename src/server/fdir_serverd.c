@@ -48,8 +48,7 @@ int main(int argc, char *argv[])
     pthread_t schedule_tid;
     int wait_count;
     bool stop;
-    int r;
-    failvars;
+    int result;
 
     stop = false;
     if (argc < 2) {
@@ -60,21 +59,25 @@ int main(int argc, char *argv[])
     log_init2();
     //log_set_time_precision(&g_log_context, LOG_TIME_PRECISION_USECOND);
 
-    r = get_base_path_from_conf_file(config_filename, g_sf_global_vars.base_path,
-                                     sizeof(g_sf_global_vars.base_path));
-    gofailif(r, "base path error");
+    result = get_base_path_from_conf_file(config_filename,
+            SF_G_BASE_PATH, sizeof(SF_G_BASE_PATH));
+    if (result != 0) {
+        log_destroy();
+        return result;
+    }
 
     snprintf(g_pid_filename, sizeof(g_pid_filename), 
-             "%s/serverd.pid", g_sf_global_vars.base_path);
+             "%s/serverd.pid", SF_G_BASE_PATH);
 
     sf_parse_daemon_mode_and_action(argc, argv, &daemon_mode, &action);
-    r = process_action(g_pid_filename, action, &stop);
-    if (r == EINVAL) {
-        sf_usage(argv[0]);
+    result = process_action(g_pid_filename, action, &stop);
+    if (result != 0) {
+        if (result == EINVAL) {
+            sf_usage(argv[0]);
+        }
         log_destroy();
-        return 1;
+        return result;
     }
-    gofailif(r, "process arg error");
 
     if (stop) {
         log_destroy();
@@ -85,65 +88,91 @@ int main(int argc, char *argv[])
     fast_mblock_manager_init();
 
     //sched_set_delay_params(300, 1024);
-    r = setup_server_env(config_filename);
-    gofailif(r, "");
+    do {
+        if ((result=setup_server_env(config_filename)) != 0) {
+            break;
+        }
 
-    r = sf_startup_schedule(&schedule_tid);
-    gofailif(r, "");
+        if ((result=sf_startup_schedule(&schedule_tid)) != 0) {
+            break;
+        }
 
-    r = cluster_info_setup_sync_to_file_task();
-    gofailif(r, "");
+        if ((result=cluster_info_setup_sync_to_file_task()) != 0) {
+            break;
+        }
 
-    //sched_print_all_entries();
+        //sched_print_all_entries();
 
-    r = inode_generator_init();
-    gofailif(r, "inode generator init error");
+        if ((result=inode_generator_init()) != 0) {
+            break;
+        }
 
-    r = sf_socket_server();
-    gofailif(r, "service socket server error");
+        if ((result=sf_socket_server()) != 0) {
+            break;
+        }
 
-    r = sf_socket_server_ex(&CLUSTER_SF_CTX);
-    gofailif(r, "cluster socket server error");
+        if ((result=sf_socket_server_ex(&CLUSTER_SF_CTX)) != 0) {
+            break;
+        }
 
-    r = write_to_pid_file(g_pid_filename);
-    gofailif(r, "write pid error");
+        if ((result=write_to_pid_file(g_pid_filename)) != 0) {
+            break;
+        }
 
-    r = dentry_init();
-    gofailif(r, "dentry init error");
+        if ((result=dentry_init()) != 0) {
+            break;
+        }
 
-    r = service_handler_init();
-    gofailif(r, "server handler init error");
+        if ((result=service_handler_init()) != 0) {
+            break;
+        }
 
-    r = server_binlog_init();
-    gofailif(r, "server binlog init error");
+        if ((result=server_binlog_init()) != 0) {
+            break;
+        }
 
-    r = data_thread_init();
-    gofailif(r, "data thread init error");
+        if ((result=data_thread_init()) != 0) {
+            break;
+        }
 
-    r = server_load_data();
-    gofailif(r, "load data error");
+        if ((result=server_load_data()) != 0) {
+            break;
+        }
 
-    fdir_proto_init();
+        fdir_proto_init();
+        //sched_print_all_entries();
 
-    //sched_print_all_entries();
+        if ((result=cluster_relationship_init()) != 0) {
+            break;
+        }
 
-    r = cluster_relationship_init();
-    gofailif(r, "cluster relationship init error");
+        result = sf_service_init_ex(&CLUSTER_SF_CTX,
+                cluster_alloc_thread_extra_data,
+                cluster_thread_loop_callback, NULL,
+                fdir_proto_set_body_length, cluster_deal_task,
+                cluster_task_finish_cleanup, NULL, 1000,
+                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+        if (result != 0) {
+            break;
+        }
+        sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
+        sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 
-    r = sf_service_init_ex(&CLUSTER_SF_CTX, cluster_alloc_thread_extra_data,
-            cluster_thread_loop_callback, NULL, fdir_proto_set_body_length,
-            cluster_deal_task, cluster_task_finish_cleanup, NULL,
-            1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
-    gofailif(r, "cluster service init error");
-    sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
-    sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
+        result = sf_service_init(service_alloc_thread_extra_data, NULL,
+                NULL, fdir_proto_set_body_length, service_deal_task,
+                service_task_finish_cleanup, NULL, 1000,
+                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+        if (result != 0) {
+            break;
+        }
+        sf_set_remove_from_ready_list(false);
+    } while (0);
 
-    r = sf_service_init(service_alloc_thread_extra_data, NULL,
-            NULL, fdir_proto_set_body_length, service_deal_task,
-            service_task_finish_cleanup, NULL,
-            1000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
-    gofailif(r, "server service init error");
-    sf_set_remove_from_ready_list(false);
+    if (result != 0) {
+        lcrit("program exit abnomally");
+        log_destroy();
+        return result;
+    }
 
     setup_mblock_stat_task();
     //sched_print_all_entries();
@@ -173,12 +202,6 @@ int main(int argc, char *argv[])
             "program exit normally.\n", __LINE__);
     log_destroy();
     return 0;
-
-FAIL_:
-    logfail();
-    lcrit("program exit abnomally");
-    log_destroy();
-    return eres;
 }
 
 static int mblock_stat_task_func(void *args)
