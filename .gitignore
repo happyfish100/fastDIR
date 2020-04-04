@@ -2,6 +2,7 @@
 src/server/Makefile
 src/client/Makefile
 src/client/tools/Makefile
+src/client/fuse/Makefile
 
 # Prerequisites
 *.d
@@ -36,6 +37,7 @@ src/client/tools/fdir_list
 src/client/tools/fdir_remove
 src/client/tools/fdir_cluster_stat
 src/client/tools/fdir_service_stat
+src/client/fuse/fdir_fuse
 
 # other
 logs
