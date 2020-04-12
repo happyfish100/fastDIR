@@ -1,0 +1,31 @@
+.SUFFIXES: .c .o .lo
+
+COMPILE = $(CC) $(CFLAGS)
+INC_PATH = -I/usr/local/include -I. -I/usr/include/fastcommon/
+LIB_PATH = $(LIBS) -lfdirclient -lfastcommon $(FUSE_FLAGS) -lserverframe
+TARGET_PATH = $(TARGET_PREFIX)/bin
+
+ALL_OBJS = fdir_fuse_ino_manager.o fdir_client_ops.o fdir_fuse_ll.o
+
+STATIC_OBJS =
+
+ALL_PRGS = fdir_fuse
+
+all: $(ALL_PRGS)
+
+$(ALL_PRGS): $(ALL_OBJS)
+
+.o:
+	$(COMPILE) -o $@ $<  $(STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c:
+	$(COMPILE) -o $@ $<  $(ALL_OBJS) $(STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c.o:
+	$(COMPILE) -c -o $@ $<  $(INC_PATH) $(LIB_PATH)
+
+install:
+	mkdir -p $(TARGET_PATH)
+	cp -f $(ALL_PRGS) $(TARGET_PATH)
+
+clean:
+	rm -f $(STATIC_OBJS) $(ALL_PRGS) $(ALL_OBJS)
+
