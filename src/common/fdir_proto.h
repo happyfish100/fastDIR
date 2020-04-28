@@ -16,12 +16,18 @@
 #define FDIR_PROTO_ACTIVE_TEST_RESP        22
 
 //service commands
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY           25
-#define FDIR_SERVICE_PROTO_REMOVE_DENTRY           27
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ       25
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP      26
+#define FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ       27
+#define FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP      28
 
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ   29
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ    31
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        32
+#define FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ        33
+#define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       34
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      36
 
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        41
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       42
@@ -111,6 +117,14 @@ typedef struct fdir_proto_create_dentry_body {
 typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
+
+typedef struct fdir_proto_stat_dentry_resp {
+    char inode[8];
+    char mode[4];
+    char ctime[4];  /* create time */
+    char mtime[4];  /* modify time */
+    char size[8];   /* file size in bytes */
+} FDIRProtoStatDEntryResp;
 
 typedef struct fdir_proto_list_dentry_first_body {
     FDIRProtoDEntryInfo dentry;

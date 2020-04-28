@@ -99,37 +99,37 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 
     pBasePath = iniGetStrValue(NULL, "base_path", iniContext);
     if (pBasePath == NULL) {
-        strcpy(g_client_global_vars.base_path, "/tmp");
+        strcpy(g_fdir_client_vars.base_path, "/tmp");
     } else {
-        snprintf(g_client_global_vars.base_path,
-                sizeof(g_client_global_vars.base_path),
+        snprintf(g_fdir_client_vars.base_path,
+                sizeof(g_fdir_client_vars.base_path),
                 "%s", pBasePath);
-        chopPath(g_client_global_vars.base_path);
-        if (!fileExists(g_client_global_vars.base_path)) {
+        chopPath(g_fdir_client_vars.base_path);
+        if (!fileExists(g_fdir_client_vars.base_path)) {
             logError("file: "__FILE__", line: %d, "
                 "\"%s\" can't be accessed, error info: %s",
-                __LINE__, g_client_global_vars.base_path,
+                __LINE__, g_fdir_client_vars.base_path,
                 STRERROR(errno));
             return errno != 0 ? errno : ENOENT;
         }
-        if (!isDir(g_client_global_vars.base_path)) {
+        if (!isDir(g_fdir_client_vars.base_path)) {
             logError("file: "__FILE__", line: %d, "
                 "\"%s\" is not a directory!",
-                __LINE__, g_client_global_vars.base_path);
+                __LINE__, g_fdir_client_vars.base_path);
             return ENOTDIR;
         }
     }
 
-    g_client_global_vars.connect_timeout = iniGetIntValue(NULL,
+    g_fdir_client_vars.connect_timeout = iniGetIntValue(NULL,
             "connect_timeout", iniContext, DEFAULT_CONNECT_TIMEOUT);
-    if (g_client_global_vars.connect_timeout <= 0) {
-        g_client_global_vars.connect_timeout = DEFAULT_CONNECT_TIMEOUT;
+    if (g_fdir_client_vars.connect_timeout <= 0) {
+        g_fdir_client_vars.connect_timeout = DEFAULT_CONNECT_TIMEOUT;
     }
 
-    g_client_global_vars.network_timeout = iniGetIntValue(NULL,
+    g_fdir_client_vars.network_timeout = iniGetIntValue(NULL,
             "network_timeout", iniContext, DEFAULT_NETWORK_TIMEOUT);
-    if (g_client_global_vars.network_timeout <= 0) {
-        g_client_global_vars.network_timeout = DEFAULT_NETWORK_TIMEOUT;
+    if (g_fdir_client_vars.network_timeout <= 0) {
+        g_fdir_client_vars.network_timeout = DEFAULT_NETWORK_TIMEOUT;
     }
 
     if ((result=fdir_load_server_group_ex(&client_ctx->server_group,
@@ -146,9 +146,9 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
             "dir_server_count=%d",
             g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
-            g_client_global_vars.base_path,
-            g_client_global_vars.connect_timeout,
-            g_client_global_vars.network_timeout,
+            g_fdir_client_vars.base_path,
+            g_fdir_client_vars.connect_timeout,
+            g_fdir_client_vars.network_timeout,
             client_ctx->server_group.count);
 #endif
 

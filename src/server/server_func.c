@@ -379,7 +379,6 @@ int server_load_config(const char *filename)
     IniContext ini_context;
     int result;
 
-    memset(&ini_context, 0, sizeof(IniContext));
     if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "load conf file \"%s\" fail, ret code: %d",

@@ -13,8 +13,8 @@ static inline int make_connection(ConnectionInfo *conn)
         return 0;
     }
 
-    return conn_pool_connect_server(conn, g_client_global_vars.
-            network_timeout);
+    return conn_pool_connect_server(conn, g_fdir_client_vars.
+            connect_timeout);
 }
 
 static int check_realloc_group_servers(FDIRServerGroup *server_group)

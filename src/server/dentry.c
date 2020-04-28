@@ -417,6 +417,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return result;
     }
 
+    record->dentry = current;
     if (record->inode == 0) {
         record->inode = current->inode;
     }
@@ -464,6 +465,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    record->dentry = current;
     if (is_dir) {
         db_context->dentry_context.counters.dir--;
     } else {

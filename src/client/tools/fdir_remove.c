@@ -21,7 +21,8 @@ int main(int argc, char *argv[])
     const char *config_filename = "/etc/fdir/client.conf";
     char *ns;
     char *path;
-    FDIRDEntryFullName entry_info;
+    FDIRDEntryFullName fullname;
+    FDIRDEntryInfo dentry;
 	int result;
 
     if (argc < 2) {
@@ -60,8 +61,8 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    FC_SET_STRING(entry_info.ns, ns);
-    FC_SET_STRING(entry_info.path, path);
-    return fdir_client_remove_dentry(&g_client_global_vars.client_ctx,
-                    &entry_info);
+    FC_SET_STRING(fullname.ns, ns);
+    FC_SET_STRING(fullname.path, path);
+    return fdir_client_remove_dentry(&g_fdir_client_vars.client_ctx,
+                    &fullname, &dentry);
 }

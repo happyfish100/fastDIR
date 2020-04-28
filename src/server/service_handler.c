@@ -287,6 +287,13 @@ static int server_parse_dentry_info(struct fast_task_info *task,
                 fullname->ns.len);
         return EINVAL;
     }
+    if (fullname->ns.len > NAME_MAX) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid namespace length: %d > %d",
+                fullname->ns.len, NAME_MAX);
+        return EINVAL;
+    }
 
     if (fullname->path.len <= 0) {
         RESPONSE.error.length = sprintf(
@@ -433,6 +440,22 @@ static inline int alloc_record_object(struct fast_task_info *task)
     return 0;
 }
 
+static inline void dentry_stat_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    FDIRProtoStatDEntryResp *stat_resp;
+
+    stat_resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
+    long2buff(dentry->inode, stat_resp->inode);
+    int2buff(dentry->stat.mode, stat_resp->mode);
+    int2buff(dentry->stat.ctime, stat_resp->ctime);
+    int2buff(dentry->stat.mtime, stat_resp->mtime);
+    long2buff(dentry->stat.size, stat_resp->size);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
+    TASK_ARG->context.response_done = true;
+}
+
 static void record_deal_done_notify(FDIRBinlogRecord *record,
         const int result, const bool is_error)
 {
@@ -457,6 +480,14 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 result, STRERROR(result),
                 record->fullname.ns.len, record->fullname.ns.str,
                 record->fullname.path.len, record->fullname.path.str);
+    } else {
+        if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
+                record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
+        {
+            dentry_stat_output(task, record->dentry);
+            RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
+            TASK_ARG->context.response_done = true;
+        }
     }
 
     RESPONSE_STATUS = result;
@@ -521,6 +552,7 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
     RECORD->options.ctime = RECORD->options.mtime = 1;
     RECORD->options.mode = 1;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
     return push_record_to_data_thread_queue(task);
 }
 
@@ -541,7 +573,43 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
 
     SERVER_SET_RECORD_PATH_INFO();
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP;
     return push_record_to_data_thread_queue(task);
+}
+
+static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
+{
+    int result;
+    FDIRDEntryFullName fullname;
+    FDIRServerDentry *dentry;
+    FDIRProtoStatDEntryResp *stat_resp;
+
+    if ((result=server_check_and_parse_dentry(task, 0,
+                    sizeof(FDIRProtoDEntryInfo), &fullname)) != 0)
+    {
+        return result;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    stat_resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
+    long2buff(dentry->inode, stat_resp->inode);
+    int2buff(dentry->stat.mode, stat_resp->mode);
+    int2buff(dentry->stat.ctime, stat_resp->ctime);
+    int2buff(dentry->stat.mtime, stat_resp->mtime);
+    long2buff(dentry->stat.size, stat_resp->size);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
+static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
+{
+    return 0;
 }
 
 static int server_list_dentry_output(struct fast_task_info *task)
@@ -785,14 +853,24 @@ int service_deal_task(struct fast_task_info *task)
                 RESPONSE.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
                 result = service_deal_actvie_test(task);
                 break;
-            case FDIR_SERVICE_PROTO_CREATE_DENTRY:
+            case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_create_dentry(task);
                 }
                 break;
-            case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
+            case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_remove_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_stat_dentry_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_stat_dentry_by_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:

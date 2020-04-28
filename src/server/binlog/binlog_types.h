@@ -71,6 +71,8 @@ typedef struct fdir_binlog_record {
     string_t user_data;
     string_t extra_data;
 
+    FDIRServerDentry *dentry;  //for create and remove
+
     //must be the last to avoid being overwritten by memset
     struct {
         data_thread_notify_func func;

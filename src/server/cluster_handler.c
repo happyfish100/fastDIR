@@ -45,12 +45,6 @@ int cluster_handler_destroy()
 
 void cluster_task_finish_cleanup(struct fast_task_info *task)
 {
-    /*
-    FDIRServerTaskArg *task_arg;
-
-    task_arg = (FDIRServerTaskArg *)task->arg;
-    */
-
     switch (CLUSTER_TASK_TYPE) {
         case FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
@@ -284,16 +278,6 @@ static int cluster_deal_next_master(struct fast_task_info *task)
         return cluster_relationship_commit_master(master);
     }
 }
-
-/*
-static void record_deal_done_notify(const int result, void *args)
-{
-    struct fast_task_info *task;
-    task = (struct fast_task_info *)args;
-    RESPONSE_STATUS = result;
-    sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
-}
-*/
 
 static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {

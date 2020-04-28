@@ -197,10 +197,22 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "ACTIVE_TEST_REQ";
         case FDIR_PROTO_ACTIVE_TEST_RESP:
             return "ACTIVE_TEST_RESP";
-        case FDIR_SERVICE_PROTO_CREATE_DENTRY:
-            return "CREATE_DENTRY";
-        case FDIR_SERVICE_PROTO_REMOVE_DENTRY:
-            return "REMOVE_DENTRY";
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
+            return "CREATE_DENTRY_REQ";
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP:
+            return "CREATE_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
+            return "REMOVE_DENTRY_REQ";
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP:
+            return "REMOVE_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
+            return "STAT_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP:
+            return "STAT_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
+            return "STAT_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP:
+            return "STAT_BY_INODE_RESP";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
             return "LIST_DENTRY_FIRST_REQ";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:

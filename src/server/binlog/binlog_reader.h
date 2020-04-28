@@ -6,7 +6,7 @@
 #include "binlog_types.h"
 
 #define BINLOG_FILE_PREFIX     "binlog"
-#define BINLOG_FILE_EXT_FMT    ".%05d"
+#define BINLOG_FILE_EXT_FMT    ".%06d"
 
 typedef struct {
     char filename[PATH_MAX];

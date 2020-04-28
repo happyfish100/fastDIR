@@ -1,5 +1,5 @@
-#ifndef _CLIENT_TYPES_H
-#define _CLIENT_TYPES_H
+#ifndef _FDIR_CLIENT_TYPES_H
+#define _FDIR_CLIENT_TYPES_H
 
 #include "fastcommon/common_define.h"
 #include "fastcommon/connection_pool.h"

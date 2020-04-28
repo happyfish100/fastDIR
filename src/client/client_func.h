@@ -10,13 +10,13 @@ extern "C" {
 #endif
 
 #define fdir_client_load_from_file(filename) \
-    fdir_client_load_from_file_ex((&g_client_global_vars.client_ctx), filename)
+    fdir_client_load_from_file_ex((&g_fdir_client_vars.client_ctx), filename)
 
 #define fdir_client_init(filename) \
-    fdir_client_init_ex((&g_client_global_vars.client_ctx), filename, NULL)
+    fdir_client_init_ex((&g_fdir_client_vars.client_ctx), filename, NULL)
 
 #define fdir_client_destroy() \
-    fdir_client_destroy_ex((&g_client_global_vars.client_ctx))
+    fdir_client_destroy_ex((&g_fdir_client_vars.client_ctx))
 
 /**
 * client initial from config file

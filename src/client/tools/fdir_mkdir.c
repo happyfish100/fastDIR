@@ -21,12 +21,13 @@ int main(int argc, char *argv[])
     const char *config_filename = "/etc/fdir/client.conf";
     char *ns;
     char *path;
-    FDIRDEntryFullName entry_info;
+    FDIRDEntryFullName fullname;
 	int result;
     int base;
     char *endptr;
     const int flags = 0;
     mode_t mode = 0755;
+    FDIRDEntryInfo dentry;
 
     if (argc < 2) {
         usage(argv);
@@ -73,8 +74,8 @@ int main(int argc, char *argv[])
     }
 
     mode |= S_IFDIR;
-    FC_SET_STRING(entry_info.ns, ns);
-    FC_SET_STRING(entry_info.path, path);
-    return fdir_client_create_dentry(&g_client_global_vars.client_ctx,
-                    &entry_info, flags, mode);
+    FC_SET_STRING(fullname.ns, ns);
+    FC_SET_STRING(fullname.path, path);
+    return fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
+                    &fullname, flags, mode, &dentry);
 }

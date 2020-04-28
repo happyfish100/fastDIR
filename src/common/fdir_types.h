@@ -15,7 +15,7 @@
 #define FDIR_SERVER_DEFAULT_CLUSTER_PORT  11011
 #define FDIR_SERVER_DEFAULT_SERVICE_PORT  11012
 
-#define FDIR_MAX_PATH_COUNT    128
+#define FDIR_MAX_PATH_COUNT       128
 
 #define FDIR_SERVER_STATUS_INIT       0
 #define FDIR_SERVER_STATUS_BUILDING  10
@@ -48,5 +48,17 @@ typedef struct fdir_dentry_full_name {
     string_t ns;    //namespace
     string_t path;  //full path
 } FDIRDEntryFullName;
+
+typedef struct fdir_dentry_status {
+    int mode;
+    int ctime;  /* create time */
+    int mtime;  /* modify time */
+    int64_t size;   /* file size in bytes */
+} FDIRDEntryStatus;
+
+typedef struct fdir_dentry_info {
+    int64_t inode;
+    FDIRDEntryStatus stat;
+} FDIRDEntryInfo;
 
 #endif

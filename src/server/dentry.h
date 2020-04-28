@@ -7,16 +7,6 @@
 
 #define MAX_ENTRIES_PER_PATH  (16 * 1024)
 
-typedef struct fdir_server_dentry {
-    int64_t inode;
-    unsigned int hash_code;   //data thread dispach & mutex lock
-    string_t name;
-    FDIRDEntryStatus stat;
-    string_t user_data;      //user defined data
-    FDIRDentryContext *context;
-    UniqSkiplist *children;
-} FDIRServerDentry;
-
 #ifdef __cplusplus
 extern "C" {
 #endif

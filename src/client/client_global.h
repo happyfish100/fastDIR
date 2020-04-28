@@ -1,11 +1,11 @@
 
-#ifndef _CLIENT_GLOBAL_H
-#define _CLIENT_GLOBAL_H
+#ifndef _FDIR_CLIENT_GLOBAL_H
+#define _FDIR_CLIENT_GLOBAL_H
 
 #include "fdir_global.h"
 #include "client_types.h"
 
-typedef struct client_global_vars {
+typedef struct fdir_client_global_vars {
     int connect_timeout;
     int network_timeout;
     char base_path[MAX_PATH_SIZE];
@@ -17,7 +17,7 @@ typedef struct client_global_vars {
 extern "C" {
 #endif
 
-    extern FDIRClientGlobalVars g_client_global_vars;
+    extern FDIRClientGlobalVars g_fdir_client_vars;
 
 #ifdef __cplusplus
 }

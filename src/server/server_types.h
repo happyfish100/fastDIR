@@ -48,19 +48,22 @@
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
-typedef struct fdir_dentry_status {
-    int mode;
-    int ctime;  /* create time */
-    int mtime;  /* modify time */
-    int64_t size;   /* file size in bytes */
-} FDIRDEntryStatus;
-
 typedef struct fdir_path_info {
     string_t paths[FDIR_MAX_PATH_COUNT];   //splited path parts
     int count;
 } FDIRPathInfo;
 
-struct fdir_server_dentry;
+struct fdir_dentry_context;
+typedef struct fdir_server_dentry {
+    int64_t inode;
+    unsigned int hash_code;   //data thread dispach & mutex lock
+    string_t name;
+    FDIRDEntryStatus stat;
+    string_t user_data;      //user defined data
+    struct fdir_dentry_context *context;
+    UniqSkiplist *children;
+} FDIRServerDentry;
+
 typedef struct fdir_server_dentry_array {
     int alloc;
     int count;

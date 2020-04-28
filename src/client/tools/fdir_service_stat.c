@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    if ((result=fdir_client_service_stat(&g_client_global_vars.client_ctx,
+    if ((result=fdir_client_service_stat(&g_fdir_client_vars.client_ctx,
                     conn.ip_addr, conn.port, &stat)) != 0) {
         return result;
     }
