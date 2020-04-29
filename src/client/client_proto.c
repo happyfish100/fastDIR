@@ -110,8 +110,8 @@ static inline void proto_to_dentry(FDIRProtoStatDEntryResp *proto_stat,
 }
 
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int flags,
-        const mode_t mode, FDIRDEntryInfo *dentry)
+        const FDIRDEntryFullName *fullname, const mode_t mode,
+        FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoCreateDEntryBody *entry_body;
@@ -138,7 +138,6 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         return result;
     }
 
-    int2buff(flags, entry_body->front.flags);
     int2buff(mode, entry_body->front.mode);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryBody)
         + fullname->ns.len + fullname->path.len;

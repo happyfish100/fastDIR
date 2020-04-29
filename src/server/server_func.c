@@ -331,6 +331,8 @@ static void server_log_configs()
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
+            "inode_hashtable_capacity = %"PRId64", "
+            "inode_shared_locks_count = %d, "
             "cluster server count = %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
@@ -340,6 +342,7 @@ static void server_log_configs()
             g_server_global_vars.reload_interval_ms,
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity,
+            INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
 
     logInfo("%s, service: {%s}, cluster: {%s}, %s",
@@ -441,10 +444,24 @@ int server_load_config(const char *filename)
 
     g_server_global_vars.namespace_hashtable_capacity = iniGetIntValue(NULL,
             "namespace_hashtable_capacity", &ini_context,
-            FDIR_NAMESPACE_HASHTABLE_CAPACITY);
+            FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY);
     if (g_server_global_vars.namespace_hashtable_capacity <= 0) {
         g_server_global_vars.namespace_hashtable_capacity =
-            FDIR_NAMESPACE_HASHTABLE_CAPACITY;
+            FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY;
+    }
+
+    INODE_HASHTABLE_CAPACITY = iniGetIntValue(NULL,
+            "inode_hashtable_capacity", &ini_context,
+            FDIR_INODE_HASHTABLE_DEFAULT_CAPACITY);
+    if (INODE_HASHTABLE_CAPACITY <= 0) {
+        INODE_HASHTABLE_CAPACITY = FDIR_INODE_HASHTABLE_DEFAULT_CAPACITY;
+    }
+
+    INODE_SHARED_LOCKS_COUNT = iniGetIntValue(NULL,
+            "inode_shared_locks_count", &ini_context,
+            FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT);
+    if (INODE_SHARED_LOCKS_COUNT <= 0) {
+        INODE_SHARED_LOCKS_COUNT = FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT;
     }
 
     if ((result=load_cluster_config(&ini_context, filename)) != 0) {

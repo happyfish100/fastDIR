@@ -62,8 +62,8 @@ extern "C" {
 #endif
 
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int flags,
-        const mode_t mode, FDIRDEntryInfo *dentry);
+        const FDIRDEntryFullName *fullname, const mode_t mode,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);

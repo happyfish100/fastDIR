@@ -26,8 +26,13 @@
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        32
 #define FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ        33
 #define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       34
-#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35  //TODO
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      36
+
+#define FDIR_SERVICE_PROTO_SET_MODIFY_STAT_REQ     37  //modified by inode
+#define FDIR_SERVICE_PROTO_SET_MODIFY_STAT_RESP    38
+#define FDIR_SERVICE_PROTO_SET_PERM_STAT_REQ       39
+#define FDIR_SERVICE_PROTO_SET_PERM_STAT_RESP      40
 
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        41
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       42
@@ -42,13 +47,13 @@
 #define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 50
 
 //cluster commands
-#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   61
-#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP  62
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER             63  //slave  -> master
-#define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         65
-#define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        66
-#define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     67  //notify next leader to other servers
-#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      68  //commit next leader to other servers
+#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ   71
+#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP  72
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER             73  //slave  -> master
+#define FDIR_CLUSTER_PROTO_PING_MASTER_REQ         75
+#define FDIR_CLUSTER_PROTO_PING_MASTER_RESP        76
+#define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER     77  //notify next leader to other servers
+#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER      78  //commit next leader to other servers
 
 //replication commands, master -> slave
 #define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ          81
@@ -105,7 +110,6 @@ typedef struct fdir_proto_dentry_info {
 } FDIRProtoDEntryInfo;
 
 typedef struct fdir_proto_create_dentry_front {
-    char flags[4];
     char mode[4];
 } FDIRProtoCreateDEntryFront;
 

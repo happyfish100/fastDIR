@@ -528,7 +528,6 @@ static int service_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
     FDIRProtoCreateDEntryFront *proto_front;
-    //int flags;
 
     if ((result=alloc_record_object(task)) != 0) {
         return result;
@@ -545,7 +544,6 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     SERVER_SET_RECORD_PATH_INFO();
 
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
-    //flags = buff2int(proto_front->flags);
     RECORD->stat.mode = buff2int(proto_front->mode);
 
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;

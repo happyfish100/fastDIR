@@ -38,9 +38,16 @@ typedef struct server_global_vars {
     } cluster;
 
     struct {
-        int64_t cluster;      //cluster id part
-        volatile int64_t sn;  //sn part
-    } inode_generator;
+        struct {
+            int64_t cluster;      //cluster id part
+            volatile int64_t sn;  //sn part
+        } generator;
+
+        struct {
+            int shared_locks_count;
+            int64_t hashtable_capacity;
+        } entries;
+    } inode;
 
     struct {
         volatile uint64_t current_version; //binlog version
@@ -71,8 +78,10 @@ typedef struct server_global_vars {
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
-#define CURRENT_INODE_SN        g_server_global_vars.inode_generator.sn
-#define INODE_CLUSTER_PART      g_server_global_vars.inode_generator.cluster
+#define CURRENT_INODE_SN        g_server_global_vars.inode.generator.sn
+#define INODE_CLUSTER_PART      g_server_global_vars.inode.generator.cluster
+#define INODE_SHARED_LOCKS_COUNT g_server_global_vars.inode.entries.shared_locks_count
+#define INODE_HASHTABLE_CAPACITY g_server_global_vars.inode.entries.hashtable_capacity
 #define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
 #define DATA_THREAD_COUNT       g_server_global_vars.data.thread_count
 #define DATA_PATH               g_server_global_vars.data.path

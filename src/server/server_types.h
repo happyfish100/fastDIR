@@ -16,7 +16,9 @@
 
 #define FDIR_SERVER_DEFAULT_RELOAD_INTERVAL       500
 #define FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL  300
-#define FDIR_NAMESPACE_HASHTABLE_CAPACITY        1361
+#define FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY 1361
+#define FDIR_INODE_HASHTABLE_DEFAULT_CAPACITY     1403641
+#define FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT     163
 #define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
 #define FDIR_CLUSTER_TASK_TYPE_NONE               0
@@ -62,6 +64,7 @@ typedef struct fdir_server_dentry {
     string_t user_data;      //user defined data
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
+    struct fdir_server_dentry *ht_next;  //for inode hash table;
 } FDIRServerDentry;
 
 typedef struct fdir_server_dentry_array {
