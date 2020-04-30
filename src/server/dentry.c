@@ -13,6 +13,7 @@
 #include "server_global.h"
 #include "service_handler.h"
 #include "inode_generator.h"
+#include "inode_index.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2
@@ -47,7 +48,6 @@ static FDIRManager fdir_manager;
 
 int dentry_init()
 {
-
     int result;
     int bytes;
 
@@ -74,7 +74,7 @@ int dentry_init()
         return result;
     }
 
-    return 0;
+    return inode_index_init();
 }
 
 void dentry_destroy()
@@ -427,7 +427,8 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     } else {
         db_context->dentry_context.counters.file++;
     }
-    return 0;
+
+    return inode_index_add_dentry(current);
 }
 
 int dentry_remove(FDIRDataThreadContext *db_context,
@@ -471,7 +472,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     } else {
         db_context->dentry_context.counters.file--;
     }
-    return result;
+    return inode_index_del_dentry(current);
 }
 
 int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)

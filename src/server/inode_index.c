@@ -38,13 +38,6 @@ static int init_inode_shared_ctx_array()
 
     end = inode_shared_ctx_array.contexts + inode_shared_ctx_array.count;
     for (ctx=inode_shared_ctx_array.contexts; ctx<end; ctx++) {
-        if ((result=fast_mblock_init_ex1(&ctx->inode_allocator,
-                        "inode_entry", sizeof(FDIRServerDentry), 16 * 1024,
-                        NULL, NULL, false)) != 0)
-        {
-            return result;
-        }
-
         if ((result=init_pthread_lock(&ctx->lock)) != 0) {
             logError("file: "__FILE__", line: %d, "
                     "init_pthread_lock fail, errno: %d, error info: %s",
@@ -58,14 +51,14 @@ static int init_inode_shared_ctx_array()
 
 static int init_inode_hashtable()
 {
-    int bytes;
+    int64_t bytes;
 
     inode_hashtable.capacity = INODE_HASHTABLE_CAPACITY;
     bytes = sizeof(FDIRServerDentry *) * inode_hashtable.capacity;
     inode_hashtable.buckets = (FDIRServerDentry **)malloc(bytes);
     if (inode_hashtable.buckets == NULL) {
         logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
+                "malloc %"PRId64" bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(inode_hashtable.buckets, 0, bytes);
@@ -92,7 +85,8 @@ void inode_index_destroy()
 {
 }
 
-static int compare_inode(const FDIRServerDentry *dentry1, const FDIRServerDentry *dentry2)
+static inline int compare_inode(const FDIRServerDentry *dentry1,
+        const FDIRServerDentry *dentry2)
 {
     int64_t sub;
 
@@ -103,78 +97,138 @@ static int compare_inode(const FDIRServerDentry *dentry1, const FDIRServerDentry
         return 1;
     }
 
-   return 0;
+    return 0;
 }
 
-static FDIRServerDentry *get_inode_entry(InodeSharedContext *ctx,
-        FDIRServerDentry **bucket, const FDIRServerDentry *dentry,
-        const bool create_flag)
+static FDIRServerDentry *find_dentry_for_update(FDIRServerDentry **bucket,
+        const FDIRServerDentry *dentry, FDIRServerDentry **previous)
 {
-    const int init_level_count = 2;
-    FDIRServerDentry *previous;
-    FDIRServerDentry *dentry;
     int cmpr;
 
     if (*bucket == NULL) {
-        if (!create_flag) {
-            return NULL;
-        }
-        previous = NULL;
-    } else {
-        cmpr = compare_inode(dentry, &(*bucket)->dentry);
-        if (cmpr == 0) {
-            return *bucket;
-        } else if (cmpr < 0) {
-            previous = NULL;
-        } else {
-            previous = *bucket;
-            while (previous->ht_next != NULL) {
-                cmpr = compare_inode(dentry, &previous->ht_next->dentry);
-                if (cmpr == 0) {
-                    return previous->ht_next;
-                } else if (cmpr < 0) {
-                    break;
-                }
-
-                previous = previous->ht_next;
-            }
-        }
-
-        if (!create_flag) {
-            return NULL;
-        }
-    }
-
-    dentry = fast_mblock_alloc_object(&ctx->inode_allocator);
-    if (dentry == NULL) {
+        *previous = NULL;
         return NULL;
     }
 
-    if (previous == NULL) {
-        dentry->ht_next = *bucket;
-        *bucket = dentry;
-    } else {
-        dentry->ht_next = previous->ht_next;
-        previous->ht_next = dentry;
+    cmpr = compare_inode(dentry, *bucket);
+    if (cmpr == 0) {
+        *previous = NULL;
+        return *bucket;
+    } else if (cmpr < 0) {
+        *previous = NULL;
+        return NULL;
     }
-    return dentry;
+
+    *previous = *bucket;
+    while ((*previous)->ht_next != NULL) {
+        cmpr = compare_inode(dentry, (*previous)->ht_next);
+        if (cmpr == 0) {
+            return (*previous)->ht_next;
+        } else if (cmpr < 0) {
+            break;
+        }
+
+        *previous = (*previous)->ht_next;
+    }
+
+    return NULL;
 }
 
-int inode_index_add_dentry(FDIRServerDentry *dentry);
+static FDIRServerDentry *find_inode_entry(FDIRServerDentry **bucket,
+        const int64_t inode)
 {
-    InodeSharedContext *ctx;
-    int64_t bucket_index;
+    int cmpr;
+    FDIRServerDentry target;
+    FDIRServerDentry *dentry;
+
+    if (*bucket == NULL) {
+        return NULL;
+    }
+
+    target.inode = inode;
+    dentry = *bucket;
+    while (dentry != NULL) {
+        cmpr = compare_inode(&target, dentry);
+        if (cmpr == 0) {
+            return dentry;
+        } else if (cmpr < 0) {
+            break;
+        }
+
+        dentry = dentry->ht_next;
+    }
+
+    return NULL;
+}
+
+#define SET_INODE_HT_BUCKET_AND_CTX(inode)  \
+    int64_t bucket_index;       \
+    InodeSharedContext *ctx;    \
+    FDIRServerDentry **bucket;  \
+    \
+    do {  \
+        bucket_index =  inode % inode_hashtable.capacity;  \
+        bucket = inode_hashtable.buckets + bucket_index;   \
+        ctx = inode_shared_ctx_array.contexts + bucket_index %    \
+            inode_shared_ctx_array.count;   \
+    } while (0)
+
+
+int inode_index_add_dentry(FDIRServerDentry *dentry)
+{
     int result;
+    FDIRServerDentry *previous;
 
-    bucket_index =  dentry->inode % inode_hashtable.capacity;
-    ctx = inode_shared_ctx_array.contexts + bucket_index %
-        inode_shared_ctx_array.count;
-
+    SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
     pthread_mutex_lock(&ctx->lock);
-    //result = add_slice(ctx, slice->ob, slice);
+    if (find_dentry_for_update(bucket, dentry, &previous) == NULL) {
+        if (previous == NULL) {
+            dentry->ht_next = *bucket;
+            *bucket = dentry;
+        } else {
+            dentry->ht_next = previous->ht_next;
+            previous->ht_next = dentry;
+        }
+        result = 0;
+    } else {
+        result = EEXIST;
+    }
     pthread_mutex_unlock(&ctx->lock);
 
     return result;
 }
 
-//int inode_index_del_dentry(FDIRServerDentry *dentry);
+int inode_index_del_dentry(FDIRServerDentry *dentry)
+{
+    int result;
+    FDIRServerDentry *previous;
+    FDIRServerDentry *deleted;
+
+    SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
+    pthread_mutex_lock(&ctx->lock);
+    if ((deleted=find_dentry_for_update(bucket, dentry, &previous)) != NULL) {
+        if (previous == NULL) {
+            *bucket = (*bucket)->ht_next;
+        } else {
+            previous->ht_next = deleted->ht_next;
+        }
+        result = 0;
+    } else {
+        result = ENOENT;
+    }
+    pthread_mutex_unlock(&ctx->lock);
+
+    return result;
+}
+
+FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
+{
+    FDIRServerDentry *dentry;
+
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
+    pthread_mutex_lock(&ctx->lock);
+    dentry = find_inode_entry(bucket, inode);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return dentry;
+}

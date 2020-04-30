@@ -6,7 +6,6 @@
 #include "server_types.h"
 
 typedef struct {
-    struct fast_mblock_man inode_allocator;    //for inode_entry
     pthread_mutex_t lock;
 } InodeSharedContext;
 
@@ -19,6 +18,7 @@ extern "C" {
 
     int inode_index_add_dentry(FDIRServerDentry *dentry);
     int inode_index_del_dentry(FDIRServerDentry *dentry);
+    FDIRServerDentry *inode_index_get_dentry(const int64_t inode);
 
 #ifdef __cplusplus
 }
