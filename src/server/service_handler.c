@@ -28,6 +28,7 @@
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
+#include "inode_index.h"
 #include "cluster_relationship.h"
 #include "service_handler.h"
 
@@ -485,8 +486,6 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
         {
             dentry_stat_output(task, record->dentry);
-            RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
-            TASK_ARG->context.response_done = true;
         }
     }
 
@@ -515,14 +514,34 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     return result == 0 ? TASK_STATUS_CONTINUE : result;
 }
 
-#define SERVER_SET_RECORD_PATH_INFO()  \
-    do {   \
-        RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,  \
-                RECORD->fullname.ns.len);  \
-        RECORD->inode = RECORD->data_version = 0;  \
-        RECORD->options.flags = 0;   \
-        RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;  \
-    } while (0)
+static void service_set_record_path_info(struct fast_task_info *task,
+        const int reserved_size)
+{
+    char *p;
+    int length;
+
+    RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,
+            RECORD->fullname.ns.len);
+    RECORD->inode = RECORD->data_version = 0;
+    RECORD->options.flags = 0;
+    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
+
+    length = RECORD->fullname.ns.len + RECORD->fullname.path.len;
+    if (REQUEST.header.body_len > reserved_size) {
+        if ((REQUEST.header.body_len + length) < task->size) {
+            p = REQUEST.body + REQUEST.header.body_len;
+            memcpy(p, RECORD->fullname.ns.str, length);
+        } else {
+            p = REQUEST.body + reserved_size;
+            memmove(p, RECORD->fullname.ns.str, length);
+        }
+    } else {
+        p = REQUEST.body + reserved_size;
+        memcpy(p, RECORD->fullname.ns.str, length);
+    }
+    RECORD->fullname.ns.str = p;
+    RECORD->fullname.path.str = p + RECORD->fullname.ns.len;
+}
 
 static int service_deal_create_dentry(struct fast_task_info *task)
 {
@@ -541,7 +560,7 @@ static int service_deal_create_dentry(struct fast_task_info *task)
         return result;
     }
 
-    SERVER_SET_RECORD_PATH_INFO();
+    service_set_record_path_info(task, sizeof(FDIRProtoStatDEntryResp));
 
     proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
     RECORD->stat.mode = buff2int(proto_front->mode);
@@ -569,7 +588,7 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
         return result;
     }
 
-    SERVER_SET_RECORD_PATH_INFO();
+    service_set_record_path_info(task, sizeof(FDIRProtoStatDEntryResp));
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP;
     return push_record_to_data_thread_queue(task);
@@ -580,7 +599,6 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
     int result;
     FDIRDEntryFullName fullname;
     FDIRServerDentry *dentry;
-    FDIRProtoStatDEntryResp *stat_resp;
 
     if ((result=server_check_and_parse_dentry(task, 0,
                     sizeof(FDIRProtoDEntryInfo), &fullname)) != 0)
@@ -593,20 +611,67 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
         return result;
     }
 
-    stat_resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
-    long2buff(dentry->inode, stat_resp->inode);
-    int2buff(dentry->stat.mode, stat_resp->mode);
-    int2buff(dentry->stat.ctime, stat_resp->ctime);
-    int2buff(dentry->stat.mtime, stat_resp->mtime);
-    long2buff(dentry->stat.size, stat_resp->size);
+    dentry_stat_output(task, dentry);
+    return 0;
+}
 
-    RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
-    TASK_ARG->context.response_done = true;
+static inline int server_check_and_parse_inode(
+        struct fast_task_info *task, int64_t *inode)
+{
+    int result;
+
+    if ((result=server_expect_body_length(task, 8)) != 0) {
+        return result;
+    }
+
+    *inode = buff2long(REQUEST.body);
     return 0;
 }
 
 static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
+    FDIRServerDentry *dentry;
+    int64_t inode;
+    int result;
+
+    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+        return result;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP;
+    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    dentry_stat_output(task, dentry);
+    return 0;
+}
+
+static int service_deal_set_dentry_size(struct fast_task_info *task)
+{
+    FDIRServerDentry *dentry;
+    FDIRProtoSetModifyStatReq *req;
+    int64_t inode;
+    int64_t file_size;
+    int result;
+
+    if ((result=server_expect_body_length(task, sizeof(
+                        FDIRProtoSetModifyStatReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoSetModifyStatReq *)REQUEST.body;
+    inode = buff2long(req->inode);
+    file_size = buff2long(req->size);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
+    if ((dentry=inode_index_check_set_dentry_size(inode, file_size,
+                    req->force)) == NULL)
+    {
+        return ENOENT;
+    }
+
+    dentry_stat_output(task, dentry);
     return 0;
 }
 
@@ -859,6 +924,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_remove_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_set_dentry_size(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

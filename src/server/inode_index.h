@@ -20,6 +20,9 @@ extern "C" {
     int inode_index_del_dentry(FDIRServerDentry *dentry);
     FDIRServerDentry *inode_index_get_dentry(const int64_t inode);
 
+    FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
+        const int64_t new_size, const bool force);
+
 #ifdef __cplusplus
 }
 #endif

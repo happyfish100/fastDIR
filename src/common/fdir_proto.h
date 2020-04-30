@@ -29,10 +29,10 @@
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35  //TODO
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      36
 
-#define FDIR_SERVICE_PROTO_SET_MODIFY_STAT_REQ     37  //modified by inode
-#define FDIR_SERVICE_PROTO_SET_MODIFY_STAT_RESP    38
-#define FDIR_SERVICE_PROTO_SET_PERM_STAT_REQ       39
-#define FDIR_SERVICE_PROTO_SET_PERM_STAT_RESP      40
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     37  //modified by inode
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    38
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     39
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    40
 
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        41
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       42
@@ -121,6 +121,13 @@ typedef struct fdir_proto_create_dentry_body {
 typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
+
+typedef struct fdir_proto_set_modify_stat_req {
+    char inode[8];
+    char size[8];   /* file size in bytes */
+    char force;
+    char padding[7];
+} FDIRProtoSetModifyStatReq;
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];

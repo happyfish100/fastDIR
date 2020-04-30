@@ -1,6 +1,7 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include "fastcommon/shared_func.h"
+#include "fastcommon/sched_thread.h"
 #include "fastcommon/logger.h"
 #include "sf/sf_global.h"
 #include "server_global.h"
@@ -85,32 +86,17 @@ void inode_index_destroy()
 {
 }
 
-static inline int compare_inode(const FDIRServerDentry *dentry1,
-        const FDIRServerDentry *dentry2)
-{
-    int64_t sub;
-
-    sub = dentry1->inode - dentry2->inode;
-    if (sub < 0) {
-        return -1;
-    } else if (sub > 0) {
-        return 1;
-    }
-
-    return 0;
-}
-
 static FDIRServerDentry *find_dentry_for_update(FDIRServerDentry **bucket,
         const FDIRServerDentry *dentry, FDIRServerDentry **previous)
 {
-    int cmpr;
+    int64_t cmpr;
 
     if (*bucket == NULL) {
         *previous = NULL;
         return NULL;
     }
 
-    cmpr = compare_inode(dentry, *bucket);
+    cmpr = dentry->inode - (*bucket)->inode;
     if (cmpr == 0) {
         *previous = NULL;
         return *bucket;
@@ -121,7 +107,7 @@ static FDIRServerDentry *find_dentry_for_update(FDIRServerDentry **bucket,
 
     *previous = *bucket;
     while ((*previous)->ht_next != NULL) {
-        cmpr = compare_inode(dentry, (*previous)->ht_next);
+        cmpr = dentry->inode - (*previous)->ht_next->inode;
         if (cmpr == 0) {
             return (*previous)->ht_next;
         } else if (cmpr < 0) {
@@ -137,18 +123,16 @@ static FDIRServerDentry *find_dentry_for_update(FDIRServerDentry **bucket,
 static FDIRServerDentry *find_inode_entry(FDIRServerDentry **bucket,
         const int64_t inode)
 {
-    int cmpr;
-    FDIRServerDentry target;
+    int64_t cmpr;
     FDIRServerDentry *dentry;
 
     if (*bucket == NULL) {
         return NULL;
     }
 
-    target.inode = inode;
     dentry = *bucket;
     while (dentry != NULL) {
-        cmpr = compare_inode(&target, dentry);
+        cmpr = inode - dentry->inode;
         if (cmpr == 0) {
             return dentry;
         } else if (cmpr < 0) {
@@ -228,6 +212,26 @@ FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
     SET_INODE_HT_BUCKET_AND_CTX(inode);
     pthread_mutex_lock(&ctx->lock);
     dentry = find_inode_entry(bucket, inode);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return dentry;
+}
+
+FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
+        const int64_t new_size, const bool force)
+{
+    FDIRServerDentry *dentry;
+
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
+    pthread_mutex_lock(&ctx->lock);
+    dentry = find_inode_entry(bucket, inode);
+    if (dentry != NULL) {
+        if (force || (dentry->stat.size < new_size)) {
+            dentry->stat.size = new_size;
+        }
+
+        dentry->stat.mtime = g_current_time;
+    }
     pthread_mutex_unlock(&ctx->lock);
 
     return dentry;

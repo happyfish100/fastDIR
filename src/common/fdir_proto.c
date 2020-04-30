@@ -213,6 +213,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "STAT_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP:
             return "STAT_BY_INODE_RESP";
+        case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
+            return "SET_DENTRY_SIZE_REQ";
+        case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP:
+            return "SET_DENTRY_SIZE_RESP";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
             return "LIST_DENTRY_FIRST_REQ";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
