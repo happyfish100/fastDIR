@@ -18,6 +18,7 @@
 #include "sf/sf_global.h"
 #include "server_global.h"
 #include "dentry.h"
+#include "inode_index.h"
 #include "data_thread.h"
 
 FDIRDataThreadVariables g_data_thread_vars;
@@ -270,8 +271,12 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             result = 0;
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
+            if ((record->dentry=inode_index_update_dentry(record)) != NULL) {
+                result = 0;
+            } else {
+                result = ENOENT;
+            }
             ignore_errno = 0;
-            result = 0;
             break;
         default:
             ignore_errno = 0;

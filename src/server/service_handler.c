@@ -356,43 +356,28 @@ static int server_check_and_parse_dentry(struct fast_task_info *task,
     return 0;
 }
 
-/*
-static void server_get_dentry_hashcode(FDIRPathInfo *path_info,
-        const bool include_last)
+static inline int alloc_record_object(struct fast_task_info *task)
 {
-    char logic_path[NAME_MAX + PATH_MAX + 2];
-    int len;
-    string_t *part;
-    string_t *end;
-    char *p;
-
-    p = logic_path;
-    memcpy(p, path_info->fullname.ns.str, path_info->fullname.ns.len);
-    p += path_info->fullname.ns.len;
-
-    if (include_last) {
-        end = path_info->paths + path_info->count;
-    } else {
-        end = path_info->paths + path_info->count - 1;
+    RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+            &((FDIRServerContext *)task->thread_data->arg)->
+            service.record_allocator);
+    if (RECORD == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "system busy, please try later");
+        return EBUSY;
     }
 
-    for (part=path_info->paths; part<end; part++) {
-        *p++ = '/';
-        memcpy(p, part->str, part->len);
-        p += part->len;
-    }
-
-    len = p - logic_path;
-    //logInfo("logic_path for hash code: %.*s", len, logic_path);
-    path_info->hash_code = simple_hash(logic_path, len);
+    return 0;
 }
 
-#define server_get_parent_hashcode(path_info)  \
-    server_get_dentry_hashcode(path_info, false)
 
-#define server_get_my_hashcode(path_info)  \
-    server_get_dentry_hashcode(path_info, true)
-*/
+static inline void free_record_object(struct fast_task_info *task)
+{
+    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)->
+            service.record_allocator, RECORD);
+    RECORD = NULL;
+}
 
 static int server_binlog_produce(struct fast_task_info *task)
 {
@@ -410,9 +395,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     fast_buffer_reset(&rbuffer->buffer);
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
 
-    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)->
-            service.record_allocator, RECORD);
-    RECORD = NULL;
+    free_record_object(task);
 
     if (result == 0) {
         rbuffer->args = task;
@@ -424,21 +407,6 @@ static int server_binlog_produce(struct fast_task_info *task)
         server_binlog_free_rbuffer(rbuffer);
         return result;
     }
-}
-
-static inline int alloc_record_object(struct fast_task_info *task)
-{
-    RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-            &((FDIRServerContext *)task->thread_data->arg)->
-            service.record_allocator);
-    if (RECORD == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "system busy, please try later");
-        return EBUSY;
-    }
-
-    return 0;
 }
 
 static inline void dentry_stat_output(struct fast_task_info *task,
@@ -464,6 +432,7 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
+        char path_info[NAME_MAX + PATH_MAX];
         int log_level;
 
         if (is_error) {
@@ -471,19 +440,27 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
         } else {
             log_level = LOG_WARNING;
         }
+
+        if (RECORD->options.path_info.flags == BINLOG_OPTIONS_PATH_ENABLED) {
+            snprintf(path_info, sizeof(path_info),
+                    ", namespace: %.*s, path: %.*s",
+                    record->fullname.ns.len, record->fullname.ns.str,
+                    record->fullname.path.len, record->fullname.path.str);
+        } else {
+            *path_info = '\0';
+        }
+
         log_it_ex(&g_log_context, log_level,
                 "file: "__FILE__", line: %d, "
                 "client ip: %s, %s dentry fail, "
                 "errno: %d, error info: %s, "
-                "namespace: %.*s, path: %.*s",
-                __LINE__, task->client_ip,
+                "inode: %"PRId64"%s", __LINE__, task->client_ip,
                 get_operation_caption(record->operation),
-                result, STRERROR(result),
-                record->fullname.ns.len, record->fullname.ns.str,
-                record->fullname.path.len, record->fullname.path.str);
+                result, STRERROR(result), record->inode, path_info);
     } else {
-        if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
-                record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
+        if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP ||
+                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP ||
+                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP)
         {
             dentry_stat_output(task, record->dentry);
         }
@@ -557,6 +534,7 @@ static int service_deal_create_dentry(struct fast_task_info *task)
                     sizeof(FDIRProtoCreateDEntryBody),
                     &RECORD->fullname)) != 0)
     {
+        free_record_object(task);
         return result;
     }
 
@@ -585,6 +563,7 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
                     0, sizeof(FDIRProtoRemoveDEntry),
                     &RECORD->fullname)) != 0)
     {
+        free_record_object(task);
         return result;
     }
 
@@ -649,30 +628,56 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 
 static int service_deal_set_dentry_size(struct fast_task_info *task)
 {
-    FDIRServerDentry *dentry;
     FDIRProtoSetModifyStatReq *req;
-    int64_t inode;
-    int64_t file_size;
     int result;
+    int64_t file_size;
 
-    if ((result=server_expect_body_length(task, sizeof(
-                        FDIRProtoSetModifyStatReq))) != 0)
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoSetModifyStatReq) + 1,
+                    sizeof(FDIRProtoSetModifyStatReq) + NAME_MAX)) != 0)
     {
         return result;
     }
 
     req = (FDIRProtoSetModifyStatReq *)REQUEST.body;
-    inode = buff2long(req->inode);
+    if (sizeof(FDIRProtoSetModifyStatReq) + req->ns_len !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoSetModifyStatReq) + req->ns_len);
+        return EINVAL;
+    }
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    RECORD->inode = buff2long(req->inode);
     file_size = buff2long(req->size);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
-    if ((dentry=inode_index_check_set_dentry_size(inode, file_size,
-                    req->force)) == NULL)
+    if ((RECORD->dentry=inode_index_check_set_dentry_size(RECORD->inode,
+                    file_size, req->force)) == NULL)
     {
+        free_record_object(task);
         return ENOENT;
     }
 
-    dentry_stat_output(task, dentry);
-    return 0;
+    RECORD->options.flags = 0;
+    RECORD->options.size = 1;
+    RECORD->options.mtime = 1;
+    RECORD->options.hash_code = 1;
+    RECORD->stat.size = RECORD->dentry->stat.size;
+    RECORD->stat.mtime = RECORD->dentry->stat.mtime;
+    RECORD->notify.func = record_deal_done_notify;
+    RECORD->notify.args = task;
+
+    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->data_version = __sync_add_and_fetch(
+                    &DATA_CURRENT_VERSION, 1);
+    return server_binlog_produce(task);
 }
 
 static int server_list_dentry_output(struct fast_task_info *task)

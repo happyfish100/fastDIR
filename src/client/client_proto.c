@@ -256,22 +256,25 @@ int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
-        const int64_t inode, const int64_t size, const bool force,
-        FDIRDEntryInfo *dentry)
+        const string_t *ns, const int64_t inode, const int64_t size,
+        const bool force, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
     FDIRProtoSetModifyStatReq *proto_dentry;
-    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSetModifyStatReq)];
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoSetModifyStatReq) + NAME_MAX];
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
+    int pkg_len;
     int result;
 
-    header = (FDIRProtoHeader *)out_buff;
-    proto_dentry = (FDIRProtoSetModifyStatReq *)(header + 1);
-    long2buff(inode, proto_dentry->inode);
-    long2buff(size, proto_dentry->size);
-    proto_dentry->force = force;
+    if (ns->len <= 0 || ns->len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid namespace length: %d, which <= 0 or > %d",
+                __LINE__, ns->len, NAME_MAX);
+        return EINVAL;
+    }
 
     if ((conn=client_ctx->conn_manager.get_master_connection(
                     client_ctx, &result)) == NULL)
@@ -279,12 +282,22 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         return result;
     }
 
+    header = (FDIRProtoHeader *)out_buff;
+    proto_dentry = (FDIRProtoSetModifyStatReq *)(header + 1);
+    long2buff(inode, proto_dentry->inode);
+    long2buff(size, proto_dentry->size);
+    proto_dentry->force = force;
+    proto_dentry->ns_len = ns->len;
+    memcpy(proto_dentry + 1, ns->str, ns->len);
+
+    pkg_len = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoSetModifyStatReq) + ns->len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
-            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+            pkg_len - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+    if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)

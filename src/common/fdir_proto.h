@@ -126,7 +126,9 @@ typedef struct fdir_proto_set_modify_stat_req {
     char inode[8];
     char size[8];   /* file size in bytes */
     char force;
-    char padding[7];
+    unsigned char ns_len;  //namespace length
+    char padding[6];
+    char ns_str[0];      //namespace for hash code
 } FDIRProtoSetModifyStatReq;
 
 typedef struct fdir_proto_stat_dentry_resp {

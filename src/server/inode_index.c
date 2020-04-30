@@ -236,3 +236,39 @@ FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
 
     return dentry;
 }
+
+static void update_dentry(FDIRServerDentry *dentry,
+        const FDIRBinlogRecord *record)
+{
+    if (record->options.mode) {
+        dentry->stat.mode = record->stat.mode;
+    }
+
+    if (record->options.ctime) {
+        dentry->stat.ctime = record->stat.ctime;
+    }
+
+    if (record->options.mtime) {
+        dentry->stat.mtime = record->stat.mtime;
+    }
+
+    if (record->options.size) {
+        dentry->stat.size = record->stat.size;
+    }
+}
+
+FDIRServerDentry *inode_index_update_dentry(
+        const FDIRBinlogRecord *record)
+{
+    FDIRServerDentry *dentry;
+
+    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
+    pthread_mutex_lock(&ctx->lock);
+    dentry = find_inode_entry(bucket, record->inode);
+    if (dentry != NULL) {
+        update_dentry(dentry, record);
+    }
+    pthread_mutex_unlock(&ctx->lock);
+
+    return dentry;
+}

@@ -23,20 +23,20 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
     int perm;
 
     perm = dentry->stat.mode & (~S_IFMT);
-    if ((dentry->stat.mode & S_IFSOCK)) {
-        type = "socket";
-    } else if ((dentry->stat.mode & S_IFLNK)) {
-        type = "symbolic link";
-    } else if ((dentry->stat.mode & S_IFREG)) {
-        type = "regular file";
-    } else if ((dentry->stat.mode & S_IFBLK)) {
-        type = "block device";
-    } else if ((dentry->stat.mode & S_IFDIR)) {
-        type = "directory";
+    if ((dentry->stat.mode & S_IFIFO)) {
+        type = "FIFO";
     } else if ((dentry->stat.mode & S_IFCHR)) {
         type = "character device";
-    } else if ((dentry->stat.mode & S_IFIFO)) {
-        type = "FIFO";
+    } else if ((dentry->stat.mode & S_IFDIR)) {
+        type = "directory";
+    } else if ((dentry->stat.mode & S_IFBLK)) {
+        type = "block device";
+    } else if ((dentry->stat.mode & S_IFREG)) {
+        type = "regular file";
+    } else if ((dentry->stat.mode & S_IFLNK)) {
+        type = "symbolic link";
+    } else if ((dentry->stat.mode & S_IFSOCK)) {
+        type = "socket";
     } else {
         type = "UNKOWN";
     }
@@ -46,7 +46,7 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
     formatDatetime(dentry->stat.mtime, "%Y-%m-%d %H:%M:%S",
             mtime, sizeof(mtime));
     printf("type: %s, inode: %"PRId64", size: %"PRId64", create time: %s, "
-            "modify time: %s, perm: %03o\n", type, dentry->inode,
+            "modify time: %s, perm: 0%03o\n", type, dentry->inode,
             dentry->stat.size, ctime, mtime, perm);
 }
 

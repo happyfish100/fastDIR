@@ -72,8 +72,8 @@ int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
-        const int64_t inode, const int64_t size, const bool force,
-        FDIRDEntryInfo *dentry);
+        const string_t *ns, const int64_t inode, const int64_t size,
+        const bool force, FDIRDEntryInfo *dentry);
 
 int fdir_client_list_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);

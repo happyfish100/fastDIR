@@ -3,6 +3,7 @@
 #define _INODE_INDEX_H
 
 #include "fastcommon/fast_mblock.h"
+#include "binlog/binlog_types.h"
 #include "server_types.h"
 
 typedef struct {
@@ -22,6 +23,9 @@ extern "C" {
 
     FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
         const int64_t new_size, const bool force);
+
+    FDIRServerDentry *inode_index_update_dentry(
+            const FDIRBinlogRecord *record);
 
 #ifdef __cplusplus
 }
