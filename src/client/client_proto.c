@@ -212,19 +212,18 @@ int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
 int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
 {
+    ConnectionInfo *conn;
     FDIRProtoHeader *header;
     FDIRProtoDEntryInfo *proto_dentry;
-    int out_bytes;
-    ConnectionInfo *conn;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
         + NAME_MAX + PATH_MAX];
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
+    int out_bytes;
     int result;
 
     header = (FDIRProtoHeader *)out_buff;
-    proto_dentry = (FDIRProtoDEntryInfo *)(out_buff +
-            sizeof(FDIRProtoHeader));
+    proto_dentry = (FDIRProtoDEntryInfo *)(header + 1);
     if ((result=client_check_set_proto_dentry(fullname, proto_dentry)) != 0) {
         return result;
     }
@@ -245,6 +244,49 @@ int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
     if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
+                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+    {
+        proto_to_dentry(&proto_stat, dentry);
+    } else {
+        log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
+        const int64_t inode, const int64_t size, const bool force,
+        FDIRDEntryInfo *dentry)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoSetModifyStatReq *proto_dentry;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSetModifyStatReq)];
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    proto_dentry = (FDIRProtoSetModifyStatReq *)(header + 1);
+    long2buff(inode, proto_dentry->inode);
+    long2buff(size, proto_dentry->size);
+    proto_dentry->force = force;
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
         proto_to_dentry(&proto_stat, dentry);
