@@ -289,7 +289,6 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     proto_dentry->force = force;
     proto_dentry->ns_len = ns->len;
     memcpy(proto_dentry + 1, ns->str, ns->len);
-
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSetModifyStatReq) + ns->len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,

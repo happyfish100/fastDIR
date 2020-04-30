@@ -57,7 +57,7 @@ typedef struct fdir_binlog_record {
                     bool pt: 1;  //path
                 };
             } path_info;
-            bool hash_code : 1;
+            bool hash_code : 1;  //required field, for unpack check
             bool user_data : 1;
             bool extra_data: 1;
             bool mode : 1;

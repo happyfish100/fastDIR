@@ -6,6 +6,9 @@
 #include "binlog/binlog_types.h"
 #include "server_types.h"
 
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE    1
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME   2
+
 typedef struct {
     pthread_mutex_t lock;
 } InodeSharedContext;
@@ -22,7 +25,7 @@ extern "C" {
     FDIRServerDentry *inode_index_get_dentry(const int64_t inode);
 
     FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
-        const int64_t new_size, const bool force);
+            const int64_t new_size, const bool force, int *modified_flags);
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);

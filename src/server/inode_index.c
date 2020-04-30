@@ -218,19 +218,26 @@ FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
 }
 
 FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
-        const int64_t new_size, const bool force)
+        const int64_t new_size, const bool force, int *modified_flags)
 {
     FDIRServerDentry *dentry;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
+    *modified_flags = 0;
     pthread_mutex_lock(&ctx->lock);
     dentry = find_inode_entry(bucket, inode);
     if (dentry != NULL) {
         if (force || (dentry->stat.size < new_size)) {
-            dentry->stat.size = new_size;
+            if (dentry->stat.size != new_size) {
+                dentry->stat.size = new_size;
+                *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+            }
         }
 
-        dentry->stat.mtime = g_current_time;
+        if (dentry->stat.mtime != g_current_time) {
+            dentry->stat.mtime = g_current_time;
+            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
+        }
     }
     pthread_mutex_unlock(&ctx->lock);
 

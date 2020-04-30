@@ -223,11 +223,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_PATH,
                 record->fullname.path);
-
-        fast_buffer_append(buffer, " %s=%u",
-                BINLOG_RECORD_FIELD_NAME_HASH_CODE,
-                record->hash_code);
     }
+
+    fast_buffer_append(buffer, " %s=%u",
+            BINLOG_RECORD_FIELD_NAME_HASH_CODE,
+            record->hash_code);
 
     if (record->options.extra_data) {
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_EXTRA_DATA,

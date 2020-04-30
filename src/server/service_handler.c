@@ -432,7 +432,6 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
-        char path_info[NAME_MAX + PATH_MAX];
         int log_level;
 
         if (is_error) {
@@ -441,26 +440,19 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
             log_level = LOG_WARNING;
         }
 
-        if (RECORD->options.path_info.flags == BINLOG_OPTIONS_PATH_ENABLED) {
-            snprintf(path_info, sizeof(path_info),
-                    ", namespace: %.*s, path: %.*s",
-                    record->fullname.ns.len, record->fullname.ns.str,
-                    record->fullname.path.len, record->fullname.path.str);
-        } else {
-            *path_info = '\0';
-        }
-
         log_it_ex(&g_log_context, log_level,
                 "file: "__FILE__", line: %d, "
                 "client ip: %s, %s dentry fail, "
                 "errno: %d, error info: %s, "
-                "inode: %"PRId64"%s", __LINE__, task->client_ip,
+                "inode: %"PRId64", namespace: %.*s, path: %.*s",
+                __LINE__, task->client_ip,
                 get_operation_caption(record->operation),
-                result, STRERROR(result), record->inode, path_info);
+                result, STRERROR(result), record->inode,
+                record->fullname.ns.len, record->fullname.ns.str,
+                record->fullname.path.len, record->fullname.path.str);
     } else {
         if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP ||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP ||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP)
+                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP)
         {
             dentry_stat_output(task, record->dentry);
         }
@@ -631,6 +623,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     FDIRProtoSetModifyStatReq *req;
     int result;
     int64_t file_size;
+    int modified_flags;
 
     if ((result=server_check_body_length(task,
                     sizeof(FDIRProtoSetModifyStatReq) + 1,
@@ -658,25 +651,32 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     file_size = buff2long(req->size);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     if ((RECORD->dentry=inode_index_check_set_dentry_size(RECORD->inode,
-                    file_size, req->force)) == NULL)
+                    file_size, req->force, &modified_flags)) == NULL)
     {
         free_record_object(task);
         return ENOENT;
     }
 
-    RECORD->options.flags = 0;
-    RECORD->options.size = 1;
-    RECORD->options.mtime = 1;
-    RECORD->options.hash_code = 1;
-    RECORD->stat.size = RECORD->dentry->stat.size;
-    RECORD->stat.mtime = RECORD->dentry->stat.mtime;
-    RECORD->notify.func = record_deal_done_notify;
-    RECORD->notify.args = task;
+    if (modified_flags == 0) {
+        dentry_stat_output(task, RECORD->dentry);
+        free_record_object(task);
+        return 0;
+    }
 
+    RECORD->options.flags = 0;
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
+        RECORD->options.size = 1;
+        RECORD->stat.size = RECORD->dentry->stat.size;
+    }
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
+        RECORD->options.mtime = 1;
+        RECORD->stat.mtime = RECORD->dentry->stat.mtime;
+    }
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
-    RECORD->data_version = __sync_add_and_fetch(
-                    &DATA_CURRENT_VERSION, 1);
+    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+
+    dentry_stat_output(task, RECORD->dentry);
     return server_binlog_produce(task);
 }
 
