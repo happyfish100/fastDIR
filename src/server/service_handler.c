@@ -475,7 +475,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
 {
     int result;
 
-    RECORD->notify.func = record_deal_done_notify;
+    RECORD->notify.func = record_deal_done_notify; //call by data thread
     RECORD->notify.args = task;
 
     TASK_ARG->context.deal_func = handle_record_deal_done;
@@ -657,12 +657,13 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
         return ENOENT;
     }
 
-    if (modified_flags == 0) {
+    if (modified_flags == 0) {  //no fields changed
         dentry_stat_output(task, RECORD->dentry);
         free_record_object(task);
         return 0;
     }
 
+    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
     RECORD->options.flags = 0;
     if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
         RECORD->options.size = 1;
@@ -673,10 +674,9 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
         RECORD->stat.mtime = RECORD->dentry->stat.mtime;
     }
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
     RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-
     dentry_stat_output(task, RECORD->dentry);
+
     return server_binlog_produce(task);
 }
 
