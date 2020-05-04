@@ -72,15 +72,128 @@ static FLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
     return new_region;
 }
 
-int flock_lock(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
-        const int64_t length, FLockTask *ftask)
+static inline void add_to_locked(FLockTask *ftask)
+{
+    if (ftask->type == LOCK_SH) {
+        ftask->region->locked.reads++;
+    } else {
+        ftask->region->locked.writes++;
+    }
+    ftask->which_queue = FDIR_FLOCK_TASK_IN_LOCKED_QUEUE;
+    fc_list_add_tail(&ftask->dlink, &ftask->region->locked.head);
+}
+
+static inline void remove_from_locked(FLockTask *ftask)
+{
+    if (ftask->type == LOCK_SH) {
+        ftask->region->locked.reads--;
+    } else {
+        ftask->region->locked.writes--;
+    }
+    ftask->which_queue = FDIR_FLOCK_TASK_NOT_IN_QUEUE;
+    fc_list_del_init(&ftask->dlink);
+}
+
+static inline bool is_region_overlap(FLockRegion *r1, FLockRegion *r2)
+{
+    if (r1->offset < r2->offset) {
+        return (r1->length == 0) || (r1->offset + r1->length > r2->offset);
+    } else if (r1->offset == r2->offset) {
+        return true;
+    } else {
+        return (r2->length == 0) || (r2->offset + r2->length > r1->offset);
+    }
+}
+
+static inline FLockTask *get_conflict_flock_task(FLockEntry *entry,
+        FLockTask *ftask)
 {
     FLockRegion *region;
+    fc_list_for_each_entry(region, &entry->regions, dlink) {
+        if (is_region_overlap(ftask->region, region)) {
+            if ((region->locked.writes > 0) || (ftask->type == LOCK_EX &&
+                        region->locked.reads > 0))
+            {
+                return fc_list_first_entry(&region->locked.head,
+                        FLockTask, dlink);
+            }
+        } else if ((ftask->region->length > 0) && (ftask->region->offset +
+                    ftask->region->length < region->offset))
+        {
+            return NULL;
+        }
+    }
 
-    if ((region=get_region(ctx, entry, offset, length, ftask)) == NULL) {
+    return NULL;
+}
+
+int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
+        const int64_t length, FLockTask *ftask)
+{
+    bool empty;
+
+    empty = fc_list_empty(&entry->regions);
+    if ((ftask->region=get_region(ctx, entry, offset,
+                    length, ftask)) == NULL)
+    {
         return ENOMEM;
     }
 
-    //TODO
-    return 0;
+    if (empty || get_conflict_flock_task(entry, ftask) == NULL) {
+        add_to_locked(ftask);
+        return 0;
+    }
+
+    ftask->which_queue = FDIR_FLOCK_TASK_IN_WAITING_QUEUE;
+    fc_list_add_tail(&ftask->dlink, &entry->waiting_tasks);
+    return ENOLCK;
+}
+
+static inline void awake_waiting_task(FLockEntry *entry, FLockTask *ftask)
+{
+#define MAX_WAKED_TASK_COUNT_ONCE 64
+    FLockTask *wait;
+    struct {
+        FLockTask *tasks[MAX_WAKED_TASK_COUNT_ONCE];
+        int count;
+    } waked;
+    int i;
+
+    do {
+        waked.count = 0;
+        fc_list_for_each_entry(wait, &entry->waiting_tasks, dlink) {
+            if (get_conflict_flock_task(entry, wait) != NULL) {
+                break;
+            }
+
+            waked.tasks[waked.count++] = wait;
+            if (waked.count == MAX_WAKED_TASK_COUNT_ONCE) {
+                break;
+            }
+        }
+
+        for (i=0; i<waked.count; i++) {
+            fc_list_del_init(&waked.tasks[i]->dlink);
+            add_to_locked(waked.tasks[i]);
+            //TODO notify task
+        }
+    } while (waked.count == MAX_WAKED_TASK_COUNT_ONCE);
+}
+
+void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask)
+{
+    switch (ftask->which_queue) {
+        case FDIR_FLOCK_TASK_IN_LOCKED_QUEUE:
+            remove_from_locked(ftask);
+            if (!fc_list_empty(&entry->waiting_tasks)) {
+                awake_waiting_task(entry, ftask);
+            }
+            break;
+        case FDIR_FLOCK_TASK_IN_WAITING_QUEUE:
+            ftask->which_queue = FDIR_FLOCK_TASK_NOT_IN_QUEUE;
+            fc_list_del_init(&ftask->dlink);
+            break;
+        default:
+            break;
+    }
 }

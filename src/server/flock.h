@@ -6,11 +6,16 @@
 #include "fastcommon/fast_task_queue.h"
 #include "server_types.h"
 
+#define FDIR_FLOCK_TASK_NOT_IN_QUEUE      0
+#define FDIR_FLOCK_TASK_IN_LOCKED_QUEUE   1
+#define FDIR_FLOCK_TASK_IN_WAITING_QUEUE  2
+
 struct flock_region;
 
 typedef struct flock_task {
     /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
-    short  type;
+    short type;
+    short which_queue;
     struct flock_region *region;
     struct fast_task_info *task;
     struct fc_list_head dlink;
@@ -30,7 +35,7 @@ typedef struct flock_region {
 } FLockRegion;
 
 typedef struct flock_entry {
-    struct fc_list_head regions;        //element: FLockRegion
+    struct fc_list_head regions; //FLockRegion order by offset and length
     struct fc_list_head waiting_tasks;  //element: FLockTask
 } FLockEntry;
 
@@ -54,6 +59,7 @@ extern "C" {
         entry = (FLockEntry *)fast_mblock_alloc_object(&ctx->allocators.entry);
         if (entry != NULL) {
             FC_INIT_LIST_HEAD(&entry->regions);
+            FC_INIT_LIST_HEAD(&entry->waiting_tasks);
         }
         return entry;
     }
@@ -63,10 +69,10 @@ extern "C" {
         fast_mblock_free_object(&ctx->allocators.entry, entry);
     }
 
-    int flock_lock(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
+    int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
             const int64_t length, FLockTask *ftask);
 
-    int flock_unlock(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
+    void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
 
 #ifdef __cplusplus
 }
