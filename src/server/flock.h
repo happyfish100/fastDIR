@@ -6,9 +6,10 @@
 #include "fastcommon/fast_task_queue.h"
 #include "server_types.h"
 
-#define FDIR_FLOCK_TASK_NOT_IN_QUEUE      0
-#define FDIR_FLOCK_TASK_IN_LOCKED_QUEUE   1
-#define FDIR_FLOCK_TASK_IN_WAITING_QUEUE  2
+#define FDIR_FLOCK_TASK_NOT_IN_QUEUE             0
+#define FDIR_FLOCK_TASK_IN_LOCKED_QUEUE          1
+#define FDIR_FLOCK_TASK_IN_REGION_WAITING_QUEUE  2
+#define FDIR_FLOCK_TASK_IN_GLOBAL_WAITING_QUEUE  3
 
 struct flock_region;
 
@@ -30,13 +31,15 @@ typedef struct flock_region {
         int writes;
         struct fc_list_head head;  //element: FLockTask
     } locked;
+    struct fc_list_head waiting;  //element: FLockTask for local
 
+    int ref_count;
     struct fc_list_head dlink;
 } FLockRegion;
 
 typedef struct flock_entry {
     struct fc_list_head regions; //FLockRegion order by offset and length
-    struct fc_list_head waiting_tasks;  //element: FLockTask
+    struct fc_list_head waiting_tasks;  //element: FLockTask for global
 } FLockEntry;
 
 typedef struct flock_context {
