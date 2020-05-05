@@ -19,6 +19,7 @@ typedef struct flock_task {
     short which_queue;
     struct flock_region *region;
     struct fast_task_info *task;
+    FDIRServerDentry *dentry;
     struct fc_list_head dlink;
 } FLockTask;
 

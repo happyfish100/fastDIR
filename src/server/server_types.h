@@ -40,6 +40,7 @@
 #define RESPONSE_STATUS   RESPONSE.header.status
 #define REQUEST_STATUS    REQUEST.header.status
 #define RECORD            TASK_ARG->context.service.record
+#define FLOCK_TASK        TASK_ARG->context.service.ftask
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
@@ -56,6 +57,7 @@ typedef struct fdir_path_info {
 } FDIRPathInfo;
 
 struct fdir_dentry_context;
+struct flock_entry;
 typedef struct fdir_server_dentry {
     int64_t inode;
     unsigned int hash_code;   //data thread dispach & mutex lock
@@ -64,6 +66,7 @@ typedef struct fdir_server_dentry {
     string_t user_data;      //user defined data
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
+    struct flock_entry *flock_entry;
     struct fdir_server_dentry *ht_next;  //for inode hash table;
 } FDIRServerDentry;
 
@@ -175,6 +178,7 @@ typedef struct fdir_slave_replication_ptr_array {
 } FDIRSlaveReplicationPtrArray;
 
 struct fdir_binlog_record;
+struct flock_task;
 
 typedef struct server_task_arg {
     volatile int64_t task_version;
@@ -198,6 +202,7 @@ typedef struct server_task_arg {
                 } dentry_list_cache; //for dentry_list
 
 
+                struct flock_task *ftask;  //for flock
                 struct fdir_binlog_record *record;
                 volatile int waiting_rpc_count;
             } service;
@@ -220,6 +225,7 @@ typedef struct fdir_server_context {
     union {
         struct {
             struct fast_mblock_man record_allocator;
+            struct fast_mblock_man ftask_allocator;   //for flock
         } service;
 
         struct {

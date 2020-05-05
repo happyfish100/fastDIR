@@ -8,6 +8,11 @@
 #include "inode_index.h"
 
 typedef struct {
+    pthread_mutex_t lock;
+    FLockContext flock_ctx;
+} InodeSharedContext;
+
+typedef struct {
     int count;
     InodeSharedContext *contexts;
 } InodeSharedContextArray;
@@ -43,6 +48,10 @@ static int init_inode_shared_ctx_array()
             logError("file: "__FILE__", line: %d, "
                     "init_pthread_lock fail, errno: %d, error info: %s",
                     __LINE__, result, STRERROR(result));
+            return result;
+        }
+
+        if ((result=flock_init(&ctx->flock_ctx)) != 0) {
             return result;
         }
     }
@@ -145,16 +154,21 @@ static FDIRServerDentry *find_inode_entry(FDIRServerDentry **bucket,
     return NULL;
 }
 
-#define SET_INODE_HT_BUCKET_AND_CTX(inode)  \
+#define SET_INODE_HASHTABLE_CTX(inode)  \
     int64_t bucket_index;       \
     InodeSharedContext *ctx;    \
-    FDIRServerDentry **bucket;  \
-    \
     do {  \
         bucket_index =  inode % inode_hashtable.capacity;  \
-        bucket = inode_hashtable.buckets + bucket_index;   \
         ctx = inode_shared_ctx_array.contexts + bucket_index %    \
             inode_shared_ctx_array.count;   \
+    } while (0)
+
+
+#define SET_INODE_HT_BUCKET_AND_CTX(inode)  \
+    FDIRServerDentry **bucket;  \
+    SET_INODE_HASHTABLE_CTX(inode);  \
+    do {  \
+        bucket = inode_hashtable.buckets + bucket_index;   \
     } while (0)
 
 
@@ -278,4 +292,39 @@ FDIRServerDentry *inode_index_update_dentry(
     pthread_mutex_unlock(&ctx->lock);
 
     return dentry;
+}
+
+int inode_index_flock_apply(FLockTask *ftask, const int64_t offset,
+        const int64_t length)
+{
+    int result;
+
+    SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
+    pthread_mutex_lock(&ctx->lock);
+    do {
+        if (ftask->dentry->flock_entry == NULL) {
+            ftask->dentry->flock_entry = flock_alloc_init_entry(
+                    &ctx->flock_ctx);
+            if (ftask->dentry->flock_entry == NULL) {
+                result = ENOMEM;
+                break;
+            }
+        }
+
+        result = flock_apply(&ctx->flock_ctx, ftask->dentry->flock_entry,
+                offset, length, ftask);
+    } while (0);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return result;
+}
+
+void inode_index_flock_release(FLockTask *ftask)
+{
+    SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
+    pthread_mutex_lock(&ctx->lock);
+    if (ftask->dentry->flock_entry != NULL) {
+        flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
+    }
+    pthread_mutex_unlock(&ctx->lock);
 }

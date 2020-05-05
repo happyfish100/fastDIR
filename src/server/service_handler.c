@@ -45,11 +45,21 @@ int service_handler_destroy()
     return 0;
 }
 
+static inline void release_flock_task(struct fast_task_info *task)
+{
+    inode_index_flock_release(FLOCK_TASK);
+    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)
+            ->service.ftask_allocator, FLOCK_TASK);
+    FLOCK_TASK = NULL;
+}
+
 void service_task_finish_cleanup(struct fast_task_info *task)
 {
     //FDIRServerTaskArg *task_arg;
-
     //task_arg = (FDIRServerTaskArg *)task->arg;
+    if (FLOCK_TASK != NULL) {
+        release_flock_task(task);
+    }
 
     dentry_array_free(&DENTRY_LIST_CACHE.array);
 
@@ -1004,6 +1014,13 @@ void *service_alloc_thread_extra_data(const int thread_index)
     memset(server_context, 0, sizeof(FDIRServerContext));
     if (fast_mblock_init_ex2(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
+                NULL, NULL, false, NULL, NULL, NULL) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+    if (fast_mblock_init_ex2(&server_context->service.ftask_allocator,
+                "flock_task", sizeof(FLockTask), 4 * 1024,
                 NULL, NULL, false, NULL, NULL, NULL) != 0)
     {
         free(server_context);

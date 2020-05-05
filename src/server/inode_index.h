@@ -5,13 +5,10 @@
 #include "fastcommon/fast_mblock.h"
 #include "binlog/binlog_types.h"
 #include "server_types.h"
+#include "flock.h"
 
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE    1
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME   2
-
-typedef struct {
-    pthread_mutex_t lock;
-} InodeSharedContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,7 +18,9 @@ extern "C" {
     void inode_index_destroy();
 
     int inode_index_add_dentry(FDIRServerDentry *dentry);
+
     int inode_index_del_dentry(FDIRServerDentry *dentry);
+
     FDIRServerDentry *inode_index_get_dentry(const int64_t inode);
 
     FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
@@ -29,6 +28,11 @@ extern "C" {
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);
+
+    int inode_index_flock_apply(FLockTask *ftask, const int64_t offset,
+            const int64_t length);
+
+    void inode_index_flock_release(FLockTask *ftask);
 
 #ifdef __cplusplus
 }
