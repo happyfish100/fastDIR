@@ -158,8 +158,10 @@ int main(int argc, char *argv[])
         sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
         sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 
-        result = sf_service_init(service_alloc_thread_extra_data, NULL,
-                NULL, fdir_proto_set_body_length, service_deal_task,
+        result = sf_service_init_ex(&g_sf_context,
+                service_alloc_thread_extra_data, NULL,
+                service_accep_done_callback,
+                fdir_proto_set_body_length, service_deal_task,
                 service_task_finish_cleanup, NULL, 1000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
         if (result != 0) {

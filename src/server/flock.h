@@ -13,14 +13,21 @@
 
 struct flock_region;
 
+typedef struct flock_owner {
+    pid_t   pid;
+    int64_t tid;  //thread id
+} FlockOwner;
+
 typedef struct flock_task {
     /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
     short type;
     short which_queue;
+    FlockOwner owner;
     struct flock_region *region;
     struct fast_task_info *task;
     FDIRServerDentry *dentry;
-    struct fc_list_head dlink;
+    struct fc_list_head flink;  //for flock queue
+    struct fc_list_head clink;  //for connection double link chain
 } FLockTask;
 
 typedef struct flock_region {
@@ -47,6 +54,7 @@ typedef struct flock_context {
     struct {
         struct fast_mblock_man entry;
         struct fast_mblock_man region;
+        struct fast_mblock_man ftask;
     } allocators;
 } FLockContext;
 
@@ -57,15 +65,9 @@ extern "C" {
     int flock_init(FLockContext *ctx);
     void flock_destroy(FLockContext *ctx);
 
-    static inline FLockEntry *flock_alloc_init_entry(FLockContext *ctx)
+    static inline FLockEntry *flock_alloc_entry(FLockContext *ctx)
     {
-        FLockEntry *entry;
-        entry = (FLockEntry *)fast_mblock_alloc_object(&ctx->allocators.entry);
-        if (entry != NULL) {
-            FC_INIT_LIST_HEAD(&entry->regions);
-            FC_INIT_LIST_HEAD(&entry->waiting_tasks);
-        }
-        return entry;
+        return (FLockEntry *)fast_mblock_alloc_object(&ctx->allocators.entry);
     }
 
     static inline void flock_free_entry(FLockContext *ctx, FLockEntry *entry)
@@ -73,8 +75,18 @@ extern "C" {
         fast_mblock_free_object(&ctx->allocators.entry, entry);
     }
 
+    static inline FLockTask *flock_alloc_ftask(FLockContext *ctx)
+    {
+        return (FLockTask *)fast_mblock_alloc_object(&ctx->allocators.ftask);
+    }
+
+    static inline void flock_free_ftask(FLockContext *ctx, FLockTask *ftask)
+    {
+        fast_mblock_free_object(&ctx->allocators.ftask, ftask);
+    }
+
     int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
-            const int64_t length, FLockTask *ftask);
+            const int64_t length, FLockTask *ftask, const bool block);
 
     void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
 

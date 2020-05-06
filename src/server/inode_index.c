@@ -294,29 +294,51 @@ FDIRServerDentry *inode_index_update_dentry(
     return dentry;
 }
 
-int inode_index_flock_apply(FLockTask *ftask, const int64_t offset,
-        const int64_t length)
+FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
+        const int64_t offset, const int64_t length, const bool block,
+        const FlockOwner *owner, struct fast_task_info *task, int *result)
 {
-    int result;
+    FDIRServerDentry *dentry;
+    FLockTask *ftask;
 
-    SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
     pthread_mutex_lock(&ctx->lock);
     do {
-        if (ftask->dentry->flock_entry == NULL) {
-            ftask->dentry->flock_entry = flock_alloc_init_entry(
-                    &ctx->flock_ctx);
-            if (ftask->dentry->flock_entry == NULL) {
-                result = ENOMEM;
+        if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
+            *result = ENOENT;
+            ftask = NULL;
+            break;
+        }
+
+        if (dentry->flock_entry == NULL) {
+            dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+            if (dentry->flock_entry == NULL) {
+                *result = ENOMEM;
+                ftask = NULL;
                 break;
             }
         }
 
-        result = flock_apply(&ctx->flock_ctx, ftask->dentry->flock_entry,
-                offset, length, ftask);
+        if ((ftask=flock_alloc_ftask(&ctx->flock_ctx)) == NULL) {
+            *result = ENOMEM;
+            ftask = NULL;
+            break;
+        }
+
+        ftask->type = type;
+        ftask->owner = *owner;
+        ftask->dentry = dentry;
+        ftask->task = task;
+        *result = flock_apply(&ctx->flock_ctx, ftask->dentry->flock_entry,
+                offset, length, ftask, block);
+        if (!(*result == 0 || *result == ENOLCK)) {
+            flock_free_ftask(&ctx->flock_ctx, ftask);
+            ftask = NULL;
+        }
     } while (0);
     pthread_mutex_unlock(&ctx->lock);
 
-    return result;
+    return ftask;
 }
 
 void inode_index_flock_release(FLockTask *ftask)
@@ -326,5 +348,6 @@ void inode_index_flock_release(FLockTask *ftask)
     if (ftask->dentry->flock_entry != NULL) {
         flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
     }
+    flock_free_ftask(&ctx->flock_ctx, ftask);
     pthread_mutex_unlock(&ctx->lock);
 }

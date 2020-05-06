@@ -29,8 +29,9 @@ extern "C" {
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);
 
-    int inode_index_flock_apply(FLockTask *ftask, const int64_t offset,
-            const int64_t length);
+    FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
+            const int64_t offset, const int64_t length, const bool block,
+            const FlockOwner *owner, struct fast_task_info *task, int *result);
 
     void inode_index_flock_release(FLockTask *ftask);
 

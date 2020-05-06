@@ -26,7 +26,7 @@
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        32
 #define FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ        33
 #define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       34
-#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35  //TODO
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      36
 
 #define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     37  //modified by inode
@@ -145,11 +145,15 @@ typedef struct fdir_proto_flock_dentry_req {
     char inode[8];
     char offset[8];  /* lock region offset, -1 for file end */
     char length[8];  /* lock region  length, 0 for until end of file */
-    char owner[8];
-    char type[1];    /* lock type, LOCK_SH for read shared lock,
+    struct {
+        char tid[8];  //thread id
+        char pid[4];
+    } owner;
+    char operation;   /* lock operation, LOCK_SH for read shared lock,
                         LOCK_EX for write exclusive lock,
+                        LOCK_NB for non-block with LOCK_SH or LOCK_EX,
                         LOCK_UN for unlock */
-    char padding[7];
+    char padding[3];
 } FDIRProtoFlockDEntryReq;
 
 typedef struct fdir_proto_list_dentry_first_body {

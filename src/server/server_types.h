@@ -9,6 +9,7 @@
 #include "fastcommon/fast_allocator.h"
 #include "fastcommon/uniq_skiplist.h"
 #include "fastcommon/server_id_func.h"
+#include "fastcommon/fc_list.h"
 #include "common/fdir_types.h"
 
 #define FDIR_CLUSTER_ID_BITS                 10
@@ -40,7 +41,7 @@
 #define RESPONSE_STATUS   RESPONSE.header.status
 #define REQUEST_STATUS    REQUEST.header.status
 #define RECORD            TASK_ARG->context.service.record
-#define FLOCK_TASK        TASK_ARG->context.service.ftask
+#define FTASK_HEAD_PTR    &TASK_ARG->context.service.ftasks
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
@@ -201,8 +202,7 @@ typedef struct server_task_arg {
                     time_t expires;  //expire time
                 } dentry_list_cache; //for dentry_list
 
-
-                struct flock_task *ftask;  //for flock
+                struct fc_list_head ftasks;  //for flock
                 struct fdir_binlog_record *record;
                 volatile int waiting_rpc_count;
             } service;
@@ -225,7 +225,6 @@ typedef struct fdir_server_context {
     union {
         struct {
             struct fast_mblock_man record_allocator;
-            struct fast_mblock_man ftask_allocator;   //for flock
         } service;
 
         struct {

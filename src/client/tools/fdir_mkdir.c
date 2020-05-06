@@ -25,7 +25,6 @@ int main(int argc, char *argv[])
 	int result;
     int base;
     char *endptr;
-    const int flags = 0;
     mode_t mode = 0755;
     FDIRDEntryInfo dentry;
 
@@ -77,5 +76,5 @@ int main(int argc, char *argv[])
     FC_SET_STRING(fullname.ns, ns);
     FC_SET_STRING(fullname.path, path);
     return fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
-                    &fullname, flags, mode, &dentry);
+                    &fullname, mode, &dentry);
 }

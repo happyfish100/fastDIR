@@ -45,20 +45,33 @@ int service_handler_destroy()
     return 0;
 }
 
-static inline void release_flock_task(struct fast_task_info *task)
+void service_accep_done_callback(struct fast_task_info *task,
+        const bool bInnerPort)
 {
-    inode_index_flock_release(FLOCK_TASK);
-    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)
-            ->service.ftask_allocator, FLOCK_TASK);
-    FLOCK_TASK = NULL;
+    logInfo("file: "__FILE__", line: %d, func: %s",
+            __LINE__, __FUNCTION__);
+
+    FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
+}
+
+static inline void release_flock_task(struct fast_task_info *task,
+        FLockTask *flck)
+{
+    fc_list_del_init(&flck->clink);
+    inode_index_flock_release(flck);
 }
 
 void service_task_finish_cleanup(struct fast_task_info *task)
 {
     //FDIRServerTaskArg *task_arg;
     //task_arg = (FDIRServerTaskArg *)task->arg;
-    if (FLOCK_TASK != NULL) {
-        release_flock_task(task);
+
+    if (!fc_list_empty(FTASK_HEAD_PTR)) {
+        FLockTask *flck;
+        FLockTask *next;
+        fc_list_for_each_entry_safe(flck, next, FTASK_HEAD_PTR, clink) {
+            release_flock_task(task, flck);
+        }
     }
 
     dentry_array_free(&DENTRY_LIST_CACHE.array);
@@ -690,6 +703,105 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     return server_binlog_produce(task);
 }
 
+
+static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
+        const int64_t inode, const int64_t offset, const int64_t length)
+{
+    int sub;
+    if ((sub=flck->owner.pid - owner->pid) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(flck->owner.tid, owner->tid)) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(flck->dentry->inode, inode)) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(flck->region->offset, offset)) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(flck->region->length, length)) != 0) {
+        return sub;
+    }
+
+    return 0;
+}
+
+static int flock_unlock_dentry(struct fast_task_info *task,
+        const FlockOwner *owner, const int64_t inode, const int64_t offset,
+        const int64_t length)
+{
+    FLockTask *flck;
+    fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
+        if (flck->which_queue != FDIR_FLOCK_TASK_IN_LOCKED_QUEUE) {
+            continue;
+        }
+
+        if (compare_flock_task(flck, owner, inode, offset, length) == 0) {
+            release_flock_task(task, flck);
+            break;
+        }
+    }
+
+    return ENOENT;
+}
+
+static int service_deal_flock_dentry(struct fast_task_info *task)
+{
+    FDIRProtoFlockDEntryReq *req;
+    FLockTask *ftask;
+    int result;
+    short type;
+    FlockOwner owner;
+    int64_t inode;
+    int64_t offset;
+    int64_t length;
+    short operation;
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoFlockDEntryReq))) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
+    inode = buff2long(req->inode);
+    offset = buff2long(req->offset);
+    length = buff2long(req->length);
+    owner.tid = buff2long(req->owner.tid);
+    owner.pid = buff2int(req->owner.pid);
+    operation = req->operation;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
+    if (operation & LOCK_UN) {
+        return flock_unlock_dentry(task, &owner, inode, offset, length);
+    }
+
+    if (operation & LOCK_EX) {
+        type = LOCK_EX;
+    } else if (operation & LOCK_SH) {
+        type = LOCK_SH;
+    } else {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid operation: %d", operation);
+        return EINVAL;
+    }
+
+    if ((ftask=inode_index_flock_apply(inode, type, offset, length,
+                    (operation & LOCK_NB) == 0, &owner, task,
+                    &result)) == NULL)
+    {
+        return result;
+    }
+
+    fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
+    return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+}
+
 static int server_list_dentry_output(struct fast_task_info *task)
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
@@ -966,6 +1078,11 @@ int service_deal_task(struct fast_task_info *task)
                     result = service_deal_list_dentry_next(task);
                 }
                 break;
+            case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_flock_dentry(task);
+                }
+                break;
             case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
                 result = service_deal_service_stat(task);
                 break;
@@ -1014,13 +1131,6 @@ void *service_alloc_thread_extra_data(const int thread_index)
     memset(server_context, 0, sizeof(FDIRServerContext));
     if (fast_mblock_init_ex2(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
-                NULL, NULL, false, NULL, NULL, NULL) != 0)
-    {
-        free(server_context);
-        return NULL;
-    }
-    if (fast_mblock_init_ex2(&server_context->service.ftask_allocator,
-                "flock_task", sizeof(FLockTask), 4 * 1024,
                 NULL, NULL, false, NULL, NULL, NULL) != 0)
     {
         free(server_context);

@@ -18,6 +18,8 @@ int service_handler_destroy();
 int service_deal_task(struct fast_task_info *task);
 void service_task_finish_cleanup(struct fast_task_info *task);
 void *service_alloc_thread_extra_data(const int thread_index);
+void service_accep_done_callback(struct fast_task_info *task,
+        const bool bInnerPort);
 //int service_thread_loop(struct nio_thread_data *thread_data);
 
 #ifdef __cplusplus
