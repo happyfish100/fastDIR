@@ -310,6 +310,48 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     return result;
 }
 
+int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
+        const int operation, const int64_t inode, const int64_t offset,
+        const int64_t length, const int64_t owner_id, const pid_t pid)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoFlockDEntryReq *flock_req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoFlockDEntryReq)];
+    FDIRResponseInfo response;
+    int result;
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    flock_req = (FDIRProtoFlockDEntryReq *)(header + 1);
+    flock_req->operation = operation;
+    long2buff(inode, flock_req->inode);
+    long2buff(offset, flock_req->offset);
+    long2buff(length, flock_req->length);
+    long2buff(owner_id, flock_req->owner.tid);
+    int2buff(pid, flock_req->owner.pid);
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
+            sizeof(FDIRProtoFlockDEntryReq));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP, NULL, 0)) != 0)
+    {
+        log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
 static int check_realloc_client_buffer(FDIRResponseInfo *response,
         FDIRClientBuffer *buffer)
 {
