@@ -762,13 +762,17 @@ static int flock_unlock_dentry(struct fast_task_info *task,
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
+        logInfo("==type: %d, which_queue: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d", flck->type, flck->which_queue, flck->dentry->inode,
+            flck->region->offset, flck->region->length, flck->owner.tid, flck->owner.pid);
+
         if (flck->which_queue != FDIR_FLOCK_TASK_IN_LOCKED_QUEUE) {
             continue;
         }
 
         if (compare_flock_task(flck, owner, inode, offset, length) == 0) {
             release_flock_task(task, flck);
-            break;
+            return 0;
         }
     }
 
@@ -799,6 +803,10 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     owner.tid = buff2long(req->owner.tid);
     owner.pid = buff2int(req->owner.pid);
     operation = req->operation;
+
+    logInfo("operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d", operation, inode,
+            offset, length, owner.tid, owner.pid);
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     if (operation & LOCK_UN) {

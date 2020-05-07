@@ -30,11 +30,11 @@ static int create_dentry(FDIRDEntryFullName *fullname)
 {
 	int result;
     mode_t mode = 0755 | S_IFDIR;
-    const int flags = 0;
+    FDIRDEntryInfo dentry;
 
     ++total_count;
-    if ((result=fdir_client_create_dentry(&g_client_global_vars.client_ctx,
-                    fullname, flags, mode)) != 0)
+    if ((result=fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
+                    fullname, mode, &dentry)) != 0)
     {
         if (ignore_exist_error && result == EEXIST) {
             ++ignore_count;

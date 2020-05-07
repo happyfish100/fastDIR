@@ -11,14 +11,18 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] "
+    fprintf(stderr, "Usage: %s [-c config_filename = /etc/fdir/client.conf] "
+            "[-N non-block] [-s sleep micro seconds = 0]"
             "<-n namespace> <path>\n", argv[0]);
 }
 
 static int64_t inode;
 
 static char *config_filename = "/etc/fdir/client.conf";
-volatile int thread_count = 0;
+static int flock_flags = 0;
+static int usleep_time = 0;
+static volatile int thread_count = 0;
+static volatile int success_count = 0;
 
 static void output_dentry_stat(FDIRDEntryInfo *dentry)
 {
@@ -60,6 +64,8 @@ static void *thread_func(void *args)
     long thread_index;
     FDIRClientContext client_ctx;
     FDIRDEntryInfo dentry;
+    char buff[32];
+    int operation;
 	int result;
 
     thread_index = (long)args;
@@ -71,8 +77,13 @@ static void *thread_func(void *args)
     }
 
     do {
+        if (thread_index % 2 == 0) {
+            operation = LOCK_SH;
+        } else {
+            operation = LOCK_EX;
+        }
         if ((result=fdir_client_flock_dentry(&client_ctx,
-                        LOCK_EX, inode)) != 0)
+                        operation | flock_flags, inode)) != 0)
         {
             fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
@@ -86,20 +97,27 @@ static void *thread_func(void *args)
             break;
         }
 
-        printf("thread index: %ld\n", thread_index);
+
+        printf("[%s] thread index: %ld\n",
+                formatDatetime(time(NULL), "%Y-%m-%d %H:%M:%S",
+                buff, sizeof(buff)), thread_index);
         output_dentry_stat(&dentry);
 
+        if (usleep_time > 0) {
+            usleep(usleep_time);
+        }
+
         if ((result=fdir_client_flock_dentry(&client_ctx,
-                        LOCK_UN, inode)) != 0)
+                        LOCK_UN | flock_flags, inode)) != 0)
         {
             fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
                     inode, result, STRERROR(result));
             break;
         }
+        __sync_add_and_fetch(&success_count, 1);
     } while (0);
 
-    //TODO  unlock
     __sync_sub_and_fetch(&thread_count, 1);
 
     return NULL;
@@ -114,6 +132,9 @@ int main(int argc, char *argv[])
 	int result;
     pthread_t tid;
     long i;
+    int64_t start_time;
+    int64_t time_used;
+    char time_buff[32];
 
     if (argc < 2) {
         usage(argv);
@@ -121,7 +142,7 @@ int main(int argc, char *argv[])
     }
 
     ns = NULL;
-    while ((ch=getopt(argc, argv, "hc:n:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:n:Ns:")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -131,6 +152,12 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 config_filename = optarg;
+                break;
+            case 'N':
+                flock_flags = LOCK_NB;
+                break;
+            case 's':
+                usleep_time = strtol(optarg, NULL, 10);
                 break;
             default:
                 usage(argv);
@@ -146,6 +173,8 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
+    start_time = get_current_time_ms();
+
     path = argv[optind];
     if ((result=fdir_client_init(config_filename)) != 0) {
         return result;
@@ -160,7 +189,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    for (i=0; i<2; i++) {
+    for (i=0; i<64; i++) {
         if (fc_create_thread(&tid, thread_func, (void *)i, 64 * 1024) == 0) {
             __sync_add_and_fetch(&thread_count, 1);
         }
@@ -169,6 +198,11 @@ int main(int argc, char *argv[])
     while (thread_count != 0) {
         usleep(10000);
     }
+
+    time_used = get_current_time_ms() - start_time;
+    printf("success_count: %d, time used: %s ms\n",
+            __sync_add_and_fetch(&success_count, 0),
+            long_to_comma_str(time_used, time_buff));
 
     return 0;
 }
