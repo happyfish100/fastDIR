@@ -609,6 +609,31 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
     return 0;
 }
 
+static int service_deal_lookup_inode(struct fast_task_info *task)
+{
+    int result;
+    FDIRDEntryFullName fullname;
+    FDIRServerDentry *dentry;
+    FDIRProtoLookupInodeResp *resp;
+
+    if ((result=server_check_and_parse_dentry(task, 0,
+                    sizeof(FDIRProtoDEntryInfo), &fullname)) != 0)
+    {
+        return result;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP;
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
+    long2buff(dentry->inode, resp->inode);
+    RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
 static inline int server_check_and_parse_inode(
         struct fast_task_info *task, int64_t *inode)
 {
@@ -1056,6 +1081,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_set_dentry_size(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_lookup_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

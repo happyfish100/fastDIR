@@ -5,8 +5,6 @@
 #include "server_types.h"
 #include "data_thread.h"
 
-#define MAX_ENTRIES_PER_PATH  (16 * 1024)
-
 #ifdef __cplusplus
 extern "C" {
 #endif

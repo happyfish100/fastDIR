@@ -79,8 +79,8 @@ static inline void log_network_error_ex(FDIRResponseInfo *response,
     } else {
         logError("file: "__FILE__", line: %d, "
                 "communicate with dir server %s:%d fail, "
-                "errno: %d, error info: %s", line,
-                conn->ip_addr, conn->port,
+                "sock fd: %d, errno: %d, error info: %s", line,
+                conn->ip_addr, conn->port, conn->sock,
                 result, STRERROR(result));
     }
 }
@@ -209,7 +209,56 @@ int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
+int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, int64_t *inode)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoDEntryInfo *proto_dentry;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
+        + NAME_MAX + PATH_MAX];
+    FDIRResponseInfo response;
+    FDIRProtoLookupInodeResp proto_resp;
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    proto_dentry = (FDIRProtoDEntryInfo *)(header + 1);
+    if ((result=client_check_set_proto_dentry(fullname, proto_dentry)) != 0) {
+        *inode = -1;
+        return result;
+    }
+
+    if ((conn=client_ctx->conn_manager.get_readable_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        *inode = -1;
+        return result;
+    }
+
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
+        + fullname->ns.len + fullname->path.len;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP,
+                    (char *)&proto_resp, sizeof(proto_resp))) == 0)
+    {
+        *inode = buff2long(proto_resp.inode);
+    } else {
+        *inode = -1;
+        log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
@@ -244,6 +293,42 @@ int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
     if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
+                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+    {
+        proto_to_dentry(&proto_stat, dentry);
+    } else {
+        log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRDEntryInfo *dentry)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    char out_buff[sizeof(FDIRProtoHeader) + 8];
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    if ((conn=client_ctx->conn_manager.get_readable_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ, 8);
+    long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
         proto_to_dentry(&proto_stat, dentry);

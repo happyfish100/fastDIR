@@ -24,17 +24,19 @@
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ   29
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ    31
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_RESP        32
-#define FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ        33
-#define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       34
-#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       35
-#define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      36
+#define FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ        33
+#define FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP       34
+#define FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ        35
+#define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       36
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       37
+#define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      38
 
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     37  //modified by inode
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    38
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     39
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    40
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        41
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       42
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     39  //modified by inode
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    40
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     41
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    42
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        43
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       44
 
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        45
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       46
@@ -132,6 +134,10 @@ typedef struct fdir_proto_set_modify_stat_req {
     char padding[6];
     char ns_str[0];      //namespace for hash code
 } FDIRProtoSetModifyStatReq;
+
+typedef struct fdir_proto_lookup_inode_resp {
+    char inode[8];
+} FDIRProtoLookupInodeResp;
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];

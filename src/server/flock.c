@@ -197,7 +197,11 @@ static inline FLockTask *get_conflict_flock_task(FLockEntry *entry,
         }
     }
 
-    *global_conflict = found->region != ftask->region;
+    if (found == NULL) {
+        *global_conflict = false;
+    } else {
+        *global_conflict = found->region != ftask->region;
+    }
     return found;
 }
 

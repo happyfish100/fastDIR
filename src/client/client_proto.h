@@ -68,8 +68,14 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
 int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
 
-int fdir_client_stat_dentry(FDIRClientContext *client_ctx,
+int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, int64_t *inode);
+
+int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
+
+int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRDEntryInfo *dentry);
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
@@ -79,7 +85,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
         const int operation, const int64_t inode, const int64_t offset,
         const int64_t length, const int64_t owner_id, const pid_t pid);
 
-static inline  int fdir_client_flock_dentry_ex(FDIRClientContext *client_ctx,
+static inline int fdir_client_flock_dentry_ex(FDIRClientContext *client_ctx,
         const int operation, const int64_t inode, const int64_t offset,
         const int64_t length)
 {
@@ -87,7 +93,7 @@ static inline  int fdir_client_flock_dentry_ex(FDIRClientContext *client_ctx,
             offset, length, (long)pthread_self(), getpid());
 }
 
-static inline  int fdir_client_flock_dentry(FDIRClientContext *client_ctx,
+static inline int fdir_client_flock_dentry(FDIRClientContext *client_ctx,
         const int operation, const int64_t inode)
 {
     return fdir_client_flock_dentry_ex(client_ctx, operation, inode, 0, 0);

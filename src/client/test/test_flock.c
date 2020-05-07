@@ -15,6 +15,11 @@ static void usage(char *argv[])
             "<-n namespace> <path>\n", argv[0]);
 }
 
+static int64_t inode;
+
+static char *config_filename = "/etc/fdir/client.conf";
+volatile int thread_count = 0;
+
 static void output_dentry_stat(FDIRDEntryInfo *dentry)
 {
     char ctime[32];
@@ -50,15 +55,65 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
             dentry->stat.size, ctime, mtime, perm);
 }
 
+static void *thread_func(void *args)
+{
+    long thread_index;
+    FDIRClientContext client_ctx;
+    FDIRDEntryInfo dentry;
+	int result;
+
+    thread_index = (long)args;
+
+    if ((result=fdir_client_init_ex(&client_ctx,
+                    config_filename, NULL)) != 0)
+    {
+        return NULL;
+    }
+
+    do {
+        if ((result=fdir_client_flock_dentry(&client_ctx,
+                        LOCK_EX, inode)) != 0)
+        {
+            fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
+                    "errno: %d, error info: %s\n", thread_index,
+                    inode, result, STRERROR(result));
+            break;
+        }
+
+        if ((result=fdir_client_stat_dentry_by_inode(&client_ctx,
+                        inode, &dentry)) != 0)
+        {
+            break;
+        }
+
+        printf("thread index: %ld\n", thread_index);
+        output_dentry_stat(&dentry);
+
+        if ((result=fdir_client_flock_dentry(&client_ctx,
+                        LOCK_UN, inode)) != 0)
+        {
+            fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
+                    "errno: %d, error info: %s\n", thread_index,
+                    inode, result, STRERROR(result));
+            break;
+        }
+    } while (0);
+
+    //TODO  unlock
+    __sync_sub_and_fetch(&thread_count, 1);
+
+    return NULL;
+}
+
 int main(int argc, char *argv[])
 {
 	int ch;
-    const char *config_filename = "/etc/fdir/client.conf";
     char *ns;
     char *path;
     FDIRDEntryFullName fullname;
-    FDIRDEntryInfo dentry;
 	int result;
+    pthread_t tid;
+    long i;
 
     if (argc < 2) {
         usage(argv);
@@ -98,11 +153,22 @@ int main(int argc, char *argv[])
 
     FC_SET_STRING(fullname.ns, ns);
     FC_SET_STRING(fullname.path, path);
-    if ((result=fdir_client_stat_dentry_by_path(&g_fdir_client_vars.client_ctx,
-                    &fullname, &dentry)) != 0)
+
+    if ((result=fdir_client_lookup_inode(&g_fdir_client_vars.client_ctx,
+                    &fullname, &inode)) != 0)
     {
         return result;
     }
-    output_dentry_stat(&dentry);
+
+    for (i=0; i<2; i++) {
+        if (fc_create_thread(&tid, thread_func, (void *)i, 64 * 1024) == 0) {
+            __sync_add_and_fetch(&thread_count, 1);
+        }
+    }
+
+    while (thread_count != 0) {
+        usleep(10000);
+    }
+
     return 0;
 }

@@ -7,7 +7,7 @@ TARGET_PATH = $(TARGET_PREFIX)/bin
 
 STATIC_OBJS =
 
-ALL_PRGS = test_mkdir test_remove
+ALL_PRGS = test_mkdir test_flock
 
 all: $(STATIC_OBJS) $(ALL_PRGS)
 
