@@ -19,6 +19,7 @@ static int flock_entry_alloc_init_func(void *element, void *args)
 {
     FC_INIT_LIST_HEAD(&((FLockEntry *)element)->regions);
     FC_INIT_LIST_HEAD(&((FLockEntry *)element)->waiting_tasks);
+    FC_INIT_LIST_HEAD(&((FLockEntry *)element)->sys_lock.waiting);
     return 0;
 }
 
@@ -26,6 +27,12 @@ static int flock_task_alloc_init_func(void *element, void *args)
 {
     FC_INIT_LIST_HEAD(&((FLockTask *)element)->flink);
     FC_INIT_LIST_HEAD(&((FLockTask *)element)->clink);
+    return 0;
+}
+
+static int sys_task_alloc_init_func(void *element, void *args)
+{
+    FC_INIT_LIST_HEAD(&((SysLockTask *)element)->dlink);
     return 0;
 }
 
@@ -50,6 +57,14 @@ int flock_init(FLockContext *ctx)
     if ((result=fast_mblock_init_ex2(&ctx->allocators.ftask,
                     "flock_task", sizeof(FLockTask), 4096,
                     flock_task_alloc_init_func, NULL, false,
+                    NULL, NULL, NULL)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fast_mblock_init_ex2(&ctx->allocators.sys_task,
+                    "sys_lck_task", sizeof(SysLockTask), 4096,
+                    sys_task_alloc_init_func, NULL, false,
                     NULL, NULL, NULL)) != 0)
     {
         return result;
@@ -285,4 +300,55 @@ void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask)
         default:
             break;
     }
+}
+
+int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
+        const bool block)
+{
+    if (entry->sys_lock.locked_task == NULL) {
+        entry->sys_lock.locked_task = sys_task;
+        sys_task->status = FDIR_SYS_TASK_STATUS_LOCKED;
+        return 0;
+    }
+
+    if (!block) {
+        return EWOULDBLOCK;
+    }
+
+    sys_task->status = FDIR_SYS_TASK_STATUS_WAITING;
+    fc_list_add_tail(&sys_task->dlink, &entry->sys_lock.waiting);
+    return ENOLCK;
+}
+
+int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task)
+{
+    SysLockTask *wait;
+
+    if (sys_task->status == FDIR_SYS_TASK_STATUS_WAITING) {
+        sys_task->status = FDIR_SYS_TASK_STATUS_NONE;
+        fc_list_del_init(&sys_task->dlink);
+        return 0;
+    }
+
+    if (sys_task->status != FDIR_SYS_TASK_STATUS_LOCKED) {
+        return EINVAL;
+    }
+
+    if (sys_task != entry->sys_lock.locked_task) {
+        return ENOENT;
+    }
+
+    if ((wait=fc_list_first_entry(&entry->sys_lock.waiting,
+                    SysLockTask, dlink)) != NULL)
+    {
+        wait->status = FDIR_SYS_TASK_STATUS_LOCKED;
+        entry->sys_lock.locked_task = wait;
+        fc_list_del_init(&wait->dlink);
+        sf_nio_notify(wait->task, SF_NIO_STAGE_CONTINUE);
+    } else {
+        sys_task->status = FDIR_SYS_TASK_STATUS_NONE;
+        entry->sys_lock.locked_task = NULL;
+    }
+
+    return 0;
 }

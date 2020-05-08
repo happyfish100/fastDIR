@@ -11,6 +11,10 @@
 #define FDIR_FLOCK_TASK_IN_REGION_WAITING_QUEUE  2
 #define FDIR_FLOCK_TASK_IN_GLOBAL_WAITING_QUEUE  3
 
+#define FDIR_SYS_TASK_STATUS_NONE      0
+#define FDIR_SYS_TASK_STATUS_LOCKED    1
+#define FDIR_SYS_TASK_STATUS_WAITING   2
+
 struct flock_region;
 
 typedef struct flock_owner {
@@ -30,6 +34,13 @@ typedef struct flock_task {
     struct fc_list_head clink;  //for connection double link chain
 } FLockTask;
 
+typedef struct sys_lock_task {
+    short status;
+    struct fast_task_info *task;
+    FDIRServerDentry *dentry;
+    struct fc_list_head dlink;
+} SysLockTask;
+
 typedef struct flock_region {
     int64_t offset;   /* starting offset */
     int64_t length;   /* 0 means until end of file */
@@ -48,6 +59,10 @@ typedef struct flock_region {
 typedef struct flock_entry {
     struct fc_list_head regions; //FLockRegion order by offset and length
     struct fc_list_head waiting_tasks;  //element: FLockTask for global
+    struct {
+        SysLockTask *locked_task;
+        struct fc_list_head waiting;  //element: SysLockTask
+    } sys_lock;  //system lock for file append and ftruncate
 } FLockEntry;
 
 typedef struct flock_context {
@@ -55,6 +70,7 @@ typedef struct flock_context {
         struct fast_mblock_man entry;
         struct fast_mblock_man region;
         struct fast_mblock_man ftask;
+        struct fast_mblock_man sys_task;
     } allocators;
 } FLockContext;
 
@@ -89,6 +105,24 @@ extern "C" {
             const int64_t length, FLockTask *ftask, const bool block);
 
     void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
+
+    static inline SysLockTask *flock_alloc_sys_task(FLockContext *ctx)
+    {
+        return (SysLockTask *)fast_mblock_alloc_object(
+                &ctx->allocators.sys_task);
+    }
+
+    static inline void flock_free_sys_task(FLockContext *ctx,
+            SysLockTask *sys_task)
+    {
+        fast_mblock_free_object(&ctx->allocators.sys_task, sys_task);
+    }
+
+    int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
+            const bool block);
+    
+    int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task);
+
 
 #ifdef __cplusplus
 }

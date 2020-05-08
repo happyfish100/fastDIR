@@ -351,3 +351,62 @@ void inode_index_flock_release(FLockTask *ftask)
     flock_free_ftask(&ctx->flock_ctx, ftask);
     pthread_mutex_unlock(&ctx->lock);
 }
+
+SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
+        struct fast_task_info *task, int *result)
+{
+    FDIRServerDentry *dentry;
+    SysLockTask  *sys_task;
+
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
+    pthread_mutex_lock(&ctx->lock);
+    do {
+        if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
+            *result = ENOENT;
+            sys_task = NULL;
+            break;
+        }
+
+        if (dentry->flock_entry == NULL) {
+            dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+            if (dentry->flock_entry == NULL) {
+                *result = ENOMEM;
+                sys_task = NULL;
+                break;
+            }
+        }
+
+        if ((sys_task=flock_alloc_sys_task(&ctx->flock_ctx)) == NULL) {
+            *result = ENOMEM;
+            break;
+        }
+
+        sys_task->dentry = dentry;
+        sys_task->task = task;
+        *result = sys_lock_apply(dentry->flock_entry, sys_task, block);
+        if (!(*result == 0 || *result == ENOLCK)) {
+            flock_free_sys_task(&ctx->flock_ctx, sys_task);
+            sys_task = NULL;
+        }
+    } while (0);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return sys_task;
+}
+
+
+int inode_index_sys_lock_release(SysLockTask *sys_task)
+{
+    int result;
+    SET_INODE_HASHTABLE_CTX(sys_task->dentry->inode);
+    pthread_mutex_lock(&ctx->lock);
+    if (sys_task->dentry->flock_entry != NULL) {
+        result = sys_lock_release(sys_task->dentry->flock_entry, sys_task);
+    } else {
+        result = ENOENT;
+    }
+    flock_free_sys_task(&ctx->flock_ctx, sys_task);
+    pthread_mutex_unlock(&ctx->lock);
+
+    return result;
+}

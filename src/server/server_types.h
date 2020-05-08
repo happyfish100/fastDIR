@@ -42,6 +42,7 @@
 #define REQUEST_STATUS    REQUEST.header.status
 #define RECORD            TASK_ARG->context.service.record
 #define FTASK_HEAD_PTR    &TASK_ARG->context.service.ftasks
+#define SYS_LOCK_TASK     TASK_ARG->context.service.sys_lock_task
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
@@ -180,6 +181,7 @@ typedef struct fdir_slave_replication_ptr_array {
 
 struct fdir_binlog_record;
 struct flock_task;
+struct sys_lock_task;
 
 typedef struct server_task_arg {
     volatile int64_t task_version;
@@ -203,6 +205,8 @@ typedef struct server_task_arg {
                 } dentry_list_cache; //for dentry_list
 
                 struct fc_list_head ftasks;  //for flock
+                struct sys_lock_task *sys_lock_task; //for append and ftruncate
+
                 struct fdir_binlog_record *record;
                 volatile int waiting_rpc_count;
             } service;

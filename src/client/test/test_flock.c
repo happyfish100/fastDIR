@@ -12,7 +12,8 @@
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename = /etc/fdir/client.conf] "
-            "[-N non-block] [-s sleep micro seconds = 0]"
+            "[-N non-block] [-S do NOT output dentry stat] "
+            "[-s sleep micro seconds = 0] [-t thread count = 8] "
             "<-n namespace> <path>\n", argv[0]);
 }
 
@@ -21,6 +22,8 @@ static int64_t inode;
 static char *config_filename = "/etc/fdir/client.conf";
 static int flock_flags = 0;
 static int usleep_time = 0;
+static int threads = 8;
+static bool output_stat = true;
 static volatile int thread_count = 0;
 static volatile int success_count = 0;
 
@@ -54,6 +57,7 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
             ctime, sizeof(ctime));
     formatDatetime(dentry->stat.mtime, "%Y-%m-%d %H:%M:%S",
             mtime, sizeof(mtime));
+
     printf("type: %s, inode: %"PRId64", size: %"PRId64", create time: %s, "
             "modify time: %s, perm: 0%03o\n", type, dentry->inode,
             dentry->stat.size, ctime, mtime, perm);
@@ -77,13 +81,19 @@ static void *thread_func(void *args)
     }
 
     do {
+        int64_t offset;
+        int64_t length;
+
         if (thread_index % 2 == 0) {
             operation = LOCK_SH;
         } else {
             operation = LOCK_EX;
         }
-        if ((result=fdir_client_flock_dentry(&client_ctx,
-                        operation | flock_flags, inode)) != 0)
+
+        offset = thread_index;
+        length = 4 * offset;
+        if ((result=fdir_client_flock_dentry_ex(&client_ctx,
+                        operation | flock_flags, inode, offset, length)) != 0)
         {
             fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
@@ -98,17 +108,19 @@ static void *thread_func(void *args)
         }
 
 
-        printf("[%s] thread index: %ld\n",
-                formatDatetime(time(NULL), "%Y-%m-%d %H:%M:%S",
-                buff, sizeof(buff)), thread_index);
-        output_dentry_stat(&dentry);
+        if (output_stat) {
+            printf("[%s] thread index: %ld\n",
+                    formatDatetime(time(NULL), "%Y-%m-%d %H:%M:%S",
+                        buff, sizeof(buff)), thread_index);
+            output_dentry_stat(&dentry);
+        }
 
         if (usleep_time > 0) {
             usleep(usleep_time);
         }
 
-        if ((result=fdir_client_flock_dentry(&client_ctx,
-                        LOCK_UN | flock_flags, inode)) != 0)
+        if ((result=fdir_client_flock_dentry_ex(&client_ctx,
+                        LOCK_UN | flock_flags, inode,  offset, length)) != 0)
         {
             fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
@@ -142,7 +154,7 @@ int main(int argc, char *argv[])
     }
 
     ns = NULL;
-    while ((ch=getopt(argc, argv, "hc:n:Ns:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:n:NSs:t:")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -156,8 +168,14 @@ int main(int argc, char *argv[])
             case 'N':
                 flock_flags = LOCK_NB;
                 break;
+            case 'S':
+                output_stat  = false;
+                break;
             case 's':
                 usleep_time = strtol(optarg, NULL, 10);
+                break;
+            case 't':
+                threads = strtol(optarg, NULL, 10);
                 break;
             default:
                 usage(argv);
@@ -189,7 +207,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    for (i=0; i<64; i++) {
+    for (i=0; i<threads; i++) {
         if (fc_create_thread(&tid, thread_func, (void *)i, 64 * 1024) == 0) {
             __sync_add_and_fetch(&thread_count, 1);
         }
@@ -200,8 +218,8 @@ int main(int argc, char *argv[])
     }
 
     time_used = get_current_time_ms() - start_time;
-    printf("success_count: %d, time used: %s ms\n",
-            __sync_add_and_fetch(&success_count, 0),
+    printf("threads: %d, success_count: %d, time used: %s ms\n",
+            threads, __sync_add_and_fetch(&success_count, 0),
             long_to_comma_str(time_used, time_buff));
 
     return 0;

@@ -48,9 +48,6 @@ int service_handler_destroy()
 void service_accep_done_callback(struct fast_task_info *task,
         const bool bInnerPort)
 {
-    logInfo("file: "__FILE__", line: %d, func: %s",
-            __LINE__, __FUNCTION__);
-
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
 }
 
@@ -72,6 +69,11 @@ void service_task_finish_cleanup(struct fast_task_info *task)
         fc_list_for_each_entry_safe(flck, next, FTASK_HEAD_PTR, clink) {
             release_flock_task(task, flck);
         }
+    }
+
+    if (SYS_LOCK_TASK != NULL) {
+        inode_index_sys_lock_release(SYS_LOCK_TASK);
+        SYS_LOCK_TASK = NULL;
     }
 
     dentry_array_free(&DENTRY_LIST_CACHE.array);
@@ -791,8 +793,10 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     int64_t length;
     short operation;
 
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoFlockDEntryReq))) != 0) {
+                    sizeof(FDIRProtoFlockDEntryReq))) != 0)
+    {
         return result;
     }
 
@@ -808,7 +812,6 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             "owner.tid: %"PRId64", owner.pid: %d", operation, inode,
             offset, length, owner.tid, owner.pid);
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     if (operation & LOCK_UN) {
         return flock_unlock_dentry(task, &owner, inode, offset, length);
     }
@@ -833,6 +836,76 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+}
+
+static int service_deal_sys_lock_dentry(struct fast_task_info *task)
+{
+    FDIRProtoSysLockDEntryReq *req;
+    int result;
+    int64_t inode;
+    int flags;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP;
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoSysLockDEntryReq))) != 0)
+    {
+        return result;
+    }
+
+    if (SYS_LOCK_TASK != NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "sys lock already exist, locked inode: %"PRId64,
+                SYS_LOCK_TASK->dentry->inode);
+        return EEXIST;
+    }
+
+    req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
+    inode = buff2long(req->inode);
+    flags = req->flags;
+
+    if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode, (flags & LOCK_NB) == 0,
+                    task, &result)) == NULL)
+    {
+        return result;
+    }
+
+    return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+}
+
+static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
+{
+    FDIRProtoSysUnlockDEntryReq *req;
+    int result;
+    int64_t inode;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP;
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoSysUnlockDEntryReq))) != 0)
+    {
+        return result;
+    }
+
+    if (SYS_LOCK_TASK == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "sys lock not exist");
+        return ENOENT;
+    }
+
+    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
+    inode = buff2long(req->inode);
+
+    if (inode != SYS_LOCK_TASK->dentry->inode) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "sys lock check fail, req inode: %"PRId64", expect: %"PRId64,
+                inode, SYS_LOCK_TASK->dentry->inode);
+        return ENOENT;
+    }
+
+    if ((result=inode_index_sys_lock_release(SYS_LOCK_TASK)) == 0) {
+        SYS_LOCK_TASK = NULL;
+    }
+
+    return result;
 }
 
 static int server_list_dentry_output(struct fast_task_info *task)
@@ -1119,6 +1192,16 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_flock_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_sys_lock_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_sys_unlock_dentry(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
