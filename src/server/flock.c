@@ -320,7 +320,8 @@ int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
     return ENOLCK;
 }
 
-int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task)
+int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task,
+        sys_lock_release_callback callback, void *args)
 {
     SysLockTask *wait;
 
@@ -336,6 +337,10 @@ int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task)
 
     if (sys_task != entry->sys_lock.locked_task) {
         return ENOENT;
+    }
+
+    if (callback != NULL) {
+        callback(sys_task->dentry, args);
     }
 
     if ((wait=fc_list_first_entry(&entry->sys_lock.waiting,

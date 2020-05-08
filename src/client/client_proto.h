@@ -99,6 +99,21 @@ static inline int fdir_client_flock_dentry(FDIRClientContext *client_ctx,
     return fdir_client_flock_dentry_ex(client_ctx, operation, inode, 0, 0);
 }
 
+int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
+        const int64_t inode, const int flags, int64_t *file_size);
+
+int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const bool force,
+        const int64_t old_size, const int64_t new_size);
+
+static inline int fdir_client_dentry_sys_unlock(
+        FDIRClientContext *client_ctx,
+        const int64_t inode, const bool force)
+{
+    return fdir_client_dentry_sys_unlock_ex(client_ctx,
+            NULL, inode, force, 0, 0);
+}
+
 int fdir_client_list_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);
 

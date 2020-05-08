@@ -394,14 +394,15 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
     return sys_task;
 }
 
-
-int inode_index_sys_lock_release(SysLockTask *sys_task)
+int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
+        sys_lock_release_callback callback, void *args)
 {
     int result;
     SET_INODE_HASHTABLE_CTX(sys_task->dentry->inode);
     pthread_mutex_lock(&ctx->lock);
     if (sys_task->dentry->flock_entry != NULL) {
-        result = sys_lock_release(sys_task->dentry->flock_entry, sys_task);
+        result = sys_lock_release(sys_task->dentry->flock_entry,
+                sys_task, callback, args);
     } else {
         result = ENOENT;
     }

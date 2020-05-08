@@ -668,52 +668,33 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
     return 0;
 }
 
-static int service_deal_set_dentry_size(struct fast_task_info *task)
+static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
+        const char *ns_str, const int ns_len, const int64_t inode,
+        const int64_t file_size, const bool force, int *result)
 {
-    FDIRProtoSetModifyStatReq *req;
-    int result;
-    int64_t file_size;
     int modified_flags;
+    FDIRServerDentry *dentry;
 
-    if ((result=server_check_body_length(task,
-                    sizeof(FDIRProtoSetModifyStatReq) + 1,
-                    sizeof(FDIRProtoSetModifyStatReq) + NAME_MAX)) != 0)
-    {
-        return result;
+    if ((*result=alloc_record_object(task)) != 0) {
+        return NULL;
     }
 
-    req = (FDIRProtoSetModifyStatReq *)REQUEST.body;
-    if (sizeof(FDIRProtoSetModifyStatReq) + req->ns_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoSetModifyStatReq) + req->ns_len);
-        return EINVAL;
-    }
-
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
-
-    RECORD->inode = buff2long(req->inode);
-    file_size = buff2long(req->size);
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     if ((RECORD->dentry=inode_index_check_set_dentry_size(RECORD->inode,
-                    file_size, req->force, &modified_flags)) == NULL)
+                    file_size, force, &modified_flags)) == NULL)
     {
         free_record_object(task);
-        return ENOENT;
+        *result = ENOENT;
+        return NULL;
     }
 
+    dentry = RECORD->dentry;
     if (modified_flags == 0) {  //no fields changed
-        dentry_stat_output(task, RECORD->dentry);
         free_record_object(task);
-        return 0;
+        *result = 0;
+        return dentry;
     }
 
-    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->hash_code = simple_hash(ns_str, ns_len);
     RECORD->options.flags = 0;
     if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
         RECORD->options.size = 1;
@@ -725,11 +706,57 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     }
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-    dentry_stat_output(task, RECORD->dentry);
 
-    return server_binlog_produce(task);
+    *result = server_binlog_produce(task);
+    return dentry;
 }
 
+static int service_deal_set_dentry_size(struct fast_task_info *task)
+{
+    FDIRProtoSetModifyStatReq *req;
+    FDIRServerDentry *dentry;
+    int result;
+    int64_t inode;
+    int64_t file_size;
+
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoSetModifyStatReq) + 1,
+                    sizeof(FDIRProtoSetModifyStatReq) + NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoSetModifyStatReq *)REQUEST.body;
+    if (req->ns_len <= 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "namespace length: %d is invalid which <= 0",
+                req->ns_len);
+        return EINVAL;
+    }
+    if (sizeof(FDIRProtoSetModifyStatReq) + req->ns_len !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoSetModifyStatReq) + req->ns_len);
+        return EINVAL;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
+    inode = buff2long(req->inode);
+    file_size = buff2long(req->size);
+
+    dentry = set_dentry_size(task, req->ns_str, req->ns_len, inode,
+            file_size, req->force, &result);
+    if (result == 0 || result == TASK_STATUS_CONTINUE) {
+        if (dentry != NULL) {
+            dentry_stat_output(task, dentry);
+        }
+    }
+
+    return result;
+}
 
 static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
         const int64_t inode, const int64_t offset, const int64_t length)
@@ -838,12 +865,36 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
 }
 
+static void sys_lock_dentry_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    FDIRProtoSysLockDEntryResp *resp;
+    resp = (FDIRProtoSysLockDEntryResp *)REQUEST.body;
+
+    long2buff(dentry->stat.size, resp->size);
+    RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
+    TASK_ARG->context.response_done = true;
+}
+
+static int handle_sys_lock_done(struct fast_task_info *task)
+{
+    if (SYS_LOCK_TASK == NULL) {
+        return ENOENT;
+    } else {
+        logInfo("file: "__FILE__", line: %d, func: %s, "
+                "inode: %"PRId64, __LINE__, __FUNCTION__,
+                SYS_LOCK_TASK->dentry->inode);
+        sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
+        return 0;
+    }
+}
+
 static int service_deal_sys_lock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysLockDEntryReq *req;
     int result;
-    int64_t inode;
     int flags;
+    int64_t inode;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP;
     if ((result=server_expect_body_length(task,
@@ -869,7 +920,33 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         return result;
     }
 
-    return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+    if (result == 0) {
+        sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
+        return 0;
+    } else {
+        logInfo("file: "__FILE__", line: %d, func: %s, "
+                "waiting lock for inode: %"PRId64, __LINE__,
+                __FUNCTION__, SYS_LOCK_TASK->dentry->inode);
+
+        TASK_ARG->context.deal_func = handle_sys_lock_done;
+        return TASK_STATUS_CONTINUE;
+    }
+}
+
+static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
+{
+    struct fast_task_info *task;
+    FDIRProtoSysUnlockDEntryReq *req;
+    int64_t new_size;
+    int result;
+
+    task = (struct fast_task_info *)args;
+    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
+    new_size = buff2long(req->new_size);
+    set_dentry_size(task, req->ns_str, req->ns_len,
+            SYS_LOCK_TASK->dentry->inode,
+            new_size, req->force, &result);
+    RESPONSE_STATUS = result;
 }
 
 static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
@@ -877,35 +954,83 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     FDIRProtoSysUnlockDEntryReq *req;
     int result;
     int64_t inode;
+    int64_t old_size;
+    int64_t new_size;
+    sys_lock_release_callback callback;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP;
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoSysUnlockDEntryReq))) != 0)
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoSysUnlockDEntryReq),
+                    sizeof(FDIRProtoSysUnlockDEntryReq) + NAME_MAX)) != 0)
     {
         return result;
     }
 
-    if (SYS_LOCK_TASK == NULL) {
+    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
+    if (sizeof(FDIRProtoSysUnlockDEntryReq) + req->ns_len !=
+            REQUEST.header.body_len)
+    {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoSysUnlockDEntryReq) + req->ns_len);
+        return EINVAL;
+    }
+
+    if (SYS_LOCK_TASK == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
                 "sys lock not exist");
         return ENOENT;
     }
 
-    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
     inode = buff2long(req->inode);
-
     if (inode != SYS_LOCK_TASK->dentry->inode) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "sys lock check fail, req inode: %"PRId64", expect: %"PRId64,
-                inode, SYS_LOCK_TASK->dentry->inode);
-        return ENOENT;
+                "sys lock check fail, req inode: %"PRId64", "
+                "expect: %"PRId64, inode, SYS_LOCK_TASK->dentry->inode);
+        return EINVAL;
     }
 
-    if ((result=inode_index_sys_lock_release(SYS_LOCK_TASK)) == 0) {
-        SYS_LOCK_TASK = NULL;
+    if ((req->flags & FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE)) {
+        if (req->ns_len <= 0) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "namespace length: %d is invalid which <= 0",
+                    req->ns_len);
+            return ENOENT;
+        }
+
+        old_size = buff2long(req->old_size);
+        new_size = buff2long(req->new_size);
+        if (old_size != SYS_LOCK_TASK->dentry->stat.size) {
+            logWarning("file: "__FILE__", line: %d, "
+                    "client ip: %s, inode: %"PRId64", old size: %"PRId64
+                    ", != current size: %"PRId64", maybe changed by others",
+                    __LINE__, task->client_ip, inode, old_size,
+                    SYS_LOCK_TASK->dentry->stat.size);
+        }
+        if (new_size < 0) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "invalid new file size: %"PRId64" which < 0", new_size);
+            return EINVAL;
+        }
+        callback = on_sys_lock_release;
+    } else {
+        callback = NULL;
     }
 
-    return result;
+    if ((RESPONSE_STATUS=inode_index_sys_lock_release_ex(
+                    SYS_LOCK_TASK, callback, task)) != 0)
+    {
+        return RESPONSE_STATUS;
+    }
+
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "callback: %p, status: %d", __LINE__,
+            __FUNCTION__, callback, RESPONSE_STATUS);
+
+    SYS_LOCK_TASK = NULL;
+    return RESPONSE_STATUS;  //status set by the callback
 }
 
 static int server_list_dentry_output(struct fast_task_info *task)

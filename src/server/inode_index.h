@@ -38,7 +38,13 @@ extern "C" {
     SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
             struct fast_task_info *task, int *result);
 
-    int inode_index_sys_lock_release(SysLockTask *sys_task);
+    int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
+            sys_lock_release_callback callback, void *args);
+
+    static inline int inode_index_sys_lock_release(SysLockTask *sys_task)
+    {
+        return inode_index_sys_lock_release_ex(sys_task, NULL, NULL);
+    }
 
 #ifdef __cplusplus
 }

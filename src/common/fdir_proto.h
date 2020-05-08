@@ -71,6 +71,10 @@
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ         83
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP        84
 
+
+#define FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE      1
+
+
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
     m[0] = m[1] = m[2] = m[3] = FDIR_PROTO_MAGIC_CHAR
@@ -136,9 +140,8 @@ typedef struct fdir_proto_set_modify_stat_req {
     char inode[8];
     char size[8];   /* file size in bytes */
     char force;
-    unsigned char ns_len;  //namespace length
-    char padding[6];
-    char ns_str[0];      //namespace for hash code
+    unsigned char ns_len; //namespace length
+    char ns_str[0];       //namespace for hash code
 } FDIRProtoSetModifyStatReq;
 
 typedef struct fdir_proto_lookup_inode_resp {
@@ -174,8 +177,18 @@ typedef struct fdir_proto_sys_lock_dentry_req {
     char padding[7];
 } FDIRProtoSysLockDEntryReq;
 
+typedef struct fdir_proto_sys_lock_dentry_resp {
+    char size[8];   //file size
+} FDIRProtoSysLockDEntryResp;
+
 typedef struct fdir_proto_sys_unlock_dentry_req {
     char inode[8];
+    char old_size[8];  //old file size for check
+    char new_size[8];  //new file size to set
+    char flags;        //if set file size
+    char force;        //force set file size
+    unsigned char ns_len; //namespace length
+    char ns_str[0];       //namespace for hash code
 } FDIRProtoSysUnlockDEntryReq;
 
 typedef struct fdir_proto_list_dentry_first_body {
