@@ -882,21 +882,11 @@ static int handle_sys_lock_done(struct fast_task_info *task)
     if (SYS_LOCK_TASK == NULL) {
         return ENOENT;
     } else {
-        FDIRServerDentry *dentry;
-
         logInfo("file: "__FILE__", line: %d, func: %s, "
                 "inode: %"PRId64", file size: %"PRId64,
                 __LINE__, __FUNCTION__,
                 SYS_LOCK_TASK->dentry->inode,
                 SYS_LOCK_TASK->dentry->stat.size);
-
-        dentry = inode_index_get_dentry(SYS_LOCK_TASK->dentry->inode);
-
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "inode: %"PRId64", file size: %"PRId64,
-                __LINE__, __FUNCTION__,
-                dentry->inode,
-                dentry->stat.size);
 
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
         return 0;
@@ -960,9 +950,6 @@ static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
     set_dentry_size(task, req->ns_str, req->ns_len,
             SYS_LOCK_TASK->dentry->inode,
             new_size, req->force, &result);
-
-    logInfo("set inode: %"PRId64", to new size: %"PRId64", result: %d",
-            SYS_LOCK_TASK->dentry->inode, new_size, result);
     RESPONSE_STATUS = result;
 }
 

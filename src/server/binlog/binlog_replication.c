@@ -404,12 +404,12 @@ static void replication_queue_discard_all(FDIRSlaveReplication *replication)
 {
     ServerBinlogRecordBuffer *head;
 
-    pthread_mutex_lock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     head = replication->context.queue.head;
     if (replication->context.queue.head != NULL) {
         replication->context.queue.head = replication->context.queue.tail = NULL;
     }
-    pthread_mutex_unlock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (head != NULL) {
         discard_queue(replication, head, NULL);
@@ -421,7 +421,7 @@ static void replication_queue_discard_synced(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
 
-    pthread_mutex_lock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     do {
         head = replication->context.queue.head;
         if (head == NULL) {
@@ -441,7 +441,7 @@ static void replication_queue_discard_synced(FDIRSlaveReplication *replication)
             replication->context.queue.tail = NULL;
         }
     } while (0);
-    pthread_mutex_unlock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (head != NULL) {
         discard_queue(replication, head, tail);
@@ -560,13 +560,13 @@ void clean_connected_replications(FDIRServerContext *server_ctx)
 static void repush_to_replication_queue(FDIRSlaveReplication *replication,
         ServerBinlogRecordBuffer *head, ServerBinlogRecordBuffer *tail)
 {
-    pthread_mutex_lock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     tail->nexts[replication->index] = replication->context.queue.head;
     replication->context.queue.head = head;
     if (replication->context.queue.tail == NULL) {
         replication->context.queue.tail = tail;
     }
-    pthread_mutex_unlock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 }
 
 static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
@@ -580,13 +580,13 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     int body_len;
     int result;
 
-    pthread_mutex_lock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     head = replication->context.queue.head;
     tail = replication->context.queue.tail;
     if (replication->context.queue.head != NULL) {
         replication->context.queue.head = replication->context.queue.tail = NULL;
     }
-    pthread_mutex_unlock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (head == NULL) {
         return 0;

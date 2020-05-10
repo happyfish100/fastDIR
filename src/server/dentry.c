@@ -244,7 +244,7 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
-    pthread_mutex_lock(&fdir_manager.hashtable.lock);
+    PTHREAD_MUTEX_LOCK(&fdir_manager.hashtable.lock);
     entry = *bucket;
     while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
         entry = entry->next;
@@ -255,7 +255,7 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
     } else {
         *err_no = 0;
     }
-    pthread_mutex_unlock(&fdir_manager.hashtable.lock);
+    PTHREAD_MUTEX_UNLOCK(&fdir_manager.hashtable.lock);
 
     return entry;
 }

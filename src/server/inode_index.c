@@ -178,7 +178,7 @@ int inode_index_add_dentry(FDIRServerDentry *dentry)
     FDIRServerDentry *previous;
 
     SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     if (find_dentry_for_update(bucket, dentry, &previous) == NULL) {
         if (previous == NULL) {
             dentry->ht_next = *bucket;
@@ -191,7 +191,7 @@ int inode_index_add_dentry(FDIRServerDentry *dentry)
     } else {
         result = EEXIST;
     }
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return result;
 }
@@ -203,7 +203,7 @@ int inode_index_del_dentry(FDIRServerDentry *dentry)
     FDIRServerDentry *deleted;
 
     SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     if ((deleted=find_dentry_for_update(bucket, dentry, &previous)) != NULL) {
         if (previous == NULL) {
             *bucket = (*bucket)->ht_next;
@@ -214,7 +214,7 @@ int inode_index_del_dentry(FDIRServerDentry *dentry)
     } else {
         result = ENOENT;
     }
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return result;
 }
@@ -224,9 +224,9 @@ FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
     FDIRServerDentry *dentry;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, inode);
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return dentry;
 }
@@ -238,7 +238,7 @@ FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
     *modified_flags = 0;
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, inode);
     if (dentry != NULL) {
         if (force || (dentry->stat.size < new_size)) {
@@ -252,8 +252,15 @@ FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
             dentry->stat.mtime = g_current_time;
             *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
         }
+
+        /*
+        logInfo("old size: %"PRId64", new size: %"PRId64", "
+                "old mtime: %d, new mtime: %d, modified_flags: %d",
+                dentry->stat.size, new_size, dentry->stat.mtime,
+                (int)g_current_time, *modified_flags);
+                */
     }
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return dentry;
 }
@@ -284,12 +291,12 @@ FDIRServerDentry *inode_index_update_dentry(
     FDIRServerDentry *dentry;
 
     SET_INODE_HT_BUCKET_AND_CTX(record->inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, record->inode);
     if (dentry != NULL) {
         update_dentry(dentry, record);
     }
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return dentry;
 }
@@ -302,7 +309,7 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
     FLockTask *ftask;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     do {
         if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
             *result = ENOENT;
@@ -336,7 +343,7 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
             ftask = NULL;
         }
     } while (0);
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return ftask;
 }
@@ -344,12 +351,12 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
 void inode_index_flock_release(FLockTask *ftask)
 {
     SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     if (ftask->dentry->flock_entry != NULL) {
         flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
     }
     flock_free_ftask(&ctx->flock_ctx, ftask);
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
 SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
@@ -359,7 +366,7 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
     SysLockTask  *sys_task;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     do {
         if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
             *result = ENOENT;
@@ -389,7 +396,7 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
             sys_task = NULL;
         }
     } while (0);
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return sys_task;
 }
@@ -399,7 +406,7 @@ int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
 {
     int result;
     SET_INODE_HASHTABLE_CTX(sys_task->dentry->inode);
-    pthread_mutex_lock(&ctx->lock);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     if (sys_task->dentry->flock_entry != NULL) {
         result = sys_lock_release(sys_task->dentry->flock_entry,
                 sys_task, callback, args);
@@ -407,7 +414,7 @@ int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
         result = ENOENT;
     }
     flock_free_sys_task(&ctx->flock_ctx, sys_task);
-    pthread_mutex_unlock(&ctx->lock);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return result;
 }

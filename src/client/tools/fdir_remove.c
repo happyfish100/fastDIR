@@ -22,7 +22,6 @@ int main(int argc, char *argv[])
     char *ns;
     char *path;
     FDIRDEntryFullName fullname;
-    FDIRDEntryInfo dentry;
 	int result;
 
     if (argc < 2) {
@@ -64,5 +63,5 @@ int main(int argc, char *argv[])
     FC_SET_STRING(fullname.ns, ns);
     FC_SET_STRING(fullname.path, path);
     return fdir_client_remove_dentry(&g_fdir_client_vars.client_ctx,
-                    &fullname, &dentry);
+                    &fullname);
 }

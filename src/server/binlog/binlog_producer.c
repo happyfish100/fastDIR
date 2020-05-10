@@ -198,7 +198,7 @@ void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer)
     bool notify;
 
     rbuffer->next = NULL;
-    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_LOCK(&proceduer_ctx.queue.lock);
     if (proceduer_ctx.queue.tail == NULL) {
         proceduer_ctx.queue.head = rbuffer;
         notify = true;
@@ -208,7 +208,7 @@ void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer)
     }
 
     proceduer_ctx.queue.tail = rbuffer;
-    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&proceduer_ctx.queue.lock);
 
     if (notify) {
         pthread_cond_signal(&proceduer_ctx.queue.cond);
@@ -220,7 +220,7 @@ static void repush_to_queue(ServerBinlogRecordBuffer *rb)
     ServerBinlogRecordBuffer *previous;
     ServerBinlogRecordBuffer *current;
 
-    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_LOCK(&proceduer_ctx.queue.lock);
     if (proceduer_ctx.queue.head == NULL) {
         rb->next = NULL;
         proceduer_ctx.queue.head = proceduer_ctx.queue.tail = rb;
@@ -242,7 +242,7 @@ static void repush_to_queue(ServerBinlogRecordBuffer *rb)
         rb->next = previous->next;
         previous->next = rb;
     }
-    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&proceduer_ctx.queue.lock);
 }
 
 #define PUSH_TO_CONSUMER_QUEQUES(rb) \
@@ -326,7 +326,7 @@ static void deal_queue()
         logInfo("max proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
     }
 
-    pthread_mutex_lock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_LOCK(&proceduer_ctx.queue.lock);
     if (proceduer_ctx.queue.head == NULL) {
         pthread_cond_wait(&proceduer_ctx.queue.cond,
                 &proceduer_ctx.queue.lock);
@@ -334,7 +334,7 @@ static void deal_queue()
 
     head = proceduer_ctx.queue.head;
     proceduer_ctx.queue.head = proceduer_ctx.queue.tail = NULL;
-    pthread_mutex_unlock(&proceduer_ctx.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&proceduer_ctx.queue.lock);
 
     if (head == NULL) {
         return;

@@ -52,11 +52,11 @@ static void data_thread_deal_done_callback(
         replay_ctx->notify.func(is_error ? result : 0,
                 record, replay_ctx->notify.args);
     }
-    pthread_mutex_lock(&(replay_ctx->lock));
+    PTHREAD_MUTEX_LOCK(&(replay_ctx->lock));
     if (--replay_ctx->waiting_count == 0) {
         pthread_cond_signal(&(replay_ctx->cond));
     }
-    pthread_mutex_unlock(&(replay_ctx->lock));
+    PTHREAD_MUTEX_UNLOCK(&(replay_ctx->lock));
 }
 
 int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
@@ -182,10 +182,10 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         }
 
         rec_end = record;
-        pthread_mutex_lock(&(replay_ctx->lock));
+        PTHREAD_MUTEX_LOCK(&(replay_ctx->lock));
         replay_ctx->waiting_count = rec_end -
             replay_ctx->record_array.records;
-        pthread_mutex_unlock(&(replay_ctx->lock));
+        PTHREAD_MUTEX_UNLOCK(&(replay_ctx->lock));
 
         for (record=replay_ctx->record_array.records;
                 record<rec_end; record++)
@@ -202,12 +202,12 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
                 replay_ctx->waiting_count);
                 */
 
-        pthread_mutex_lock(&(replay_ctx->lock));
+        PTHREAD_MUTEX_LOCK(&(replay_ctx->lock));
         while (replay_ctx->waiting_count != 0) {
             pthread_cond_wait(&(replay_ctx->cond),
                     &(replay_ctx->lock));
         }
-        pthread_mutex_unlock(&(replay_ctx->lock));
+        PTHREAD_MUTEX_UNLOCK(&(replay_ctx->lock));
 
         if (replay_ctx->fail_count > 0) {
             return replay_ctx->last_errno;

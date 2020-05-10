@@ -160,7 +160,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
+int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;

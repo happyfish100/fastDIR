@@ -153,7 +153,7 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     bool notify;
 
     rbuffer->nexts[replication->index] = NULL;
-    pthread_mutex_lock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     if (replication->context.queue.tail == NULL) {
         replication->context.queue.head = rbuffer;
         notify = true;
@@ -163,7 +163,7 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     }
 
     replication->context.queue.tail = rbuffer;
-    pthread_mutex_unlock(&replication->context.queue.lock);
+    PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (notify) {
         iovent_notify_thread(replication->task->thread_data);

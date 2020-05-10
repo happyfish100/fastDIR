@@ -65,8 +65,16 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const mode_t mode,
         FDIRDEntryInfo *dentry);
 
-int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
+int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
+
+static inline int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname)
+{
+    FDIRDEntryInfo dentry;
+    return fdir_client_remove_dentry_ex(client_ctx,
+            fullname, &dentry);
+}
 
 int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, int64_t *inode);
