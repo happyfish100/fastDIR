@@ -23,19 +23,19 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
     int perm;
 
     perm = dentry->stat.mode & (~S_IFMT);
-    if ((dentry->stat.mode & S_IFIFO)) {
+    if (S_ISFIFO(dentry->stat.mode)) {
         type = "FIFO";
-    } else if ((dentry->stat.mode & S_IFCHR)) {
+    } else if (S_ISCHR(dentry->stat.mode)) {
         type = "character device";
-    } else if ((dentry->stat.mode & S_IFDIR)) {
+    } else if (S_ISDIR(dentry->stat.mode)) {
         type = "directory";
-    } else if ((dentry->stat.mode & S_IFBLK)) {
+    } else if (S_ISBLK(dentry->stat.mode)) {
         type = "block device";
-    } else if ((dentry->stat.mode & S_IFREG)) {
+    } else if (S_ISREG(dentry->stat.mode)) {
         type = "regular file";
-    } else if ((dentry->stat.mode & S_IFLNK)) {
+    } else if (S_ISLNK(dentry->stat.mode)) {
         type = "symbolic link";
-    } else if ((dentry->stat.mode & S_IFSOCK)) {
+    } else if (S_ISSOCK(dentry->stat.mode)) {
         type = "socket";
     } else {
         type = "UNKOWN";

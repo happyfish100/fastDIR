@@ -524,7 +524,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
         req->ns_len = 0;
     }
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(
-            FDIRProtoSysUnlockDEntryReq) + ns->len;
+            FDIRProtoSysUnlockDEntryReq) + req->ns_len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
 
