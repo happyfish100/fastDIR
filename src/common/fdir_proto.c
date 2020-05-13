@@ -30,13 +30,6 @@ int fdir_proto_set_body_length(struct fast_task_info *task)
     return 0;
 }
 
-void fdir_set_admin_header (FDIRProtoHeader *fdir_header_proto,
-        unsigned char cmd, int body_len)
-{
-    fdir_header_proto->cmd = cmd;
-    int2buff(body_len, fdir_header_proto->body_len);
-}
-
 int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout, const unsigned char expect_cmd)
 {
@@ -149,22 +142,15 @@ int fdir_send_and_recv_response(ConnectionInfo *conn, char *send_data,
     return result;
 }
 
-int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
+int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout)
 {
-    int ret;
     FDIRProtoHeader fdir_header_proto;
 
-    fdir_set_admin_header(&fdir_header_proto, FDIR_PROTO_ACTIVE_TEST_REQ,
-            0);
-    ret = fdir_send_and_recv_response_header(conn, (char *)&fdir_header_proto,
-            sizeof(FDIRProtoHeader), response, network_timeout);
-    if (ret == 0) {
-        ret = fdir_check_response(conn, response, network_timeout,
-                FDIR_PROTO_ACTIVE_TEST_RESP);
-    }
-
-    return ret;
+    FDIR_PROTO_SET_HEADER(&fdir_header_proto, FDIR_PROTO_ACTIVE_TEST_REQ, 0);
+    return fdir_send_and_recv_none_body_response(conn,
+            (char *)&fdir_header_proto, sizeof(FDIRProtoHeader), response,
+            network_timeout, FDIR_PROTO_ACTIVE_TEST_RESP);
 }
 
 const char *fdir_get_server_status_caption(const int status)

@@ -11,8 +11,8 @@ typedef ConnectionInfo *(*fdir_get_connection_func)(
         struct fdir_client_context *client_ctx, int *err_no);
 
 typedef ConnectionInfo *(*fdir_get_spec_connection_func)(
-        struct fdir_client_context *client_ctx, const char *ip_addr,
-        const int port, int *err_no);
+        struct fdir_client_context *client_ctx,
+        const ConnectionInfo *target, int *err_no);
 
 typedef void (*fdir_release_connection_func)(
         struct fdir_client_context *client_ctx, ConnectionInfo *conn);
@@ -30,8 +30,7 @@ typedef struct fdir_dstatus {
 
 typedef struct fdir_client_server_entry {
     int server_id;
-    char ip_addr[IP_ADDRESS_SIZE];
-    short port;
+    ConnectionInfo conn;
     char status;
 } FDIRClientServerEntry;
 
@@ -61,7 +60,10 @@ typedef struct fdir_connection_manager {
     fdir_close_connection_func close_connection;
 
     /* master connection cache */
-    ConnectionInfo *master;
+    struct {
+        ConnectionInfo *conn;
+        ConnectionInfo holder;
+    } master_cache;
 
     void *args;   //extra data
 } FDIRConnectionManager;

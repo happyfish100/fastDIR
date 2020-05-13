@@ -2,84 +2,17 @@
 #include <limits.h>
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
+#include "fdir_proto.h"
 #include "client_global.h"
 #include "client_func.h"
 #include "client_proto.h"
 #include "simple_connection_manager.h"
 
-static inline int make_connection(ConnectionInfo *conn)
-{
-    if (conn->sock >= 0) {
-        return 0;
-    }
-
-    return conn_pool_connect_server(conn, g_fdir_client_vars.
-            connect_timeout);
-}
-
-static int check_realloc_group_servers(FDIRServerGroup *server_group)
-{
-    int bytes;
-    int alloc_size;
-    ConnectionInfo *servers;
-
-    if (server_group->alloc_size > server_group->count) {
-        return 0;
-    }
-
-    if (server_group->alloc_size > 0) {
-        alloc_size = server_group->alloc_size * 2;
-    } else {
-        alloc_size = 4;
-    }
-    bytes = sizeof(ConnectionInfo) * alloc_size;
-    servers = (ConnectionInfo *)malloc(bytes);
-    if (servers == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
-        return errno != 0 ? errno : ENOMEM;
-    }
-    memset(servers, 0, bytes);
-
-    if (server_group->count > 0) {
-        memcpy(servers, server_group->servers,
-                sizeof(ConnectionInfo) * server_group->count);
-    }
-
-    server_group->servers = servers;
-    server_group->alloc_size = alloc_size;
-    return 0;
-}
-
 static ConnectionInfo *get_spec_connection(FDIRClientContext *client_ctx,
         const ConnectionInfo *target, int *err_no)
 {
-    FDIRServerGroup *cluster_sarray;
-    ConnectionInfo *conn;
-    ConnectionInfo *end;
-
-    cluster_sarray = (FDIRServerGroup *)client_ctx->conn_manager.args;
-    end = cluster_sarray->servers + cluster_sarray->count;
-    for (conn=cluster_sarray->servers; conn<end; conn++) {
-        if (FC_CONNECTION_SERVER_EQUAL1(*conn, *target)) {
-            break;
-        }
-    }
-
-    if (conn == end) {
-        if (check_realloc_group_servers(cluster_sarray) != 0) {
-            *err_no = ENOMEM;
-            return NULL;
-        }
-
-        conn = cluster_sarray->servers + cluster_sarray->count++;
-        conn_pool_set_server_info(conn, target->ip_addr, target->port);
-    }
-
-    if ((*err_no=make_connection(conn)) != 0) {
-        return NULL;
-    }
-    return conn;
+    return conn_pool_get_connection((ConnectionPool *)client_ctx->
+            conn_manager.args, target, err_no);
 }
 
 static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
@@ -115,11 +48,13 @@ static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
 static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
         int *err_no)
 {
-    ConnectionInfo *conn; 
+    ConnectionInfo *conn;
+    ConnectionInfo mconn;
     FDIRClientServerEntry master;
 
-    if (client_ctx->conn_manager.master_cache.conn != NULL) {
-        return client_ctx->conn_manager.master_cache.conn;
+    mconn = *(client_ctx->conn_manager.master_cache.conn);
+    if (mconn.port > 0) {
+        return get_spec_connection(client_ctx, &mconn, err_no);
     }
 
     do {
@@ -133,7 +68,8 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
             break;
         }
 
-        client_ctx->conn_manager.master_cache.conn = conn;
+        conn_pool_set_server_info(client_ctx->conn_manager.
+                master_cache.conn, conn->ip_addr, conn->port);
         return conn;
     } while (0);
 
@@ -171,58 +107,85 @@ static ConnectionInfo *get_readable_connection(
         return NULL;
 }
 
+static void release_connection(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn)
+{
+    conn_pool_close_connection_ex((ConnectionPool *)client_ctx->
+            conn_manager.args, conn, false);
+}
+
 static void close_connection(FDIRClientContext *client_ctx,
         ConnectionInfo *conn)
 {
-    if (client_ctx->conn_manager.master_cache.conn == conn) {
-        client_ctx->conn_manager.master_cache.conn = NULL;
+    if (client_ctx->conn_manager.master_cache.conn->port == conn->port &&
+            strcmp(client_ctx->conn_manager.master_cache.conn->ip_addr,
+                conn->ip_addr) == 0)
+    {
+        client_ctx->conn_manager.master_cache.conn->port = 0;
     }
 
-    conn_pool_disconnect_server(conn);
+    conn_pool_close_connection_ex((ConnectionPool *)client_ctx->
+            conn_manager.args, conn, true);
 }
 
-int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
+static int validate_connection_callback(ConnectionInfo *conn, void *args)
 {
-    FDIRServerGroup *cluster_sarray;
+    FDIRResponseInfo response;
+    int result;
+    if ((result=fdir_active_test(conn, &response, g_fdir_client_vars.
+                    network_timeout)) != 0)
+    {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    return result;
+}
+
+int fdir_pooled_connection_manager_init(FDIRConnectionManager *conn_manager,
+        const int max_count_per_entry, const int max_idle_time)
+{
+    const int socket_domain = AF_INET;
+    const int htable_init_capacity = 128;
+    ConnectionPool *cp;
     int result;
 
-    cluster_sarray = (FDIRServerGroup *)malloc(sizeof(FDIRServerGroup));
-    if (cluster_sarray == NULL) {
+    cp = (ConnectionPool *)malloc(sizeof(ConnectionPool));
+    if (cp == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "malloc %d bytes fail", __LINE__,
-                (int)sizeof(FDIRServerGroup));
+                (int)sizeof(ConnectionPool));
         return ENOMEM;
     }
 
-    if ((result=fdir_alloc_group_servers(cluster_sarray, 4)) != 0) {
+    if ((result=conn_pool_init_ex1(cp, g_fdir_client_vars.connect_timeout,
+                    max_count_per_entry, max_idle_time, socket_domain,
+                    htable_init_capacity, NULL, NULL,
+                    validate_connection_callback, NULL, 0)) != 0)
+    {
         return result;
     }
 
-    conn_manager->args = cluster_sarray;
+    conn_manager->args = cp;
     conn_manager->get_connection = get_connection;
     conn_manager->get_spec_connection = get_spec_connection;
     conn_manager->get_master_connection = get_master_connection;
     conn_manager->get_readable_connection = get_readable_connection;
 
-    conn_manager->release_connection = NULL;
+    conn_manager->release_connection = release_connection;
     conn_manager->close_connection = close_connection;
-    conn_manager->master_cache.conn = NULL;
+    conn_manager->master_cache.conn = &conn_manager->master_cache.holder;
+    conn_pool_set_server_info(conn_manager->master_cache.conn, "", 0);
     return 0;
 }
 
-void fdir_simple_connection_manager_destroy(FDIRConnectionManager *conn_manager)
+void fdir_pooled_connection_manager_destroy(FDIRConnectionManager *conn_manager)
 {
-    FDIRServerGroup *cluster_sarray;
+    ConnectionPool *cp;
 
     if (conn_manager->args != NULL) {
-        cluster_sarray = (FDIRServerGroup *)conn_manager->args;
-        if (cluster_sarray->servers != NULL) {
-            free(cluster_sarray->servers);
-            cluster_sarray->servers = NULL;
-            cluster_sarray->count = cluster_sarray->alloc_size = 0;
-        }
-
-        free(cluster_sarray);
+        cp = (ConnectionPool *)conn_manager->args;
+        conn_pool_destroy(cp);
+        free(cp);
         conn_manager->args = NULL;
     }
 }

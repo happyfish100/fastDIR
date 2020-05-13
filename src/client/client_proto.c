@@ -67,26 +67,6 @@ static int client_check_set_proto_dentry(const FDIRDEntryFullName *fullname,
             fullname->path.str, fullname->path.len);
     return 0;
 }
-
-static inline void log_network_error_ex(FDIRResponseInfo *response,
-        const ConnectionInfo *conn, const int result, const int line)
-{
-    if (response->error.length > 0) {
-        logError("file: "__FILE__", line: %d, "
-                "server %s:%d, %s", line,
-                conn->ip_addr, conn->port,
-                response->error.message);
-    } else {
-        logError("file: "__FILE__", line: %d, "
-                "communicate with dir server %s:%d fail, "
-                "sock fd: %d, errno: %d, error info: %s", line,
-                conn->ip_addr, conn->port, conn->sock,
-                result, STRERROR(result));
-    }
-}
-
-#define log_network_error(response, conn, result) \
-        log_network_error_ex(response, conn, result, __LINE__)
  
 static inline void fdir_client_release_connection(
         FDIRClientContext *client_ctx,
@@ -153,7 +133,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
     {
         proto_to_dentry(&proto_stat, dentry);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -202,7 +182,7 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
     {
         proto_to_dentry(&proto_stat, dentry);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -251,7 +231,7 @@ int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         *inode = buff2long(proto_resp.inode);
     } else {
         *inode = -1;
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -297,7 +277,7 @@ int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
     {
         proto_to_dentry(&proto_stat, dentry);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -333,7 +313,7 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
     {
         proto_to_dentry(&proto_stat, dentry);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -388,7 +368,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     {
         proto_to_dentry(&proto_stat, dentry);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -430,7 +410,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP, NULL, 0)) != 0)
     {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -471,7 +451,7 @@ int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
     {
         *file_size = buff2long(lock_resp.size);
     } else {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -535,7 +515,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -825,7 +805,7 @@ int fdir_client_list_dentry(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -837,13 +817,15 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     ConnectionInfo *conn;
+    ConnectionInfo target_conn;
     char out_buff[sizeof(FDIRProtoHeader)];
     FDIRResponseInfo response;
     FDIRProtoServiceStatResp stat_resp;
     int result;
 
+    conn_pool_set_server_info(&target_conn, ip_addr, port);
     if ((conn=client_ctx->conn_manager.get_spec_connection(
-                    client_ctx, ip_addr, port, &result)) == NULL)
+                    client_ctx, &target_conn, &result)) == NULL)
     {
         return result;
     }
@@ -856,7 +838,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_SERVICE_STAT_RESP,
                     (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
     {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -954,7 +936,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (stat=stats; body_part<body_end; body_part++, stat++) {
@@ -1000,12 +982,12 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_MASTER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         master->server_id = buff2int(server_resp.server_id);
-        memcpy(master->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
-        *(master->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-        master->port = buff2short(server_resp.port);
+        memcpy(master->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+        *(master->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        master->conn.port = buff2short(server_resp.port);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -1035,12 +1017,12 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         server->server_id = buff2int(server_resp.server_id);
-        memcpy(server->ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
-        *(server->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-        server->port = buff2short(server_resp.port);
+        memcpy(server->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
+        *(server->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+        server->conn.port = buff2short(server_resp.port);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -1119,14 +1101,14 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (slave=slaves; body_part<body_end; body_part++, slave++) {
             slave->server_id = buff2int(body_part->server_id);
-            memcpy(slave->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
-            *(slave->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-            slave->port = buff2short(body_part->port);
+            memcpy(slave->conn.ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
+            *(slave->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
+            slave->conn.port = buff2short(body_part->port);
             slave->status = body_part->status;
         }
     }

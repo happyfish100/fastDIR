@@ -385,7 +385,7 @@ static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
     header_info->status = buff2short(header_proto->status);
 }
 
-int fdir_send_active_test_req(ConnectionInfo *conn, FDIRResponseInfo *response,
+int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,
         const int network_timeout);
 
 const char *fdir_get_server_status_caption(const int status);
