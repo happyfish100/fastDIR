@@ -862,6 +862,10 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    logInfo("===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d, result: %d", operation, inode,
+            offset, length, owner.tid, owner.pid, result);
+
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
 }

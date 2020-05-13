@@ -65,13 +65,19 @@ typedef struct fdir_connection_manager {
         ConnectionInfo holder;
     } master_cache;
 
-    void *args;   //extra data
+    void *args[2];   //extra data
 } FDIRConnectionManager;
+
+typedef struct fdir_client_session {
+    struct fdir_client_context *ctx;
+    ConnectionInfo *mconn;  //master connection
+} FDIRClientSession;
 
 typedef struct fdir_client_context {
     FDIRServerGroup server_group;
     FDIRConnectionManager conn_manager;
     bool is_simple_conn_mananger;
+    bool cloned;
 } FDIRClientContext;
 
 #endif

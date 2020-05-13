@@ -67,22 +67,30 @@ static void *thread_func(void *args)
 {
     long thread_index;
     FDIRClientContext client_ctx;
+    FDIRClientSession session;
     FDIRDEntryInfo dentry;
     char buff[32];
     int operation;
 	int result;
 
     thread_index = (long)args;
-
-    if ((result=fdir_client_init_ex(&client_ctx,
-                    config_filename, NULL)) != 0)
-    {
-        return NULL;
-    }
+    memset(&session, 0, sizeof(session));
 
     do {
         int64_t offset;
         int64_t length;
+        if ((result=fdir_client_init_ex(&client_ctx,
+                        config_filename, NULL)) != 0)
+        {
+            break;
+        }
+
+        if ((result=fdir_client_init_session(&client_ctx,
+                        &session)) != 0)
+        {
+            break;
+        }
+
 
         if (thread_index % 2 == 0) {
             operation = LOCK_SH;
@@ -92,10 +100,10 @@ static void *thread_func(void *args)
 
         offset = thread_index;
         length = 4 * offset;
-        if ((result=fdir_client_flock_dentry_ex(&client_ctx,
+        if ((result=fdir_client_flock_dentry_ex(&session,
                         operation | flock_flags, inode, offset, length)) != 0)
         {
-            fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
+            fprintf(stderr, "dentry lock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
                     inode, result, STRERROR(result));
             break;
@@ -119,10 +127,10 @@ static void *thread_func(void *args)
             usleep(usleep_time);
         }
 
-        if ((result=fdir_client_flock_dentry_ex(&client_ctx,
+        if ((result=fdir_client_flock_dentry_ex(&session,
                         LOCK_UN | flock_flags, inode,  offset, length)) != 0)
         {
-            fprintf(stderr, "flock_dentry fail, thread: %ld, inode: %"PRId64", "
+            fprintf(stderr, "dentry unlock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
                     inode, result, STRERROR(result));
             break;
@@ -130,6 +138,7 @@ static void *thread_func(void *args)
         __sync_add_and_fetch(&success_count, 1);
     } while (0);
 
+    fdir_client_close_session(&session, result != 0);
     __sync_sub_and_fetch(&thread_count, 1);
 
     return NULL;

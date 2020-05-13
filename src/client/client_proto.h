@@ -61,6 +61,12 @@ typedef struct fdir_client_cluster_stat_entry {
 extern "C" {
 #endif
 
+int fdir_client_init_session(FDIRClientContext *client_ctx,
+    FDIRClientSession *session);
+
+void fdir_client_close_session(FDIRClientSession *session,
+        const bool force_close);
+
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const mode_t mode,
         FDIRDEntryInfo *dentry);
@@ -89,22 +95,22 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
         const bool force, FDIRDEntryInfo *dentry);
 
-int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
+int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
         const int operation, const int64_t inode, const int64_t offset,
         const int64_t length, const int64_t owner_id, const pid_t pid);
 
-static inline int fdir_client_flock_dentry_ex(FDIRClientContext *client_ctx,
+static inline int fdir_client_flock_dentry_ex(FDIRClientSession *session,
         const int operation, const int64_t inode, const int64_t offset,
         const int64_t length)
 {
-    return fdir_client_flock_dentry_ex2(client_ctx, operation, inode,
+    return fdir_client_flock_dentry_ex2(session, operation, inode,
             offset, length, (long)pthread_self(), getpid());
 }
 
-static inline int fdir_client_flock_dentry(FDIRClientContext *client_ctx,
+static inline int fdir_client_flock_dentry(FDIRClientSession *session,
         const int operation, const int64_t inode)
 {
-    return fdir_client_flock_dentry_ex(client_ctx, operation, inode, 0, 0);
+    return fdir_client_flock_dentry_ex(session, operation, inode, 0, 0);
 }
 
 int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,

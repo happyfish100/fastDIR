@@ -179,6 +179,7 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *conf_filename, const FDIRConnectionManager *conn_manager)
 {
     int result;
+
     if ((result=fdir_client_load_from_file_ex(
                     client_ctx, conf_filename)) != 0)
     {
@@ -198,6 +199,7 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
     } else {
         client_ctx->is_simple_conn_mananger = false;
     }
+    client_ctx->cloned = false;
 
     srand(time(NULL));
     return 0;
@@ -205,6 +207,9 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
 
 void fdir_client_destroy_ex(FDIRClientContext *client_ctx)
 {
+    if (client_ctx->cloned) {
+        return;
+    }
     if (client_ctx->server_group.servers == NULL) {
         return;
     }

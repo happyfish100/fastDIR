@@ -12,7 +12,7 @@ static ConnectionInfo *get_spec_connection(FDIRClientContext *client_ctx,
         const ConnectionInfo *target, int *err_no)
 {
     return conn_pool_get_connection((ConnectionPool *)client_ctx->
-            conn_manager.args, target, err_no);
+            conn_manager.args[0], target, err_no);
 }
 
 static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
@@ -111,7 +111,7 @@ static void release_connection(FDIRClientContext *client_ctx,
         ConnectionInfo *conn)
 {
     conn_pool_close_connection_ex((ConnectionPool *)client_ctx->
-            conn_manager.args, conn, false);
+            conn_manager.args[0], conn, false);
 }
 
 static void close_connection(FDIRClientContext *client_ctx,
@@ -125,7 +125,7 @@ static void close_connection(FDIRClientContext *client_ctx,
     }
 
     conn_pool_close_connection_ex((ConnectionPool *)client_ctx->
-            conn_manager.args, conn, true);
+            conn_manager.args[0], conn, true);
 }
 
 static int validate_connection_callback(ConnectionInfo *conn, void *args)
@@ -165,7 +165,8 @@ int fdir_pooled_connection_manager_init(FDIRConnectionManager *conn_manager,
         return result;
     }
 
-    conn_manager->args = cp;
+    conn_manager->args[0] = cp;
+    conn_manager->args[1] = NULL;
     conn_manager->get_connection = get_connection;
     conn_manager->get_spec_connection = get_spec_connection;
     conn_manager->get_master_connection = get_master_connection;
@@ -182,10 +183,10 @@ void fdir_pooled_connection_manager_destroy(FDIRConnectionManager *conn_manager)
 {
     ConnectionPool *cp;
 
-    if (conn_manager->args != NULL) {
-        cp = (ConnectionPool *)conn_manager->args;
+    if (conn_manager->args[0] != NULL) {
+        cp = (ConnectionPool *)conn_manager->args[0];
         conn_pool_destroy(cp);
         free(cp);
-        conn_manager->args = NULL;
+        conn_manager->args[0] = NULL;
     }
 }

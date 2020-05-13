@@ -58,7 +58,7 @@ static ConnectionInfo *get_spec_connection(FDIRClientContext *client_ctx,
     ConnectionInfo *conn;
     ConnectionInfo *end;
 
-    cluster_sarray = (FDIRServerGroup *)client_ctx->conn_manager.args;
+    cluster_sarray = (FDIRServerGroup *)client_ctx->conn_manager.args[0];
     end = cluster_sarray->servers + cluster_sarray->count;
     for (conn=cluster_sarray->servers; conn<end; conn++) {
         if (FC_CONNECTION_SERVER_EQUAL1(*conn, *target)) {
@@ -198,7 +198,8 @@ int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
         return result;
     }
 
-    conn_manager->args = cluster_sarray;
+    conn_manager->args[0] = cluster_sarray;
+    conn_manager->args[1] = NULL;
     conn_manager->get_connection = get_connection;
     conn_manager->get_spec_connection = get_spec_connection;
     conn_manager->get_master_connection = get_master_connection;
@@ -214,8 +215,8 @@ void fdir_simple_connection_manager_destroy(FDIRConnectionManager *conn_manager)
 {
     FDIRServerGroup *cluster_sarray;
 
-    if (conn_manager->args != NULL) {
-        cluster_sarray = (FDIRServerGroup *)conn_manager->args;
+    if (conn_manager->args[0] != NULL) {
+        cluster_sarray = (FDIRServerGroup *)conn_manager->args[0];
         if (cluster_sarray->servers != NULL) {
             free(cluster_sarray->servers);
             cluster_sarray->servers = NULL;
@@ -223,6 +224,6 @@ void fdir_simple_connection_manager_destroy(FDIRConnectionManager *conn_manager)
         }
 
         free(cluster_sarray);
-        conn_manager->args = NULL;
+        conn_manager->args[0] = NULL;
     }
 }

@@ -375,24 +375,55 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
+int fdir_client_init_session(FDIRClientContext *client_ctx,
+    FDIRClientSession *session)
+{
+    int result;
+    if ((session->mconn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    session->ctx = client_ctx;
+    return 0;
+}
+
+void fdir_client_close_session(FDIRClientSession *session,
+        const bool force_close)
+{
+    if (session->mconn == NULL) {
+        return;
+    }
+
+    if (force_close) {
+        session->ctx->conn_manager.close_connection(
+                session->ctx, session->mconn);
+    } else if (session->ctx->conn_manager.release_connection != NULL) {
+        session->ctx->conn_manager.release_connection(
+                session->ctx, session->mconn);
+    }
+    session->mconn = NULL;
+}
+
+int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
         const int operation, const int64_t inode, const int64_t offset,
         const int64_t length, const int64_t owner_id, const pid_t pid)
 {
-    ConnectionInfo *conn;
     FDIRProtoHeader *header;
     FDIRProtoFlockDEntryReq *flock_req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoFlockDEntryReq)];
     FDIRResponseInfo response;
     int result;
 
-    if ((conn=client_ctx->conn_manager.get_master_connection(
-                    client_ctx, &result)) == NULL)
-    {
-        return result;
+    if (session->mconn == NULL) {
+        return EFAULT;
     }
 
     header = (FDIRProtoHeader *)out_buff;
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
+            sizeof(FDIRProtoFlockDEntryReq));
     flock_req = (FDIRProtoFlockDEntryReq *)(header + 1);
     flock_req->operation = operation;
     long2buff(inode, flock_req->inode);
@@ -401,19 +432,16 @@ int fdir_client_flock_dentry_ex2(FDIRClientContext *client_ctx,
     long2buff(owner_id, flock_req->owner.tid);
     int2buff(pid, flock_req->owner.pid);
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
-            sizeof(FDIRProtoFlockDEntryReq));
-
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP, NULL, 0)) != 0)
+    if ((result=fdir_send_and_recv_response(session->mconn, out_buff,
+                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
+                    NULL, 0)) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
-    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 

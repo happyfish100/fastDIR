@@ -15,6 +15,9 @@ extern "C" {
 #define fdir_client_init(filename) \
     fdir_client_init_ex((&g_fdir_client_vars.client_ctx), filename, NULL)
 
+#define fdir_client_clone(client_ctx) \
+    fdir_client_clone_ex(client_ctx, &g_fdir_client_vars.client_ctx)
+
 #define fdir_client_destroy() \
     fdir_client_destroy_ex((&g_fdir_client_vars.client_ctx))
 
@@ -30,6 +33,13 @@ int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
 
 int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *conf_filename, const FDIRConnectionManager *conn_manager);
+
+static inline void fdir_client_clone_ex(FDIRClientContext *dest_ctx,
+        const FDIRClientContext *src_ctx)
+{
+    *dest_ctx = *src_ctx;
+    dest_ctx->cloned = true;
+}
 
 /**
 * client destroy function
