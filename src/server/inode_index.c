@@ -5,6 +5,7 @@
 #include "fastcommon/logger.h"
 #include "sf/sf_global.h"
 #include "server_global.h"
+#include "dentry.h"
 #include "inode_index.h"
 
 typedef struct {
@@ -228,6 +229,20 @@ FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
     dentry = find_inode_entry(bucket, inode);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
+    return dentry;
+}
+
+FDIRServerDentry *inode_index_get_dentry_by_pname(
+        const int64_t parent_inode, const string_t *name)
+{
+    FDIRServerDentry *parent_dentry;
+    FDIRServerDentry *dentry;
+
+    if ((parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
+        return NULL;
+    }
+
+    dentry_find_by_pname(parent_dentry, name, &dentry);
     return dentry;
 }
 

@@ -668,6 +668,44 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
     return 0;
 }
 
+static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
+{
+    FDIRProtoStatDEntryByPNameReq *req;
+    FDIRServerDentry *dentry;
+    int64_t parent_inode;
+    string_t name;
+    int result;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
+    if ((result=server_check_body_length(task, sizeof(
+                        FDIRProtoStatDEntryByPNameReq) + 1,
+                    sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoStatDEntryByPNameReq *)REQUEST.body;
+    if (sizeof(FDIRProtoStatDEntryByPNameReq) + req->name_len !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoStatDEntryByPNameReq) + req->name_len);
+        return EINVAL;
+    }
+
+    parent_inode = buff2long(req->parent_inode);
+    name.str = req->name_str;
+    name.len = req->name_len;
+    if ((dentry=inode_index_get_dentry_by_pname(parent_inode, &name)) == NULL) {
+        return ENOENT;
+    }
+
+    dentry_stat_output(task, dentry);
+    return 0;
+}
+
 static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
         const int64_t file_size, const bool force, int *result)
@@ -1372,6 +1410,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
                 if ((result=service_check_readable(task)) == 0) {
                     result = service_deal_stat_dentry_by_inode(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_stat_dentry_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:

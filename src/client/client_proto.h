@@ -91,6 +91,10 @@ int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRDEntryInfo *dentry);
 
+int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
+        const int64_t parent_inode, const char *name,
+        FDIRDEntryInfo *dentry);
+
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
         const bool force, FDIRDEntryInfo *dentry);

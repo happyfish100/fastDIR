@@ -271,7 +271,7 @@ static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
     current = ns_entry->dentry_root;
     end = paths + count;
     for (p=paths; p<end; p++) {
-        if ((current->stat.mode & S_IFDIR) == 0) {
+        if (!S_ISDIR(current->stat.mode)) {
             return NULL;
         }
 
@@ -337,7 +337,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         }
     }
 
-    if (((*parent)->stat.mode & S_IFDIR) == 0) {
+    if (!S_ISDIR((*parent)->stat.mode)) {
         *parent = NULL;
         *me = NULL;
         return ENOENT;
@@ -386,7 +386,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return ENOMEM;
     }
 
-    is_dir = (record->stat.mode & S_IFDIR) != 0;
+    is_dir = S_ISDIR(record->stat.mode);
     if (is_dir) {
         current->children = uniq_skiplist_new(&db_context->
                 dentry_context.factory, INIT_LEVEL_COUNT);
@@ -454,7 +454,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         return ENOENT;
     }
 
-    if ((current->stat.mode & S_IFDIR) != 0) {
+    if (S_ISDIR(current->stat.mode)) {
         if (uniq_skiplist_count(current->children) > 0) {
             return ENOTEMPTY;
         }
@@ -496,6 +496,26 @@ int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
     }
 
     return 0;
+}
+
+int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
+        FDIRServerDentry **dentry)
+{
+    FDIRServerDentry target;
+
+    if (!S_ISDIR(parent->stat.mode)) {
+        *dentry = NULL;
+        return ENOENT;
+    }
+
+    target.name = *name;
+    if ((*dentry=(FDIRServerDentry *)uniq_skiplist_find(
+                    parent->children, &target)) != NULL)
+    {
+        return 0;
+    } else {
+        return ENOENT;
+    }
 }
 
 static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int target_count)
@@ -549,7 +569,7 @@ int dentry_list(const FDIRDEntryFullName *fullname,
         return result;
     }
 
-    if ((dentry->stat.mode & S_IFDIR) == 0) {
+    if (!S_ISDIR(dentry->stat.mode)) {
         count = 1;
     } else {
         count = uniq_skiplist_count(dentry->children);
@@ -559,7 +579,7 @@ int dentry_list(const FDIRDEntryFullName *fullname,
         return result;
     }
 
-    if ((dentry->stat.mode & S_IFDIR) == 0) {
+    if (!S_ISDIR(dentry->stat.mode)) {
         array->entries[array->count++] = dentry;
     } else {
         pp = array->entries;

@@ -30,21 +30,23 @@
 #define FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP       36
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       37
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      38
+#define FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ       39 //by parent inode and name
+#define FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP      40 //by parent inode and name
 
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     39  //modified by inode
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    40
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     41
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    42
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        43  //file lock
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       44
-#define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ        45
-#define FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP       46
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     41  //modified by inode
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    42
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     43
+#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    44
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        45  //file lock
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       46
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ        47
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP       48
 
 /* system lock for apend and ftruncate */
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ     47
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP    48
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ   49
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP  50
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ     49
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP    50
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ   51
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP  52
 
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        55
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       56
@@ -149,6 +151,12 @@ typedef struct fdir_proto_set_modify_stat_req {
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
 } FDIRProtoLookupInodeResp;
+
+typedef struct fdir_proto_stat_dentry_by_pname_req {
+    char parent_inode[8];
+    unsigned char name_len; //dir name length
+    char name_str[0];       //dir name string
+} FDIRProtoStatDEntryByPNameReq;
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];

@@ -23,6 +23,9 @@ extern "C" {
     int dentry_find(const FDIRDEntryFullName *fullname,
             FDIRServerDentry **dentry);
 
+    int dentry_find_by_pname(FDIRServerDentry *parent,
+            const string_t *name, FDIRServerDentry **dentry);
+
     int dentry_list(const FDIRDEntryFullName *fullname,
             FDIRServerDentryArray *array);
 
