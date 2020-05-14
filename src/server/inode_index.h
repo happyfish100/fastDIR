@@ -35,6 +35,8 @@ extern "C" {
 
     void inode_index_flock_release(FLockTask *ftask);
 
+    int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask);
+
     SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
             struct fast_task_info *task, int *result);
 

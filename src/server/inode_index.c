@@ -336,8 +336,7 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
         ftask->owner = *owner;
         ftask->dentry = dentry;
         ftask->task = task;
-        *result = flock_apply(&ctx->flock_ctx, ftask->dentry->flock_entry,
-                offset, length, ftask, block);
+        *result = flock_apply(&ctx->flock_ctx, offset, length, ftask, block);
         if (!(*result == 0 || *result == ENOLCK)) {
             flock_free_ftask(&ctx->flock_ctx, ftask);
             ftask = NULL;
@@ -346,6 +345,29 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return ftask;
+}
+
+int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
+{
+    int result;
+
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    do {
+        if ((ftask->dentry=find_inode_entry(bucket, inode)) == NULL) {
+            result = ENOENT;
+            break;
+        }
+
+        if (ftask->dentry->flock_entry == NULL) {
+            result = ENOENT;
+            break;
+        }
+
+        result = flock_get_conflict_lock(&ctx->flock_ctx, ftask);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    return result;
 }
 
 void inode_index_flock_release(FLockTask *ftask)

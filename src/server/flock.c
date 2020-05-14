@@ -80,7 +80,7 @@ void flock_destroy(FLockContext *ctx)
 }
 
 static FLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
-        const int64_t offset, const int64_t length, FLockTask *ftask)
+        const int64_t offset, const int64_t length)
 {
     FLockRegion *region;
     FLockRegion *new_region;
@@ -185,16 +185,16 @@ static inline FLockTask *get_conflict_ftask_by_region(FLockEntry *entry,
     return found;
 }
 
-static inline FLockTask *get_conflict_flock_task(FLockEntry *entry,
-        FLockTask *ftask, bool *global_conflict)
+static inline FLockTask *get_conflict_flock_task(FLockTask *ftask,
+        bool *global_conflict)
 {
     const bool check_waiting = true;
     FLockTask *found;
     FLockTask *wait;
     int conflict_regions;
 
-    if ((found=get_conflict_ftask_by_region(entry, ftask,
-                    check_waiting, &conflict_regions)) == NULL)
+    if ((found=get_conflict_ftask_by_region(ftask->dentry->flock_entry,
+                    ftask, check_waiting, &conflict_regions)) == NULL)
     {
         if (ftask->type == LOCK_EX) {
             *global_conflict = false;
@@ -205,7 +205,9 @@ static inline FLockTask *get_conflict_flock_task(FLockEntry *entry,
         return found;
     }
 
-    fc_list_for_each_entry(wait, &entry->waiting_tasks, flink) {
+    fc_list_for_each_entry(wait, &ftask->dentry->
+            flock_entry->waiting_tasks, flink)
+    {
         if (is_region_overlap(ftask->region, wait->region)) {
             *global_conflict = true;
             return wait;
@@ -220,18 +222,18 @@ static inline FLockTask *get_conflict_flock_task(FLockEntry *entry,
     return found;
 }
 
-int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
+int flock_apply(FLockContext *ctx, const int64_t offset,
         const int64_t length, FLockTask *ftask, const bool block)
 {
     bool global_conflict;
 
-    if ((ftask->region=get_region(ctx, entry, offset,
-                    length, ftask)) == NULL)
+    if ((ftask->region=get_region(ctx, ftask->dentry->flock_entry,
+                    offset, length)) == NULL)
     {
         return ENOMEM;
     }
 
-    if (get_conflict_flock_task(entry, ftask, &global_conflict) == NULL) {
+    if (get_conflict_flock_task(ftask, &global_conflict) == NULL) {
         add_to_locked(ftask);
         return 0;
     }
@@ -242,12 +244,29 @@ int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
 
     if (global_conflict) {
         ftask->which_queue = FDIR_FLOCK_TASK_IN_GLOBAL_WAITING_QUEUE;
-        fc_list_add_tail(&ftask->flink, &entry->waiting_tasks);
+        fc_list_add_tail(&ftask->flink, &ftask->dentry->
+                flock_entry->waiting_tasks);
     } else {
         ftask->which_queue = FDIR_FLOCK_TASK_IN_REGION_WAITING_QUEUE;
         fc_list_add_tail(&ftask->flink, &ftask->region->waiting);
     }
     return ENOLCK;
+}
+
+int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)
+{
+    bool global_conflict;
+    FLockTask *holder;
+
+    if ((holder=get_conflict_flock_task(ftask, &global_conflict)) == NULL) {
+        return ENOENT;
+    }
+
+    ftask->type = holder->type;
+    ftask->owner = holder->owner;
+    *(ftask->region) = *(holder->region);
+    ftask->task = holder->task;
+    return 0;
 }
 
 static int awake_waiting_tasks(FLockEntry *entry, FLockTask *ftask,

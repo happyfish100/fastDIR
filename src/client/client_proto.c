@@ -407,11 +407,11 @@ void fdir_client_close_session(FDIRClientSession *session,
 }
 
 int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
-        const int operation, const int64_t inode, const int64_t offset,
+        const int64_t inode, const int operation, const int64_t offset,
         const int64_t length, const int64_t owner_id, const pid_t pid)
 {
     FDIRProtoHeader *header;
-    FDIRProtoFlockDEntryReq *flock_req;
+    FDIRProtoFlockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoFlockDEntryReq)];
     FDIRResponseInfo response;
     int result;
@@ -424,13 +424,13 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
             sizeof(FDIRProtoFlockDEntryReq));
-    flock_req = (FDIRProtoFlockDEntryReq *)(header + 1);
-    flock_req->operation = operation;
-    long2buff(inode, flock_req->inode);
-    long2buff(offset, flock_req->offset);
-    long2buff(length, flock_req->length);
-    long2buff(owner_id, flock_req->owner.tid);
-    int2buff(pid, flock_req->owner.pid);
+    req = (FDIRProtoFlockDEntryReq *)(header + 1);
+    int2buff(operation, req->operation);
+    long2buff(inode, req->inode);
+    long2buff(offset, req->offset);
+    long2buff(length, req->length);
+    long2buff(owner_id, req->owner.tid);
+    int2buff(pid, req->owner.pid);
 
     response.error.length = 0;
     response.error.message[0] = '\0';
@@ -442,6 +442,54 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
         fdir_log_network_error(&response, session->mconn, result);
     }
 
+    return result;
+}
+
+int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
+        const int64_t inode, int *operation, int64_t *offset,
+        int64_t *length, int64_t *owner_id, pid_t *pid)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoGetlkDEntryReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoGetlkDEntryReq)];
+    FDIRProtoGetlkDEntryResp getlk_resp;
+    FDIRResponseInfo response;
+    int result;
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoGetlkDEntryReq *)(header + 1);
+    long2buff(inode, req->inode);
+    int2buff(*operation, req->operation);
+    long2buff(*offset, req->offset);
+    long2buff(*length, req->length);
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
+            sizeof(FDIRProtoGetlkDEntryReq));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP,
+                    (char *)&getlk_resp, sizeof(getlk_resp))) == 0)
+    {
+        *operation = buff2int(getlk_resp.type);
+        *offset = buff2long(getlk_resp.offset);
+        *length = buff2long(getlk_resp.length);
+        *owner_id = buff2long(getlk_resp.owner.tid);
+        *pid = buff2int(getlk_resp.owner.pid);
+    } else {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
@@ -464,8 +512,8 @@ int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoSysLockDEntryReq *)(header + 1);
-    req->flags = flags;
     long2buff(inode, req->inode);
+    int2buff(flags, req->flags);
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ,
             sizeof(FDIRProtoSysLockDEntryReq));
@@ -523,7 +571,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
     long2buff(inode, req->inode);
     long2buff(old_size, req->old_size);
     long2buff(new_size, req->new_size);
-    req->flags = flags;
+    int2buff(flags, req->flags);
     req->force = force;
     if (ns != NULL) {
         req->ns_len = ns->len;

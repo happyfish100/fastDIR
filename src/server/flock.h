@@ -102,10 +102,12 @@ extern "C" {
         fast_mblock_free_object(&ctx->allocators.ftask, ftask);
     }
 
-    int flock_apply(FLockContext *ctx, FLockEntry *entry, const int64_t offset,
+    int flock_apply(FLockContext *ctx, const int64_t offset,
             const int64_t length, FLockTask *ftask, const bool block);
 
     void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
+
+    int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask);
 
     static inline SysLockTask *flock_alloc_sys_task(FLockContext *ctx)
     {

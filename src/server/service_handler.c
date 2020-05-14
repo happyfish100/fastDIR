@@ -834,10 +834,11 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     length = buff2long(req->length);
     owner.tid = buff2long(req->owner.tid);
     owner.pid = buff2int(req->owner.pid);
-    operation = req->operation;
+    operation = buff2int(req->operation);
 
-    logInfo("operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d", operation, inode,
+    logInfo("file: "__FILE__", line: %d, "
+            "operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d", __LINE__, operation, inode,
             offset, length, owner.tid, owner.pid);
 
     if (operation & LOCK_UN) {
@@ -862,12 +863,71 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return result;
     }
 
-    logInfo("===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d, result: %d", operation, inode,
+    logInfo("file: "__FILE__", line: %d, "
+            "===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d, result: %d", __LINE__, operation, inode,
             offset, length, owner.tid, owner.pid, result);
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+}
+
+static int service_deal_getlk_dentry(struct fast_task_info *task)
+{
+    FDIRProtoGetlkDEntryReq *req;
+    FDIRProtoGetlkDEntryResp *resp;
+    FLockTask ftask;
+    int result;
+    short type;
+    int64_t inode;
+    int64_t offset;
+    int64_t length;
+    short operation;
+    FLockRegion region;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoGetlkDEntryReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
+    inode = buff2long(req->inode);
+    offset = buff2long(req->offset);
+    length = buff2long(req->length);
+    operation = buff2int(req->operation);
+
+    logInfo("file: "__FILE__", line: %d, "
+            "operation: %d, inode: %"PRId64", "
+            "offset: %"PRId64", length: %"PRId64, 
+            __LINE__, operation, inode, offset, length);
+
+    if (operation & LOCK_EX) {
+        type = LOCK_EX;
+    } else if (operation & LOCK_SH) {
+        type = LOCK_SH;
+    } else {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid operation: %d", operation);
+        return EINVAL;
+    }
+
+    memset(&region, 0, sizeof(region));
+    region.offset = offset;
+    region.length = length;
+    ftask.region = &region;  //for region compare
+    if ((result=inode_index_flock_getlk(inode, &ftask)) == 0) {
+        resp = (FDIRProtoGetlkDEntryResp *)REQUEST.body;
+        int2buff(ftask.type, resp->type);
+        long2buff(ftask.region->offset, resp->offset);
+        long2buff(ftask.region->length, resp->length);
+        long2buff(ftask.owner.tid, resp->owner.tid);
+        int2buff(ftask.owner.pid, resp->owner.pid);
+    }
+
+    return result;
 }
 
 static void sys_lock_dentry_output(struct fast_task_info *task,
@@ -920,7 +980,7 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
 
     req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
     inode = buff2long(req->inode);
-    flags = req->flags;
+    flags = buff2int(req->flags);
 
     if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode, (flags & LOCK_NB) == 0,
                     task, &result)) == NULL)
@@ -961,6 +1021,7 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysUnlockDEntryReq *req;
     int result;
+    int flags;
     int64_t inode;
     int64_t old_size;
     int64_t new_size;
@@ -999,8 +1060,9 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
                 "expect: %"PRId64, inode, SYS_LOCK_TASK->dentry->inode);
         return EINVAL;
     }
+    flags = buff2int(req->flags);
 
-    if ((req->flags & FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE)) {
+    if ((flags & FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE)) {
         if (req->ns_len <= 0) {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
                     "namespace length: %d is invalid which <= 0",
@@ -1325,6 +1387,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_flock_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_getlk_dentry(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:

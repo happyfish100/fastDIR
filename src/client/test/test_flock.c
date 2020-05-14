@@ -101,7 +101,7 @@ static void *thread_func(void *args)
         offset = thread_index;
         length = 4 * offset;
         if ((result=fdir_client_flock_dentry_ex(&session,
-                        operation | flock_flags, inode, offset, length)) != 0)
+                        inode, operation | flock_flags, offset, length)) != 0)
         {
             fprintf(stderr, "dentry lock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
@@ -128,7 +128,7 @@ static void *thread_func(void *args)
         }
 
         if ((result=fdir_client_flock_dentry_ex(&session,
-                        LOCK_UN | flock_flags, inode,  offset, length)) != 0)
+                        inode, LOCK_UN | flock_flags, offset, length)) != 0)
         {
             fprintf(stderr, "dentry unlock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,

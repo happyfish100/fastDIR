@@ -211,6 +211,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "FLOCK_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP:
             return "FLOCK_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ:
+            return "GETLK_DENTRY_REQ";
+        case FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP:
+            return "GETLK_DENTRY_RESP";
         case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:
             return "SYS_LOCK_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP:

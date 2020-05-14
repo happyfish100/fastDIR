@@ -37,17 +37,19 @@
 #define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    42
 #define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        43  //file lock
 #define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       44
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ        45
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP       46
 
 /* system lock for apend and ftruncate */
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ     45
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP    46
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ   47
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP  48
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ     47
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP    48
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ   49
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP  50
 
-#define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        51
-#define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       52
-#define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ        53
-#define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP       54
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ        55
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP       56
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ        57
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP       58
 
 #define FDIR_SERVICE_PROTO_GET_MASTER_REQ           61
 #define FDIR_SERVICE_PROTO_GET_MASTER_RESP          62
@@ -164,17 +166,33 @@ typedef struct fdir_proto_flock_dentry_req {
         char tid[8];  //thread id
         char pid[4];
     } owner;
-    char operation;   /* lock operation, LOCK_SH for read shared lock,
-                        LOCK_EX for write exclusive lock,
-                        LOCK_NB for non-block with LOCK_SH or LOCK_EX,
-                        LOCK_UN for unlock */
-    char padding[3];
+    char operation[4]; /* lock operation, LOCK_SH for read shared lock,
+                         LOCK_EX for write exclusive lock,
+                         LOCK_NB for non-block with LOCK_SH or LOCK_EX,
+                         LOCK_UN for unlock */
 } FDIRProtoFlockDEntryReq;
+
+typedef struct fdir_proto_getlk_dentry_req {
+    char inode[8];
+    char offset[8];  /* lock region offset */
+    char length[8];  /* lock region  length, 0 for until end of file */
+    char operation[4];
+} FDIRProtoGetlkDEntryReq;
+
+typedef struct fdir_proto_getlk_dentry_resp {
+    char offset[8];  /* lock region offset */
+    char length[8];  /* lock region  length, 0 for until end of file */
+    struct {
+        char tid[8];  //thread id
+        char pid[4];
+    } owner;
+    char type[4];
+} FDIRProtoGetlkDEntryResp;
 
 typedef struct fdir_proto_sys_lock_dentry_req {
     char inode[8];
-    char flags;      //LOCK_NB for non-block
-    char padding[7];
+    char flags[4];      //LOCK_NB for non-block
+    char padding[4];
 } FDIRProtoSysLockDEntryReq;
 
 typedef struct fdir_proto_sys_lock_dentry_resp {
@@ -185,7 +203,7 @@ typedef struct fdir_proto_sys_unlock_dentry_req {
     char inode[8];
     char old_size[8];  //old file size for check
     char new_size[8];  //new file size to set
-    char flags;        //if set file size
+    char flags[4];     //if set file size
     char force;        //force set file size
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
