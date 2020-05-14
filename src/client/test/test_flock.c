@@ -79,8 +79,8 @@ static void *thread_func(void *args)
     do {
         int64_t offset;
         int64_t length;
-        if ((result=fdir_client_init_ex(&client_ctx,
-                        config_filename, NULL)) != 0)
+        if ((result=fdir_client_pooled_init_ex(&client_ctx,
+                        config_filename, 0, 4 * 3600)) != 0)
         {
             break;
         }
@@ -139,6 +139,7 @@ static void *thread_func(void *args)
     } while (0);
 
     fdir_client_close_session(&session, result != 0);
+    fdir_client_destroy_ex(&client_ctx);
     __sync_sub_and_fetch(&thread_count, 1);
 
     return NULL;
@@ -203,7 +204,7 @@ int main(int argc, char *argv[])
     start_time = get_current_time_ms();
 
     path = argv[optind];
-    if ((result=fdir_client_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init(config_filename)) != 0) {
         return result;
     }
 
@@ -230,6 +231,8 @@ int main(int argc, char *argv[])
     printf("threads: %d, success_count: %d, time used: %s ms\n",
             threads, __sync_add_and_fetch(&success_count, 0),
             long_to_comma_str(time_used, time_buff));
+
+    fdir_client_destroy();
 
     return 0;
 }

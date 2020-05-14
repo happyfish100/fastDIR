@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     host = argv[optind];
-    if ((result=fdir_client_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init(config_filename)) != 0) {
         return result;
     }
 

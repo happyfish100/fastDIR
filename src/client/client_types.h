@@ -73,10 +73,16 @@ typedef struct fdir_client_session {
     ConnectionInfo *mconn;  //master connection
 } FDIRClientSession;
 
+typedef enum {
+    conn_manager_type_simple = 1,
+    conn_manager_type_pooled,
+    conn_manager_type_other
+} FDIRClientConnManagerType;
+
 typedef struct fdir_client_context {
     FDIRServerGroup server_group;
     FDIRConnectionManager conn_manager;
-    bool is_simple_conn_mananger;
+    FDIRClientConnManagerType conn_manager_type;
     bool cloned;
 } FDIRClientContext;
 

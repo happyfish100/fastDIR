@@ -5,6 +5,7 @@
 #include "fastcommon/logger.h"
 #include "client_global.h"
 #include "simple_connection_manager.h"
+#include "pooled_connection_manager.h"
 #include "client_func.h"
 
 static int copy_dir_servers(FDIRServerGroup *server_group,
@@ -175,6 +176,14 @@ int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
     return result;
 }
 
+static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
+        FDIRClientConnManagerType conn_manager_type)
+{
+    client_ctx->conn_manager_type = conn_manager_type;
+    client_ctx->cloned = false;
+    srand(time(NULL));
+}
+
 int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *conf_filename, const FDIRConnectionManager *conn_manager)
 {
@@ -186,22 +195,54 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if (conn_manager == NULL) {
-        if ((result=fdir_simple_connection_manager_init(
-                        &client_ctx->conn_manager)) != 0)
-        {
-            return result;
-        }
-        client_ctx->is_simple_conn_mananger = true;
-    } else if (conn_manager != &client_ctx->conn_manager) {
+    if (conn_manager != &client_ctx->conn_manager) {
         client_ctx->conn_manager = *conn_manager;
-        client_ctx->is_simple_conn_mananger = false;
-    } else {
-        client_ctx->is_simple_conn_mananger = false;
     }
-    client_ctx->cloned = false;
+    fdir_client_common_init(client_ctx, conn_manager_type_other);
+    return 0;
+}
 
-    srand(time(NULL));
+int fdir_client_simple_init_ex(FDIRClientContext *client_ctx,
+        const char *conf_filename)
+{
+    int result;
+
+    if ((result=fdir_client_load_from_file_ex(
+                    client_ctx, conf_filename)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fdir_simple_connection_manager_init(
+                    &client_ctx->conn_manager)) != 0)
+    {
+        return result;
+    }
+
+    fdir_client_common_init(client_ctx, conn_manager_type_simple);
+    return 0;
+}
+
+int fdir_client_pooled_init_ex(FDIRClientContext *client_ctx,
+        const char *conf_filename, const int max_count_per_entry,
+        const int max_idle_time)
+{
+    int result;
+
+    if ((result=fdir_client_load_from_file_ex(
+                    client_ctx, conf_filename)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fdir_pooled_connection_manager_init(
+                    &client_ctx->conn_manager, max_count_per_entry,
+                    max_idle_time)) != 0)
+    {
+        return result;
+    }
+
+    fdir_client_common_init(client_ctx, conn_manager_type_pooled);
     return 0;
 }
 
@@ -215,8 +256,10 @@ void fdir_client_destroy_ex(FDIRClientContext *client_ctx)
     }
 
     free(client_ctx->server_group.servers);
-    if (client_ctx->is_simple_conn_mananger) {
+    if (client_ctx->conn_manager_type == conn_manager_type_simple) {
         fdir_simple_connection_manager_destroy(&client_ctx->conn_manager);
+    } else if (client_ctx->conn_manager_type == conn_manager_type_pooled) {
+        fdir_pooled_connection_manager_destroy(&client_ctx->conn_manager);
     }
     memset(client_ctx, 0, sizeof(FDIRClientContext));
 }
