@@ -390,6 +390,7 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoCreateDEntryByPNameReq *)(header + 1);
     long2buff(parent_inode, req->parent_inode);
+    int2buff(mode, req->mode);
     req->ns_len = ns->len;
     memcpy(req->ns_str, ns->str, ns->len);
     req->name_len = name->len;
