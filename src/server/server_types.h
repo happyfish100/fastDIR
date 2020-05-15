@@ -68,6 +68,7 @@ typedef struct fdir_server_dentry {
     string_t user_data;      //user defined data
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
+    struct fdir_server_dentry *parent;
     struct flock_entry *flock_entry;
     struct fdir_server_dentry *ht_next;  //for inode hash table;
 } FDIRServerDentry;

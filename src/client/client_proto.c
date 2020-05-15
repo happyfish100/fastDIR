@@ -321,7 +321,7 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
-        const int64_t parent_inode, const char *name,
+        const int64_t parent_inode, const string_t *name,
         FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
@@ -343,10 +343,10 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoStatDEntryByPNameReq *)(header + 1);
     long2buff(parent_inode, req->parent_inode);
-    req->name_len = strlen(name);
-    memcpy(req->name_str, name, req->name_len);
+    req->name_len = name->len;
+    memcpy(req->name_str, name->str, name->len);
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoStatDEntryByPNameReq) +
-        req->name_len;
+        name->len;
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
@@ -356,6 +356,55 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
     if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP,
+                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+    {
+        proto_to_dentry(&proto_stat, dentry);
+    } else {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
+        const int64_t parent_inode, const string_t *ns,
+        const string_t *name, const mode_t mode, FDIRDEntryInfo *dentry)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoCreateDEntryByPNameReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoCreateDEntryByPNameReq) + 2 * NAME_MAX];
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int pkg_len;
+    int result;
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoCreateDEntryByPNameReq *)(header + 1);
+    long2buff(parent_inode, req->parent_inode);
+    req->ns_len = ns->len;
+    memcpy(req->ns_str, ns->str, ns->len);
+    req->name_len = name->len;
+    memcpy(req->ns_str + ns->len, name->str, name->len);
+    pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryByPNameReq) +
+        ns->len + name->len;
+
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ,
+            pkg_len - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
         proto_to_dentry(&proto_stat, dentry);

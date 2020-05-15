@@ -477,6 +477,7 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 record->fullname.path.len, record->fullname.path.str);
     } else {
         if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP ||
+                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP||
                 RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP)
         {
             dentry_stat_output(task, record->dentry);
@@ -508,18 +509,22 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     return result == 0 ? TASK_STATUS_CONTINUE : result;
 }
 
+static inline void service_init_record(struct fast_task_info *task)
+{
+    RECORD->inode = RECORD->data_version = 0;
+    RECORD->options.flags = 0;
+    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
+    RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,
+            RECORD->fullname.ns.len);
+}
+
 static void service_set_record_path_info(struct fast_task_info *task,
         const int reserved_size)
 {
     char *p;
     int length;
 
-    RECORD->hash_code = simple_hash(RECORD->fullname.ns.str,
-            RECORD->fullname.ns.len);
-    RECORD->inode = RECORD->data_version = 0;
-    RECORD->options.flags = 0;
-    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
-
+    service_init_record(task);
     length = RECORD->fullname.ns.len + RECORD->fullname.path.len;
     if (REQUEST.header.body_len > reserved_size) {
         if ((REQUEST.header.body_len + length) < task->size) {
@@ -537,10 +542,19 @@ static void service_set_record_path_info(struct fast_task_info *task,
     RECORD->fullname.path.str = p + RECORD->fullname.ns.len;
 }
 
+static void init_record_for_create(struct fast_task_info *task,
+        const char *proto_mode)
+{
+    RECORD->stat.mode = buff2int(proto_mode);
+    RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
+    RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
+    RECORD->options.ctime = RECORD->options.mtime = 1;
+    RECORD->options.mode = 1;
+}
+
 static int service_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
-    FDIRProtoCreateDEntryFront *proto_front;
 
     if ((result=alloc_record_object(task)) != 0) {
         return result;
@@ -556,15 +570,116 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     }
 
     service_set_record_path_info(task, sizeof(FDIRProtoStatDEntryResp));
-
-    proto_front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
-    RECORD->stat.mode = buff2int(proto_front->mode);
-
-    RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
-    RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
-    RECORD->options.ctime = RECORD->options.mtime = 1;
-    RECORD->options.mode = 1;
+    init_record_for_create(task, ((FDIRProtoCreateDEntryFront *)
+                REQUEST.body)->mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
+    return push_record_to_data_thread_queue(task);
+}
+
+static inline int check_name_length(struct fast_task_info *task,
+        const int length, const char *caption)
+{
+    if (length <= 0) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid %s length: %d <= 0",
+                caption, length);
+        return EINVAL;
+    }
+    if (length > NAME_MAX) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid %s length: %d > %d",
+                caption, length, NAME_MAX);
+        return EINVAL;
+    }
+    return 0;
+}
+
+static int service_deal_create_dentry_by_pname(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoCreateDEntryByPNameReq *req;
+    FDIRServerDentry *parent_dentry;
+    int64_t parent_inode;
+    char *ns_str;
+    char *req_name_str;
+    BufferInfo full_path;
+
+    if ((result=server_check_body_length(task, sizeof(
+                        FDIRProtoCreateDEntryByPNameReq) + 2,
+                    sizeof(FDIRProtoCreateDEntryByPNameReq) +
+                    2 * NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoCreateDEntryByPNameReq *)REQUEST.body;
+    if ((result=check_name_length(task, req->ns_len, "namespace")) != 0) {
+        return result;
+    }
+    if ((result=check_name_length(task, req->name_len, "path name")) != 0) {
+        return result;
+    }
+    if (sizeof(FDIRProtoCreateDEntryByPNameReq) + req->ns_len +
+            req->name_len != REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len,
+                (int)sizeof(FDIRProtoCreateDEntryByPNameReq) +
+                req->ns_len + req->name_len);
+        return EINVAL;
+    }
+
+    parent_inode = buff2long(req->parent_inode);
+    if ((parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "parent inode: %"PRId64" not exist", parent_inode);
+        return ENOENT;
+    }
+
+    ns_str = REQUEST.body + sizeof(FDIRProtoStatDEntryResp) +
+        REQUEST.header.body_len;
+    full_path.buff = ns_str + req->ns_len;
+    full_path.alloc_size = (task->data + task->size) - full_path.buff;
+    full_path.length = 0;
+    if ((result=dentry_get_full_path(parent_dentry, &full_path,
+                    &RESPONSE.error)) != 0)
+    {
+        return result;
+    }
+
+    if (full_path.length + req->name_len + 1 >= full_path.alloc_size) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "path length: %d >= buff size: %d",
+                full_path.length + req->name_len + 1,
+                full_path.alloc_size);
+        return ENOSPC;
+    }
+
+    req_name_str = req->ns_str + req->ns_len;
+    memcpy(ns_str, req->ns_str, req->ns_len);
+    full_path.length += sprintf(full_path.buff + full_path.length,
+            "/%.*s", req->name_len, req_name_str);
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    RECORD->fullname.ns.str = ns_str;
+    RECORD->fullname.ns.len = req->ns_len;
+    RECORD->fullname.path.str = full_path.buff;
+    RECORD->fullname.path.len = full_path.length;
+
+    logInfo("file: "__FILE__", line: %d, "
+            "ns: %.*s, path: %.*s", __LINE__, RECORD->fullname.ns.len,
+            RECORD->fullname.ns.str, RECORD->fullname.path.len,
+            RECORD->fullname.path.str);
+
+    service_init_record(task);
+    init_record_for_create(task, req->mode);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP;
     return push_record_to_data_thread_queue(task);
 }
 
@@ -1385,6 +1500,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_create_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_create_dentry_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:

@@ -16,8 +16,10 @@
 #define FDIR_PROTO_ACTIVE_TEST_RESP        22
 
 //service commands
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ       25
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP      26
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ       23
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP      24
+#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ     25 //by parent inode and name
+#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP    26
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ       27
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP      28
 
@@ -31,7 +33,7 @@
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ       37
 #define FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP      38
 #define FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ       39 //by parent inode and name
-#define FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP      40 //by parent inode and name
+#define FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP      40
 
 #define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     41  //modified by inode
 #define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    42
@@ -122,7 +124,6 @@ typedef struct fdir_proto_header {
 typedef struct fdir_proto_dentry_info {
     unsigned char ns_len;  //namespace length
     char path_len[2];
-    char padding[5];
     char ns_str[0];      //namespace string
     //char *path_str;    //path_str = ns_str + ns_len
 } FDIRProtoDEntryInfo;
@@ -135,6 +136,15 @@ typedef struct fdir_proto_create_dentry_body {
     FDIRProtoCreateDEntryFront front;
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoCreateDEntryBody;
+
+typedef struct fdir_proto_create_dentry_by_pname_req {
+    char parent_inode[8];
+    char mode[4];
+    unsigned char ns_len;   //namespace length
+    unsigned char name_len; //dir name length
+    char ns_str[0];         //namespace for hash code
+    //char *name_str;       //name_str = ns_str + ns_len
+} FDIRProtoCreateDEntryByPNameReq;
 
 typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;

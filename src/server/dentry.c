@@ -397,6 +397,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->children = NULL;
     }
 
+    current->parent = parent;
     if ((result=dentry_strdup(&db_context->dentry_context,
                     &current->name, &my_name)) != 0)
     {
@@ -590,5 +591,45 @@ int dentry_list(const FDIRDEntryFullName *fullname,
         array->count = pp - array->entries;
     }
 
+    return 0;
+}
+
+int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
+        FDIRErrorInfo *error_info)
+{
+    FDIRServerDentry *current;
+    string_t *parts[FDIR_MAX_PATH_COUNT];
+    char *p;
+    int count;
+    int i;
+
+    count = 0;
+    current = (FDIRServerDentry *)dentry;
+    while (current->parent != NULL && count < FDIR_MAX_PATH_COUNT) {
+        parts[count++] = &current->name;
+        current = current->parent;
+    }
+    if (count == FDIR_MAX_PATH_COUNT && current->parent != NULL) {
+        error_info->length = sprintf(error_info->message,
+                "the depth of path exceeds %d", FDIR_MAX_PATH_COUNT);
+        return EOVERFLOW;
+    }
+
+    p = full_path->buff;
+    for (i=count-1; i>=0; i--) {
+        if ((p - full_path->buff) + parts[i]->len + 2 > full_path->alloc_size) {
+            error_info->length = sprintf(error_info->message,
+                "path length exceeds buff size: %d",
+                full_path->alloc_size);
+            return ENOSPC;
+        }
+
+        *p++ = '/';
+        memcpy(p, parts[i]->str, parts[i]->len);
+        p += parts[i]->len;
+    }
+
+    *p = '\0';
+    full_path->length = p - full_path->buff;
     return 0;
 }

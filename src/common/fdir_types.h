@@ -37,11 +37,13 @@ typedef struct {
 } FDIRRequestInfo;
 
 typedef struct {
+    int length;
+    char message[FDIR_ERROR_INFO_SIZE];
+} FDIRErrorInfo;
+
+typedef struct {
     FDIRHeaderInfo header;
-    struct {
-        int length;
-        char message[FDIR_ERROR_INFO_SIZE];
-    } error;
+    FDIRErrorInfo error;
 } FDIRResponseInfo;
 
 typedef struct fdir_dentry_full_name {
