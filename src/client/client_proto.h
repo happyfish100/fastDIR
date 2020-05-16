@@ -104,7 +104,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const bool force, FDIRDEntryInfo *dentry);
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int flags,
+        const string_t *ns, const int64_t inode, const int64_t flags,
         const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry);
 
 int fdir_client_flock_dentry_ex2(FDIRClientSession *session,

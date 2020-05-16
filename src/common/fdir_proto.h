@@ -170,7 +170,7 @@ typedef struct fdir_proto_dentry_stat {
 
 typedef struct fdir_proto_modify_dentry_stat_req {
     char inode[8];
-    char flags[4];
+    char mflags[8];
     FDIRProtoDEntryStat stat;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code

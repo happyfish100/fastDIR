@@ -470,7 +470,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int flags,
+        const string_t *ns, const int64_t inode, const int64_t flags,
         const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
@@ -499,7 +499,7 @@ int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoModifyDentryStatReq *)(header + 1);
     long2buff(inode, req->inode);
-    int2buff(flags, req->flags);
+    long2buff(flags, req->mflags);
     req->ns_len = ns->len;
     memcpy(req->ns_str, ns->str, ns->len);
     fdir_proto_pack_dentry_stat(stat, &req->stat);

@@ -67,7 +67,7 @@ typedef struct fdir_dentry_info {
 } FDIRDEntryInfo;
 
 typedef union {
-    int32_t flags;
+    int64_t flags;
     struct {
         union {
             int flags: 4;

@@ -33,7 +33,7 @@
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
-static int32_t dstat_flags_mask = 0; 
+static int64_t dstat_mflags_mask = 0;
 
 int service_handler_init()
 {
@@ -47,7 +47,10 @@ int service_handler_init()
     mask.uid  = 1;
     mask.gid  = 1;
     mask.size = 1;
-    dstat_flags_mask = mask.flags;
+    dstat_mflags_mask = mask.flags;
+
+    logInfo("mask.flags: %"PRId64", dstat_mflags_mask: %"PRId64", sizeof(mask): %d",
+            mask.flags, dstat_mflags_mask, (int)sizeof(mask));
 
     next_token = ((int64_t)g_current_time) << 32;
     return 0;
@@ -923,7 +926,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
 
 static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
-        const int flags, const FDIRDEntryStatus *stat, int *result)
+        const int64_t flags, const FDIRDEntryStatus *stat, int *result)
 {
     if ((*result=alloc_record_object(task)) != 0) {
         return NULL;
@@ -951,8 +954,8 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     FDIRServerDentry *dentry;
     FDIRDEntryStatus stat;
     int64_t inode;
-    int flags;
-    int masked_flags;
+    int64_t flags;
+    int64_t masked_flags;
     int result;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP;
@@ -981,11 +984,11 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     }
 
     inode = buff2long(req->inode);
-    flags = buff2int(req->flags);
-    masked_flags = (flags & dstat_flags_mask);
+    flags = buff2long(req->mflags);
+    masked_flags = (flags & dstat_mflags_mask);
     if (masked_flags == 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "invalid flags: %d", flags);
+                "invalid flags: %"PRId64, flags);
         return EINVAL;
     }
 
