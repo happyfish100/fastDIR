@@ -365,7 +365,7 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
-        const int64_t parent_inode, const string_t *ns,
+        const string_t *ns, const int64_t parent_inode,
         const string_t *name, const mode_t mode, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
