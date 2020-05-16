@@ -287,7 +287,7 @@ static void update_dentry(FDIRServerDentry *dentry,
         dentry->stat.mode = record->stat.mode;
     }
     if (record->options.atime) {
-        dentry->stat.ctime = record->stat.ctime;
+        dentry->stat.atime = record->stat.atime;
     }
     if (record->options.ctime) {
         dentry->stat.ctime = record->stat.ctime;

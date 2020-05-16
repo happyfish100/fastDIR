@@ -49,9 +49,6 @@ int service_handler_init()
     mask.size = 1;
     dstat_mflags_mask = mask.flags;
 
-    logInfo("mask.flags: %"PRId64", dstat_mflags_mask: %"PRId64", sizeof(mask): %d",
-            mask.flags, dstat_mflags_mask, (int)sizeof(mask));
-
     next_token = ((int64_t)g_current_time) << 32;
     return 0;
 }
@@ -928,6 +925,8 @@ static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
         const int64_t flags, const FDIRDEntryStatus *stat, int *result)
 {
+    FDIRServerDentry *dentry;
+
     if ((*result=alloc_record_object(task)) != 0) {
         return NULL;
     }
@@ -937,15 +936,17 @@ static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
     RECORD->stat = *stat;
     RECORD->hash_code = simple_hash(ns_str, ns_len);
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-    if ((RECORD->dentry=inode_index_update_dentry(RECORD)) == NULL) {
+
+    if ((dentry=inode_index_update_dentry(RECORD)) == NULL) {
         free_record_object(task);
         *result = ENOENT;
         return NULL;
     }
 
+    RECORD->dentry = dentry;
     RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
     *result = server_binlog_produce(task);
-    return RECORD->dentry;
+    return dentry;
 }
 
 static int service_deal_modify_dentry_stat(struct fast_task_info *task)
@@ -986,6 +987,7 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     inode = buff2long(req->inode);
     flags = buff2long(req->mflags);
     masked_flags = (flags & dstat_mflags_mask);
+
     if (masked_flags == 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "invalid flags: %"PRId64, flags);
@@ -995,6 +997,13 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     fdir_proto_unpack_dentry_stat(&req->stat, &stat);
     dentry = modify_dentry_stat(task, req->ns_str, req->ns_len,
             inode, masked_flags, &stat, &result);
+
+    /*
+    logInfo("file: "__FILE__", line: %d, "
+            "flags: %"PRId64" (0x%llX), masked_flags: %"PRId64", result: %d",
+            __LINE__, flags, flags, masked_flags, result);
+            */
+
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
             dentry_stat_output(task, dentry);

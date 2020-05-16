@@ -18,6 +18,7 @@ static void usage(char *argv[])
 static void output_dentry_stat(FDIRDEntryInfo *dentry)
 {
     char ctime[32];
+    char atime[32];
     char mtime[32];
     char *type;
     int perm;
@@ -41,13 +42,15 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
         type = "UNKOWN";
     }
 
+    formatDatetime(dentry->stat.atime, "%Y-%m-%d %H:%M:%S",
+            atime, sizeof(atime));
     formatDatetime(dentry->stat.ctime, "%Y-%m-%d %H:%M:%S",
             ctime, sizeof(ctime));
     formatDatetime(dentry->stat.mtime, "%Y-%m-%d %H:%M:%S",
             mtime, sizeof(mtime));
-    printf("type: %s, inode: %"PRId64", size: %"PRId64", create time: %s, "
-            "modify time: %s, perm: 0%03o\n", type, dentry->inode,
-            dentry->stat.size, ctime, mtime, perm);
+    printf("type: %s, inode: %"PRId64", size: %"PRId64", stat change time: %s, "
+            "modify time: %s, access time: %s, perm: 0%03o\n", type,
+            dentry->inode, dentry->stat.size, ctime, mtime, atime, perm);
 }
 
 int main(int argc, char *argv[])
