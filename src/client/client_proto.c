@@ -79,14 +79,11 @@ static inline void fdir_client_release_connection(
     }
 }
 
-static inline void proto_to_dentry(FDIRProtoStatDEntryResp *proto_stat,
+static inline void proto_unpack_dentry(FDIRProtoStatDEntryResp *proto_stat,
         FDIRDEntryInfo *dentry)
 {
     dentry->inode = buff2long(proto_stat->inode);
-    dentry->stat.mode = buff2int(proto_stat->mode);
-    dentry->stat.ctime = buff2int(proto_stat->ctime);
-    dentry->stat.mtime = buff2int(proto_stat->mtime);
-    dentry->stat.size = buff2long(proto_stat->size);
+    fdir_proto_unpack_dentry_stat(&proto_stat->stat, &dentry->stat);
 }
 
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
@@ -131,7 +128,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -180,7 +177,7 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -275,7 +272,7 @@ int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -311,7 +308,7 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -358,7 +355,7 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -408,7 +405,7 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
@@ -423,9 +420,9 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
-    FDIRProtoSetModifyStatReq *proto_dentry;
+    FDIRProtoSetDentrySizeReq *proto_dentry;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
-            FDIRProtoSetModifyStatReq) + NAME_MAX];
+            FDIRProtoSetDentrySizeReq) + NAME_MAX];
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int pkg_len;
@@ -445,14 +442,14 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    proto_dentry = (FDIRProtoSetModifyStatReq *)(header + 1);
+    proto_dentry = (FDIRProtoSetDentrySizeReq *)(header + 1);
     long2buff(inode, proto_dentry->inode);
     long2buff(size, proto_dentry->size);
     proto_dentry->force = force;
     proto_dentry->ns_len = ns->len;
     memcpy(proto_dentry + 1, ns->str, ns->len);
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(
-            FDIRProtoSetModifyStatReq) + ns->len;
+            FDIRProtoSetDentrySizeReq) + ns->len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
 
@@ -463,7 +460,62 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP,
                     (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
-        proto_to_dentry(&proto_stat, dentry);
+        proto_unpack_dentry(&proto_stat, dentry);
+    } else {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const int flags,
+        const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry)
+{
+    ConnectionInfo *conn;
+    FDIRProtoHeader *header;
+    FDIRProtoModifyDentryStatReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoModifyDentryStatReq) + NAME_MAX];
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int pkg_len;
+    int result;
+
+    if (ns->len <= 0 || ns->len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid namespace length: %d, which <= 0 or > %d",
+                __LINE__, ns->len, NAME_MAX);
+        return EINVAL;
+    }
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoModifyDentryStatReq *)(header + 1);
+    long2buff(inode, req->inode);
+    int2buff(flags, req->flags);
+    req->ns_len = ns->len;
+    memcpy(req->ns_str, ns->str, ns->len);
+    fdir_proto_pack_dentry_stat(stat, &req->stat);
+    pkg_len = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoModifyDentryStatReq) + ns->len;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ,
+            pkg_len - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP,
+                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+    {
+        proto_unpack_dentry(&proto_stat, dentry);
     } else {
         fdir_log_network_error(&response, conn, result);
     }

@@ -37,8 +37,8 @@
 
 #define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ     41  //modified by inode
 #define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP    42
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_REQ     43
-#define FDIR_SERVICE_PROTO_SET_DENTRY_PERM_RESP    44
+#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ  43
+#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP 44
 #define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ        45  //file lock
 #define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP       46
 #define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ        47
@@ -150,13 +150,31 @@ typedef struct fdir_proto_remove_dentry{
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
 
-typedef struct fdir_proto_set_modify_stat_req {
+typedef struct fdir_proto_set_dentry_size_req {
     char inode[8];
     char size[8];   /* file size in bytes */
     char force;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
-} FDIRProtoSetModifyStatReq;
+} FDIRProtoSetDentrySizeReq;
+
+typedef struct fdir_proto_dentry_stat {
+    char mode[4];
+    char uid[4];
+    char gid[4];
+    char atime[4];
+    char ctime[4];  /* status change time */
+    char mtime[4];  /* modify time */
+    char size[8];   /* file size in bytes */
+} FDIRProtoDEntryStat;
+
+typedef struct fdir_proto_modify_dentry_stat_req {
+    char inode[8];
+    char flags[4];
+    FDIRProtoDEntryStat stat;
+    unsigned char ns_len; //namespace length
+    char ns_str[0];       //namespace for hash code
+} FDIRProtoModifyDentryStatReq;
 
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
@@ -170,10 +188,7 @@ typedef struct fdir_proto_stat_dentry_by_pname_req {
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];
-    char mode[4];
-    char ctime[4];  /* create time */
-    char mtime[4];  /* modify time */
-    char size[8];   /* file size in bytes */
+    FDIRProtoDEntryStat stat;
 } FDIRProtoStatDEntryResp;
 
 typedef struct fdir_proto_flock_dentry_req {
@@ -412,13 +427,37 @@ static inline int fdir_send_and_recv_none_body_response(ConnectionInfo *conn,
         network_timeout, expect_cmd, recv_data, expect_body_len);
 }
 
-static inline void fdir_proto_extract_header(FDIRProtoHeader *header_proto,
-        FDIRHeaderInfo *header_info)
+static inline void fdir_proto_extract_header(const FDIRProtoHeader *proto,
+        FDIRHeaderInfo *info)
 {
-    header_info->cmd = header_proto->cmd;
-    header_info->body_len = buff2int(header_proto->body_len);
-    header_info->flags = buff2short(header_proto->flags);
-    header_info->status = buff2short(header_proto->status);
+    info->cmd = proto->cmd;
+    info->body_len = buff2int(proto->body_len);
+    info->flags = buff2short(proto->flags);
+    info->status = buff2short(proto->status);
+}
+
+static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
+        FDIRProtoDEntryStat *proto)
+{
+    int2buff(stat->mode, proto->mode);
+    int2buff(stat->uid, proto->uid);
+    int2buff(stat->gid, proto->gid);
+    int2buff(stat->atime, proto->atime);
+    int2buff(stat->ctime, proto->ctime);
+    int2buff(stat->mtime, proto->mtime);
+    long2buff(stat->size, proto->size);
+}
+
+static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
+        proto, FDIRDEntryStatus *stat)
+{
+    stat->mode = buff2int(proto->mode);
+    stat->uid = buff2int(proto->uid);
+    stat->gid = buff2int(proto->gid);
+    stat->atime = buff2int(proto->atime);
+    stat->ctime = buff2int(proto->ctime);
+    stat->mtime = buff2int(proto->mtime);
+    stat->size = buff2long(proto->size);
 }
 
 int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,

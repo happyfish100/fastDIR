@@ -286,15 +286,21 @@ static void update_dentry(FDIRServerDentry *dentry,
     if (record->options.mode) {
         dentry->stat.mode = record->stat.mode;
     }
-
+    if (record->options.atime) {
+        dentry->stat.ctime = record->stat.ctime;
+    }
     if (record->options.ctime) {
         dentry->stat.ctime = record->stat.ctime;
     }
-
     if (record->options.mtime) {
         dentry->stat.mtime = record->stat.mtime;
     }
-
+    if (record->options.uid) {
+        dentry->stat.uid = record->stat.uid;
+    }
+    if (record->options.gid) {
+        dentry->stat.gid = record->stat.gid;
+    }
     if (record->options.size) {
         dentry->stat.size = record->stat.size;
     }

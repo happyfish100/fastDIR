@@ -53,7 +53,10 @@ typedef struct fdir_dentry_full_name {
 
 typedef struct fdir_dentry_status {
     int mode;
-    int ctime;  /* create time */
+    uid_t uid;
+    gid_t gid;
+    int atime;  /* access time */
+    int ctime;  /* status change time */
     int mtime;  /* modify time */
     int64_t size;   /* file size in bytes */
 } FDIRDEntryStatus;
@@ -62,5 +65,28 @@ typedef struct fdir_dentry_info {
     int64_t inode;
     FDIRDEntryStatus stat;
 } FDIRDEntryInfo;
+
+typedef union {
+    int32_t flags;
+    struct {
+        union {
+            int flags: 4;
+            struct {
+                bool ns: 1;  //namespace
+                bool pt: 1;  //path
+            };
+        } path_info;
+        bool hash_code : 1;  //required field, for unpack check
+        bool user_data : 1;
+        bool extra_data: 1;
+        bool mode : 1;
+        bool atime: 1;
+        bool ctime: 1;
+        bool mtime: 1;
+        bool gid:   1;
+        bool uid:   1;
+        bool size : 1;
+    };
+} FDIRStatModifyFlags;
 
 #endif

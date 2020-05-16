@@ -39,8 +39,11 @@
 #define BINLOG_RECORD_FIELD_NAME_EXTRA_DATA    "ex"
 #define BINLOG_RECORD_FIELD_NAME_USER_DATA     "us"
 #define BINLOG_RECORD_FIELD_NAME_MODE          "md"
+#define BINLOG_RECORD_FIELD_NAME_ATIME         "at"
 #define BINLOG_RECORD_FIELD_NAME_CTIME         "ct"
 #define BINLOG_RECORD_FIELD_NAME_MTIME         "mt"
+#define BINLOG_RECORD_FIELD_NAME_UID           "ui"
+#define BINLOG_RECORD_FIELD_NAME_GID           "gi"
 #define BINLOG_RECORD_FIELD_NAME_FILE_SIZE     "sz"
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
 
@@ -53,8 +56,11 @@
 #define BINLOG_RECORD_FIELD_INDEX_EXTRA_DATA    ('e' * 256 + 'x')
 #define BINLOG_RECORD_FIELD_INDEX_USER_DATA     ('u' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_MODE          ('m' * 256 + 'd')
+#define BINLOG_RECORD_FIELD_INDEX_ATIME         ('a' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_CTIME         ('c' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_MTIME         ('m' * 256 + 't')
+#define BINLOG_RECORD_FIELD_INDEX_UID           ('u' * 256 + 'i')
+#define BINLOG_RECORD_FIELD_INDEX_GID           ('g' * 256 + 'i')
 #define BINLOG_RECORD_FIELD_INDEX_FILE_SIZE     ('s' * 256 + 'z')
 #define BINLOG_RECORD_FIELD_INDEX_HASH_CODE     ('h' * 256 + 'c')
 
@@ -244,6 +250,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
                 BINLOG_RECORD_FIELD_NAME_MODE, record->stat.mode);
     }
 
+    if (record->options.atime) {
+        fast_buffer_append(buffer, " %s=%d",
+                BINLOG_RECORD_FIELD_NAME_ATIME, record->stat.atime);
+    }
+
     if (record->options.ctime) {
         fast_buffer_append(buffer, " %s=%d",
                 BINLOG_RECORD_FIELD_NAME_CTIME, record->stat.ctime);
@@ -252,6 +263,16 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.mtime) {
         fast_buffer_append(buffer, " %s=%d",
                 BINLOG_RECORD_FIELD_NAME_MTIME, record->stat.mtime);
+    }
+
+    if (record->options.uid) {
+        fast_buffer_append(buffer, " %s=%d",
+                BINLOG_RECORD_FIELD_NAME_UID, record->stat.uid);
+    }
+
+    if (record->options.gid) {
+        fast_buffer_append(buffer, " %s=%d",
+                BINLOG_RECORD_FIELD_NAME_GID, record->stat.gid);
     }
 
     if (record->options.size) {
@@ -431,6 +452,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
                 record->options.mode = 1;
             }
             break;
+        case BINLOG_RECORD_FIELD_INDEX_ATIME:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.atime = pcontext->fv.value.n;
+                record->options.atime = 1;
+            }
+            break;
         case BINLOG_RECORD_FIELD_INDEX_CTIME:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
@@ -443,6 +471,20 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->stat.mtime = pcontext->fv.value.n;
                 record->options.mtime = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_UID:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.uid = pcontext->fv.value.n;
+                record->options.uid = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_GID:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.gid = pcontext->fv.value.n;
+                record->options.gid = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_FILE_SIZE:

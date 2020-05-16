@@ -32,10 +32,23 @@
 #include "cluster_relationship.h"
 #include "service_handler.h"
 
-static volatile int64_t next_token;   //next token for dentry list
+static volatile int64_t next_token = 0;   //next token for dentry list
+static int32_t dstat_flags_mask = 0; 
 
 int service_handler_init()
 {
+    FDIRStatModifyFlags mask;
+
+    mask.flags = 0;
+    mask.mode = 1;
+    mask.atime = 1;
+    mask.ctime = 1;
+    mask.mtime = 1;
+    mask.uid  = 1;
+    mask.gid  = 1;
+    mask.size = 1;
+    dstat_flags_mask = mask.flags;
+
     next_token = ((int64_t)g_current_time) << 32;
     return 0;
 }
@@ -437,15 +450,11 @@ static int server_binlog_produce(struct fast_task_info *task)
 static inline void dentry_stat_output(struct fast_task_info *task,
         FDIRServerDentry *dentry)
 {
-    FDIRProtoStatDEntryResp *stat_resp;
+    FDIRProtoStatDEntryResp *resp;
 
-    stat_resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
-    long2buff(dentry->inode, stat_resp->inode);
-    int2buff(dentry->stat.mode, stat_resp->mode);
-    int2buff(dentry->stat.ctime, stat_resp->ctime);
-    int2buff(dentry->stat.mtime, stat_resp->mtime);
-    long2buff(dentry->stat.size, stat_resp->size);
-
+    resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
+    long2buff(dentry->inode, resp->inode);
+    fdir_proto_pack_dentry_stat(&dentry->stat, &resp->stat);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
     TASK_ARG->context.response_done = true;
 }
@@ -867,33 +876,33 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
 
 static int service_deal_set_dentry_size(struct fast_task_info *task)
 {
-    FDIRProtoSetModifyStatReq *req;
+    FDIRProtoSetDentrySizeReq *req;
     FDIRServerDentry *dentry;
     int result;
     int64_t inode;
     int64_t file_size;
 
     if ((result=server_check_body_length(task,
-                    sizeof(FDIRProtoSetModifyStatReq) + 1,
-                    sizeof(FDIRProtoSetModifyStatReq) + NAME_MAX)) != 0)
+                    sizeof(FDIRProtoSetDentrySizeReq) + 1,
+                    sizeof(FDIRProtoSetDentrySizeReq) + NAME_MAX)) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoSetModifyStatReq *)REQUEST.body;
+    req = (FDIRProtoSetDentrySizeReq *)REQUEST.body;
     if (req->ns_len <= 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "namespace length: %d is invalid which <= 0",
                 req->ns_len);
         return EINVAL;
     }
-    if (sizeof(FDIRProtoSetModifyStatReq) + req->ns_len !=
+    if (sizeof(FDIRProtoSetDentrySizeReq) + req->ns_len !=
             REQUEST.header.body_len)
     {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d != expected: %d",
                 REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoSetModifyStatReq) + req->ns_len);
+                    FDIRProtoSetDentrySizeReq) + req->ns_len);
         return EINVAL;
     }
 
@@ -903,6 +912,86 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
 
     dentry = set_dentry_size(task, req->ns_str, req->ns_len, inode,
             file_size, req->force, &result);
+    if (result == 0 || result == TASK_STATUS_CONTINUE) {
+        if (dentry != NULL) {
+            dentry_stat_output(task, dentry);
+        }
+    }
+
+    return result;
+}
+
+static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
+        const char *ns_str, const int ns_len, const int64_t inode,
+        const int flags, const FDIRDEntryStatus *stat, int *result)
+{
+    if ((*result=alloc_record_object(task)) != 0) {
+        return NULL;
+    }
+
+    RECORD->inode = inode;
+    RECORD->options.flags = flags;
+    RECORD->stat = *stat;
+    RECORD->hash_code = simple_hash(ns_str, ns_len);
+    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    if ((RECORD->dentry=inode_index_update_dentry(RECORD)) == NULL) {
+        free_record_object(task);
+        *result = ENOENT;
+        return NULL;
+    }
+
+    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+    *result = server_binlog_produce(task);
+    return RECORD->dentry;
+}
+
+static int service_deal_modify_dentry_stat(struct fast_task_info *task)
+{
+    FDIRProtoModifyDentryStatReq *req;
+    FDIRServerDentry *dentry;
+    FDIRDEntryStatus stat;
+    int64_t inode;
+    int flags;
+    int masked_flags;
+    int result;
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP;
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoModifyDentryStatReq) + 1,
+                    sizeof(FDIRProtoModifyDentryStatReq) + NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoModifyDentryStatReq *)REQUEST.body;
+    if (req->ns_len <= 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "namespace length: %d is invalid which <= 0",
+                req->ns_len);
+        return EINVAL;
+    }
+    if (sizeof(FDIRProtoModifyDentryStatReq) + req->ns_len !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoModifyDentryStatReq) + req->ns_len);
+        return EINVAL;
+    }
+
+    inode = buff2long(req->inode);
+    flags = buff2int(req->flags);
+    masked_flags = (flags & dstat_flags_mask);
+    if (masked_flags == 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "invalid flags: %d", flags);
+        return EINVAL;
+    }
+
+    fdir_proto_unpack_dentry_stat(&req->stat, &stat);
+    dentry = modify_dentry_stat(task, req->ns_str, req->ns_len,
+            inode, masked_flags, &stat, &result);
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
             dentry_stat_output(task, dentry);
@@ -1515,6 +1604,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_set_dentry_size(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_modify_dentry_stat(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:

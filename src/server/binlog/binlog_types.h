@@ -47,25 +47,7 @@ typedef struct fdir_binlog_record {
     unsigned int hash_code;
     int operation;
     int timestamp;
-    union {
-        int64_t flags;
-        struct {
-            union {
-                int flags: 3;
-                struct {
-                    bool ns: 1;  //namespace
-                    bool pt: 1;  //path
-                };
-            } path_info;
-            bool hash_code : 1;  //required field, for unpack check
-            bool user_data : 1;
-            bool extra_data: 1;
-            bool mode : 1;
-            bool ctime: 1;
-            bool mtime: 1;
-            bool size : 1;
-        };
-    } options;
+    FDIRStatModifyFlags options;
     FDIRDEntryFullName fullname; //path namespace and path name
     FDIRDEntryStatus stat;
     string_t user_data;
