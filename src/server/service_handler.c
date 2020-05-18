@@ -556,8 +556,12 @@ static void init_record_for_create(struct fast_task_info *task,
 {
     RECORD->stat.mode = buff2int(proto_mode);
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
-    RECORD->stat.ctime = RECORD->stat.mtime = g_current_time;
-    RECORD->options.ctime = RECORD->options.mtime = 1;
+    RECORD->stat.uid = RECORD->stat.gid = 0;
+    RECORD->stat.size = 0;
+    RECORD->stat.atime = RECORD->stat.ctime =
+        RECORD->stat.mtime = g_current_time;
+    RECORD->options.atime = RECORD->options.ctime =
+        RECORD->options.mtime = 1;
     RECORD->options.mode = 1;
 }
 
@@ -1410,19 +1414,43 @@ static int server_list_dentry_output(struct fast_task_info *task)
     return 0;
 }
 
-static int service_deal_list_dentry_first(struct fast_task_info *task)
+static int service_deal_list_dentry_by_path(struct fast_task_info *task)
 {
     int result;
     FDIRDEntryFullName fullname;
 
     if ((result=server_check_and_parse_dentry(task,
-                    0, sizeof(FDIRProtoListDEntryFirstBody),
+                    0, sizeof(FDIRProtoListDEntryByPathBody),
                     &fullname)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_list(&fullname, &DENTRY_LIST_CACHE.array)) != 0) {
+    if ((result=dentry_list_by_path(&fullname,
+                    &DENTRY_LIST_CACHE.array)) != 0)
+    {
+        return result;
+    }
+
+    DENTRY_LIST_CACHE.offset = 0;
+    return server_list_dentry_output(task);
+}
+
+static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
+{
+    FDIRServerDentry *dentry;
+    int64_t inode;
+    int result;
+
+    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+        return result;
+    }
+
+    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    if ((result=dentry_list(dentry, &DENTRY_LIST_CACHE.array)) != 0) {
         return result;
     }
 
@@ -1643,9 +1671,14 @@ int service_deal_task(struct fast_task_info *task)
                     result = service_deal_stat_dentry_by_pname(task);
                 }
                 break;
-            case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
+            case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
                 if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_list_dentry_first(task);
+                    result = service_deal_list_dentry_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_list_dentry_by_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:

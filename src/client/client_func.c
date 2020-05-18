@@ -188,6 +188,7 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *conf_filename, const FDIRConnectionManager *conn_manager)
 {
     int result;
+    FDIRClientConnManagerType conn_manager_type;
 
     if ((result=fdir_client_load_from_file_ex(
                     client_ctx, conf_filename)) != 0)
@@ -195,10 +196,20 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if (conn_manager != &client_ctx->conn_manager) {
+    if (conn_manager == NULL) {
+        if ((result=fdir_simple_connection_manager_init(
+                        &client_ctx->conn_manager)) != 0)
+        {
+            return result;
+        }
+        conn_manager_type = conn_manager_type_simple;
+    } else if (conn_manager != &client_ctx->conn_manager) {
         client_ctx->conn_manager = *conn_manager;
+        conn_manager_type = conn_manager_type_other;
+    } else {
+        conn_manager_type = conn_manager_type_other;
     }
-    fdir_client_common_init(client_ctx, conn_manager_type_other);
+    fdir_client_common_init(client_ctx, conn_manager_type);
     return 0;
 }
 

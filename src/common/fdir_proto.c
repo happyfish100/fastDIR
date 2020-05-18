@@ -235,8 +235,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "SYS_UNLOCK_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP:
             return "SYS_UNLOCK_DENTRY_RESP";
-        case FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ:
-            return "LIST_DENTRY_FIRST_REQ";
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
+            return "LIST_DENTRY_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ:
+            return "LIST_DENTRY_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
             return "LIST_DENTRY_NEXT_REQ";
         case FDIR_SERVICE_PROTO_LIST_DENTRY_RESP:

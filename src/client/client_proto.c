@@ -983,38 +983,19 @@ static int deal_list_dentry_response(ConnectionInfo *conn,
     return result;
 }
 
-int fdir_client_list_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array)
+static int list_dentry(FDIRClientContext *client_ctx,
+        char *out_buff, const int out_bytes, FDIRClientDentryArray *array)
 {
-    FDIRProtoHeader *header;
-    FDIRProtoListDEntryFirstBody *entry_body;
-    int out_bytes;
     ConnectionInfo *conn;
-    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryFirstBody)
-        + NAME_MAX + PATH_MAX];
     FDIRResponseInfo response;
     int result;
 
     array->count = 0;
-    header = (FDIRProtoHeader *)out_buff;
-    entry_body = (FDIRProtoListDEntryFirstBody *)(out_buff +
-            sizeof(FDIRProtoHeader));
-    if ((result=client_check_set_proto_dentry(fullname,
-                    &entry_body->dentry)) != 0)
-    {
-        return result;
-    }
-
     if ((conn=client_ctx->conn_manager.get_readable_connection(
                     client_ctx, &result)) == NULL)
     {
         return result;
     }
-
-    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryFirstBody)
-        + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_FIRST_REQ,
-            out_bytes - sizeof(FDIRProtoHeader));
 
     if (array->name_allocator.used) {
         fast_mpool_reset(&array->name_allocator.mpool);  //buffer recycle
@@ -1035,6 +1016,47 @@ int fdir_client_list_dentry(FDIRClientContext *client_ctx,
 
     fdir_client_release_connection(client_ctx, conn, result);
     return result;
+}
+
+int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoListDEntryByPathBody *entry_body;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryByPathBody)
+        + NAME_MAX + PATH_MAX];
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    entry_body = (FDIRProtoListDEntryByPathBody *)(out_buff +
+            sizeof(FDIRProtoHeader));
+    if ((result=client_check_set_proto_dentry(fullname,
+                    &entry_body->dentry)) != 0)
+    {
+        return result;
+    }
+
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryByPathBody)
+        + fullname->ns.len + fullname->path.len;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    return  list_dentry(client_ctx, out_buff, out_bytes, array);
+}
+
+int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRClientDentryArray *array)
+{
+    FDIRProtoHeader *header;
+    char out_buff[sizeof(FDIRProtoHeader) + 8];
+    int out_bytes;
+
+    header = (FDIRProtoHeader *)out_buff;
+    long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
+    out_bytes = sizeof(out_buff);
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    return  list_dentry(client_ctx, out_buff, out_bytes, array);
 }
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,

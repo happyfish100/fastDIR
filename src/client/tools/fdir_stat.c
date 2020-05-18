@@ -48,9 +48,11 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
             ctime, sizeof(ctime));
     formatDatetime(dentry->stat.mtime, "%Y-%m-%d %H:%M:%S",
             mtime, sizeof(mtime));
-    printf("type: %s, inode: %"PRId64", size: %"PRId64", stat change time: %s, "
-            "modify time: %s, access time: %s, perm: 0%03o\n", type,
-            dentry->inode, dentry->stat.size, ctime, mtime, atime, perm);
+    printf("type: %s, inode: %"PRId64", size: %"PRId64", "
+            "stat change time: %s, modify time: %s, access time: %s, "
+            "uid: %d, gid: %d, perm: 0%03o\n", type, dentry->inode,
+            dentry->stat.size, ctime, mtime, atime, dentry->stat.uid,
+            dentry->stat.gid, perm);
 }
 
 int main(int argc, char *argv[])

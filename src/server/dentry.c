@@ -410,8 +410,11 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->inode = record->inode;
     }
     current->stat.mode = record->stat.mode;
+    current->stat.atime = record->stat.atime;
     current->stat.ctime = record->stat.ctime;
     current->stat.mtime = record->stat.mtime;
+    current->stat.uid = record->stat.uid;
+    current->stat.gid = record->stat.gid;
     current->stat.size = record->stat.size;
     if (parent == NULL) {
         ns_entry->dentry_root = current;
@@ -555,20 +558,13 @@ static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int targ
     return 0;
 }
 
-int dentry_list(const FDIRDEntryFullName *fullname,
-        FDIRServerDentryArray *array)
+int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
 {
-    FDIRServerDentry *dentry;
     FDIRServerDentry *current;
     FDIRServerDentry **pp;
     UniqSkiplistIterator iterator;
     int result;
     int count;
-
-    array->count = 0;
-    if ((result=dentry_find(fullname, &dentry)) != 0) {
-        return result;
-    }
 
     if (!S_ISDIR(dentry->stat.mode)) {
         count = 1;

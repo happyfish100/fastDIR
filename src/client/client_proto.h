@@ -144,8 +144,11 @@ static inline int fdir_client_dentry_sys_unlock(
             NULL, inode, force, 0, 0);
 }
 
-int fdir_client_list_dentry(FDIRClientContext *client_ctx,
+int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);
+
+int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRClientDentryArray *array);
 
 int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
 
