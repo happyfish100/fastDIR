@@ -1388,6 +1388,7 @@ static int server_list_dentry_output(struct fast_task_info *task)
             break;
         }
         body_part = (FDIRProtoListDEntryRespBodyPart *)p;
+        long2buff((*dentry)->inode, body_part->inode);
         body_part->name_len = (*dentry)->name.len;
         memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
         p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;

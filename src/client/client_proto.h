@@ -6,8 +6,9 @@
 #include "fdir_types.h"
 
 typedef struct fdir_client_dentry {
+    int64_t inode;
     string_t name;
-    FDIRDStatus stat;
+    //FDIRDStatus stat;
 } FDIRClientDentry;
 
 typedef struct fdir_client_buffer {
