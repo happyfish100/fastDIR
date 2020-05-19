@@ -24,6 +24,10 @@
 #define FDIR_SERVER_STATUS_SYNCING   22
 #define FDIR_SERVER_STATUS_ACTIVE    23
 
+#define FDIR_IS_ROOT_PATH(path) \
+    ((path).len == 1 && (path).str[0] == '/')
+
+
 typedef struct {
     int body_len;      //body length
     short flags;
@@ -51,6 +55,11 @@ typedef struct fdir_dentry_full_name {
     string_t path;  //full path
 } FDIRDEntryFullName;
 
+typedef struct fdir_dentry_pname {
+    int64_t parent_inode;
+    string_t name;
+} FDIRDEntryPName;
+
 typedef struct fdir_dentry_status {
     int mode;
     uid_t uid;
@@ -72,8 +81,8 @@ typedef union {
         union {
             int flags: 4;
             struct {
-                bool ns: 1;  //namespace
-                bool pt: 1;  //path
+                bool ns: 1;      //namespace
+                bool subname: 1;
             };
         } path_info;
         bool hash_code : 1;  //required field, for unpack check

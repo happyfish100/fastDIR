@@ -192,21 +192,6 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     }
 
     /*
-    if ((*err_no=dentry_strdup_ex(context, &entry->dentry_root.name,
-                    "/", 1)) != 0)
-    {
-        return NULL;
-    }
-    entry->dentry_root.stat.mode |= S_IFDIR;
-    entry->dentry_root.children = uniq_skiplist_new(&context->factory,
-            INIT_LEVEL_COUNT);
-    if (entry->dentry_root.children == NULL) {
-        *err_no = ENOMEM;
-        return NULL;
-    }
-    */
-
-    /*
     logInfo("ns: %.*s, create_namespace: %.*s", ns->len, ns->str,
             entry->name.len, entry->name.str);
             */
@@ -286,6 +271,59 @@ static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
     return current;
 }
 
+int dentry_find_parent(const FDIRDEntryFullName *fullname,
+    FDIRServerDentry **parent, string_t *my_name)
+{
+    FDIRPathInfo path_info;
+    FDIRNamespaceEntry *ns_entry;
+    int result;
+
+    if (fullname->path.len == 0 || fullname->path.str[0] != '/') {
+        *parent = NULL;
+        return EINVAL;
+    }
+
+    ns_entry = get_namespace(NULL, &fullname->ns, false, &result);
+    if (ns_entry == NULL) {
+        *parent = NULL;
+        return result;
+    }
+
+    if (ns_entry->dentry_root == NULL) {
+        *parent = NULL;
+        my_name->len = 0;
+        my_name->str = "";
+        return ENOENT;
+    }
+
+    path_info.count = split_string_ex(&fullname->path, '/',
+        path_info.paths, FDIR_MAX_PATH_COUNT, true);
+    if (path_info.count == 0) {
+        *parent = NULL;
+        my_name->len = 0;
+        my_name->str = "";
+        return 0;
+    }
+
+    *my_name = path_info.paths[path_info.count - 1];
+    if (path_info.count == 1) {
+        *parent = ns_entry->dentry_root;
+    } else {
+        *parent = (FDIRServerDentry *)dentry_find_ex(ns_entry,
+                path_info.paths, path_info.count - 1);
+        if (*parent == NULL) {
+            return ENOENT;
+        }
+    }
+
+    if (!S_ISDIR((*parent)->stat.mode)) {
+        *parent = NULL;
+        return ENOTDIR;
+    }
+
+    return 0;
+}
+
 static int dentry_find_parent_and_me(FDIRDentryContext *context,
         const FDIRDEntryFullName *fullname, FDIRPathInfo *path_info,
         string_t *my_name, FDIRNamespaceEntry **ns_entry,
@@ -298,8 +336,6 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     if (fullname->path.len == 0 || fullname->path.str[0] != '/') {
         *ns_entry = NULL;
         *parent = *me = NULL;
-        my_name->len = 0;
-        my_name->str = NULL;
         return EINVAL;
     }
 
@@ -316,7 +352,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     }
 
     path_info->count = split_string_ex(&fullname->path, '/',
-        path_info->paths, FDIR_MAX_PATH_COUNT, true);
+            path_info->paths, FDIR_MAX_PATH_COUNT, true);
     if (path_info->count == 0) {
         *parent = NULL;
         *me = (*ns_entry)->dentry_root;
@@ -340,7 +376,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     if (!S_ISDIR((*parent)->stat.mode)) {
         *parent = NULL;
         *me = NULL;
-        return ENOENT;
+        return ENOTDIR;
     }
 
     target.name = *my_name;
@@ -348,11 +384,43 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     return 0;
 }
 
+static int dentry_find_me(FDIRDentryContext *context,
+        FDIRBinlogRecord *record, FDIRNamespaceEntry **ns_entry,
+        const bool create_ns)
+{
+    FDIRServerDentry target;
+    int result;
+
+    if (record->parent == NULL) {
+        *ns_entry = get_namespace(context, &record->ns,
+                create_ns, &result);
+        if (*ns_entry == NULL) {
+            return result;
+        }
+
+        if ((*ns_entry)->dentry_root == NULL) {
+            return ENOENT;
+        }
+
+        if (record->pname.name.len == 0) {
+            record->dentry = (*ns_entry)->dentry_root;
+            return 0;
+        } else {
+            return ENOENT;
+        }
+    } else {
+        *ns_entry = NULL;
+    }
+
+    target.name = record->pname.name;
+    record->dentry = (FDIRServerDentry *)uniq_skiplist_find(
+            record->parent->children, &target);
+    return 0;
+}
+
 int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 {
-    FDIRPathInfo path_info;
     FDIRNamespaceEntry *ns_entry;
-    FDIRServerDentry *parent;
     FDIRServerDentry *current;
     string_t my_name;
     bool is_dir;
@@ -364,19 +432,18 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_parent_and_me(&db_context->dentry_context,
-                    &record->fullname, &path_info, &my_name, &ns_entry,
-                    &parent, &current, true)) != 0)
+    if ((result=dentry_find_me(&db_context->dentry_context,
+                    record, &ns_entry, true)) != 0)
     {
         bool is_root_path;
-        is_root_path = (record->fullname.path.len == 1 &&
-                record->fullname.path.str[0] == '/');
+        is_root_path = (record->parent == NULL &&
+                record->pname.name.len == 0);
         if (!(is_root_path && ns_entry != NULL && result == ENOENT)) {
             return result;
         }
     }
 
-    if (current != NULL) {
+    if (record->dentry != NULL) {
         return EEXIST;
     }
 
@@ -397,7 +464,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->children = NULL;
     }
 
-    current->parent = parent;
+    current->parent = record->parent;
     if ((result=dentry_strdup(&db_context->dentry_context,
                     &current->name, &my_name)) != 0)
     {
@@ -409,6 +476,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     } else {
         current->inode = record->inode;
     }
+
     current->stat.mode = record->stat.mode;
     current->stat.atime = record->stat.atime;
     current->stat.ctime = record->stat.ctime;
@@ -416,9 +484,15 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     current->stat.uid = record->stat.uid;
     current->stat.gid = record->stat.gid;
     current->stat.size = record->stat.size;
-    if (parent == NULL) {
+
+    if ((result=inode_index_add_dentry(current)) != 0) {
+        dentry_do_free(current);
+        return result;
+    }
+
+    if (record->parent == NULL) {
         ns_entry->dentry_root = current;
-    } else if ((result=uniq_skiplist_insert(parent->children, current)) != 0) {
+    } else if ((result=uniq_skiplist_insert(record->parent->children, current)) != 0) {
         return result;
     }
 
@@ -432,34 +506,28 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     } else {
         db_context->dentry_context.counters.file++;
     }
-
-    return inode_index_add_dentry(current);
+    return 0;
 }
 
 int dentry_remove(FDIRDataThreadContext *db_context,
         FDIRBinlogRecord *record)
 {
-    FDIRPathInfo path_info;
     FDIRNamespaceEntry *ns_entry;
-    FDIRServerDentry *parent;
-    FDIRServerDentry *current;
-    string_t my_name;
     bool is_dir;
     int result;
 
-    if ((result=dentry_find_parent_and_me(&db_context->dentry_context,
-                    &record->fullname, &path_info, &my_name, &ns_entry,
-                    &parent, &current, false)) != 0)
+    if ((result=dentry_find_me(&db_context->dentry_context,
+                    record, &ns_entry, false)) != 0)
     {
         return result;
     }
 
-    if (current == NULL) {
+    if (record->dentry == NULL) {
         return ENOENT;
     }
 
-    if (S_ISDIR(current->stat.mode)) {
-        if (uniq_skiplist_count(current->children) > 0) {
+    if (S_ISDIR(record->dentry->stat.mode)) {
+        if (uniq_skiplist_count(record->dentry->children) > 0) {
             return ENOTEMPTY;
         }
         is_dir = true;
@@ -467,18 +535,26 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         is_dir = false;
     }
 
-    record->inode = current->inode;
-    if ((result=uniq_skiplist_delete(parent->children, current)) != 0) {
+    if ((result=inode_index_del_dentry(record->dentry)) != 0) {
         return result;
     }
 
-    record->dentry = current;
+    record->inode = record->dentry->inode;
+    if (record->parent == NULL) {
+        ns_entry->dentry_root = NULL;
+    } else if ((result=uniq_skiplist_delete(record->parent->children,
+                    record->dentry)) != 0)
+    {
+        return result;
+    }
+
     if (is_dir) {
         db_context->dentry_context.counters.dir--;
     } else {
         db_context->dentry_context.counters.file--;
     }
-    return inode_index_del_dentry(current);
+
+    return 0;
 }
 
 int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)

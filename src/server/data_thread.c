@@ -259,12 +259,25 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
 
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
-            result = dentry_create(thread_ctx, record);
-            ignore_errno = EEXIST;
-            break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            result = dentry_remove(thread_ctx, record);
-            ignore_errno = ENOENT;
+            if (record->pname.parent_inode != 0) {
+                if (record->parent == NULL) {
+                    if ((record->parent=inode_index_get_dentry(record->
+                                    pname.parent_inode)) == NULL)
+                    {
+                        result = ENOENT;
+                        break;
+                    }
+                }
+            }
+
+            if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
+                result = dentry_create(thread_ctx, record);
+                ignore_errno = EEXIST;
+            } else {
+                result = dentry_remove(thread_ctx, record);
+                ignore_errno = ENOENT;
+            }
             break;
         case BINLOG_OP_RENAME_DENTRY_INT:
             ignore_errno = 0;

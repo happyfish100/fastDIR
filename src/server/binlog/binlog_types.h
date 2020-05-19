@@ -48,11 +48,14 @@ typedef struct fdir_binlog_record {
     int operation;
     int timestamp;
     FDIRStatModifyFlags options;
-    FDIRDEntryFullName fullname; //path namespace and path name
+    //FDIRDEntryFullName fullname; //path namespace and path name
+    string_t ns;   //namespace
+    FDIRDEntryPName pname;
     FDIRDEntryStatus stat;
     string_t user_data;
     string_t extra_data;
 
+    FDIRServerDentry *parent;  //for create and remove
     FDIRServerDentry *dentry;  //for create and remove
 
     //must be the last to avoid being overwritten by memset

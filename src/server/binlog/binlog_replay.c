@@ -42,11 +42,13 @@ static void data_thread_deal_done_callback(
         log_it_ex(&g_log_context, log_level,
                 "file: "__FILE__", line: %d, "
                 "%s dentry fail, errno: %d, error info: %s, "
-                "namespace: %.*s, path: %.*s",
-                __LINE__, get_operation_caption(record->operation),
+                "namespace: %.*s, inode: %"PRId64", parent inode: %"PRId64
+                ", subname: %.*s", __LINE__,
+                get_operation_caption(record->operation),
                 result, STRERROR(result),
-                record->fullname.ns.len, record->fullname.ns.str,
-                record->fullname.path.len, record->fullname.path.str);
+                record->ns.len, record->ns.str,
+                record->inode, record->pname.parent_inode,
+                record->pname.name.len, record->pname.name.str);
     }
     if (replay_ctx->notify.func != NULL) {
         replay_ctx->notify.func(is_error ? result : 0,

@@ -195,6 +195,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "REMOVE_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP:
             return "REMOVE_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
+            return "REMOVE_BY_PNAME_REQ";
+        case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP:
+            return "REMOVE_BY_PNAME_RESP";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:
             return "LOOKUP_INODE_REQ";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP:
