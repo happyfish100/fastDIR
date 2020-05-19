@@ -285,6 +285,12 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
 
     ns_entry = get_namespace(NULL, &fullname->ns, false, &result);
     if (ns_entry == NULL) {
+        my_name->len = 0;
+        if (fullname->path.len == 1) {
+            my_name->str = "";
+        } else {
+            my_name->str = NULL;
+        }
         *parent = NULL;
         return result;
     }
@@ -422,7 +428,6 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     FDIRServerDentry *current;
-    string_t my_name;
     bool is_dir;
     int result;
 
@@ -466,7 +471,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     current->parent = record->parent;
     if ((result=dentry_strdup(&db_context->dentry_context,
-                    &current->name, &my_name)) != 0)
+                    &current->name, &record->pname.name)) != 0)
     {
         return result;
     }

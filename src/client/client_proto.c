@@ -91,17 +91,17 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
-    FDIRProtoCreateDEntryBody *entry_body;
+    FDIRProtoCreateDEntryReq *entry_body;
     int out_bytes;
     ConnectionInfo *conn;
-    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryBody)
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryReq)
         + NAME_MAX + PATH_MAX];
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int result;
 
     header = (FDIRProtoHeader *)out_buff;
-    entry_body = (FDIRProtoCreateDEntryBody *)(out_buff +
+    entry_body = (FDIRProtoCreateDEntryReq *)(out_buff +
             sizeof(FDIRProtoHeader));
     if ((result=client_check_set_proto_dentry(fullname,
                     &entry_body->dentry)) != 0)
@@ -116,7 +116,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
     }
 
     int2buff(mode, entry_body->front.mode);
-    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryBody)
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryReq)
         + fullname->ns.len + fullname->path.len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
@@ -386,12 +386,12 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoCreateDEntryByPNameReq *)(header + 1);
-    long2buff(parent_inode, req->parent_inode);
-    int2buff(mode, req->mode);
-    req->ns_len = ns->len;
-    memcpy(req->ns_str, ns->str, ns->len);
-    req->name_len = name->len;
-    memcpy(req->ns_str + ns->len, name->str, name->len);
+    long2buff(parent_inode, req->pname.parent_inode);
+    int2buff(mode, req->front.mode);
+    req->pname.ns_len = ns->len;
+    memcpy(req->pname.ns_str, ns->str, ns->len);
+    req->pname.name_len = name->len;
+    memcpy(req->pname.ns_str + ns->len, name->str, name->len);
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryByPNameReq) +
         ns->len + name->len;
 
