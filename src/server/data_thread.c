@@ -250,6 +250,39 @@ void data_thread_terminate()
     }
 }
 
+static inline int check_parent(FDIRBinlogRecord *record)
+{
+    if (record->me.pname.parent_inode == 0) {
+        return 0;
+    }
+
+    if (record->me.parent != NULL) {
+        return 0;
+    }
+
+    record->me.parent = inode_index_get_dentry(record->
+            me.pname.parent_inode);
+    return record->me.parent != NULL ? 0 : ENOENT;
+}
+
+static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    if ((record->rename.src.parent=inode_index_get_dentry(record->
+                    rename.src.pname.parent_inode)) == NULL)
+    {
+        return ENOENT;
+    }
+
+    if ((record->rename.dest.parent=inode_index_get_dentry(record->
+                    rename.dest.pname.parent_inode)) == NULL)
+    {
+        return ENOENT;
+    }
+
+    return dentry_rename(thread_ctx, record);
+}
+
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -260,17 +293,9 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            if (record->pname.parent_inode != 0) {
-                if (record->parent == NULL) {
-                    if ((record->parent=inode_index_get_dentry(record->
-                                    pname.parent_inode)) == NULL)
-                    {
-                        result = ENOENT;
-                        break;
-                    }
-                }
+            if ((result=check_parent(record)) != 0) {
+                break;
             }
-
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
                 result = dentry_create(thread_ctx, record);
                 ignore_errno = EEXIST;
@@ -281,14 +306,11 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             break;
         case BINLOG_OP_RENAME_DENTRY_INT:
             ignore_errno = 0;
-            result = 0;
+            result = deal_record_rename_op(thread_ctx, record);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            if ((record->dentry=inode_index_update_dentry(record)) != NULL) {
-                result = 0;
-            } else {
-                result = ENOENT;
-            }
+            record->me.dentry = inode_index_update_dentry(record);
+            result = (record->me.dentry != NULL) ? 0 : ENOENT;
             ignore_errno = 0;
             break;
         default:

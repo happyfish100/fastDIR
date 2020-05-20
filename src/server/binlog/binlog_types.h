@@ -41,6 +41,12 @@ typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
 typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
 
+typedef struct {
+    FDIRDEntryPName pname;
+    FDIRServerDentry *parent;
+    FDIRServerDentry *dentry;
+} FDIRRecordDEntry;
+
 typedef struct fdir_binlog_record {
     uint64_t data_version;
     int64_t inode;
@@ -48,15 +54,22 @@ typedef struct fdir_binlog_record {
     int operation;
     int timestamp;
     FDIRStatModifyFlags options;
-    //FDIRDEntryFullName fullname; //path namespace and path name
     string_t ns;   //namespace
-    FDIRDEntryPName pname;
+
+    union {
+        struct {
+            FDIRRecordDEntry dest;  //must be the first
+            FDIRRecordDEntry src;
+            FDIRServerDentry *overwritten;
+            int flags;
+        } rename;
+
+        FDIRRecordDEntry me;  //for create and remove
+    };
+
     FDIRDEntryStatus stat;
     string_t user_data;
     string_t extra_data;
-
-    FDIRServerDentry *parent;  //for create and remove
-    FDIRServerDentry *dentry;  //for create and remove
 
     //must be the last to avoid being overwritten by memset
     struct {

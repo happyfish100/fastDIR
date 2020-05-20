@@ -24,6 +24,10 @@
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP       28
 #define FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ      29
 #define FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP     30
+#define FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ        31
+#define FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP       32
+#define FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ      33
+#define FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP     34
 
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ  39
 #define FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ 40
@@ -160,6 +164,22 @@ typedef struct fdir_proto_remove_dentry {
 typedef struct fdir_proto_remove_dentry_by_pname {
     FDIRProtoDEntryByPName pname;
 } FDIRProtoRemoveDEntryByPName;
+
+typedef struct fdir_proto_rename_dentry_front {
+    char flags[4];
+} FDIRProtoRenameDEntryFront;
+
+typedef struct fdir_proto_rename_dentry {
+    FDIRProtoRenameDEntryFront front;
+    FDIRProtoDEntryInfo src;
+    FDIRProtoDEntryInfo dest;
+} FDIRProtoRenameDEntry;
+
+typedef struct fdir_proto_rename_dentry_by_pname {
+    FDIRProtoRenameDEntryFront front;
+    FDIRProtoDEntryByPName src;
+    FDIRProtoDEntryByPName dest;
+} FDIRProtoRenameDEntryByPName;
 
 typedef struct fdir_proto_set_dentry_size_req {
     char inode[8];

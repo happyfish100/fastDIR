@@ -191,7 +191,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     expect_len = 512;
     if (record->options.path_info.flags != 0) {
         expect_len += record->ns.len +
-                record->pname.name.len;
+                record->me.pname.name.len;
     }
     if (record->options.extra_data) {
         expect_len += record->extra_data.len;
@@ -226,10 +226,10 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
             BINLOG_RECORD_FIELD_NAME_TIMESTAMP, record->timestamp);
 
     if (record->options.path_info.flags != 0) {
-        if (record->pname.parent_inode == 0 && record->pname.name.len > 0) {
+        if (record->me.pname.parent_inode == 0 && record->me.pname.name.len > 0) {
             logError("file: "__FILE__", line: %d, "
                     "subname: %.*s, expect parent inode", __LINE__,
-                    record->pname.name.len, record->pname.name.str);
+                    record->me.pname.name.len, record->me.pname.name.str);
             return EINVAL;
         }
 
@@ -238,10 +238,10 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
         fast_buffer_append(buffer, " %s=%"PRId64,
                 BINLOG_RECORD_FIELD_NAME_PARENT,
-                record->pname.parent_inode);
+                record->me.pname.parent_inode);
 
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SUBNAME,
-                record->pname.name);
+                record->me.pname.name);
     }
 
     fast_buffer_append(buffer, " %s=%u",
@@ -414,7 +414,7 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_PARENT:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
-                record->pname.parent_inode = pcontext->fv.value.n;
+                record->me.pname.parent_inode = pcontext->fv.value.n;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_DATA_VERSION:
@@ -446,7 +446,7 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_SUBNAME:
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
-                record->pname.name = pcontext->fv.value.s;
+                record->me.pname.name = pcontext->fv.value.s;
                 record->options.path_info.subname = 1;
             }
             break;
@@ -571,7 +571,7 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
     }
 
     if (record->options.path_info.flags != 0 ||
-            record->pname.parent_inode != 0)
+            record->me.pname.parent_inode != 0)
     {
         if (record->options.path_info.ns == 0) {
             sprintf(pcontext->error_info, "expect namespace field: %s",
@@ -583,7 +583,9 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
                     BINLOG_RECORD_FIELD_NAME_SUBNAME);
             return ENOENT;
         }
-        if (record->pname.parent_inode == 0 && record->pname.name.len > 0) {
+        if (record->me.pname.parent_inode == 0 &&
+                record->me.pname.name.len > 0)
+        {
             sprintf(pcontext->error_info, "expect parent inode field: %s",
                     BINLOG_RECORD_FIELD_NAME_PARENT);
             return ENOENT;

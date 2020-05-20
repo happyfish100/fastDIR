@@ -20,6 +20,9 @@ extern "C" {
     int dentry_remove(FDIRDataThreadContext *db_context,
             FDIRBinlogRecord *record);
 
+    int dentry_rename(FDIRDataThreadContext *db_context,
+            FDIRBinlogRecord *record);
+
     int dentry_find_parent(const FDIRDEntryFullName *fullname,
             FDIRServerDentry **parent, string_t *my_name);
 

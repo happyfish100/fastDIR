@@ -156,10 +156,10 @@ static FDIRServerDentry *find_inode_entry(FDIRServerDentry **bucket,
 }
 
 #define SET_INODE_HASHTABLE_CTX(inode)  \
-    int64_t bucket_index;       \
+    uint64_t bucket_index;       \
     InodeSharedContext *ctx;    \
     do {  \
-        bucket_index =  inode % inode_hashtable.capacity;  \
+        bucket_index = ((uint64_t)inode) % inode_hashtable.capacity;  \
         ctx = inode_shared_ctx_array.contexts + bucket_index %    \
             inode_shared_ctx_array.count;   \
     } while (0)

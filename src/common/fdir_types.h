@@ -24,6 +24,14 @@
 #define FDIR_SERVER_STATUS_SYNCING   22
 #define FDIR_SERVER_STATUS_ACTIVE    23
 
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE	(1 << 0)
+#endif
+
+#ifndef RENAME_EXCHANGE
+#define RENAME_EXCHANGE     (1 << 1)
+#endif
+
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')
 

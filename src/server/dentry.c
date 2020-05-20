@@ -390,16 +390,15 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     return 0;
 }
 
-static int dentry_find_me(FDIRDentryContext *context,
-        FDIRBinlogRecord *record, FDIRNamespaceEntry **ns_entry,
+static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
+        FDIRRecordDEntry *rec_entry, FDIRNamespaceEntry **ns_entry,
         const bool create_ns)
 {
     FDIRServerDentry target;
     int result;
 
-    if (record->parent == NULL) {
-        *ns_entry = get_namespace(context, &record->ns,
-                create_ns, &result);
+    if (rec_entry->parent == NULL) {
+        *ns_entry = get_namespace(context, ns, create_ns, &result);
         if (*ns_entry == NULL) {
             return result;
         }
@@ -408,8 +407,8 @@ static int dentry_find_me(FDIRDentryContext *context,
             return ENOENT;
         }
 
-        if (record->pname.name.len == 0) {
-            record->dentry = (*ns_entry)->dentry_root;
+        if (rec_entry->pname.name.len == 0) {
+            rec_entry->dentry = (*ns_entry)->dentry_root;
             return 0;
         } else {
             return ENOENT;
@@ -418,9 +417,9 @@ static int dentry_find_me(FDIRDentryContext *context,
         *ns_entry = NULL;
     }
 
-    target.name = record->pname.name;
-    record->dentry = (FDIRServerDentry *)uniq_skiplist_find(
-            record->parent->children, &target);
+    target.name = rec_entry->pname.name;
+    rec_entry->dentry = (FDIRServerDentry *)uniq_skiplist_find(
+            rec_entry->parent->children, &target);
     return 0;
 }
 
@@ -437,18 +436,18 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_me(&db_context->dentry_context,
-                    record, &ns_entry, true)) != 0)
+    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+                    &record->me, &ns_entry, true)) != 0)
     {
         bool is_root_path;
-        is_root_path = (record->parent == NULL &&
-                record->pname.name.len == 0);
+        is_root_path = (record->me.parent == NULL &&
+                record->me.pname.name.len == 0);
         if (!(is_root_path && ns_entry != NULL && result == ENOENT)) {
             return result;
         }
     }
 
-    if (record->dentry != NULL) {
+    if (record->me.dentry != NULL) {
         return EEXIST;
     }
 
@@ -469,9 +468,9 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->children = NULL;
     }
 
-    current->parent = record->parent;
+    current->parent = record->me.parent;
     if ((result=dentry_strdup(&db_context->dentry_context,
-                    &current->name, &record->pname.name)) != 0)
+                    &current->name, &record->me.pname.name)) != 0)
     {
         return result;
     }
@@ -495,13 +494,15 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return result;
     }
 
-    if (record->parent == NULL) {
+    if (record->me.parent == NULL) {
         ns_entry->dentry_root = current;
-    } else if ((result=uniq_skiplist_insert(record->parent->children, current)) != 0) {
+    } else if ((result=uniq_skiplist_insert(record->me.parent->children,
+                    current)) != 0)
+    {
         return result;
     }
 
-    record->dentry = current;
+    record->me.dentry = current;
     if (record->inode == 0) {
         record->inode = current->inode;
     }
@@ -521,18 +522,18 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     bool is_dir;
     int result;
 
-    if ((result=dentry_find_me(&db_context->dentry_context,
-                    record, &ns_entry, false)) != 0)
+    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+                    &record->me, &ns_entry, false)) != 0)
     {
         return result;
     }
 
-    if (record->dentry == NULL) {
+    if (record->me.dentry == NULL) {
         return ENOENT;
     }
 
-    if (S_ISDIR(record->dentry->stat.mode)) {
-        if (uniq_skiplist_count(record->dentry->children) > 0) {
+    if (S_ISDIR(record->me.dentry->stat.mode)) {
+        if (!uniq_skiplist_empty(record->me.dentry->children)) {
             return ENOTEMPTY;
         }
         is_dir = true;
@@ -540,15 +541,15 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         is_dir = false;
     }
 
-    if ((result=inode_index_del_dentry(record->dentry)) != 0) {
+    if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
         return result;
     }
 
-    record->inode = record->dentry->inode;
-    if (record->parent == NULL) {
+    record->inode = record->me.dentry->inode;
+    if (record->me.parent == NULL) {
         ns_entry->dentry_root = NULL;
-    } else if ((result=uniq_skiplist_delete(record->parent->children,
-                    record->dentry)) != 0)
+    } else if ((result=uniq_skiplist_delete(record->me.parent->children,
+                    record->me.dentry)) != 0)
     {
         return result;
     }
@@ -560,6 +561,110 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     }
 
     return 0;
+}
+
+static int rename_check(FDIRDataThreadContext *db_context,
+        FDIRBinlogRecord *record)
+{
+    FDIRNamespaceEntry *ns_entry;
+    int result;
+
+    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+                    &record->rename.src, &ns_entry, false)) != 0)
+    {
+        return result;
+    }
+
+    if (record->rename.src.dentry == ns_entry->dentry_root) {
+        return EINVAL;
+    }
+
+    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+                    &record->rename.dest, &ns_entry, false)) != 0)
+    {
+        if ((record->rename.flags & RENAME_EXCHANGE)) {
+            return result;
+        }
+
+        return result == ENOENT ? 0 : result;
+    }
+
+    if (record->rename.dest.dentry == ns_entry->dentry_root) {
+        return EINVAL;
+    }
+
+    if ((record->rename.flags & RENAME_NOREPLACE)) {
+        return EEXIST;
+    }
+
+    if ((record->rename.flags & RENAME_EXCHANGE)) {
+        return 0;
+    }
+
+    if ((record->rename.dest.dentry->stat.mode & S_IFMT) !=
+            (record->rename.src.dentry->stat.mode & S_IFMT))
+    {
+        return EINVAL;
+    }
+
+    if (S_ISDIR(record->rename.dest.dentry->stat.mode)) {
+        if (!uniq_skiplist_empty(record->rename.dest.dentry->children)) {
+            return ENOTEMPTY;
+        }
+    }
+
+    return 0;
+}
+
+int dentry_rename(FDIRDataThreadContext *db_context,
+        FDIRBinlogRecord *record)
+{
+    int result;
+
+    if ((result=rename_check(db_context, record)) != 0) {
+        return result;
+    }
+
+    if (record->rename.dest.dentry == record->rename.src.dentry) {
+        return EEXIST;
+    }
+
+    if ((record->rename.flags & RENAME_EXCHANGE)) {
+        if ((result=uniq_skiplist_replace_ex(record->rename.dest.parent->
+                        children, record->rename.dest.dentry,
+                        record->rename.src.dentry, false)) != 0)
+        {
+            return result;
+        }
+        record->rename.src.dentry->parent = record->rename.dest.parent;
+
+        if ((result=uniq_skiplist_replace_ex(record->rename.src.parent->
+                        children, record->rename.src.dentry,
+                        record->rename.dest.dentry, false)) != 0)
+        {
+            return result;
+        }
+        record->rename.dest.dentry->parent = record->rename.src.parent;
+        return 0;
+    }
+
+    record->rename.overwritten = record->rename.dest.dentry;
+    if (record->rename.dest.dentry != NULL) {
+        result = uniq_skiplist_replace_ex(record->rename.dest.parent->
+                children, record->rename.dest.dentry,
+                record->rename.src.dentry, true);
+    } else {
+        result = uniq_skiplist_insert(record->rename.dest.parent->children,
+                record->rename.src.dentry);
+    }
+
+    if (result != 0) {
+        return result;
+    }
+
+    record->rename.src.dentry->parent = record->rename.dest.parent;
+    return uniq_skiplist_delete_ex(record->rename.src.parent->
+            children, record->rename.src.dentry, false);
 }
 
 int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)

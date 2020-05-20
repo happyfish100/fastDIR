@@ -47,8 +47,8 @@ static void data_thread_deal_done_callback(
                 get_operation_caption(record->operation),
                 result, STRERROR(result),
                 record->ns.len, record->ns.str,
-                record->inode, record->pname.parent_inode,
-                record->pname.name.len, record->pname.name.str);
+                record->inode, record->me.pname.parent_inode,
+                record->me.pname.name.len, record->me.pname.name.str);
     }
     if (replay_ctx->notify.func != NULL) {
         replay_ctx->notify.func(is_error ? result : 0,
