@@ -31,7 +31,9 @@
 #define BINLOG_RECORD_FIELD_NAME_LENGTH         2
 
 #define BINLOG_RECORD_FIELD_NAME_INODE         "id"
-#define BINLOG_RECORD_FIELD_NAME_PARENT        "pt"
+#define BINLOG_RECORD_FIELD_NAME_PARENT        "pt"  //parent inode
+#define BINLOG_RECORD_FIELD_NAME_SRC_PARENT    "sp"  //src parent inode
+#define BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME   "sn"
 #define BINLOG_RECORD_FIELD_NAME_DATA_VERSION  "dv"
 #define BINLOG_RECORD_FIELD_NAME_OPERATION     "op"
 #define BINLOG_RECORD_FIELD_NAME_TIMESTAMP     "ts"
@@ -48,8 +50,13 @@
 #define BINLOG_RECORD_FIELD_NAME_FILE_SIZE     "sz"
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
 
+#define BINLOG_RECORD_FIELD_NAME_DEST_PARENT   BINLOG_RECORD_FIELD_NAME_PARENT
+#define BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME  BINLOG_RECORD_FIELD_NAME_SUBNAME
+
 #define BINLOG_RECORD_FIELD_INDEX_INODE         ('i' * 256 + 'd')
 #define BINLOG_RECORD_FIELD_INDEX_PARENT        ('p' * 256 + 't')
+#define BINLOG_RECORD_FIELD_INDEX_SRC_PARENT    ('s' * 256 + 'p')
+#define BINLOG_RECORD_FIELD_INDEX_SRC_SUBNAME   ('s' * 256 + 'n')
 #define BINLOG_RECORD_FIELD_INDEX_DATA_VERSION  ('d' * 256 + 'v')
 #define BINLOG_RECORD_FIELD_INDEX_OPERATION     ('o' * 256 + 'p')
 #define BINLOG_RECORD_FIELD_INDEX_TIMESTAMP     ('t' * 256 + 's')
@@ -180,6 +187,7 @@ static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
 #define BINLOG_PACK_STRING(buffer, name, value) \
     binlog_pack_stringl(buffer, name, value.str, value.len, true)
 
+
 int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 {
     string_t op_caption;
@@ -291,6 +299,15 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.size) {
         fast_buffer_append(buffer, " %s=%"PRId64,
                 BINLOG_RECORD_FIELD_NAME_FILE_SIZE, record->stat.size);
+    }
+
+    if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
+        fast_buffer_append(buffer, " %s=%"PRId64,
+                BINLOG_RECORD_FIELD_NAME_SRC_PARENT,
+                record->rename.src.pname.parent_inode);
+
+        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
+                record->rename.src.pname.name);
     }
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
@@ -417,6 +434,17 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
                 record->me.pname.parent_inode = pcontext->fv.value.n;
             }
             break;
+        case BINLOG_RECORD_FIELD_INDEX_SRC_PARENT:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->rename.src.pname.parent_inode = pcontext->fv.value.n;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_SRC_SUBNAME:
+            expect_type = BINLOG_FIELD_TYPE_STRING;
+            if (pcontext->fv.type == expect_type) {
+                record->rename.src.pname.name = pcontext->fv.value.s;
+            }
         case BINLOG_RECORD_FIELD_INDEX_DATA_VERSION:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
@@ -588,6 +616,30 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
         {
             sprintf(pcontext->error_info, "expect parent inode field: %s",
                     BINLOG_RECORD_FIELD_NAME_PARENT);
+            return ENOENT;
+        }
+    }
+
+    if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
+        if (record->rename.dest.pname.parent_inode == 0) {
+            sprintf(pcontext->error_info, "expect dest parent inode field: %s",
+                    BINLOG_RECORD_FIELD_NAME_DEST_PARENT);
+            return ENOENT;
+        }
+        if (record->rename.dest.pname.name.len == 0) {
+            sprintf(pcontext->error_info, "expect dest subname field: %s",
+                    BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME);
+            return ENOENT;
+        }
+
+        if (record->rename.src.pname.parent_inode == 0) {
+            sprintf(pcontext->error_info, "expect src parent inode field: %s",
+                    BINLOG_RECORD_FIELD_NAME_SRC_PARENT);
+            return ENOENT;
+        }
+        if (record->rename.src.pname.name.len == 0) {
+            sprintf(pcontext->error_info, "expect src subname field: %s",
+                    BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME);
             return ENOENT;
         }
     }

@@ -57,14 +57,14 @@ typedef struct fdir_binlog_record {
     string_t ns;   //namespace
 
     union {
+        FDIRRecordDEntry me;  //for create and remove
+
         struct {
             FDIRRecordDEntry dest;  //must be the first
             FDIRRecordDEntry src;
             FDIRServerDentry *overwritten;
             int flags;
         } rename;
-
-        FDIRRecordDEntry me;  //for create and remove
     };
 
     FDIRDEntryStatus stat;

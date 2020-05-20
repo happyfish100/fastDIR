@@ -630,12 +630,15 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     }
 
     if ((record->rename.flags & RENAME_EXCHANGE)) {
+        FDIRServerDentry *src_parent;
+
         if ((result=uniq_skiplist_replace_ex(record->rename.dest.parent->
                         children, record->rename.dest.dentry,
                         record->rename.src.dentry, false)) != 0)
         {
             return result;
         }
+        src_parent = record->rename.src.dentry->parent;
         record->rename.src.dentry->parent = record->rename.dest.parent;
 
         if ((result=uniq_skiplist_replace_ex(record->rename.src.parent->
@@ -644,7 +647,8 @@ int dentry_rename(FDIRDataThreadContext *db_context,
         {
             return result;
         }
-        record->rename.dest.dentry->parent = record->rename.src.parent;
+        record->rename.dest.dentry->parent = src_parent;
+        record->inode = record->rename.dest.dentry->inode;
         return 0;
     }
 
@@ -663,6 +667,7 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     }
 
     record->rename.src.dentry->parent = record->rename.dest.parent;
+    record->inode = record->rename.src.dentry->inode;
     return uniq_skiplist_delete_ex(record->rename.src.parent->
             children, record->rename.src.dentry, false);
 }
