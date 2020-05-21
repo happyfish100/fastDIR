@@ -692,6 +692,11 @@ int dentry_rename(FDIRDataThreadContext *db_context,
         return EEXIST;
     }
 
+    logInfo("src name %.*s, dest name: %.*s(%d)",
+            record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
+            record->rename.dest.dentry->name.len, record->rename.dest.dentry->name.str,
+            record->rename.dest.dentry->name.len);
+
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);
 
