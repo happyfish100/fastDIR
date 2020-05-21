@@ -362,12 +362,13 @@ static int server_parse_dentry_info(struct fast_task_info *task,
 }
 
 static int server_check_and_parse_dentry(struct fast_task_info *task,
-        const int front_part_size, const int fixed_part_size,
-        FDIRDEntryFullName *fullname)
+        const int front_part_size, FDIRDEntryFullName *fullname)
 {
     int result;
+    int fixed_part_size;
     int req_body_len;
 
+    fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryInfo);
     if ((result=server_check_body_length(task,
                     fixed_part_size + 2, fixed_part_size +
                     NAME_MAX + PATH_MAX)) != 0)
@@ -570,6 +571,12 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP)
         {
             dentry_stat_output(task, record->me.dentry);
+        } else if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP ||
+                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP)
+        {
+            if (RECORD->rename.overwritten != NULL) {
+                dentry_stat_output(task, RECORD->rename.overwritten);
+            }
         }
     }
 
@@ -653,10 +660,15 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
     int result;
 
     if ((result=server_check_and_parse_dentry(task, front_part_size,
-                    fixed_part_size, &fullname)) != 0)
+                    &fullname)) != 0)
     {
         return result;
     }
+
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
+            fullname.ns.len, fullname.ns.str,
+            fullname.path.len, fullname.path.str);
 
     if ((result=dentry_find_parent(&fullname, &parent_dentry, &name)) != 0) {
         if (!(result == ENOENT && is_create)) {
@@ -842,6 +854,11 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
         return result;
     }
 
+    logInfo("file: "__FILE__", line: %d, "
+            "src ns: %.*s, path: %.*s",
+            __LINE__, src_fullname.ns.len, src_fullname.ns.str,
+            src_fullname.path.len, src_fullname.path.str);
+
     if ((result=set_rename_src_dentry(task, &src_fullname)) != 0) {
         free_record_object(task);
         return result;
@@ -864,6 +881,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             RECORD->rename.dest.pname.name.len,
             RECORD->rename.dest.pname.name.str);
 
+    RECORD->rename.overwritten = NULL;
     RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP;
     return push_record_to_data_thread_queue(task);
@@ -875,9 +893,7 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
     FDIRDEntryFullName fullname;
     FDIRServerDentry *dentry;
 
-    if ((result=server_check_and_parse_dentry(task, 0,
-                    sizeof(FDIRProtoDEntryInfo), &fullname)) != 0)
-    {
+    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
         return result;
     }
 
@@ -897,9 +913,7 @@ static int service_deal_lookup_inode(struct fast_task_info *task)
     FDIRServerDentry *dentry;
     FDIRProtoLookupInodeResp *resp;
 
-    if ((result=server_check_and_parse_dentry(task, 0,
-                    sizeof(FDIRProtoDEntryInfo), &fullname)) != 0)
-    {
+    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
         return result;
     }
 
@@ -1571,10 +1585,7 @@ static int service_deal_list_dentry_by_path(struct fast_task_info *task)
     int result;
     FDIRDEntryFullName fullname;
 
-    if ((result=server_check_and_parse_dentry(task,
-                    0, sizeof(FDIRProtoListDEntryByPathBody),
-                    &fullname)) != 0)
-    {
+    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
         return result;
     }
 

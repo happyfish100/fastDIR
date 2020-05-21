@@ -186,6 +186,69 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
     return result;
 }
 
+int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
+        const int flags, FDIRDEntryInfo **dentry)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoRenameDEntry *req;
+    FDIRProtoDEntryInfo *dest_pentry;
+    int out_bytes;
+    ConnectionInfo *conn;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoRenameDEntry)
+        + 2 * (NAME_MAX + PATH_MAX)];
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int expect_body_lens[2];
+    int body_len;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoRenameDEntry *)(out_buff + sizeof(FDIRProtoHeader));
+    if ((result=client_check_set_proto_dentry(src, &req->src)) != 0) {
+        return result;
+    }
+
+    dest_pentry = (FDIRProtoDEntryInfo *)((char *)(&req->src + 1) +
+            src->ns.len + src->path.len);
+    if ((result=client_check_set_proto_dentry(dest, dest_pentry)) != 0) {
+        return result;
+    }
+
+    if ((conn=client_ctx->conn_manager.get_master_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
+
+    int2buff(flags, req->front.flags);
+    out_bytes = ((char *)(dest_pentry + 1) + dest->ns.len +
+            dest->path.len) - out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    expect_body_lens[0] = 0;
+    expect_body_lens[1] = sizeof(proto_stat);
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_recv_response_ex(conn, out_buff, out_bytes,
+                    &response, g_fdir_client_vars.network_timeout,
+                    FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP, (char *)
+                    &proto_stat, expect_body_lens, 2, &body_len)) == 0)
+    {
+        if (body_len == (int)sizeof(proto_stat)) {
+            proto_unpack_dentry(&proto_stat, *dentry);
+        } else {
+            *dentry = NULL;
+        }
+    } else {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
 int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, int64_t *inode)
 {

@@ -100,6 +100,20 @@ static inline int fdir_client_remove_dentry_by_pname(
             ns, parent_inode, name, &dentry);
 }
 
+int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
+        const int flags, FDIRDEntryInfo **dentry);
+
+static inline int fdir_client_rename_dentry(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
+        const int flags)
+{
+    FDIRDEntryInfo dentry;
+    FDIRDEntryInfo *p;
+    p = &dentry;
+    return fdir_client_rename_dentry_ex(client_ctx, src, dest, flags, &p);
+}
+
 int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, int64_t *inode);
 

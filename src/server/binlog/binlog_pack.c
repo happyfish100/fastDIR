@@ -34,6 +34,7 @@
 #define BINLOG_RECORD_FIELD_NAME_PARENT        "pt"  //parent inode
 #define BINLOG_RECORD_FIELD_NAME_SRC_PARENT    "sp"  //src parent inode
 #define BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME   "sn"
+#define BINLOG_RECORD_FIELD_NAME_FLAGS         "fl"  //flags for rename
 #define BINLOG_RECORD_FIELD_NAME_DATA_VERSION  "dv"
 #define BINLOG_RECORD_FIELD_NAME_OPERATION     "op"
 #define BINLOG_RECORD_FIELD_NAME_TIMESTAMP     "ts"
@@ -57,6 +58,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_PARENT        ('p' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_SRC_PARENT    ('s' * 256 + 'p')
 #define BINLOG_RECORD_FIELD_INDEX_SRC_SUBNAME   ('s' * 256 + 'n')
+#define BINLOG_RECORD_FIELD_INDEX_FLAGS         ('f' * 256 + 'l')
 #define BINLOG_RECORD_FIELD_INDEX_DATA_VERSION  ('d' * 256 + 'v')
 #define BINLOG_RECORD_FIELD_INDEX_OPERATION     ('o' * 256 + 'p')
 #define BINLOG_RECORD_FIELD_INDEX_TIMESTAMP     ('t' * 256 + 's')
@@ -308,6 +310,9 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
         BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
                 record->rename.src.pname.name);
+
+        fast_buffer_append(buffer, " %s=%d",
+                BINLOG_RECORD_FIELD_NAME_FLAGS, record->rename.flags);
     }
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
@@ -445,6 +450,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->rename.src.pname.name = pcontext->fv.value.s;
             }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_FLAGS:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->rename.flags = pcontext->fv.value.n;
+            }
+            break;
         case BINLOG_RECORD_FIELD_INDEX_DATA_VERSION:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
