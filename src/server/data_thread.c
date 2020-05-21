@@ -256,10 +256,6 @@ static inline int check_parent(FDIRBinlogRecord *record)
         return 0;
     }
 
-    if (record->me.parent != NULL) {
-        return 0;
-    }
-
     record->me.parent = inode_index_get_dentry(record->
             me.pname.parent_inode);
     return record->me.parent != NULL ? 0 : ENOENT;

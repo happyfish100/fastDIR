@@ -36,9 +36,9 @@ typedef struct fdir_manager {
 } FDIRManager;
 
 typedef struct {
-    FDIRServerDentry holder;
-    FDIRServerDentry *ptr;
-} DEntryHolderPtrPair;
+    string_t holder;
+    string_t *ptr;
+} StringHolderPtrPair;
 
 const int max_level_count = 20;
 //const int delay_free_seconds = 3600;
@@ -84,6 +84,24 @@ int dentry_init()
 
 void dentry_destroy()
 {
+}
+
+static void dentry_children_print(FDIRServerDentry *dentry)
+{
+    FDIRServerDentry *current;
+    UniqSkiplistIterator iterator;
+    int i = 0;
+
+    if (dentry->children == NULL) {
+        logInfo("not skiplist");
+        return;
+    }
+
+    uniq_skiplist_iterator(dentry->children, &iterator);
+    while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
+        logInfo("%d. %.*s(%d)", ++i, current->name.len,
+                current->name.str, current->name.len);
+    }
 }
 
 static int dentry_compare(const void *p1, const void *p2)
@@ -480,6 +498,18 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return result;
     }
 
+    {
+        char hex1[256];
+        char hex2[256];
+        bin2hex(current->name.str, current->name.len, hex1);
+        bin2hex(record->me.pname.name.str, record->me.pname.name.len, hex2);
+    logInfo("file: "__FILE__", line: %d, "
+            "current name: %p => %.*s(%d), hex1: %s, input name: %.*s(%d), hex2: %s",
+            __LINE__, current->name.str, current->name.len,
+            current->name.str, current->name.len, hex1, record->me.pname.name.len,
+            record->me.pname.name.str, record->me.pname.name.len, hex2);
+    }
+
     if (record->inode == 0) {
         current->inode = inode_generator_next();
     } else {
@@ -568,6 +598,17 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     return 0;
 }
 
+static bool dentry_is_ancestor(FDIRServerDentry *dentry, FDIRServerDentry *parent)
+{
+    while (parent != NULL) {
+        if (parent == dentry) {
+            return true;
+        }
+        parent = parent->parent;
+    }
+    return false;
+}
+
 static int rename_check(FDIRDataThreadContext *db_context,
         FDIRBinlogRecord *record)
 {
@@ -648,13 +689,13 @@ static inline void free_dname(FDIRServerDentry *dentry, string_t *old_name)
 
 static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
         FDIRServerDentry *dentry, const string_t *new_name,
-        const bool name_changed, DEntryHolderPtrPair *pair)
+        const bool name_changed, StringHolderPtrPair *pair)
 {
     int result;
     string_t cloned_name;
 
     if (!name_changed) {
-        pair->ptr = dentry;
+        pair->ptr = &dentry->name;
         return 0;
     }
 
@@ -664,17 +705,153 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
         return result;
     }
 
-    logInfo("file: "__FILE__", line: %d, "
-            "dentry_strdup dentry name: %p => %*.s(%d), src name: %.*s(%d)",
-            __LINE__, cloned_name.str, cloned_name.len,
-            cloned_name.str, cloned_name.len,
-            new_name->len, new_name->str, new_name->len);
-
     pair->ptr = &pair->holder;
-    pair->holder = *dentry;
+    pair->holder = dentry->name;
     dentry->name = cloned_name;
 
+    logInfo("file: "__FILE__", line: %d, "
+            "dentry old name: %.*s, new name: %.*s",
+            __LINE__, pair->ptr->len, pair->ptr->str,
+            dentry->name.len, dentry->name.str);
+
     return 0;
+}
+
+static int exchange_dentry(FDIRDataThreadContext *db_context,
+        FDIRBinlogRecord *record, const bool name_changed)
+{
+    int result;
+    StringHolderPtrPair old_src_pair;
+    StringHolderPtrPair old_dest_pair;
+
+    if (record->rename.dest.parent == record->rename.src.parent) {
+        return 0;
+    }
+
+    if ((result=uniq_skiplist_delete_ex(record->rename.src.parent->
+                    children, record->rename.src.dentry, false)) != 0) {
+        return result;
+    }
+
+    do {
+        old_src_pair.ptr = NULL;
+        if ((result=set_and_store_dentry_name(db_context,
+                        record->rename.src.dentry, &record->
+                        rename.dest.pname.name, name_changed,
+                        &old_src_pair)) != 0)
+        {
+            break;
+        }
+
+        if ((result=uniq_skiplist_replace_ex(record->rename.dest.parent->
+                        children, record->rename.src.dentry, false)) != 0)
+        {
+            break;
+        }
+
+        if ((result=set_and_store_dentry_name(db_context,
+                        record->rename.dest.dentry, &record->
+                        rename.src.pname.name, name_changed,
+                        &old_dest_pair)) != 0)
+        {
+            uniq_skiplist_replace_ex(record->rename.dest.parent->
+                    children, record->rename.dest.dentry, false);  //rollback
+            break;
+        }
+
+        if ((result=uniq_skiplist_insert(record->rename.src.parent->
+                        children, record->rename.dest.dentry)) != 0)
+        {
+            if (name_changed) {
+                restore_dentry_name(record->rename.dest.dentry,
+                        old_dest_pair.ptr);
+            }
+
+            uniq_skiplist_replace_ex(record->rename.dest.parent->
+                    children, record->rename.dest.dentry, false);  //rollback
+            break;
+        }
+
+        record->rename.src.dentry->parent = record->rename.dest.parent;
+        record->rename.dest.dentry->parent = record->rename.src.parent;
+        record->inode = record->rename.dest.dentry->inode;
+        if (name_changed) {
+            free_dname(record->rename.src.dentry, old_src_pair.ptr);
+            free_dname(record->rename.dest.dentry, old_dest_pair.ptr);
+        }
+    } while (0);
+
+    if (result != 0) {  //rollback
+        if (name_changed && old_src_pair.ptr != NULL) {
+            restore_dentry_name(record->rename.src.dentry,
+                    old_src_pair.ptr);
+        }
+
+        uniq_skiplist_insert(record->rename.src.parent->children,
+                record->rename.src.dentry);
+    }
+
+    return result;
+}
+
+static int move_dentry(FDIRDataThreadContext *db_context,
+        FDIRBinlogRecord *record, const bool name_changed)
+{
+    int result;
+    StringHolderPtrPair old_src_pair;
+
+    if ((result=uniq_skiplist_delete_ex(record->rename.src.parent->
+                    children, record->rename.src.dentry, false)) != 0) {
+        return result;
+    }
+
+    do {
+        if ((result=set_and_store_dentry_name(db_context, record->rename.src.dentry,
+                        &record->rename.dest.pname.name, name_changed,
+                        &old_src_pair)) != 0)
+        {
+            break;
+        }
+
+        logInfo("file: "__FILE__", line: %d, "
+                "old src dentry name: %.*s, "
+                "new src dentry name: %.*s, dest dentry: %p",
+                __LINE__, old_src_pair.ptr->len,
+                old_src_pair.ptr->str,
+                record->rename.src.dentry->name.len,
+                record->rename.src.dentry->name.str,
+                record->rename.dest.dentry);
+
+        record->rename.overwritten = record->rename.dest.dentry;
+        if (record->rename.dest.dentry != NULL) {
+            result = uniq_skiplist_replace_ex(record->rename.dest.parent->
+                    children, record->rename.src.dentry, true);
+        } else {
+            result = uniq_skiplist_insert(record->rename.dest.parent->children,
+                    record->rename.src.dentry);
+        }
+
+        if (result != 0) {
+            if (name_changed) {
+                restore_dentry_name(record->rename.src.dentry,
+                        old_src_pair.ptr);
+            }
+            break;
+        }
+
+        record->rename.src.dentry->parent = record->rename.dest.parent;
+        record->inode = record->rename.src.dentry->inode;
+        if (name_changed) {
+            free_dname(record->rename.src.dentry, old_src_pair.ptr);
+        }
+    } while (0);
+
+    if (result != 0) {  //rollback
+        uniq_skiplist_insert(record->rename.src.parent->children,
+                record->rename.src.dentry);
+    }
+
+    return result;
 }
 
 int dentry_rename(FDIRDataThreadContext *db_context,
@@ -682,7 +859,6 @@ int dentry_rename(FDIRDataThreadContext *db_context,
 {
     int result;
     bool name_changed;
-    DEntryHolderPtrPair old_src_pair;
 
     if ((result=rename_check(db_context, record)) != 0) {
         return result;
@@ -690,6 +866,21 @@ int dentry_rename(FDIRDataThreadContext *db_context,
 
     if (record->rename.dest.dentry == record->rename.src.dentry) {
         return EEXIST;
+    }
+
+    if (record->rename.dest.parent != record->rename.src.parent) {
+        if (dentry_is_ancestor(record->rename.src.dentry,
+                    record->rename.dest.parent))
+        {
+            return ELOOP;
+        }
+
+        if (dentry_is_ancestor(record->rename.dest.dentry != NULL ?
+                    record->rename.dest.dentry : record->rename.dest.parent,
+                    record->rename.src.parent))
+        {
+            return ELOOP;
+        }
     }
 
     logInfo("src name %.*s, dest name: %.*s(%d)",
@@ -700,102 +891,18 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);
 
-    logInfo("src dentry name %.*s, dest.dentry: %p, name_changed: %d",
-            record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
-            record->rename.dest.dentry, name_changed);
-
-    if ((result=set_and_store_dentry_name(db_context, record->rename.src.dentry,
-                    &record->rename.dest.pname.name, name_changed,
-                    &old_src_pair)) != 0)
-    {
-        return result;
-    }
-
-    logInfo("new src dentry name: %*.s(%d), dest dentry name: %.*s(%d)",
+    logInfo("new src dentry name: %.*s(%d), dest dentry name: %.*s(%d)",
             record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
             record->rename.src.dentry->name.len,
             record->rename.dest.pname.name.len, record->rename.dest.pname.name.str,
             record->rename.dest.pname.name.len);
 
     if ((record->rename.flags & RENAME_EXCHANGE)) {
-        DEntryHolderPtrPair old_dest_pair;
-
-        if ((result=set_and_store_dentry_name(db_context, record->rename.dest.dentry,
-                        &record->rename.src.pname.name, name_changed,
-                        &old_dest_pair)) != 0)
-        {
-            if (name_changed) {
-                restore_dentry_name(record->rename.src.dentry,
-                        &old_src_pair.ptr->name);
-            }
-            return result;
-        }
-
-        if ((result=uniq_skiplist_replace_ex(record->rename.dest.parent->
-                        children, record->rename.src.dentry, false)) != 0)
-        {
-            if (name_changed) {
-                restore_dentry_name(record->rename.src.dentry,
-                        &old_src_pair.ptr->name);
-                restore_dentry_name(record->rename.dest.dentry,
-                        &old_dest_pair.ptr->name);
-            }
-            return result;
-        }
-
-        if ((result=uniq_skiplist_replace_ex(record->rename.src.parent->
-                        children, record->rename.dest.dentry, false)) != 0)
-        {
-            if (name_changed) {
-                restore_dentry_name(record->rename.dest.dentry,
-                        &old_dest_pair.ptr->name);
-            }
-
-            uniq_skiplist_replace_ex(record->rename.dest.parent->
-                    children, record->rename.dest.dentry, false);  //rollback
-
-            if (name_changed) {
-                restore_dentry_name(record->rename.src.dentry,
-                        &old_src_pair.ptr->name);
-            }
-            return result;
-        }
-
-        record->rename.src.dentry->parent = record->rename.dest.parent;
-        record->rename.dest.dentry->parent = record->rename.src.parent;
-        record->inode = record->rename.dest.dentry->inode;
-        if (name_changed) {
-            free_dname(record->rename.src.dentry, &old_src_pair.ptr->name);
-            free_dname(record->rename.dest.dentry, &old_dest_pair.ptr->name);
-        }
-        return 0;
-    }
-
-    record->rename.overwritten = record->rename.dest.dentry;
-    if (record->rename.dest.dentry != NULL) {
-        result = uniq_skiplist_replace_ex(record->rename.dest.parent->
-                children, record->rename.src.dentry, true);
+        return exchange_dentry(db_context, record, name_changed);
     } else {
-        result = uniq_skiplist_insert(record->rename.dest.parent->children,
-                record->rename.src.dentry);
+        dentry_children_print(record->rename.src.parent);
+        return move_dentry(db_context, record, name_changed);
     }
-
-    if (result != 0) {
-        if (name_changed) {
-            restore_dentry_name(record->rename.src.dentry,
-                    &old_src_pair.ptr->name);
-        }
-        return result;
-    }
-
-    record->rename.src.dentry->parent = record->rename.dest.parent;
-    record->inode = record->rename.src.dentry->inode;
-    result = uniq_skiplist_delete_ex(record->rename.src.parent->
-            children, old_src_pair.ptr, false);
-    if (name_changed) {
-        free_dname(record->rename.src.dentry, &old_src_pair.ptr->name);
-    }
-    return result;
 }
 
 int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
