@@ -73,8 +73,8 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t parent_inode,
-        const string_t *name, const mode_t mode, FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
@@ -88,16 +88,16 @@ static inline int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t parent_inode,
-        const string_t *name, FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRDEntryPName *pname,
+        FDIRDEntryInfo *dentry);
 
 static inline int fdir_client_remove_dentry_by_pname(
         FDIRClientContext *client_ctx, const string_t *ns,
-        const int64_t parent_inode, const string_t *name)
+        const FDIRDEntryPName *pname)
 {
     FDIRDEntryInfo dentry;
     return fdir_client_remove_dentry_by_pname_ex(client_ctx,
-            ns, parent_inode, name, &dentry);
+            ns, pname, &dentry);
 }
 
 int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
@@ -141,8 +141,7 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRDEntryInfo *dentry);
 
 int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
-        const int64_t parent_inode, const string_t *name,
-        FDIRDEntryInfo *dentry);
+        const FDIRDEntryPName *pname, FDIRDEntryInfo *dentry);
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,

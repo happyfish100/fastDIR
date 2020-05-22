@@ -86,7 +86,11 @@ static int client_check_set_proto_pname(const string_t *ns,
         return EINVAL;
     }
 
-    //TODO
+    long2buff(pname->parent_inode, pnamey_proto->parent_inode);
+    pnamey_proto->ns_len = ns->len;
+    pnamey_proto->name_len = pname->name.len;
+    memcpy(pnamey_proto->ns_str, ns->str, ns->len);
+    memcpy(pnamey_proto->ns_str + ns->len, pname->name.str, pname->name.len);
     return 0;
 }
 
@@ -452,8 +456,7 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
-        const int64_t parent_inode, const string_t *name,
-        FDIRDEntryInfo *dentry)
+        const FDIRDEntryPName *pname, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
@@ -473,11 +476,11 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoStatDEntryByPNameReq *)(header + 1);
-    long2buff(parent_inode, req->parent_inode);
-    req->name_len = name->len;
-    memcpy(req->name_str, name->str, name->len);
+    long2buff(pname->parent_inode, req->parent_inode);
+    req->name_len = pname->name.len;
+    memcpy(req->name_str, pname->name.str, pname->name.len);
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoStatDEntryByPNameReq) +
-        name->len;
+        pname->name.len;
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
@@ -499,8 +502,8 @@ int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t parent_inode,
-        const string_t *name, const mode_t mode, FDIRDEntryInfo *dentry)
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const mode_t mode, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
@@ -520,14 +523,14 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoCreateDEntryByPNameReq *)(header + 1);
-    long2buff(parent_inode, req->pname.parent_inode);
+
+    if ((result=client_check_set_proto_pname(ns, pname, &req->pname)) != 0) {
+        return result;
+    }
+
     int2buff(mode, req->front.mode);
-    req->pname.ns_len = ns->len;
-    memcpy(req->pname.ns_str, ns->str, ns->len);
-    req->pname.name_len = name->len;
-    memcpy(req->pname.ns_str + ns->len, name->str, name->len);
-    pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryByPNameReq) +
-        ns->len + name->len;
+    pkg_len = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoCreateDEntryByPNameReq) + ns->len + pname->name.len;
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
@@ -549,8 +552,8 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t parent_inode,
-        const string_t *name, FDIRDEntryInfo *dentry)
+        const string_t *ns, const FDIRDEntryPName *pname,
+        FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
@@ -570,13 +573,11 @@ int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoRemoveDEntryByPName *)(header + 1);
-    long2buff(parent_inode, req->pname.parent_inode);
-    req->pname.ns_len = ns->len;
-    req->pname.name_len = name->len;
-    memcpy(req->pname.ns_str, ns->str, ns->len);
-    memcpy(req->pname.ns_str + ns->len, name->str, name->len);
+    if ((result=client_check_set_proto_pname(ns, pname, &req->pname)) != 0) {
+        return result;
+    }
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoRemoveDEntryByPName) +
-        ns->len + name->len;
+        ns->len + pname->name.len;
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
