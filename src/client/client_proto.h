@@ -114,6 +114,23 @@ static inline int fdir_client_rename_dentry(FDIRClientContext *client_ctx,
     return fdir_client_rename_dentry_ex(client_ctx, src, dest, flags, &p);
 }
 
+int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        const string_t *src_ns, const FDIRDEntryPName *src_pname,
+        const string_t *dest_ns, const FDIRDEntryPName *dest_pname,
+        const int flags, FDIRDEntryInfo **dentry);
+
+static inline int fdir_client_rename_dentry_by_pname(
+        FDIRClientContext *client_ctx, const string_t *src_ns,
+        const FDIRDEntryPName *src_pname, const string_t *dest_ns,
+        const FDIRDEntryPName *dest_pname, const int flags)
+{
+    FDIRDEntryInfo dentry;
+    FDIRDEntryInfo *p;
+    p = &dentry;
+    return fdir_client_rename_dentry_by_pname_ex(client_ctx, src_ns,
+            src_pname, dest_ns, dest_pname, flags, &p);
+}
+
 int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, int64_t *inode);
 

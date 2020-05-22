@@ -415,20 +415,13 @@ static inline int check_name_length(struct fast_task_info *task,
     return 0;
 }
 
-static int server_check_and_parse_pname(struct fast_task_info *task,
-        const int front_part_size, const int fixed_part_size,
-        string_t *ns, string_t *name, FDIRServerDentry **parent_dentry)
+static int server_parse_pname(struct fast_task_info *task,
+        const int front_part_size, string_t *ns, string_t *name,
+        FDIRServerDentry **parent_dentry)
 {
     FDIRProtoDEntryByPName *req;
     int64_t parent_inode;
     int result;
-
-    if ((result=server_check_body_length(task,
-                    fixed_part_size + 2, fixed_part_size +
-                    2 * NAME_MAX)) != 0)
-    {
-        return result;
-    }
 
     req = (FDIRProtoDEntryByPName *)(REQUEST.body + front_part_size);
     if ((result=check_name_length(task, req->ns_len, "namespace")) != 0) {
@@ -437,36 +430,46 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
     if ((result=check_name_length(task, req->name_len, "path name")) != 0) {
         return result;
     }
-    if (fixed_part_size + req->ns_len + req->name_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, fixed_part_size +
-                req->ns_len + req->name_len);
-        return EINVAL;
-    }
 
     ns->len = req->ns_len;
     ns->str = req->ns_str;
     name->len = req->name_len;
     name->str = ns->str + ns->len;
     parent_inode = buff2long(req->parent_inode);
-    /*
-    if (parent_inode == 0) {
-        if (!(is_create && FDIR_IS_ROOT_PATH(*name))) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "invalid parent inode: %"PRId64"", parent_inode);
-            return EINVAL;
-        }
-        *parent_dentry = NULL;
-    }
-    */
-
     if ((*parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "parent inode: %"PRId64" not exist", parent_inode);
         return ENOENT;
+    }
+
+    return 0;
+}
+
+static int server_check_and_parse_pname(struct fast_task_info *task,
+        const int front_part_size, string_t *ns, string_t *name,
+        FDIRServerDentry **parent_dentry)
+{
+    int fixed_part_size;
+    int result;
+
+    fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryByPName);
+    if ((result=server_check_body_length(task, fixed_part_size + 2,
+                    fixed_part_size + 2 * NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_parse_pname(task, front_part_size, ns, name,
+                    parent_dentry)) != 0)
+    {
+        return result;
+    }
+
+    if (fixed_part_size + ns->len + name->len != REQUEST.header.body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d", REQUEST.header.body_len,
+                fixed_part_size + ns->len + name->len);
+        return EINVAL;
     }
 
     return 0;
@@ -651,8 +654,7 @@ static void init_record_for_create(struct fast_task_info *task,
 }
 
 static int server_parse_dentry_for_update(struct fast_task_info *task,
-        const int front_part_size, const int fixed_part_size,
-        const bool is_create)
+        const int front_part_size, const bool is_create)
 {
     FDIRDEntryFullName fullname;
     FDIRServerDentry *parent_dentry;
@@ -697,7 +699,7 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
 }
 
 static int server_parse_pname_for_update(struct fast_task_info *task,
-        const int front_part_size, const int fixed_part_size)
+        const int front_part_size)
 {
     int result;
     FDIRServerDentry *parent_dentry;
@@ -705,7 +707,7 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
     string_t name;
 
     if ((result=server_check_and_parse_pname(task, front_part_size,
-                    fixed_part_size, &ns, &name, &parent_dentry)) != 0)
+                    &ns, &name, &parent_dentry)) != 0)
     {
         return result;
     }
@@ -736,8 +738,7 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     int result;
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront),
-                    sizeof(FDIRProtoCreateDEntryReq), true)) != 0)
+                    sizeof(FDIRProtoCreateDEntryFront), true)) != 0)
     {
         return result;
     }
@@ -753,8 +754,7 @@ static int service_deal_create_dentry_by_pname(struct fast_task_info *task)
     int result;
 
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront),
-                    sizeof(FDIRProtoCreateDEntryByPNameReq))) != 0)
+                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
     {
         return result;
     }
@@ -769,9 +769,7 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_dentry_for_update(task, 0,
-                    sizeof(FDIRProtoRemoveDEntry), false)) != 0)
-    {
+    if ((result=server_parse_dentry_for_update(task, 0, false)) != 0) {
         return result;
     }
 
@@ -784,9 +782,7 @@ static int service_deal_remove_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_update(task, 0,
-                    sizeof(FDIRProtoRemoveDEntryByPName))) != 0)
-    {
+    if ((result=server_parse_pname_for_update(task, 0)) != 0) {
         return result;
     }
 
@@ -795,16 +791,10 @@ static int service_deal_remove_dentry_by_pname(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
-static int set_rename_src_dentry(struct fast_task_info *task,
-        FDIRDEntryFullName *src_fullname)
+static int set_rename_src_by_dentry(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
 {
-    int result;
     FDIRProtoRenameDEntryFront *front;
-    FDIRServerDentry *dentry;
-
-    if ((result=dentry_find(src_fullname, &dentry)) != 0) {
-        return result;
-    }
 
     if (dentry->parent == NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -820,9 +810,34 @@ static int set_rename_src_dentry(struct fast_task_info *task,
     memcpy(RECORD->rename.src.pname.name.str,
             dentry->name.str, dentry->name.len);
     RECORD->rename.src.pname.name.len = dentry->name.len;
-    RECORD->rename.src.pname.parent_inode = dentry->parent->inode; 
-
+    RECORD->rename.src.pname.parent_inode = dentry->parent->inode;
     return 0;
+}
+
+static inline int set_rename_src_dentry(struct fast_task_info *task,
+        FDIRDEntryFullName *src_fullname)
+{
+    int result;
+    FDIRServerDentry *dentry;
+
+    if ((result=dentry_find(src_fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    return set_rename_src_by_dentry(task, dentry);
+}
+
+static inline int set_rename_src_pname(struct fast_task_info *task,
+        FDIRServerDentry *parent, string_t *src_name)
+{
+    int result;
+    FDIRServerDentry *dentry;
+
+    if ((result=dentry_find_by_pname(parent, src_name, &dentry)) != 0) {
+        return result;
+    }
+
+    return set_rename_src_by_dentry(task, dentry);
 }
 
 static int service_deal_rename_dentry(struct fast_task_info *task)
@@ -848,8 +863,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoRenameDEntryFront) +
                     sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
-                    src_fullname.path.len, sizeof(FDIRProtoDEntryInfo),
-                    false)) != 0)
+                    src_fullname.path.len, false)) != 0)
     {
         return result;
     }
@@ -884,6 +898,53 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     RECORD->rename.overwritten = NULL;
     RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP;
+    return push_record_to_data_thread_queue(task);
+}
+
+static int service_deal_rename_dentry_by_pname(struct fast_task_info *task)
+{
+    int result;
+    string_t src_ns;
+    string_t src_name;
+    FDIRServerDentry *src_parent;
+
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoRenameDEntryByPName) + 4,
+                    sizeof(FDIRProtoRenameDEntryByPName) + 2 *
+                    (NAME_MAX + PATH_MAX))) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_parse_pname(task, sizeof(FDIRProtoRenameDEntryFront),
+                    &src_ns, &src_name, &src_parent)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_parse_pname_for_update(task,
+                    sizeof(FDIRProtoRenameDEntryFront) +
+                    sizeof(FDIRProtoDEntryByPName) +
+                    src_ns.len + src_name.len)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=set_rename_src_pname(task, src_parent, &src_name)) != 0) {
+        free_record_object(task);
+        return result;
+    }
+
+    if (!fc_string_equal(&RECORD->ns, &src_ns)) {
+        free_record_object(task);
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "src and dest namespace not equal");
+        return EINVAL;
+    }
+
+    RECORD->rename.overwritten = NULL;
+    RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP;
     return push_record_to_data_thread_queue(task);
 }
 
@@ -1812,6 +1873,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_rename_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_rename_dentry_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:

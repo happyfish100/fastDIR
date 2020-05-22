@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
                 ns = optarg;
                 break;
             case 's':
-                flags |= (RENAME_EXCHANGE & (~RENAME_NOREPLACE));
+                flags = (RENAME_EXCHANGE & (~RENAME_NOREPLACE));
                 break;
             case 'f':
                 flags &= ~RENAME_NOREPLACE;

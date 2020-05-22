@@ -638,7 +638,9 @@ static int rename_check(FDIRDataThreadContext *db_context,
         return 0;
     }
 
-    logInfo("record->rename.flags: %d", record->rename.flags);
+    logInfo("file: "__FILE__", line: %d, "
+            "record->rename.flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
+            __LINE__, record->rename.flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
 
     if ((record->rename.flags & RENAME_NOREPLACE)) {
         return EEXIST;
@@ -728,6 +730,11 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
         return 0;
     }
 
+    logInfo("file: "__FILE__", line: %d, "
+            "src parent inode: %"PRId64", dest parent inode: %"PRId64,
+            __LINE__, record->rename.dest.parent->inode,
+            record->rename.src.parent->inode);
+
     if ((result=uniq_skiplist_delete_ex(record->rename.src.parent->
                     children, record->rename.src.dentry, false)) != 0) {
         return result;
@@ -774,7 +781,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
 
         record->rename.src.dentry->parent = record->rename.dest.parent;
         record->rename.dest.dentry->parent = record->rename.src.parent;
-        record->inode = record->rename.dest.dentry->inode;
+        record->inode = record->rename.src.dentry->inode;
         if (name_changed) {
             free_dname(record->rename.src.dentry, old_src_pair.ptr);
             free_dname(record->rename.dest.dentry, old_dest_pair.ptr);
@@ -864,6 +871,11 @@ int dentry_rename(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    logInfo("file: "__FILE__", line: %d, "
+            "record->rename.flags: %d, dest.dentry: %p, src.dentry: %p",
+            __LINE__, record->rename.flags, record->rename.dest.dentry,
+            record->rename.src.dentry);
+
     if (record->rename.dest.dentry == record->rename.src.dentry) {
         return EEXIST;
     }
@@ -882,11 +894,6 @@ int dentry_rename(FDIRDataThreadContext *db_context,
             return ELOOP;
         }
     }
-
-    logInfo("src name %.*s, dest name: %.*s(%d)",
-            record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
-            record->rename.dest.dentry->name.len, record->rename.dest.dentry->name.str,
-            record->rename.dest.dentry->name.len);
 
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);
