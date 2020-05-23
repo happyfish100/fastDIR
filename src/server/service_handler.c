@@ -612,14 +612,12 @@ static void service_set_record_pname_info(struct fast_task_info *task,
         const int reserved_size)
 {
     char *p;
-    int length;
 
     RECORD->inode = RECORD->data_version = 0;
     RECORD->options.flags = 0;
     RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
     RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
 
-    length = RECORD->ns.len + RECORD->me.pname.name.len;
     if (REQUEST.header.body_len > reserved_size) {
         if ((REQUEST.header.body_len + RECORD->ns.len +
                     RECORD->me.pname.name.len) < task->size)
@@ -1062,7 +1060,8 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 
 static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
-        const int64_t file_size, const bool force, int *result)
+        const int64_t file_size, const bool force, int *result,
+        const bool need_lock)
 {
     int modified_flags;
     FDIRServerDentry *dentry;
@@ -1071,8 +1070,9 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         return NULL;
     }
 
-    if ((dentry=inode_index_check_set_dentry_size(inode,
-                    file_size, force, &modified_flags)) == NULL)
+    if ((dentry=inode_index_check_set_dentry_size_ex(inode,
+                    file_size, force, &modified_flags,
+                    need_lock)) == NULL)
     {
         free_record_object(task);
         *result = ENOENT;
@@ -1141,7 +1141,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     file_size = buff2long(req->size);
 
     dentry = set_dentry_size(task, req->ns_str, req->ns_len, inode,
-            file_size, req->force, &result);
+            file_size, req->force, &result, true);
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
             dentry_stat_output(task, dentry);
@@ -1362,7 +1362,6 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     FDIRProtoGetlkDEntryResp *resp;
     FLockTask ftask;
     int result;
-    short type;
     int64_t inode;
     int64_t offset;
     int64_t length;
@@ -1388,9 +1387,9 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
             __LINE__, operation, inode, offset, length);
 
     if (operation & LOCK_EX) {
-        type = LOCK_EX;
+        ftask.type = LOCK_EX;
     } else if (operation & LOCK_SH) {
-        type = LOCK_SH;
+        ftask.type = LOCK_SH;
     } else {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -1496,8 +1495,8 @@ static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
     req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
     new_size = buff2long(req->new_size);
     set_dentry_size(task, req->ns_str, req->ns_len,
-            SYS_LOCK_TASK->dentry->inode,
-            new_size, req->force, &result);
+            SYS_LOCK_TASK->dentry->inode, new_size,
+            req->force, &result, false);
     RESPONSE_STATUS = result;
 }
 

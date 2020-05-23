@@ -35,6 +35,11 @@
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')
 
+#define FDIR_SET_DENTRY_PNAME_PTR(pname, inode, nm_ptr) \
+    do {  \
+        (pname)->parent_inode = inode; \
+        (pname)->name = *nm_ptr;       \
+    } while (0)
 
 typedef struct {
     int body_len;      //body length

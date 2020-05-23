@@ -26,8 +26,9 @@ extern "C" {
     FDIRServerDentry *inode_index_get_dentry_by_pname(
             const int64_t parent_inode, const string_t *name);
 
-    FDIRServerDentry *inode_index_check_set_dentry_size(const int64_t inode,
-            const int64_t new_size, const bool force, int *modified_flags);
+    FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
+            const int64_t new_size, const bool force, int *modified_flags,
+            const bool need_lock);
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);

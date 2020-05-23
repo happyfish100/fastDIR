@@ -290,6 +290,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:
             if ((result=check_parent(record)) != 0) {
+                ignore_errno = 0;
                 break;
             }
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
