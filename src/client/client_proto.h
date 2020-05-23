@@ -219,8 +219,8 @@ static inline void fdir_log_network_error_ex(FDIRResponseInfo *response,
 {
     if (response->error.length > 0) {
         logError("file: "__FILE__", line: %d, "
-                "server %s:%d, %s", line,
-                conn->ip_addr, conn->port,
+                "server %s:%d, sock fd: %d, %s", line,
+                conn->ip_addr, conn->port, conn->sock,
                 response->error.message);
     } else {
         logError("file: "__FILE__", line: %d, "

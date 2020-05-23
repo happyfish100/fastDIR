@@ -1276,6 +1276,7 @@ static int flock_unlock_dentry(struct fast_task_info *task,
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
+
         logInfo("==type: %d, which_queue: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
             "owner.tid: %"PRId64", owner.pid: %d", flck->type, flck->which_queue, flck->dentry->inode,
             flck->region->offset, flck->region->length, flck->owner.tid, flck->owner.pid);
@@ -1321,8 +1322,9 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     operation = buff2int(req->operation);
 
     logInfo("file: "__FILE__", line: %d, "
-            "operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d", __LINE__, operation, inode,
+            "sock: %d, operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "owner.tid: %"PRId64", owner.pid: %d", __LINE__,
+            task->event.fd, operation, inode,
             offset, length, owner.tid, owner.pid);
 
     if (operation & LOCK_UN) {

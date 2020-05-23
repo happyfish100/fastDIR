@@ -98,7 +98,7 @@ static inline void fdir_client_release_connection(
         FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const int result)
 {
-    if (result != 0 && is_network_error(result)) {
+    if ((result == EINVAL) || (result != 0 && is_network_error(result))) {
         client_ctx->conn_manager.close_connection(client_ctx, conn);
     } else if (client_ctx->conn_manager.release_connection != NULL) {
         client_ctx->conn_manager.release_connection(client_ctx, conn);
