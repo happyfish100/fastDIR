@@ -355,6 +355,9 @@ int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task,
     }
 
     if (sys_task != entry->sys_lock.locked_task) {
+        logWarning("file: "__FILE__", line: %d, "
+                "sys_task: %p != locked_task: %p", __LINE__,
+                sys_task, entry->sys_lock.locked_task);
         return ENOENT;
     }
 

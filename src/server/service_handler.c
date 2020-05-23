@@ -1351,8 +1351,9 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 
     logInfo("file: "__FILE__", line: %d, "
             "===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d, result: %d", __LINE__, operation, inode,
-            offset, length, owner.tid, owner.pid, result);
+            "owner.tid: %"PRId64", owner.pid: %d, result: %d, task: %p, deal_func: %p",
+            __LINE__, operation, inode, offset, length, owner.tid, owner.pid,
+            result, task, TASK_ARG->context.deal_func);
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
@@ -1429,6 +1430,9 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
 static int handle_sys_lock_done(struct fast_task_info *task)
 {
     if (SYS_LOCK_TASK == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "task: %p, SYS_LOCK_TASK is NULL!",
+                __LINE__, task);
         return ENOENT;
     } else {
         logInfo("file: "__FILE__", line: %d, func: %s, "
@@ -1474,12 +1478,20 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     }
 
     if (result == 0) {
+        /*
+        logInfo("file: "__FILE__", line: %d, func: %s, "
+                "locked for inode: %"PRId64", task: %p, sock: %d, version: %"PRId64,
+                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
+                task, task->event.fd, TASK_ARG->task_version);
+                */
+
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
         return 0;
     } else {
         logInfo("file: "__FILE__", line: %d, func: %s, "
-                "waiting lock for inode: %"PRId64, __LINE__,
-                __FUNCTION__, SYS_LOCK_TASK->dentry->inode);
+                "waiting lock for inode: %"PRId64", task: %p, sock: %d, version: %"PRId64,
+                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
+                task, task->event.fd, TASK_ARG->task_version);
 
         TASK_ARG->context.deal_func = handle_sys_lock_done;
         return TASK_STATUS_CONTINUE;
@@ -1499,6 +1511,7 @@ static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
     set_dentry_size(task, req->ns_str, req->ns_len,
             SYS_LOCK_TASK->dentry->inode, new_size,
             req->force, &result, false);
+
     RESPONSE_STATUS = result;
 }
 
@@ -1532,6 +1545,10 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
 
     if (SYS_LOCK_TASK == NULL) {
+        logError("file: "__FILE__", line: %d, func: %s, "
+                "task: %p, sock: %d, version: %"PRId64, __LINE__, __FUNCTION__,
+                task, task->event.fd, TASK_ARG->task_version);
+
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "sys lock not exist");
@@ -1574,18 +1591,23 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
         callback = NULL;
     }
 
-    if ((RESPONSE_STATUS=inode_index_sys_lock_release_ex(
+    if ((result=inode_index_sys_lock_release_ex(
                     SYS_LOCK_TASK, callback, task)) != 0)
     {
-        return RESPONSE_STATUS;
+        return result;
     }
 
     logInfo("file: "__FILE__", line: %d, func: %s, "
-            "callback: %p, status: %d", __LINE__,
-            __FUNCTION__, callback, RESPONSE_STATUS);
+            "callback: %p, status: %d, nio_stage: %d", __LINE__,
+            __FUNCTION__, callback, RESPONSE_STATUS, task->nio_stage);
 
     SYS_LOCK_TASK = NULL;
-    return RESPONSE_STATUS;  //status set by the callback
+    if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
+        RESPONSE_STATUS = 0;
+        return TASK_STATUS_CONTINUE;
+    } else {
+        return RESPONSE_STATUS;
+    }
 }
 
 static int server_list_dentry_output(struct fast_task_info *task)
