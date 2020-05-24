@@ -227,7 +227,7 @@ typedef struct fdir_proto_flock_dentry_req {
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     struct {
-        char tid[8];  //thread id
+        char id[8];  //owner id
         char pid[4];
     } owner;
     char operation[4]; /* lock operation, LOCK_SH for read shared lock,
@@ -247,7 +247,7 @@ typedef struct fdir_proto_getlk_dentry_resp {
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     struct {
-        char tid[8];  //thread id
+        char id[8];  //owner id
         char pid[4];
     } owner;
     char type[4];

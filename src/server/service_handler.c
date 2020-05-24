@@ -1247,11 +1247,7 @@ static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
         const int64_t inode, const int64_t offset, const int64_t length)
 {
     int sub;
-    if ((sub=flck->owner.pid - owner->pid) != 0) {
-        return sub;
-    }
-
-    if ((sub=fc_compare_int64(flck->owner.tid, owner->tid)) != 0) {
+    if ((sub=fc_compare_int64(flck->owner.id, owner->id)) != 0) {
         return sub;
     }
 
@@ -1278,8 +1274,8 @@ static int flock_unlock_dentry(struct fast_task_info *task,
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
 
         logInfo("==type: %d, which_queue: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d", flck->type, flck->which_queue, flck->dentry->inode,
-            flck->region->offset, flck->region->length, flck->owner.tid, flck->owner.pid);
+            "owner.id: %"PRId64", owner.pid: %d", flck->type, flck->which_queue, flck->dentry->inode,
+            flck->region->offset, flck->region->length, flck->owner.id, flck->owner.pid);
 
         if (flck->which_queue != FDIR_FLOCK_TASK_IN_LOCKED_QUEUE) {
             continue;
@@ -1317,15 +1313,15 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     inode = buff2long(req->inode);
     offset = buff2long(req->offset);
     length = buff2long(req->length);
-    owner.tid = buff2long(req->owner.tid);
+    owner.id = buff2long(req->owner.id);
     owner.pid = buff2int(req->owner.pid);
     operation = buff2int(req->operation);
 
     logInfo("file: "__FILE__", line: %d, "
             "sock: %d, operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d", __LINE__,
+            "owner.id: %"PRId64", owner.pid: %d", __LINE__,
             task->event.fd, operation, inode,
-            offset, length, owner.tid, owner.pid);
+            offset, length, owner.id, owner.pid);
 
     if (operation & LOCK_UN) {
         return flock_unlock_dentry(task, &owner, inode, offset, length);
@@ -1351,8 +1347,8 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 
     logInfo("file: "__FILE__", line: %d, "
             "===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.tid: %"PRId64", owner.pid: %d, result: %d, task: %p, deal_func: %p",
-            __LINE__, operation, inode, offset, length, owner.tid, owner.pid,
+            "owner.id: %"PRId64", owner.pid: %d, result: %d, task: %p, deal_func: %p",
+            __LINE__, operation, inode, offset, length, owner.id, owner.pid,
             result, task, TASK_ARG->context.deal_func);
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
@@ -1409,7 +1405,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
         int2buff(ftask.type, resp->type);
         long2buff(ftask.region->offset, resp->offset);
         long2buff(ftask.region->length, resp->length);
-        long2buff(ftask.owner.tid, resp->owner.tid);
+        long2buff(ftask.owner.id, resp->owner.id);
         int2buff(ftask.owner.pid, resp->owner.pid);
     }
 

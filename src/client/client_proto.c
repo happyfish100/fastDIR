@@ -762,7 +762,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
     long2buff(inode, req->inode);
     long2buff(offset, req->offset);
     long2buff(length, req->length);
-    long2buff(owner_id, req->owner.tid);
+    long2buff(owner_id, req->owner.id);
     int2buff(pid, req->owner.pid);
 
     response.error.length = 0;
@@ -816,7 +816,7 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         *operation = buff2int(getlk_resp.type);
         *offset = buff2long(getlk_resp.offset);
         *length = buff2long(getlk_resp.length);
-        *owner_id = buff2long(getlk_resp.owner.tid);
+        *owner_id = buff2long(getlk_resp.owner.id);
         *pid = buff2int(getlk_resp.owner.pid);
     } else {
         fdir_log_network_error(&response, conn, result);

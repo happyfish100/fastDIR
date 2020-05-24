@@ -38,6 +38,7 @@ src/client/tools/fdir_remove
 src/client/tools/fdir_cluster_stat
 src/client/tools/fdir_service_stat
 src/client/tools/fdir_stat
+src/client/tools/fdir_rename
 src/client/test/test_mkdir
 src/client/test/test_flock
 

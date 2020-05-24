@@ -20,7 +20,7 @@ typedef void (*sys_lock_release_callback)(FDIRServerDentry *dentry, void *args);
 struct flock_region;
 typedef struct flock_owner {
     pid_t   pid;
-    int64_t tid;  //thread id
+    int64_t id;   //owner id
 } FlockOwner;
 
 typedef struct flock_task {
