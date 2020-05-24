@@ -173,19 +173,17 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const int64_t inode, int *operation, int64_t *offset,
         int64_t *length, int64_t *owner_id, pid_t *pid);
 
-int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
+int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         const int64_t inode, const int flags, int64_t *file_size);
 
-int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
+int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const bool force,
         const int64_t old_size, const int64_t new_size);
 
-static inline int fdir_client_dentry_sys_unlock(
-        FDIRClientContext *client_ctx,
+static inline int fdir_client_dentry_sys_unlock(FDIRClientSession *session,
         const int64_t inode, const bool force)
 {
-    return fdir_client_dentry_sys_unlock_ex(client_ctx,
-            NULL, inode, force, 0, 0);
+    return fdir_client_dentry_sys_unlock_ex(session, NULL, inode, force, 0, 0);
 }
 
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,

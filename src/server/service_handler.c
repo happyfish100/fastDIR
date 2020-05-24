@@ -1417,7 +1417,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
 }
 
 static void sys_lock_dentry_output(struct fast_task_info *task,
-        FDIRServerDentry *dentry)
+        const FDIRServerDentry *dentry)
 {
     FDIRProtoSysLockDEntryResp *resp;
     resp = (FDIRProtoSysLockDEntryResp *)REQUEST.body;
@@ -1478,12 +1478,10 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     }
 
     if (result == 0) {
-        /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
                 "locked for inode: %"PRId64", task: %p, sock: %d, version: %"PRId64,
                 __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
                 task, task->event.fd, TASK_ARG->task_version);
-                */
 
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
         return 0;
@@ -1598,8 +1596,9 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
 
     logInfo("file: "__FILE__", line: %d, func: %s, "
-            "callback: %p, status: %d, nio_stage: %d", __LINE__,
-            __FUNCTION__, callback, RESPONSE_STATUS, task->nio_stage);
+            "task: %p, callback: %p, status: %d, nio_stage: %d, fd: %d",
+            __LINE__, __FUNCTION__, task, callback, RESPONSE_STATUS,
+            task->nio_stage, task->event.fd);
 
     SYS_LOCK_TASK = NULL;
     if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
@@ -1829,10 +1828,10 @@ static int deal_task_done(struct fast_task_info *task)
 
     if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
     logInfo("file: "__FILE__", line: %d, "
-            "client ip: %s, req cmd: %d (%s), req body_len: %d, "
-            "resp cmd: %d (%s), status: %d, resp body_len: %d, "
-            "time used: %s us", __LINE__,
-            task->client_ip, REQUEST.header.cmd,
+            "client ip: %s, task: %p, fd: %d, req cmd: %d (%s), "
+            "req body_len: %d, resp cmd: %d (%s), status: %d, "
+            "resp body_len: %d, time used: %s us", __LINE__,
+            task->client_ip, task, task->event.fd, REQUEST.header.cmd,
             fdir_get_cmd_caption(REQUEST.header.cmd),
             REQUEST.header.body_len, RESPONSE.header.cmd,
             fdir_get_cmd_caption(RESPONSE.header.cmd),
@@ -1847,11 +1846,12 @@ int service_deal_task(struct fast_task_info *task)
 {
     int result;
 
-    /*
     logInfo("file: "__FILE__", line: %d, "
-            "nio_stage: %d, SF_NIO_STAGE_CONTINUE: %d", __LINE__,
-            task->nio_stage, SF_NIO_STAGE_CONTINUE);
-            */
+            "task: %p, sock: %d, nio_stage: %d, continue: %d, cmd: %d (%s)",
+            __LINE__, task, task->event.fd, task->nio_stage,
+            task->nio_stage == SF_NIO_STAGE_CONTINUE,
+            ((FDIRProtoHeader *)task->data)->cmd,
+            fdir_get_cmd_caption(((FDIRProtoHeader *)task->data)->cmd));
 
     if (task->nio_stage == SF_NIO_STAGE_CONTINUE) {
         task->nio_stage = SF_NIO_STAGE_SEND;

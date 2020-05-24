@@ -826,10 +826,9 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
+int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         const int64_t inode, const int flags, int64_t *file_size)
 {
-    ConnectionInfo *conn;
     FDIRProtoHeader *header;
     FDIRProtoSysLockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSysLockDEntryReq)];
@@ -837,10 +836,8 @@ int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
     FDIRResponseInfo response;
     int result;
 
-    if ((conn=client_ctx->conn_manager.get_master_connection(
-                    client_ctx, &result)) == NULL)
-    {
-        return result;
+    if (session->mconn == NULL) {
+        return EFAULT;
     }
 
     header = (FDIRProtoHeader *)out_buff;
@@ -853,25 +850,23 @@ int fdir_client_dentry_sys_lock(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
+    if ((result=fdir_send_and_recv_response(session->mconn, out_buff,
+                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    network_timeout, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
                     (char *)&lock_resp, sizeof(lock_resp))) == 0)
     {
         *file_size = buff2long(lock_resp.size);
     } else {
-        fdir_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
-    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
-int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
+int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const bool force,
         const int64_t old_size, const int64_t new_size)
 {
-    ConnectionInfo *conn;
     FDIRProtoHeader *header;
     FDIRProtoSysUnlockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
@@ -881,6 +876,9 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
     int pkg_len;
     int result;
 
+    if (session->mconn == NULL) {
+        return EFAULT;
+    }
     if (ns != NULL) {
         if (ns->len <= 0 || ns->len > NAME_MAX) {
             logError("file: "__FILE__", line: %d, "
@@ -891,12 +889,6 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
         flags = FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE;
     } else {
         flags = 0;
-    }
-
-    if ((conn=client_ctx->conn_manager.get_master_connection(
-                    client_ctx, &result)) == NULL)
-    {
-        return result;
     }
 
     header = (FDIRProtoHeader *)out_buff;
@@ -919,15 +911,14 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
+    if ((result=fdir_send_and_recv_response(session->mconn, out_buff, pkg_len,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
-    fdir_client_release_connection(client_ctx, conn, result);
     return result;
 }
 
