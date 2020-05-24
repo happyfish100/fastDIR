@@ -802,6 +802,7 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
     int2buff(*operation, req->operation);
     long2buff(*offset, req->offset);
     long2buff(*length, req->length);
+    int2buff(*pid, req->pid);
 
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
             sizeof(FDIRProtoGetlkDEntryReq));

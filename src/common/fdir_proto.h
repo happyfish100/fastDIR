@@ -241,6 +241,7 @@ typedef struct fdir_proto_getlk_dentry_req {
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     char operation[4];
+    char pid[4];
 } FDIRProtoGetlkDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_resp {

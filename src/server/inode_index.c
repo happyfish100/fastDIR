@@ -363,7 +363,7 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
         ftask->dentry = dentry;
         ftask->task = task;
         *result = flock_apply(&ctx->flock_ctx, offset, length, ftask, block);
-        if (!(*result == 0 || *result == ENOLCK)) {
+        if (!(*result == 0 || *result == EINPROGRESS)) {
             flock_free_ftask(&ctx->flock_ctx, ftask);
             ftask = NULL;
         }
@@ -439,7 +439,7 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
         sys_task->dentry = dentry;
         sys_task->task = task;
         *result = sys_lock_apply(dentry->flock_entry, sys_task, block);
-        if (!(*result == 0 || *result == ENOLCK)) {
+        if (!(*result == 0 || *result == EINPROGRESS)) {
             flock_free_sys_task(&ctx->flock_ctx, sys_task);
             sys_task = NULL;
         }

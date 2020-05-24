@@ -1342,6 +1342,11 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
                     (operation & LOCK_NB) == 0, &owner, task,
                     &result)) == NULL)
     {
+        if (result == EDEADLK) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "deadlock occur, inode: %"PRId64", operation: %d",
+                    inode, operation);
+        }
         return result;
     }
 
@@ -1360,11 +1365,12 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     FDIRProtoGetlkDEntryReq *req;
     FDIRProtoGetlkDEntryResp *resp;
     FLockTask ftask;
-    int result;
     int64_t inode;
     int64_t offset;
     int64_t length;
+    int pid;
     short operation;
+    int result;
     FLockRegion region;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
@@ -1379,6 +1385,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     offset = buff2long(req->offset);
     length = buff2long(req->length);
     operation = buff2int(req->operation);
+    pid = buff2int(req->pid);
 
     logInfo("file: "__FILE__", line: %d, "
             "operation: %d, inode: %"PRId64", "
@@ -1400,13 +1407,27 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     region.offset = offset;
     region.length = length;
     ftask.region = &region;  //for region compare
-    if ((result=inode_index_flock_getlk(inode, &ftask)) == 0) {
+    result = inode_index_flock_getlk(inode, &ftask);
+    if (result == 0 || result == ENOENT) {
         resp = (FDIRProtoGetlkDEntryResp *)REQUEST.body;
-        int2buff(ftask.type, resp->type);
-        long2buff(ftask.region->offset, resp->offset);
-        long2buff(ftask.region->length, resp->length);
-        long2buff(ftask.owner.id, resp->owner.id);
-        int2buff(ftask.owner.pid, resp->owner.pid);
+        if (result == 0) {
+            int2buff(ftask.type, resp->type);
+            long2buff(ftask.region->offset, resp->offset);
+            long2buff(ftask.region->length, resp->length);
+            long2buff(ftask.owner.id, resp->owner.id);
+            int2buff(ftask.owner.pid, resp->owner.pid);
+        } else {
+            int2buff(LOCK_UN, resp->type);
+            long2buff(offset, resp->offset);
+            long2buff(length, resp->length);
+            int2buff(pid, resp->owner.pid);
+            long2buff(0, resp->owner.id);
+
+            result = 0;
+        }
+
+        RESPONSE.header.body_len = sizeof(FDIRProtoGetlkDEntryResp);
+        TASK_ARG->context.response_done = true;
     }
 
     return result;
@@ -1470,6 +1491,10 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode, (flags & LOCK_NB) == 0,
                     task, &result)) == NULL)
     {
+        if (result == EDEADLK) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "deadlock occur, inode: %"PRId64, inode);
+        }
         return result;
     }
 

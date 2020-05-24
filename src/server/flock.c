@@ -225,6 +225,7 @@ static inline FLockTask *get_conflict_flock_task(FLockTask *ftask,
 int flock_apply(FLockContext *ctx, const int64_t offset,
         const int64_t length, FLockTask *ftask, const bool block)
 {
+    FLockTask *holder;
     bool global_conflict;
 
     if ((ftask->region=get_region(ctx, ftask->dentry->flock_entry,
@@ -233,13 +234,17 @@ int flock_apply(FLockContext *ctx, const int64_t offset,
         return ENOMEM;
     }
 
-    if (get_conflict_flock_task(ftask, &global_conflict) == NULL) {
+    if ((holder=get_conflict_flock_task(ftask, &global_conflict)) == NULL) {
         add_to_locked(ftask);
         return 0;
     }
 
     if (!block) {
         return EWOULDBLOCK;
+    }
+
+    if (ftask->task == holder->task) {
+        return EDEADLK;
     }
 
     if (global_conflict) {
@@ -250,7 +255,7 @@ int flock_apply(FLockContext *ctx, const int64_t offset,
         ftask->which_queue = FDIR_FLOCK_TASK_IN_REGION_WAITING_QUEUE;
         fc_list_add_tail(&ftask->flink, &ftask->region->waiting);
     }
-    return ENOLCK;
+    return EINPROGRESS;
 }
 
 int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)
@@ -334,9 +339,13 @@ int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
         return EWOULDBLOCK;
     }
 
+    if (sys_task->task == entry->sys_lock.locked_task->task) {
+        return EDEADLK;
+    }
+
     sys_task->status = FDIR_SYS_TASK_STATUS_WAITING;
     fc_list_add_tail(&sys_task->dlink, &entry->sys_lock.waiting);
-    return ENOLCK;
+    return EINPROGRESS;
 }
 
 int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task,
