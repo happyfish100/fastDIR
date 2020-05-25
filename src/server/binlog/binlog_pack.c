@@ -50,6 +50,7 @@
 #define BINLOG_RECORD_FIELD_NAME_GID           "gi"
 #define BINLOG_RECORD_FIELD_NAME_FILE_SIZE     "sz"
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
+#define BINLOG_RECORD_FIELD_NAME_INC_ALLOC     "ia"
 
 #define BINLOG_RECORD_FIELD_NAME_DEST_PARENT   BINLOG_RECORD_FIELD_NAME_PARENT
 #define BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME  BINLOG_RECORD_FIELD_NAME_SUBNAME
@@ -74,6 +75,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_GID           ('g' * 256 + 'i')
 #define BINLOG_RECORD_FIELD_INDEX_FILE_SIZE     ('s' * 256 + 'z')
 #define BINLOG_RECORD_FIELD_INDEX_HASH_CODE     ('h' * 256 + 'c')
+#define BINLOG_RECORD_FIELD_INDEX_INC_ALLOC     ('i' * 256 + 'a')
 
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
@@ -301,6 +303,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.size) {
         fast_buffer_append(buffer, " %s=%"PRId64,
                 BINLOG_RECORD_FIELD_NAME_FILE_SIZE, record->stat.size);
+    }
+
+    if (record->options.inc_alloc) {
+        fast_buffer_append(buffer, " %s=%"PRId64,
+                BINLOG_RECORD_FIELD_NAME_INC_ALLOC, record->stat.alloc);
     }
 
     if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
@@ -551,6 +558,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->stat.size = pcontext->fv.value.n;
                 record->options.size = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_INC_ALLOC:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.alloc = pcontext->fv.value.n;
+                record->options.inc_alloc = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_HASH_CODE:

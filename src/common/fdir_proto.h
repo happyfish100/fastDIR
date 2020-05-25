@@ -84,10 +84,6 @@
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          93
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         94
 
-
-#define FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE      1
-
-
 #define FDIR_PROTO_MAGIC_CHAR        '#'
 #define FDIR_PROTO_SET_MAGIC(m)   \
     m[0] = m[1] = m[2] = m[3] = FDIR_PROTO_MAGIC_CHAR
@@ -183,7 +179,9 @@ typedef struct fdir_proto_rename_dentry_by_pname {
 
 typedef struct fdir_proto_set_dentry_size_req {
     char inode[8];
-    char size[8];   /* file size in bytes */
+    char size[8];        /* file size in bytes */
+    char inc_alloc[8];   /* increase alloc size in bytes */
+    char flags[4];
     char force;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
@@ -196,7 +194,9 @@ typedef struct fdir_proto_dentry_stat {
     char atime[4];
     char ctime[4];  /* status change time */
     char mtime[4];  /* modify time */
+    char nlink[4];  /* ref count for hard link */
     char size[8];   /* file size in bytes */
+    char alloc[8];  /* alloc space in bytes */
 } FDIRProtoDEntryStat;
 
 typedef struct fdir_proto_modify_dentry_stat_req {
@@ -268,7 +268,8 @@ typedef struct fdir_proto_sys_unlock_dentry_req {
     char inode[8];
     char old_size[8];  //old file size for check
     char new_size[8];  //new file size to set
-    char flags[4];     //if set file size
+    char inc_alloc[8]; // increase alloc size in bytes
+    char flags[4];     //if set file size or inc alloc space
     char force;        //force set file size
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
@@ -488,7 +489,9 @@ static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
     int2buff(stat->atime, proto->atime);
     int2buff(stat->ctime, proto->ctime);
     int2buff(stat->mtime, proto->mtime);
+    int2buff(stat->nlink, proto->nlink);
     long2buff(stat->size, proto->size);
+    long2buff(stat->alloc, proto->alloc);
 }
 
 static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
@@ -500,7 +503,9 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->atime = buff2int(proto->atime);
     stat->ctime = buff2int(proto->ctime);
     stat->mtime = buff2int(proto->mtime);
+    stat->nlink = buff2int(proto->nlink);
     stat->size = buff2long(proto->size);
+    stat->alloc = buff2long(proto->alloc);
 }
 
 int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,

@@ -24,6 +24,10 @@
 #define FDIR_SERVER_STATUS_SYNCING   22
 #define FDIR_SERVER_STATUS_ACTIVE    23
 
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE    1  //file size
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC   2  //alloc space
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME   4  //file modify time
+
 #ifndef RENAME_NOREPLACE
 #define RENAME_NOREPLACE	(1 << 0)
 #endif
@@ -80,7 +84,9 @@ typedef struct fdir_dentry_status {
     int atime;  /* access time */
     int ctime;  /* status change time */
     int mtime;  /* modify time */
+    int nlink;  /* ref count for hard link */
     int64_t size;   /* file size in bytes */
+    int64_t alloc;  /* alloc space in bytes */
 } FDIRDEntryStatus;
 
 typedef struct fdir_dentry_info {
@@ -108,6 +114,7 @@ typedef union {
         bool gid:   1;
         bool uid:   1;
         bool size : 1;
+        bool inc_alloc: 1;   //for increaase alloc
     };
 } FDIRStatModifyFlags;
 

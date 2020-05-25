@@ -600,16 +600,17 @@ int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
-        const bool force, FDIRDEntryInfo *dentry)
+        const int64_t inc_alloc, const bool force, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
-    FDIRProtoSetDentrySizeReq *proto_dentry;
+    FDIRProtoSetDentrySizeReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSetDentrySizeReq) + NAME_MAX];
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int pkg_len;
+    int flags;
     int result;
 
     if (ns->len <= 0 || ns->len > NAME_MAX) {
@@ -625,13 +626,20 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         return result;
     }
 
+    flags = FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+    if (inc_alloc != 0) {
+        flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
+    }
+
     header = (FDIRProtoHeader *)out_buff;
-    proto_dentry = (FDIRProtoSetDentrySizeReq *)(header + 1);
-    long2buff(inode, proto_dentry->inode);
-    long2buff(size, proto_dentry->size);
-    proto_dentry->force = force;
-    proto_dentry->ns_len = ns->len;
-    memcpy(proto_dentry + 1, ns->str, ns->len);
+    req = (FDIRProtoSetDentrySizeReq *)(header + 1);
+    long2buff(inode, req->inode);
+    long2buff(size, req->size);
+    long2buff(inc_alloc, req->inc_alloc);
+    int2buff(flags, req->flags);
+    req->force = force;
+    req->ns_len = ns->len;
+    memcpy(req + 1, ns->str, ns->len);
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSetDentrySizeReq) + ns->len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
@@ -866,7 +874,8 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
 
 int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const bool force,
-        const int64_t old_size, const int64_t new_size)
+        const int64_t old_size, const int64_t new_size,
+        const int64_t inc_alloc)
 {
     FDIRProtoHeader *header;
     FDIRProtoSysUnlockDEntryReq *req;
@@ -887,9 +896,12 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
                     __LINE__, ns->len, NAME_MAX);
             return EINVAL;
         }
-        flags = FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE;
+        flags = FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
     } else {
         flags = 0;
+    }
+    if (inc_alloc != 0) {
+        flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
     }
 
     header = (FDIRProtoHeader *)out_buff;
@@ -897,6 +909,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
     long2buff(inode, req->inode);
     long2buff(old_size, req->old_size);
     long2buff(new_size, req->new_size);
+    long2buff(inc_alloc, req->inc_alloc);
     int2buff(flags, req->flags);
     req->force = force;
     if (ns != NULL) {

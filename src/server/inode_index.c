@@ -247,28 +247,37 @@ FDIRServerDentry *inode_index_get_dentry_by_pname(
 }
 
 FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
-        const int64_t new_size, const bool force, int *modified_flags,
-        const bool need_lock)
+        const int64_t new_size, const int64_t inc_alloc, const bool force,
+        int *modified_flags, const bool need_lock)
 {
     FDIRServerDentry *dentry;
+    int flags;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
+    flags = *modified_flags;
     *modified_flags = 0;
     if (need_lock) {
         PTHREAD_MUTEX_LOCK(&ctx->lock);
     }
     dentry = find_inode_entry(bucket, inode);
     if (dentry != NULL) {
-        if (force || (dentry->stat.size < new_size)) {
-            if (dentry->stat.size != new_size) {
-                dentry->stat.size = new_size;
-                *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
+            if (force || (dentry->stat.size < new_size)) {
+                if (dentry->stat.size != new_size) {
+                    dentry->stat.size = new_size;
+                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+                }
+            }
+
+            if (dentry->stat.mtime != g_current_time) {
+                dentry->stat.mtime = g_current_time;
+                *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
             }
         }
 
-        if (dentry->stat.mtime != g_current_time) {
-            dentry->stat.mtime = g_current_time;
-            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC)) {
+            dentry->stat.alloc += inc_alloc;
+            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
         }
 
         /*
@@ -276,7 +285,7 @@ FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
                 "old mtime: %d, new mtime: %d, modified_flags: %d",
                 dentry->stat.size, new_size, dentry->stat.mtime,
                 (int)g_current_time, *modified_flags);
-                */
+         */
     }
     if (need_lock) {
         PTHREAD_MUTEX_UNLOCK(&ctx->lock);
@@ -308,6 +317,9 @@ static void update_dentry(FDIRServerDentry *dentry,
     }
     if (record->options.size) {
         dentry->stat.size = record->stat.size;
+    }
+    if (record->options.inc_alloc) {
+        dentry->stat.alloc += record->stat.alloc;
     }
 }
 

@@ -7,9 +7,6 @@
 #include "server_types.h"
 #include "flock.h"
 
-#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE    1
-#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME   2
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,8 +24,8 @@ extern "C" {
             const int64_t parent_inode, const string_t *name);
 
     FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
-            const int64_t new_size, const bool force, int *modified_flags,
-            const bool need_lock);
+            const int64_t new_size, const int64_t inc_alloc, const bool force,
+            int *modified_flags, const bool need_lock);
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);

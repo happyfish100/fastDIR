@@ -1060,8 +1060,8 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 
 static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
-        const int64_t file_size, const bool force, int *result,
-        const bool need_lock)
+        const int64_t file_size, const int64_t inc_alloc, const int flags,
+        const bool force, int *result, const bool need_lock)
 {
     int modified_flags;
     FDIRServerDentry *dentry;
@@ -1070,8 +1070,9 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         return NULL;
     }
 
+    modified_flags = flags;
     if ((dentry=inode_index_check_set_dentry_size_ex(inode,
-                    file_size, force, &modified_flags,
+                    file_size, inc_alloc, force, &modified_flags,
                     need_lock)) == NULL)
     {
         free_record_object(task);
@@ -1093,6 +1094,10 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         RECORD->options.size = 1;
         RECORD->stat.size = RECORD->me.dentry->stat.size;
     }
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC)) {
+        RECORD->options.inc_alloc = 1;
+        RECORD->stat.alloc = inc_alloc;
+    }
     if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
         RECORD->options.mtime = 1;
         RECORD->stat.mtime = RECORD->me.dentry->stat.mtime;
@@ -1109,8 +1114,10 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     FDIRProtoSetDentrySizeReq *req;
     FDIRServerDentry *dentry;
     int result;
+    int flags;
     int64_t inode;
     int64_t file_size;
+    int64_t inc_alloc;
 
     if ((result=server_check_body_length(task,
                     sizeof(FDIRProtoSetDentrySizeReq) + 1,
@@ -1139,9 +1146,11 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     inode = buff2long(req->inode);
     file_size = buff2long(req->size);
+    inc_alloc = buff2long(req->inc_alloc);
+    flags = buff2int(req->flags);
 
     dentry = set_dentry_size(task, req->ns_str, req->ns_len, inode,
-            file_size, req->force, &result, true);
+            file_size, inc_alloc, flags, req->force, &result, true);
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
             dentry_stat_output(task, dentry);
@@ -1522,13 +1531,17 @@ static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
     struct fast_task_info *task;
     FDIRProtoSysUnlockDEntryReq *req;
     int64_t new_size;
+    int64_t inc_alloc;
     int result;
+    int flags;
 
     task = (struct fast_task_info *)args;
     req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
     new_size = buff2long(req->new_size);
-    set_dentry_size(task, req->ns_str, req->ns_len,
-            SYS_LOCK_TASK->dentry->inode, new_size,
+    inc_alloc = buff2long(req->inc_alloc);
+    flags = buff2int(req->flags);
+    set_dentry_size(task, req->ns_str, req->ns_len, SYS_LOCK_TASK->
+            dentry->inode, new_size, inc_alloc, flags,
             req->force, &result, false);
 
     RESPONSE_STATUS = result;
@@ -1583,7 +1596,7 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
     flags = buff2int(req->flags);
 
-    if ((flags & FDIR_PROTO_SYS_UNLOCK_FLAGS_SET_SIZE)) {
+    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
         if (req->ns_len <= 0) {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
                     "namespace length: %d is invalid which <= 0",
