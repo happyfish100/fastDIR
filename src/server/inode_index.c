@@ -269,6 +269,10 @@ FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
                 }
             }
 
+            flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
+        }
+
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
             if (dentry->stat.mtime != g_current_time) {
                 dentry->stat.mtime = g_current_time;
                 *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;

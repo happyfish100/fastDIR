@@ -611,7 +611,6 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int pkg_len;
-    int new_flags;
     int result;
 
     if (ns->len <= 0 || ns->len > NAME_MAX) {
@@ -627,17 +626,12 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         return result;
     }
 
-    new_flags = flags;
-    if (inc_alloc != 0) {
-        new_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
-    }
-
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoSetDentrySizeReq *)(header + 1);
     long2buff(inode, req->inode);
     long2buff(size, req->size);
     long2buff(inc_alloc, req->inc_alloc);
-    int2buff(new_flags, req->flags);
+    int2buff(flags, req->flags);
     req->force = force;
     req->ns_len = ns->len;
     memcpy(req + 1, ns->str, ns->len);
