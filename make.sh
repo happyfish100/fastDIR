@@ -146,8 +146,6 @@ cd ..
 
 if [ "$1" = "install" ]; then
   cd ..
-  cp -f restart.sh $TARGET_PREFIX/bin
-  cp -f stop.sh $TARGET_PREFIX/bin
 
   if [ "$uname" = "Linux" ]; then
     if [ "$WITH_LINUX_SERVICE" = "1" ]; then

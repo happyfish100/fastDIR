@@ -261,11 +261,11 @@ FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
     }
     dentry = find_inode_entry(bucket, inode);
     if (dentry != NULL) {
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
             if (force || (dentry->stat.size < new_size)) {
                 if (dentry->stat.size != new_size) {
                     dentry->stat.size = new_size;
-                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE;
                 }
             }
 
@@ -275,9 +275,18 @@ FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
             }
         }
 
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC)) {
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
+            if (force || (dentry->stat.space_end < new_size)) {
+                if (dentry->stat.space_end != new_size) {
+                    dentry->stat.space_end = new_size;
+                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END;
+                }
+            }
+        }
+
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
             dentry->stat.alloc += inc_alloc;
-            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
+            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
         }
 
         /*

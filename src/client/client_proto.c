@@ -600,7 +600,8 @@ int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, FDIRDEntryInfo *dentry)
+        const int64_t inc_alloc, const bool force, FDIRDEntryInfo *dentry,
+        const int flags)
 {
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
@@ -610,7 +611,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int pkg_len;
-    int flags;
+    int new_flags;
     int result;
 
     if (ns->len <= 0 || ns->len > NAME_MAX) {
@@ -626,9 +627,9 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         return result;
     }
 
-    flags = FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+    new_flags = flags;
     if (inc_alloc != 0) {
-        flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
+        new_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
     }
 
     header = (FDIRProtoHeader *)out_buff;
@@ -636,7 +637,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     long2buff(inode, req->inode);
     long2buff(size, req->size);
     long2buff(inc_alloc, req->inc_alloc);
-    int2buff(flags, req->flags);
+    int2buff(new_flags, req->flags);
     req->force = force;
     req->ns_len = ns->len;
     memcpy(req + 1, ns->str, ns->len);
@@ -836,12 +837,13 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_dentry_sys_lock(FDIRClientSession *session,
-        const int64_t inode, const int flags, int64_t *file_size)
+        const int64_t inode, const int flags, int64_t *file_size,
+        int64_t *space_end)
 {
     FDIRProtoHeader *header;
     FDIRProtoSysLockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSysLockDEntryReq)];
-    FDIRProtoSysLockDEntryResp lock_resp;
+    FDIRProtoSysLockDEntryResp resp;
     FDIRResponseInfo response;
     int result;
 
@@ -862,9 +864,10 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
     if ((result=fdir_send_and_recv_response(session->mconn, out_buff,
                     sizeof(out_buff), &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
-                    (char *)&lock_resp, sizeof(lock_resp))) == 0)
+                    (char *)&resp, sizeof(resp))) == 0)
     {
-        *file_size = buff2long(lock_resp.size);
+        *file_size = buff2long(resp.size);
+        *space_end = buff2long(resp.space_end);
     } else {
         fdir_log_network_error(&response, session->mconn, result);
     }
@@ -875,14 +878,14 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
 int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const bool force,
         const int64_t old_size, const int64_t new_size,
-        const int64_t inc_alloc)
+        const int64_t inc_alloc, const int flags)
 {
     FDIRProtoHeader *header;
     FDIRProtoSysUnlockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSysUnlockDEntryReq) + NAME_MAX];
     FDIRResponseInfo response;
-    int flags;
+    int new_flags;
     int pkg_len;
     int result;
 
@@ -896,12 +899,12 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
                     __LINE__, ns->len, NAME_MAX);
             return EINVAL;
         }
-        flags = FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE;
+        new_flags = flags;
     } else {
-        flags = 0;
+        new_flags = 0;
     }
     if (inc_alloc != 0) {
-        flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC;
+        new_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
     }
 
     header = (FDIRProtoHeader *)out_buff;
@@ -910,7 +913,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
     long2buff(old_size, req->old_size);
     long2buff(new_size, req->new_size);
     long2buff(inc_alloc, req->inc_alloc);
-    int2buff(flags, req->flags);
+    int2buff(new_flags, req->flags);
     req->force = force;
     if (ns != NULL) {
         req->ns_len = ns->len;

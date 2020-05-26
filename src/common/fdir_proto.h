@@ -197,6 +197,7 @@ typedef struct fdir_proto_dentry_stat {
     char nlink[4];  /* ref count for hard link */
     char size[8];   /* file size in bytes */
     char alloc[8];  /* alloc space in bytes */
+    char space_end[8];  /* space end offset */
 } FDIRProtoDEntryStat;
 
 typedef struct fdir_proto_modify_dentry_stat_req {
@@ -261,7 +262,8 @@ typedef struct fdir_proto_sys_lock_dentry_req {
 } FDIRProtoSysLockDEntryReq;
 
 typedef struct fdir_proto_sys_lock_dentry_resp {
-    char size[8];   //file size
+    char size[8];       //file size
+    char space_end[8];  //file data end offset
 } FDIRProtoSysLockDEntryResp;
 
 typedef struct fdir_proto_sys_unlock_dentry_req {
@@ -492,6 +494,7 @@ static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
     int2buff(stat->nlink, proto->nlink);
     long2buff(stat->size, proto->size);
     long2buff(stat->alloc, proto->alloc);
+    long2buff(stat->space_end, proto->space_end);
 }
 
 static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
@@ -506,6 +509,7 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->nlink = buff2int(proto->nlink);
     stat->size = buff2long(proto->size);
     stat->alloc = buff2long(proto->alloc);
+    stat->space_end = buff2long(proto->space_end);
 }
 
 int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,

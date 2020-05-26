@@ -1090,11 +1090,15 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
     RECORD->me.dentry = dentry;
     RECORD->hash_code = simple_hash(ns_str, ns_len);
     RECORD->options.flags = 0;
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
         RECORD->options.size = 1;
         RECORD->stat.size = RECORD->me.dentry->stat.size;
     }
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_ALLOC)) {
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
+        RECORD->options.space_end = 1;
+        RECORD->stat.space_end = RECORD->me.dentry->stat.space_end;
+    }
+    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
         RECORD->options.inc_alloc = 1;
         RECORD->stat.alloc = inc_alloc;
     }
@@ -1449,6 +1453,7 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
     resp = (FDIRProtoSysLockDEntryResp *)REQUEST.body;
 
     long2buff(dentry->stat.size, resp->size);
+    long2buff(dentry->stat.space_end, resp->space_end);
     RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
     TASK_ARG->context.response_done = true;
 }
@@ -1596,7 +1601,10 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
     flags = buff2int(req->flags);
 
-    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SIZE)) {
+    if ((flags & (FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE |
+                    FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END |
+                    FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)))
+    {
         if (req->ns_len <= 0) {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
                     "namespace length: %d is invalid which <= 0",
@@ -1606,7 +1614,9 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
         old_size = buff2long(req->old_size);
         new_size = buff2long(req->new_size);
-        if (old_size != SYS_LOCK_TASK->dentry->stat.size) {
+        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE) &&
+                old_size != SYS_LOCK_TASK->dentry->stat.size)
+        {
             logWarning("file: "__FILE__", line: %d, "
                     "client ip: %s, inode: %"PRId64", old size: %"PRId64
                     ", != current size: %"PRId64", maybe changed by others",
