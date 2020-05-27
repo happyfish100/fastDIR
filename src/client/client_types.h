@@ -19,15 +19,6 @@ typedef void (*fdir_release_connection_func)(
 typedef void (*fdir_close_connection_func)(
         struct fdir_client_context *client_ctx, ConnectionInfo *conn);
 
-typedef struct fdir_dstatus {
-    int64_t inode;
-    mode_t mode;
-    int ctime;  /* create time */
-    int mtime;  /* modify time */
-    int atime;  /* last access time */
-    int64_t size;   /* file size in bytes */
-} FDIRDStatus;
-
 typedef struct fdir_client_server_entry {
     int server_id;
     ConnectionInfo conn;

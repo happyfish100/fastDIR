@@ -120,6 +120,10 @@ static void dentry_do_free(void *ptr)
     }
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
+    if (dentry->user_data.str != NULL) {
+        fast_allocator_free(&dentry->context->name_acontext,
+                dentry->user_data.str);
+    }
     fast_mblock_free_object(&dentry->context->dentry_allocator,
             (void *)dentry);
 }
@@ -455,7 +459,8 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if ((record->stat.mode & S_IFMT) == 0) {
         logError("file: "__FILE__", line: %d, "
-                "invalid file mode: %d", __LINE__, record->stat.mode);
+                "invalid file mode: %d",
+                __LINE__, record->stat.mode);
         return EINVAL;
     }
 
@@ -498,12 +503,22 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return result;
     }
 
+    if (record->options.user_data) {
+        if ((result=dentry_strdup(&db_context->dentry_context,
+                        &current->user_data, &record->user_data)) != 0)
+        {
+            return result;
+        }
+    } else {
+        FC_SET_STRING_NULL(current->user_data);
+    }
+
     {
         char hex1[256];
         char hex2[256];
         bin2hex(current->name.str, current->name.len, hex1);
         bin2hex(record->me.pname.name.str, record->me.pname.name.len, hex2);
-    logInfo("file: "__FILE__", line: %d, "
+        logInfo("file: "__FILE__", line: %d, "
             "current name: %p => %.*s(%d), hex1: %s, input name: %.*s(%d), hex2: %s",
             __LINE__, current->name.str, current->name.len,
             current->name.str, current->name.len, hex1, record->me.pname.name.len,
@@ -518,11 +533,15 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     current->stat.mode = record->stat.mode;
     current->stat.atime = record->stat.atime;
+    current->stat.btime = record->stat.btime;
     current->stat.ctime = record->stat.ctime;
     current->stat.mtime = record->stat.mtime;
     current->stat.uid = record->stat.uid;
     current->stat.gid = record->stat.gid;
     current->stat.size = record->stat.size;
+    current->stat.nlink = 1;
+    current->stat.alloc = 0;
+    current->stat.space_end = 0;
 
     if ((result=inode_index_add_dentry(current)) != 0) {
         dentry_do_free(current);

@@ -12,14 +12,18 @@
 
 #define FDIR_PROTO_ACK                      6
 
-#define FDIR_PROTO_ACTIVE_TEST_REQ         21
-#define FDIR_PROTO_ACTIVE_TEST_RESP        22
+#define FDIR_PROTO_ACTIVE_TEST_REQ         11
+#define FDIR_PROTO_ACTIVE_TEST_RESP        12
 
 //service commands
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ        23
-#define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP       24
-#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ      25 //by parent inode and name
-#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP     26
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ        19
+#define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP       20
+#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ      21 //by parent inode and name
+#define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP     22
+#define FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ       23
+#define FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP      24
+#define FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ     25
+#define FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP    26
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ        27
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP       28
 #define FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ      29
@@ -153,6 +157,22 @@ typedef struct fdir_proto_create_dentry_by_pname_req {
     FDIRProtoDEntryByPName pname;
 } FDIRProtoCreateDEntryByPNameReq;
 
+typedef struct fdir_proto_symlink_dentry_front {
+    char mode[4];
+    char link_len[2];
+    char link_str[0];
+} FDIRProtoSymlinkDEntryFront;
+
+typedef struct fdir_proto_symlink_dentry_by_name_req {
+    FDIRProtoSymlinkDEntryFront front;
+    FDIRProtoDEntryByPName pname;
+} FDIRProtoSymlinkDEntryByNameReq;
+
+typedef struct fdir_proto_symlink_dentry_req {
+    FDIRProtoSymlinkDEntryFront front;
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoSymlinkDEntryReq;
+
 typedef struct fdir_proto_remove_dentry {
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
@@ -191,7 +211,8 @@ typedef struct fdir_proto_dentry_stat {
     char mode[4];
     char uid[4];
     char gid[4];
-    char atime[4];
+    char btime[4];  // create time
+    char atime[4];  // access time
     char ctime[4];  /* status change time */
     char mtime[4];  /* modify time */
     char nlink[4];  /* ref count for hard link */
@@ -489,6 +510,7 @@ static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
     int2buff(stat->uid, proto->uid);
     int2buff(stat->gid, proto->gid);
     int2buff(stat->atime, proto->atime);
+    int2buff(stat->btime, proto->btime);
     int2buff(stat->ctime, proto->ctime);
     int2buff(stat->mtime, proto->mtime);
     int2buff(stat->nlink, proto->nlink);
@@ -504,6 +526,7 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->uid = buff2int(proto->uid);
     stat->gid = buff2int(proto->gid);
     stat->atime = buff2int(proto->atime);
+    stat->btime = buff2int(proto->btime);
     stat->ctime = buff2int(proto->ctime);
     stat->mtime = buff2int(proto->mtime);
     stat->nlink = buff2int(proto->nlink);

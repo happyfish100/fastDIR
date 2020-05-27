@@ -82,6 +82,7 @@ typedef struct fdir_dentry_status {
     int mode;
     uid_t uid;
     gid_t gid;
+    int btime;  /* birth / create time */
     int atime;  /* access time */
     int ctime;  /* status change time */
     int mtime;  /* modify time */
@@ -111,6 +112,7 @@ typedef union {
         bool extra_data: 1;
         bool mode : 1;
         bool atime: 1;
+        bool btime: 1;
         bool ctime: 1;
         bool mtime: 1;
         bool gid:   1;

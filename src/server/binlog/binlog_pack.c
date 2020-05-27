@@ -44,6 +44,7 @@
 #define BINLOG_RECORD_FIELD_NAME_USER_DATA     "us"
 #define BINLOG_RECORD_FIELD_NAME_MODE          "md"
 #define BINLOG_RECORD_FIELD_NAME_ATIME         "at"
+#define BINLOG_RECORD_FIELD_NAME_BTIME         "bt"
 #define BINLOG_RECORD_FIELD_NAME_CTIME         "ct"
 #define BINLOG_RECORD_FIELD_NAME_MTIME         "mt"
 #define BINLOG_RECORD_FIELD_NAME_UID           "ui"
@@ -70,6 +71,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_USER_DATA     ('u' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_MODE          ('m' * 256 + 'd')
 #define BINLOG_RECORD_FIELD_INDEX_ATIME         ('a' * 256 + 't')
+#define BINLOG_RECORD_FIELD_INDEX_BTIME         ('b' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_CTIME         ('c' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_MTIME         ('m' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_UID           ('u' * 256 + 'i')
@@ -275,6 +277,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.mode) {
         fast_buffer_append(buffer, " %s=%d",
                 BINLOG_RECORD_FIELD_NAME_MODE, record->stat.mode);
+    }
+
+    if (record->options.btime) {
+        fast_buffer_append(buffer, " %s=%d",
+                BINLOG_RECORD_FIELD_NAME_BTIME, record->stat.atime);
     }
 
     if (record->options.atime) {
@@ -523,6 +530,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->stat.mode = pcontext->fv.value.n;
                 record->options.mode = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_BTIME:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.btime = pcontext->fv.value.n;
+                record->options.btime = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_ATIME:

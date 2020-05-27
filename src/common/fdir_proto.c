@@ -206,6 +206,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "CREATE_BY_PNAME_REQ";
         case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP:
             return "CREATE_BY_PNAME_RESP";
+        case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
+            return "SYMLINK_DENTRY_REQ";
+        case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP:
+            return "SYMLINK_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
+            return "SYMLINK_BY_PNAME_REQ";
+        case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP:
+            return "SYMLINK_BY_PNAME_RESP";
         case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
             return "REMOVE_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP:

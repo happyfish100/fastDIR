@@ -8,7 +8,6 @@
 typedef struct fdir_client_dentry {
     int64_t inode;
     string_t name;
-    //FDIRDStatus stat;
 } FDIRClientDentry;
 
 typedef struct fdir_client_buffer {
@@ -75,6 +74,14 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
         const mode_t mode, FDIRDEntryInfo *dentry);
+
+int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const string_t *link,
+        const mode_t mode, FDIRDEntryInfo *dentry);
+
+int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *link, const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);

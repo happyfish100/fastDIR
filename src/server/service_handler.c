@@ -568,15 +568,11 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 record->inode, record->ns.len, record->ns.str,
                 record->me.pname.name.len, record->me.pname.name.str);
     } else {
-        if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP ||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP ||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP)
+        if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
+                record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
         {
             dentry_stat_output(task, record->me.dentry);
-        } else if (RESPONSE.header.cmd == FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP ||
-                RESPONSE.header.cmd == FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP)
-        {
+        } else if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
             if (RECORD->rename.overwritten != NULL) {
                 dentry_stat_output(task, RECORD->rename.overwritten);
             }
@@ -608,7 +604,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     return result == 0 ? TASK_STATUS_CONTINUE : result;
 }
 
-static void service_set_record_pname_info(struct fast_task_info *task,
+static int service_set_record_pname_info(struct fast_task_info *task,
         const int reserved_size)
 {
     char *p;
@@ -629,24 +625,34 @@ static void service_set_record_pname_info(struct fast_task_info *task,
     } else {
         p = REQUEST.body + reserved_size;
     }
+
+    if (p + RECORD->ns.len + RECORD->me.pname.name.len >
+            task->data + task->size)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "task pkg size: %d is too small", task->size);
+        return EOVERFLOW;
+    }
+
     memcpy(p, RECORD->ns.str, RECORD->ns.len);
     memcpy(p + RECORD->ns.len, RECORD->me.pname.name.str,
             RECORD->me.pname.name.len);
 
     RECORD->ns.str = p;
     RECORD->me.pname.name.str = p + RECORD->ns.len;
+    return 0;
 }
 
 static void init_record_for_create(struct fast_task_info *task,
-        const char *proto_mode)
+        const int mode)
 {
-    RECORD->stat.mode = buff2int(proto_mode);
+    RECORD->stat.mode = mode;
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = RECORD->stat.gid = 0;
     RECORD->stat.size = 0;
-    RECORD->stat.atime = RECORD->stat.ctime =
+    RECORD->stat.atime = RECORD->stat.btime = RECORD->stat.ctime =
         RECORD->stat.mtime = g_current_time;
-    RECORD->options.atime = RECORD->options.ctime =
+    RECORD->options.atime = RECORD->options.btime = RECORD->options.ctime =
         RECORD->options.mtime = 1;
     RECORD->options.mode = 1;
 }
@@ -692,8 +698,8 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
     }
     RECORD->me.parent = parent_dentry;
     RECORD->me.dentry = NULL;
-    service_set_record_pname_info(task, sizeof(FDIRProtoStatDEntryResp));
-    return 0;
+    return service_set_record_pname_info(task,
+            sizeof(FDIRProtoStatDEntryResp));
 }
 
 static int server_parse_pname_for_update(struct fast_task_info *task,
@@ -725,10 +731,11 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
     logInfo("file: "__FILE__", line: %d, "
             "parent inode: %"PRId64", ns: %.*s, name: %.*s",
             __LINE__, RECORD->me.pname.parent_inode, RECORD->ns.len,
-            RECORD->ns.str, RECORD->me.pname.name.len, RECORD->me.pname.name.str);
+            RECORD->ns.str, RECORD->me.pname.name.len,
+            RECORD->me.pname.name.str);
 
-    service_set_record_pname_info(task, sizeof(FDIRProtoStatDEntryResp));
-    return 0;
+    return service_set_record_pname_info(task,
+            sizeof(FDIRProtoStatDEntryResp));
 }
 
 static int service_deal_create_dentry(struct fast_task_info *task)
@@ -741,13 +748,13 @@ static int service_deal_create_dentry(struct fast_task_info *task)
         return result;
     }
 
-    init_record_for_create(task, ((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode);
+    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
+                REQUEST.body)->mode));
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
     return push_record_to_data_thread_queue(task);
 }
 
-static int service_deal_create_dentry_by_pname(struct fast_task_info *task)
+static int service_deal_create_by_pname(struct fast_task_info *task)
 {
     int result;
 
@@ -757,9 +764,106 @@ static int service_deal_create_dentry_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    init_record_for_create(task, ((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode);
+    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
+                REQUEST.body)->mode));
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP;
+    return push_record_to_data_thread_queue(task);
+}
+
+static int parse_symlink_dentry_front(struct fast_task_info *task,
+        string_t *link, int *mode)
+{
+    FDIRProtoSymlinkDEntryFront *front;
+
+    if (REQUEST.header.body_len <= sizeof(FDIRProtoSymlinkDEntryReq)) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "request body length: %d is too small",
+                REQUEST.header.body_len);
+        return EINVAL;
+    }
+
+    front = (FDIRProtoSymlinkDEntryFront *)REQUEST.body;
+    link->len = buff2short(front->link_len);
+    link->str = front->link_str;
+
+    if (link->len <= 0 || link->len >= PATH_MAX) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "link length: %d is invalid", link->len);
+        return EINVAL;
+    }
+
+    *mode = buff2int(front->mode);
+    *mode = (*mode & (~S_IFMT)) | S_IFLNK;
+    return 0;
+}
+
+static int init_record_for_symlink(struct fast_task_info *task,
+        const string_t *link, const int mode)
+{
+    init_record_for_create(task, mode);
+
+    RECORD->user_data.str = RECORD->me.pname.name.str +
+        RECORD->me.pname.name.len;
+    if (RECORD->user_data.str + link->len > task->data + task->size) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "task pkg size: %d is too small", task->size);
+        return EOVERFLOW;
+    }
+
+    memcpy(RECORD->user_data.str, link->str, link->len);
+    RECORD->user_data.len = link->len;
+    RECORD->options.user_data = 1;
+    return 0;
+}
+
+static int service_deal_symlink_dentry(struct fast_task_info *task)
+{
+    int result;
+    int mode;
+    string_t link;
+
+    if ((result=parse_symlink_dentry_front(task, &link, &mode)) != 0) {
+        return result;
+    }
+
+    if ((result=server_parse_dentry_for_update(task,
+                    sizeof(FDIRProtoSymlinkDEntryFront) +
+                    link.len, false)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=init_record_for_symlink(task, &link, mode)) != 0) {
+        free_record_object(task);
+        return result;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP;
+    return push_record_to_data_thread_queue(task);
+}
+
+static int service_deal_symlink_by_pname(struct fast_task_info *task)
+{
+    int result;
+    int mode;
+    string_t link;
+
+    if ((result=parse_symlink_dentry_front(task, &link, &mode)) != 0) {
+        return result;
+    }
+
+    if ((result=server_parse_pname_for_update(task,
+                    sizeof(FDIRProtoSymlinkDEntryFront) + link.len)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=init_record_for_symlink(task, &link, mode)) != 0) {
+        free_record_object(task);
+        return result;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP;
     return push_record_to_data_thread_queue(task);
 }
 
@@ -776,7 +880,7 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
-static int service_deal_remove_dentry_by_pname(struct fast_task_info *task)
+static int service_deal_remove_by_pname(struct fast_task_info *task)
 {
     int result;
 
@@ -899,7 +1003,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
-static int service_deal_rename_dentry_by_pname(struct fast_task_info *task)
+static int service_deal_rename_by_pname(struct fast_task_info *task)
 {
     int result;
     string_t src_ns;
@@ -1924,7 +2028,17 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
                 if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_create_dentry_by_pname(task);
+                    result = service_deal_create_by_pname(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_symlink_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_symlink_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
@@ -1934,7 +2048,7 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
                 if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_remove_dentry_by_pname(task);
+                    result = service_deal_remove_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
@@ -1944,7 +2058,7 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
                 if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_rename_dentry_by_pname(task);
+                    result = service_deal_rename_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
