@@ -534,14 +534,38 @@ int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
     int result;
 
     if ((result=setup_req_by_dentry_pname(pname,
-                    FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ,
+                    FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ,
                     out_buff, &out_bytes)) != 0)
     {
         return result;
     }
 
     return do_readlink(client_ctx, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP, link, size);
+            FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP, link, size);
+}
+
+static inline void setup_req_by_dentry_inode(const int64_t inode,
+        const int req_cmd, char *out_buff, int *out_bytes)
+{
+    FDIRProtoHeader *header;
+
+    header = (FDIRProtoHeader *)out_buff;
+    *out_bytes = sizeof(FDIRProtoHeader) + 8;
+    FDIR_PROTO_SET_HEADER(header, req_cmd, 8);
+    long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
+}
+
+int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, string_t *link, const int size)
+{
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX];
+    int out_bytes;
+
+    setup_req_by_dentry_inode(inode, FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ,
+            out_buff, &out_bytes);
+    return do_readlink(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP, link, size);
 }
 
 int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
@@ -576,14 +600,12 @@ int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRDEntryInfo *dentry)
 {
-    FDIRProtoHeader *header;
     char out_buff[sizeof(FDIRProtoHeader) + 8];
+    int out_bytes;
 
-    header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ, 8);
-    long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
-
-    return do_stat_dentry(client_ctx, out_buff, sizeof(out_buff),
+    setup_req_by_dentry_inode(inode, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ,
+            out_buff, &out_bytes);
+    return do_stat_dentry(client_ctx, out_buff, out_bytes,
             FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP, dentry);
 }
 

@@ -1141,6 +1141,37 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP);
 }
 
+static inline int server_check_and_parse_inode(
+        struct fast_task_info *task, int64_t *inode)
+{
+    int result;
+
+    if ((result=server_expect_body_length(task, 8)) != 0) {
+        return result;
+    }
+
+    *inode = buff2long(REQUEST.body);
+    return 0;
+}
+
+static int service_deal_readlink_by_inode(struct fast_task_info *task)
+{
+    FDIRServerDentry *dentry;
+    int64_t inode;
+    int result;
+
+    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+        return result;
+    }
+
+    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    return readlink_output(task, dentry,
+            FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP);
+}
+
 static int service_deal_lookup_inode(struct fast_task_info *task)
 {
     int result;
@@ -1161,19 +1192,6 @@ static int service_deal_lookup_inode(struct fast_task_info *task)
     long2buff(dentry->inode, resp->inode);
     RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
     TASK_ARG->context.response_done = true;
-    return 0;
-}
-
-static inline int server_check_and_parse_inode(
-        struct fast_task_info *task, int64_t *inode)
-{
-    int result;
-
-    if ((result=server_expect_body_length(task, 8)) != 0) {
-        return result;
-    }
-
-    *inode = buff2long(REQUEST.body);
     return 0;
 }
 
@@ -2171,6 +2189,11 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ:
                 if ((result=service_check_readable(task)) == 0) {
                     result = service_deal_readlink_by_pname(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_readlink_by_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
