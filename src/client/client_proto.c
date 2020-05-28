@@ -174,7 +174,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *link,
+        const string_t *link, const FDIRDEntryFullName *fullname,
         const mode_t mode, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
@@ -351,48 +351,78 @@ int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
             FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP, dentry);
 }
 
-int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, int64_t *inode)
+static int setup_req_by_dentry_fullname(const FDIRDEntryFullName *fullname,
+        const int req_cmd, char *out_buff, int *out_bytes)
 {
-    ConnectionInfo *conn;
+    int result;
     FDIRProtoHeader *header;
     FDIRProtoDEntryInfo *proto_dentry;
-    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
-        + NAME_MAX + PATH_MAX];
-    FDIRResponseInfo response;
-    FDIRProtoLookupInodeResp proto_resp;
-    int out_bytes;
-    int result;
 
     header = (FDIRProtoHeader *)out_buff;
     proto_dentry = (FDIRProtoDEntryInfo *)(header + 1);
     if ((result=client_check_set_proto_dentry(fullname, proto_dentry)) != 0) {
-        *inode = -1;
+        return result;
+    }
+    *out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
+        + fullname->ns.len + fullname->path.len;
+    FDIR_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
+    return 0;
+}
+
+static int setup_req_by_dentry_pname(const FDIRDEntryPName *pname,
+        const int req_cmd, char *out_buff, int *out_bytes)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoStatDEntryByPNameReq *req;
+
+    if (pname->name.len <= 0 || pname->name.len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid name length: %d, which <= 0 or > %d",
+                __LINE__, pname->name.len, NAME_MAX);
+        return EINVAL;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoStatDEntryByPNameReq *)(header + 1);
+    long2buff(pname->parent_inode, req->parent_inode);
+    req->name_len = pname->name.len;
+    memcpy(req->name_str, pname->name.str, pname->name.len);
+    *out_bytes = sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoStatDEntryByPNameReq) + pname->name.len;
+    FDIR_PROTO_SET_HEADER(header, req_cmd,
+            *out_bytes - sizeof(FDIRProtoHeader));
+    return 0;
+}
+
+static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const int req_cmd,
+        const int resp_cmd, char *in_buff, const int in_len)
+{
+    ConnectionInfo *conn;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
+        + NAME_MAX + PATH_MAX];
+    FDIRResponseInfo response;
+    int out_bytes;
+    int result;
+
+    if ((result=setup_req_by_dentry_fullname(fullname, req_cmd,
+                    out_buff, &out_bytes)) != 0)
+    {
         return result;
     }
 
     if ((conn=client_ctx->conn_manager.get_readable_connection(
                     client_ctx, &result)) == NULL)
     {
-        *inode = -1;
         return result;
     }
-
-    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
-        + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ,
-            out_bytes - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP,
-                    (char *)&proto_resp, sizeof(proto_resp))) == 0)
+                    resp_cmd, in_buff, in_len)) != 0)
     {
-        *inode = buff2long(proto_resp.inode);
-    } else {
-        *inode = -1;
         fdir_log_network_error(&response, conn, result);
     }
 
@@ -400,24 +430,49 @@ int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
     return result;
 }
 
+int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, int64_t *inode)
+{
+    FDIRProtoLookupInodeResp proto_resp;
+    int result;
+
+    if ((result=query_by_dentry_fullname(client_ctx, fullname,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP,
+                    (char *)&proto_resp, sizeof(proto_resp))) == 0)
+    {
+        *inode = buff2long(proto_resp.inode);
+    } else {
+        *inode = -1;
+    }
+
+    return result;
+}
+
 int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
 {
-    ConnectionInfo *conn;
-    FDIRProtoHeader *header;
-    FDIRProtoDEntryInfo *proto_dentry;
-    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
-        + NAME_MAX + PATH_MAX];
-    FDIRResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
-    int out_bytes;
     int result;
 
-    header = (FDIRProtoHeader *)out_buff;
-    proto_dentry = (FDIRProtoDEntryInfo *)(header + 1);
-    if ((result=client_check_set_proto_dentry(fullname, proto_dentry)) != 0) {
-        return result;
+    if ((result=query_by_dentry_fullname(client_ctx, fullname,
+                    FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ,
+                    FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
+                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+    {
+        proto_unpack_dentry(&proto_stat, dentry);
     }
+
+    return result;
+}
+
+static int do_readlink(FDIRClientContext *client_ctx,
+        char *out_buff, const int out_bytes, const int expect_cmd,
+        string_t *link, const int size)
+{
+    ConnectionInfo *conn;
+    FDIRResponseInfo response;
+    int result;
 
     if ((conn=client_ctx->conn_manager.get_readable_connection(
                     client_ctx, &result)) == NULL)
@@ -425,17 +480,89 @@ int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
         return result;
     }
 
-    out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
-        + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ,
-            out_bytes - sizeof(FDIRProtoHeader));
+    response.error.length = 0;
+    response.error.message[0] = '\0';
+    if ((result=fdir_send_and_check_response_header(conn, out_buff, out_bytes,
+                    &response, g_fdir_client_vars.network_timeout,
+                    expect_cmd)) == 0)
+    {
+        if (response.header.body_len > size) {
+            logError("file: "__FILE__", line: %d, "
+                    "body length: %d exceeds max size: %d",
+                    __LINE__, response.header.body_len, size);
+            fdir_client_release_connection(client_ctx, conn, EINVAL);
+            return EOVERFLOW;
+        }
+
+        result = tcprecvdata_nb_ex(conn->sock, link->str, response.header.
+                body_len, g_fdir_client_vars.network_timeout, &link->len);
+    }
+
+    if (result != 0) {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    fdir_client_release_connection(client_ctx, conn, result);
+    return result;
+}
+
+int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, string_t *link, const int size)
+{
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
+        + NAME_MAX + PATH_MAX];
+    int out_bytes;
+    int result;
+
+    if ((result=setup_req_by_dentry_fullname(fullname,
+                    FDIR_SERVICE_PROTO_READLINK_BY_PATH_REQ,
+                    out_buff, &out_bytes)) != 0)
+    {
+        return result;
+    }
+
+    return do_readlink(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_READLINK_BY_PATH_RESP, link, size);
+}
+
+int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, string_t *link, const int size)
+{
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX];
+    int out_bytes;
+    int result;
+
+    if ((result=setup_req_by_dentry_pname(pname,
+                    FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ,
+                    out_buff, &out_bytes)) != 0)
+    {
+        return result;
+    }
+
+    return do_readlink(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP, link, size);
+}
+
+int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
+        const int out_bytes, const int expect_cmd, FDIRDEntryInfo *dentry)
+{
+    ConnectionInfo *conn;
+    FDIRResponseInfo response;
+    FDIRProtoStatDEntryResp proto_stat;
+    int result;
+
+    if ((conn=client_ctx->conn_manager.get_readable_connection(
+                    client_ctx, &result)) == NULL)
+    {
+        return result;
+    }
 
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
-                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+                    expect_cmd, (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
@@ -449,83 +576,34 @@ int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRDEntryInfo *dentry)
 {
-    ConnectionInfo *conn;
     FDIRProtoHeader *header;
     char out_buff[sizeof(FDIRProtoHeader) + 8];
-    FDIRResponseInfo response;
-    FDIRProtoStatDEntryResp proto_stat;
-    int result;
 
     header = (FDIRProtoHeader *)out_buff;
-    if ((conn=client_ctx->conn_manager.get_readable_connection(
-                    client_ctx, &result)) == NULL)
-    {
-        return result;
-    }
-
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ, 8);
     long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
 
-    response.error.length = 0;
-    response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP,
-                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
-    {
-        proto_unpack_dentry(&proto_stat, dentry);
-    } else {
-        fdir_log_network_error(&response, conn, result);
-    }
-
-    fdir_client_release_connection(client_ctx, conn, result);
-    return result;
+    return do_stat_dentry(client_ctx, out_buff, sizeof(out_buff),
+            FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP, dentry);
 }
 
 int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
         const FDIRDEntryPName *pname, FDIRDEntryInfo *dentry)
 {
-    ConnectionInfo *conn;
-    FDIRProtoHeader *header;
-    FDIRProtoStatDEntryByPNameReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoStatDEntryByPNameReq) + NAME_MAX];
-    FDIRResponseInfo response;
-    FDIRProtoStatDEntryResp proto_stat;
-    int pkg_len;
+    int out_bytes;
     int result;
 
-    if ((conn=client_ctx->conn_manager.get_readable_connection(
-                    client_ctx, &result)) == NULL)
+    if ((result=setup_req_by_dentry_pname(pname,
+                    FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ,
+                    out_buff, &out_bytes)) != 0)
     {
         return result;
     }
 
-    header = (FDIRProtoHeader *)out_buff;
-    req = (FDIRProtoStatDEntryByPNameReq *)(header + 1);
-    long2buff(pname->parent_inode, req->parent_inode);
-    req->name_len = pname->name.len;
-    memcpy(req->name_str, pname->name.str, pname->name.len);
-    pkg_len = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoStatDEntryByPNameReq) +
-        pname->name.len;
-
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ,
-            pkg_len - sizeof(FDIRProtoHeader));
-
-    response.error.length = 0;
-    response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, pkg_len,
-                    &response, g_fdir_client_vars.network_timeout,
-                    FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP,
-                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
-    {
-        proto_unpack_dentry(&proto_stat, dentry);
-    } else {
-        fdir_log_network_error(&response, conn, result);
-    }
-
-    fdir_client_release_connection(client_ctx, conn, result);
-    return result;
+    return do_stat_dentry(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP, dentry);
 }
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
@@ -558,8 +636,9 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
-        const string_t *link, const mode_t mode, FDIRDEntryInfo *dentry)
+        const string_t *link, const string_t *ns,
+        const FDIRDEntryPName *pname, const mode_t mode,
+        FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoSymlinkDEntryByNameReq *req;

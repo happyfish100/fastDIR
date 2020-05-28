@@ -1060,13 +1060,85 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
         return result;
     }
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
     if ((result=dentry_find(&fullname, &dentry)) != 0) {
         return result;
     }
 
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
     dentry_stat_output(task, dentry);
     return 0;
+}
+
+static int readlink_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const int resp_cmd)
+{
+    if (!S_ISLNK(dentry->stat.mode)) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "not symbol link");
+        return ENOLINK;
+    }
+
+    RESPONSE.header.cmd = resp_cmd;
+    RESPONSE.header.body_len = dentry->user_data.len;
+    memcpy(REQUEST.body, dentry->user_data.str, dentry->user_data.len);
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
+static int service_deal_readlink_by_path(struct fast_task_info *task)
+{
+    int result;
+    FDIRDEntryFullName fullname;
+    FDIRServerDentry *dentry;
+
+    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
+        return result;
+    }
+
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    return readlink_output(task, dentry,
+            FDIR_SERVICE_PROTO_READLINK_BY_PATH_RESP);
+}
+
+static int service_deal_readlink_by_pname(struct fast_task_info *task)
+{
+    FDIRProtoReadlinkByPNameReq *req;
+    FDIRServerDentry *dentry;
+    int64_t parent_inode;
+    string_t name;
+    int result;
+
+    if ((result=server_check_body_length(task, sizeof(
+                        FDIRProtoReadlinkByPNameReq) + 1,
+                    sizeof(FDIRProtoReadlinkByPNameReq) + NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoReadlinkByPNameReq *)REQUEST.body;
+    if (sizeof(FDIRProtoReadlinkByPNameReq) + req->name_len !=
+            REQUEST.header.body_len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, (int)sizeof(
+                    FDIRProtoReadlinkByPNameReq) + req->name_len);
+        return EINVAL;
+    }
+
+    parent_inode = buff2long(req->parent_inode);
+    name.str = req->name_str;
+    name.len = req->name_len;
+    if ((dentry=inode_index_get_dentry_by_pname(parent_inode, &name)) == NULL) {
+        return ENOENT;
+    }
+
+    return readlink_output(task, dentry,
+            FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP);
 }
 
 static int service_deal_lookup_inode(struct fast_task_info *task)
@@ -2089,6 +2161,16 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
                 if ((result=service_check_readable(task)) == 0) {
                     result = service_deal_stat_dentry_by_pname(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_READLINK_BY_PATH_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_readlink_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_readlink_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:

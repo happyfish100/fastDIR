@@ -76,12 +76,13 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
         const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *link,
+        const string_t *link, const FDIRDEntryFullName *fullname,
         const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
-        const string_t *link, const mode_t mode, FDIRDEntryInfo *dentry);
+        const string_t *link, const string_t *ns,
+        const FDIRDEntryPName *pname, const mode_t mode,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
@@ -149,6 +150,12 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
         const FDIRDEntryPName *pname, FDIRDEntryInfo *dentry);
+
+int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, string_t *link, const int size);
+
+int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, string_t *link, const int size);
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
