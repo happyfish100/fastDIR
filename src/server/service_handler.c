@@ -985,7 +985,7 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
     }
 
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoHDLinkDEntryFront))) != 0)
+                    sizeof(FDIRProtoHDlinkByPNameFront))) != 0)
     {
         return result;
     }

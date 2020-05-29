@@ -145,7 +145,7 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
     if (delay_seconds > 0) {
         server_add_to_delay_free_queue(&dentry->context->db_context->
-                delay_free_context, ptr, dentry_do_free, delay_free_seconds);
+                delay_free_context, ptr, dentry_do_free, delay_seconds);
     } else {
         dentry_do_free(ptr);
     }
@@ -569,8 +569,10 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     if (current->parent == NULL) {
         ns_entry->dentry_root = current;
     } else if ((result=uniq_skiplist_insert(current->parent->children,
-                    current)) != 0)
+                    current)) == 0)
     {
+        current->parent->stat.nlink++;
+    } else {
         return result;
     }
 
@@ -587,7 +589,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     return 0;
 }
 
-static int remove_src_dentry(FDIRDataThreadContext *db_context,
+static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
         FDIRServerDentry *dentry)
 {
     int result;
@@ -596,12 +598,7 @@ static int remove_src_dentry(FDIRDataThreadContext *db_context,
         return result;
     }
 
-    if ((result=uniq_skiplist_delete(dentry->parent->children,
-                    dentry)) != 0)
-    {
-        return result;
-    }
-
+    dentry_free_func(dentry, delay_free_seconds);
     db_context->dentry_context.counters.file--;
     return 0;
 }
@@ -611,6 +608,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
 {
     FDIRNamespaceEntry *ns_entry;
     bool is_dir;
+    bool free_dentry;
     int result;
 
     if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
@@ -645,32 +643,42 @@ int dentry_remove(FDIRDataThreadContext *db_context,
             {
                 return result;
             }
+        } else {
+            record->me.dentry->src_dentry->stat.nlink--;
         }
+        free_dentry = true;
     } else {
-        if (--(record->me.dentry->stat.nlink) > 0) {
+        if (--(record->me.dentry->stat.nlink) == 0) {
+            if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
+                return result;
+            }
+
             logInfo("file: "__FILE__", line: %d, "
                     "dentry: %"PRId64", nlink: %d > 0, skip remove", __LINE__,
                     record->me.dentry->inode, record->me.dentry->stat.nlink);
-            return 0;
-        }
 
-        if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
-            return result;
+            free_dentry = true;
+        } else {
+            free_dentry = false;
         }
     }
 
     if (record->me.parent == NULL) {
         ns_entry->dentry_root = NULL;
-    } else if ((result=uniq_skiplist_delete(record->me.parent->children,
-                    record->me.dentry)) != 0)
+    } else if ((result=uniq_skiplist_delete_ex(record->me.parent->children,
+                    record->me.dentry, free_dentry)) == 0)
     {
+        record->me.parent->stat.nlink--;
+    } else {
         return result;
     }
 
-    if (is_dir) {
-        db_context->dentry_context.counters.dir--;
-    } else {
-        db_context->dentry_context.counters.file--;
+    if (record->me.dentry->stat.nlink == 0) {
+        if (is_dir) {
+            db_context->dentry_context.counters.dir--;
+        } else {
+            db_context->dentry_context.counters.file--;
+        }
     }
 
     return 0;

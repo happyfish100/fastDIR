@@ -292,8 +292,8 @@ int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
         return result;
     }
 
-    int2buff(mode, req->front.mode);
     long2buff(src_inode, req->front.src_inode);
+    int2buff(mode, req->front.mode);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoHDLinkDEntryByPName) + ns->len + pname->name.len;
     FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ,
