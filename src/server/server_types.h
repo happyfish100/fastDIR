@@ -65,7 +65,12 @@ typedef struct fdir_server_dentry {
     unsigned int hash_code;   //data thread dispach & mutex lock
     string_t name;
     FDIRDEntryStatus stat;
-    string_t user_data;      //user defined data, such as syslink content
+
+    union {
+        string_t link;    //for symlink
+        struct fdir_server_dentry *src_dentry;  //for hard link
+    };
+
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
     struct fdir_server_dentry *parent;

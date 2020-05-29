@@ -64,12 +64,17 @@ typedef struct fdir_binlog_record {
             int flags;
         } rename;
 
+        struct {
+            FDIRRecordDEntry dest;  //must be the first
+            int64_t src_inode;
+            FDIRServerDentry *src_dentry;
+        } hdlink;
+
         FDIRRecordDEntry me;  //for create and remove
     };
 
     FDIRDEntryStatus stat;
-    string_t user_data;
-    string_t extra_data;
+    string_t link;
 
     //must be the last to avoid being overwritten by memset
     struct {

@@ -214,6 +214,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "SYMLINK_BY_PNAME_REQ";
         case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP:
             return "SYMLINK_BY_PNAME_RESP";
+        case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
+            return "HDLINK_DENTRY_REQ";
+        case FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP:
+            return "HDLINK_DENTRY_RESP";
+        case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
+            return "HDLINK_BY_PNAME_REQ";
+        case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP:
+            return "HDLINK_BY_PNAME_RESP";
         case FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ:
             return "READLINK_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP:

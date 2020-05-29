@@ -40,8 +40,7 @@
 #define BINLOG_RECORD_FIELD_NAME_TIMESTAMP     "ts"
 #define BINLOG_RECORD_FIELD_NAME_NAMESPACE     "ns"
 #define BINLOG_RECORD_FIELD_NAME_SUBNAME       "nm"
-#define BINLOG_RECORD_FIELD_NAME_EXTRA_DATA    "ex"
-#define BINLOG_RECORD_FIELD_NAME_USER_DATA     "us"
+#define BINLOG_RECORD_FIELD_NAME_LINK          "ln"
 #define BINLOG_RECORD_FIELD_NAME_MODE          "md"
 #define BINLOG_RECORD_FIELD_NAME_ATIME         "at"
 #define BINLOG_RECORD_FIELD_NAME_BTIME         "bt"
@@ -53,6 +52,7 @@
 #define BINLOG_RECORD_FIELD_NAME_SPACE_END     "se"
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
 #define BINLOG_RECORD_FIELD_NAME_INC_ALLOC     "ia"
+#define BINLOG_RECORD_FIELD_NAME_SRC_INODE     "si"
 
 #define BINLOG_RECORD_FIELD_NAME_DEST_PARENT   BINLOG_RECORD_FIELD_NAME_PARENT
 #define BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME  BINLOG_RECORD_FIELD_NAME_SUBNAME
@@ -67,8 +67,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_TIMESTAMP     ('t' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_NAMESPACE     ('n' * 256 + 's')
 #define BINLOG_RECORD_FIELD_INDEX_SUBNAME       ('n' * 256 + 'm')
-#define BINLOG_RECORD_FIELD_INDEX_EXTRA_DATA    ('e' * 256 + 'x')
-#define BINLOG_RECORD_FIELD_INDEX_USER_DATA     ('u' * 256 + 's')
+#define BINLOG_RECORD_FIELD_INDEX_LINK          ('l' * 256 + 'n')
 #define BINLOG_RECORD_FIELD_INDEX_MODE          ('m' * 256 + 'd')
 #define BINLOG_RECORD_FIELD_INDEX_ATIME         ('a' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_BTIME         ('b' * 256 + 't')
@@ -80,6 +79,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_SPACE_END     ('s' * 256 + 'e')
 #define BINLOG_RECORD_FIELD_INDEX_HASH_CODE     ('h' * 256 + 'c')
 #define BINLOG_RECORD_FIELD_INDEX_INC_ALLOC     ('i' * 256 + 'a')
+#define BINLOG_RECORD_FIELD_INDEX_SRC_INODE     ('s' * 256 + 'i')
 
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
@@ -209,11 +209,8 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
         expect_len += record->ns.len +
                 record->me.pname.name.len;
     }
-    if (record->options.extra_data) {
-        expect_len += record->extra_data.len;
-    }
-    if (record->options.user_data) {
-        expect_len += record->user_data.len;
+    if (record->options.link) {
+        expect_len += record->link.len;
     }
     expect_len *= 2;
     if ((result=fast_buffer_check_capacity(buffer, expect_len)) != 0) {
@@ -264,14 +261,9 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
             BINLOG_RECORD_FIELD_NAME_HASH_CODE,
             record->hash_code);
 
-    if (record->options.extra_data) {
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_EXTRA_DATA,
-                record->extra_data);
-    }
-
-    if (record->options.user_data) {
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_USER_DATA,
-                record->user_data);
+    if (record->options.link) {
+        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_LINK,
+                record->link);
     }
 
     if (record->options.mode) {
@@ -322,6 +314,11 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.inc_alloc) {
         fast_buffer_append(buffer, " %s=%"PRId64,
                 BINLOG_RECORD_FIELD_NAME_INC_ALLOC, record->stat.alloc);
+    }
+
+    if (record->options.src_inode) {
+        fast_buffer_append(buffer, " %s=%"PRId64,
+                BINLOG_RECORD_FIELD_NAME_SRC_INODE, record->hdlink.src_inode);
     }
 
     if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
@@ -511,18 +508,11 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
                 record->options.path_info.subname = 1;
             }
             break;
-        case BINLOG_RECORD_FIELD_INDEX_EXTRA_DATA:
+        case BINLOG_RECORD_FIELD_INDEX_LINK:
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
-                record->extra_data = pcontext->fv.value.s;
-                record->options.extra_data = 1;
-            }
-            break;
-        case BINLOG_RECORD_FIELD_INDEX_USER_DATA:
-            expect_type = BINLOG_FIELD_TYPE_STRING;
-            if (pcontext->fv.type == expect_type) {
-                record->user_data = pcontext->fv.value.s;
-                record->options.user_data = 1;
+                record->link = pcontext->fv.value.s;
+                record->options.link = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_MODE:
@@ -600,6 +590,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->hash_code = pcontext->fv.value.n;
                 record->options.hash_code = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_SRC_INODE:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->hdlink.src_inode = pcontext->fv.value.n;
+                record->options.src_inode = 1;
             }
             break;
         default:

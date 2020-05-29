@@ -29,6 +29,17 @@
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END   4  //space end offset for deallocate
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME       8  //file modify time
 
+#define FDIR_DENTRY_MODE_FLAGS_HARD_LINK    (1 << 22)  //hard link flags in 32 bits mode
+
+#define FDIR_SET_DENTRY_HARD_LINK(mode) \
+    ((mode) | FDIR_DENTRY_MODE_FLAGS_HARD_LINK)
+
+#define FDIR_UNSET_DENTRY_HARD_LINK(mode) \
+    ((mode) & (~FDIR_DENTRY_MODE_FLAGS_HARD_LINK))
+
+#define FDIR_IS_DENTRY_HARD_LINK(mode)  \
+    (((mode) & FDIR_DENTRY_MODE_FLAGS_HARD_LINK) != 0)
+
 #ifndef RENAME_NOREPLACE
 #define RENAME_NOREPLACE	(1 << 0)
 #endif
@@ -108,8 +119,7 @@ typedef union {
             };
         } path_info;
         bool hash_code : 1;  //required field, for unpack check
-        bool user_data : 1;
-        bool extra_data: 1;
+        bool link : 1;       //for symlink
         bool mode : 1;
         bool atime: 1;
         bool btime: 1;
@@ -120,6 +130,7 @@ typedef union {
         bool size : 1;
         bool inc_alloc: 1;   //for increaase space alloc
         bool space_end: 1;   //for space end offset
+        bool src_inode: 1;   //for create hard link only
     };
 } FDIRStatModifyFlags;
 

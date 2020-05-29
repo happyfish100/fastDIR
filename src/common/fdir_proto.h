@@ -24,7 +24,10 @@
 #define FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP      20
 #define FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ     21
 #define FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP    22
-
+#define FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ        23
+#define FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP       24
+#define FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ      25
+#define FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP     26
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ        27
 #define FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP       28
 #define FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ      29
@@ -179,6 +182,24 @@ typedef struct fdir_proto_symlink_dentry_req {
     FDIRProtoSymlinkDEntryFront front;
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoSymlinkDEntryReq;
+
+typedef FDIRProtoCreateDEntryFront FDIRProtoHDLinkDEntryFront;
+
+typedef struct fdir_proto_hdlink_dentry {
+    FDIRProtoHDLinkDEntryFront front;
+    FDIRProtoDEntryInfo src;
+    FDIRProtoDEntryInfo dest;
+} FDIRProtoHDLinkDEntry;
+
+typedef struct fdir_proto_hdlink_by_pname_front {
+    char src_inode[8];
+    char mode[4];
+} FDIRProtoHDlinkByPNameFront;
+
+typedef struct fdir_proto_hdlink_dentry_by_pname {
+    FDIRProtoHDlinkByPNameFront front;
+    FDIRProtoDEntryByPName dest;
+} FDIRProtoHDLinkDEntryByPName;
 
 typedef struct fdir_proto_remove_dentry {
     FDIRProtoDEntryInfo dentry;
@@ -512,10 +533,14 @@ static inline void fdir_proto_extract_header(const FDIRProtoHeader *proto,
     info->status = buff2short(proto->status);
 }
 
-static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
-        FDIRProtoDEntryStat *proto)
+static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStatus *stat,
+        FDIRProtoDEntryStat *proto, const bool server_side)
 {
-    int2buff(stat->mode, proto->mode);
+    if (server_side) {
+        int2buff(FDIR_UNSET_DENTRY_HARD_LINK(stat->mode), proto->mode);
+    } else {
+        int2buff(stat->mode, proto->mode);
+    }
     int2buff(stat->uid, proto->uid);
     int2buff(stat->gid, proto->gid);
     int2buff(stat->atime, proto->atime);
@@ -527,6 +552,9 @@ static inline void fdir_proto_pack_dentry_stat(const FDIRDEntryStatus *stat,
     long2buff(stat->alloc, proto->alloc);
     long2buff(stat->space_end, proto->space_end);
 }
+
+#define fdir_proto_pack_dentry_stat(stat, proto) \
+    fdir_proto_pack_dentry_stat_ex(stat, proto, false)
 
 static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
         proto, FDIRDEntryStatus *stat)

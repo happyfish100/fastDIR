@@ -51,6 +51,14 @@ static FDIRManager fdir_manager;
 #define dentry_strdup(context, dest, src) \
     fast_allocator_alloc_string(&(context)->name_acontext, dest, src)
 
+
+#define SET_HARD_LINK_DENTRY(dentry)  \
+    do { \
+        if (FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode)) {  \
+            dentry = (dentry)->src_dentry;  \
+        } \
+    } while (0)
+
 int dentry_init()
 {
     int result;
@@ -120,9 +128,11 @@ static void dentry_do_free(void *ptr)
     }
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
-    if (dentry->user_data.str != NULL) {
+    if ((!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode) &&
+            S_ISLNK(dentry->stat.mode)) && dentry->link.str != NULL)
+    {
         fast_allocator_free(&dentry->context->name_acontext,
-                dentry->user_data.str);
+                dentry->link.str);
     }
     fast_mblock_free_object(&dentry->context->dentry_allocator,
             (void *)dentry);
@@ -457,7 +467,9 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     bool is_dir;
     int result;
 
-    if ((record->stat.mode & S_IFMT) == 0) {
+    if ((record->stat.mode & S_IFMT) == 0 &&
+            !FDIR_IS_DENTRY_HARD_LINK(record->stat.mode))
+    {
         logError("file: "__FILE__", line: %d, "
                 "invalid file mode: %d",
                 __LINE__, record->stat.mode);
@@ -503,14 +515,16 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return result;
     }
 
-    if (record->options.user_data) {
+    if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+        current->src_dentry = record->hdlink.src_dentry;
+    } else if (S_ISLNK(record->stat.mode)) {
         if ((result=dentry_strdup(&db_context->dentry_context,
-                        &current->user_data, &record->user_data)) != 0)
+                        &current->link, &record->link)) != 0)
         {
             return result;
         }
     } else {
-        FC_SET_STRING_NULL(current->user_data);
+        FC_SET_STRING_NULL(current->link);
     }
 
     {
@@ -543,14 +557,18 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     current->stat.alloc = 0;
     current->stat.space_end = 0;
 
-    if ((result=inode_index_add_dentry(current)) != 0) {
-        dentry_do_free(current);
-        return result;
+    if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
+        current->src_dentry->stat.nlink++;
+    } else {
+        if ((result=inode_index_add_dentry(current)) != 0) {
+            dentry_do_free(current);
+            return result;
+        }
     }
 
-    if (record->me.parent == NULL) {
+    if (current->parent == NULL) {
         ns_entry->dentry_root = current;
-    } else if ((result=uniq_skiplist_insert(record->me.parent->children,
+    } else if ((result=uniq_skiplist_insert(current->parent->children,
                     current)) != 0)
     {
         return result;
@@ -566,6 +584,25 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     } else {
         db_context->dentry_context.counters.file++;
     }
+    return 0;
+}
+
+static int remove_src_dentry(FDIRDataThreadContext *db_context,
+        FDIRServerDentry *dentry)
+{
+    int result;
+
+    if ((result=inode_index_del_dentry(dentry)) != 0) {
+        return result;
+    }
+
+    if ((result=uniq_skiplist_delete(dentry->parent->children,
+                    dentry)) != 0)
+    {
+        return result;
+    }
+
+    db_context->dentry_context.counters.file--;
     return 0;
 }
 
@@ -595,11 +632,33 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         is_dir = false;
     }
 
-    if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
-        return result;
+    record->inode = record->me.dentry->inode;
+    if (FDIR_IS_DENTRY_HARD_LINK(record->me.dentry->stat.mode)) {
+        if (record->me.dentry->src_dentry->stat.nlink == 1) {
+
+            logInfo("file: "__FILE__", line: %d, "
+                    "remove hard link src dentry: %"PRId64, __LINE__,
+                    record->me.dentry->src_dentry->inode);
+
+            if ((result=remove_src_dentry(db_context,
+                            record->me.dentry->src_dentry)) != 0)
+            {
+                return result;
+            }
+        }
+    } else {
+        if (--(record->me.dentry->stat.nlink) > 0) {
+            logInfo("file: "__FILE__", line: %d, "
+                    "dentry: %"PRId64", nlink: %d > 0, skip remove", __LINE__,
+                    record->me.dentry->inode, record->me.dentry->stat.nlink);
+            return 0;
+        }
+
+        if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
+            return result;
+        }
     }
 
-    record->inode = record->me.dentry->inode;
     if (record->me.parent == NULL) {
         ns_entry->dentry_root = NULL;
     } else if ((result=uniq_skiplist_delete(record->me.parent->children,
@@ -949,6 +1008,7 @@ int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
         return ENOENT;
     }
 
+    SET_HARD_LINK_DENTRY(*dentry);
     return 0;
 }
 
@@ -966,6 +1026,7 @@ int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
     if ((*dentry=(FDIRServerDentry *)uniq_skiplist_find(
                     parent->children, &target)) != NULL)
     {
+        SET_HARD_LINK_DENTRY(*dentry);
         return 0;
     } else {
         return ENOENT;

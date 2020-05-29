@@ -534,9 +534,13 @@ static inline void dentry_stat_output(struct fast_task_info *task,
 {
     FDIRProtoStatDEntryResp *resp;
 
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        dentry = dentry->src_dentry;
+    }
+
     resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
     long2buff(dentry->inode, resp->inode);
-    fdir_proto_pack_dentry_stat(&dentry->stat, &resp->stat);
+    fdir_proto_pack_dentry_stat_ex(&dentry->stat, &resp->stat, true);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
     TASK_ARG->context.response_done = true;
 }
@@ -643,10 +647,20 @@ static int service_set_record_pname_info(struct fast_task_info *task,
     return 0;
 }
 
-static void init_record_for_create(struct fast_task_info *task,
-        const int mode)
+#define init_record_for_create(task, mode) \
+    init_record_for_create_ex(task, mode, false)
+
+static void init_record_for_create_ex(struct fast_task_info *task,
+        const int mode, const bool is_hdlink)
 {
-    RECORD->stat.mode = mode;
+    int new_mode;
+    if (is_hdlink) {
+        new_mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)) |
+                (RECORD->hdlink.src_dentry->stat.mode & S_IFMT));
+    } else {
+        new_mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
+    }
+    RECORD->stat.mode = new_mode;
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = RECORD->stat.gid = 0;
     RECORD->stat.size = 0;
@@ -802,17 +816,17 @@ static int init_record_for_symlink(struct fast_task_info *task,
 {
     init_record_for_create(task, mode);
 
-    RECORD->user_data.str = RECORD->me.pname.name.str +
+    RECORD->link.str = RECORD->me.pname.name.str +
         RECORD->me.pname.name.len;
-    if (RECORD->user_data.str + link->len > task->data + task->size) {
+    if (RECORD->link.str + link->len > task->data + task->size) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "task pkg size: %d is too small", task->size);
         return EOVERFLOW;
     }
 
-    memcpy(RECORD->user_data.str, link->str, link->len);
-    RECORD->user_data.len = link->len;
-    RECORD->options.user_data = 1;
+    memcpy(RECORD->link.str, link->str, link->len);
+    RECORD->link.len = link->len;
+    RECORD->options.link = 1;
     return 0;
 }
 
@@ -865,6 +879,119 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP;
     return push_record_to_data_thread_queue(task);
+}
+
+static int do_hdlink_dentry(struct fast_task_info *task,
+        FDIRServerDentry *src_dentry, const int mode, const int resp_cmd)
+{
+    logInfo("file: "__FILE__", line: %d, "
+            "resp_cmd: %d, src inode: %"PRId64", "
+            "dest parent: %"PRId64", name: %.*s", __LINE__,
+            resp_cmd, src_dentry->inode,
+            RECORD->hdlink.dest.pname.parent_inode,
+            RECORD->hdlink.dest.pname.name.len,
+            RECORD->hdlink.dest.pname.name.str);
+
+    RECORD->hdlink.src_dentry = src_dentry;
+    RECORD->hdlink.src_inode = src_dentry->inode;
+    init_record_for_create_ex(task, mode, true);
+    RECORD->options.src_inode = 1;
+    RESPONSE.header.cmd = resp_cmd;
+    return push_record_to_data_thread_queue(task);
+}
+
+static int service_deal_hdlink_dentry(struct fast_task_info *task)
+{
+    FDIRDEntryFullName src_fullname;
+    FDIRServerDentry *src_dentry;
+    int mode;
+    int result;
+
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoHDLinkDEntry) + 4,
+                    sizeof(FDIRProtoHDLinkDEntry) + 2 *
+                    (NAME_MAX + PATH_MAX))) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_parse_dentry_info(task, REQUEST.body +
+                    sizeof(FDIRProtoHDLinkDEntryFront),
+                    &src_fullname)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find(&src_fullname, &src_dentry)) != 0) {
+        return result;
+    }
+
+    if ((result=server_parse_dentry_for_update(task,
+                    sizeof(FDIRProtoHDLinkDEntryFront) +
+                    sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
+                    src_fullname.path.len, false)) != 0)
+    {
+        return result;
+    }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "src ns: %.*s, path: %.*s",
+            __LINE__, src_fullname.ns.len, src_fullname.ns.str,
+            src_fullname.path.len, src_fullname.path.str);
+
+    if (!fc_string_equal(&RECORD->ns, &src_fullname.ns)) {
+        free_record_object(task);
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "src and dest namespace not equal");
+        return EINVAL;
+    }
+
+    mode = buff2int(((FDIRProtoHDLinkDEntryFront *)REQUEST.body)->mode);
+    return do_hdlink_dentry(task, src_dentry, mode,
+            FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
+}
+
+static int parse_hdlink_dentry_front(struct fast_task_info *task,
+        int64_t *src_inode, int *mode)
+{
+    FDIRProtoHDlinkByPNameFront *front;
+
+    if (REQUEST.header.body_len <= sizeof(FDIRProtoHDLinkDEntryByPName)) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "request body length: %d is too small",
+                REQUEST.header.body_len);
+        return EINVAL;
+    }
+
+    front = (FDIRProtoHDlinkByPNameFront *)REQUEST.body;
+    *src_inode = buff2long(front->src_inode);
+    *mode = buff2int(front->mode);
+    return 0;
+}
+
+static int service_deal_hdlink_by_pname(struct fast_task_info *task)
+{
+    FDIRServerDentry *src_dentry;
+    int result;
+    int mode;
+    int64_t src_inode;
+
+    if ((result=parse_hdlink_dentry_front(task, &src_inode, &mode)) != 0) {
+        return result;
+    }
+
+    if ((src_dentry=inode_index_get_dentry(src_inode)) == NULL) {
+        return ENOENT;
+    }
+
+    if ((result=server_parse_pname_for_update(task,
+                    sizeof(FDIRProtoHDLinkDEntryFront))) != 0)
+    {
+        return result;
+    }
+
+    return do_hdlink_dentry(task, src_dentry, mode,
+            FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 
 static int service_deal_remove_dentry(struct fast_task_info *task)
@@ -1080,8 +1207,8 @@ static int readlink_output(struct fast_task_info *task,
     }
 
     RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = dentry->user_data.len;
-    memcpy(REQUEST.body, dentry->user_data.str, dentry->user_data.len);
+    RESPONSE.header.body_len = dentry->link.len;
+    memcpy(REQUEST.body, dentry->link.str, dentry->link.len);
     TASK_ARG->context.response_done = true;
     return 0;
 }
@@ -2129,6 +2256,16 @@ int service_deal_task(struct fast_task_info *task)
             case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_symlink_by_pname(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_hdlink_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
+                if ((result=service_check_master(task)) == 0) {
+                    result = service_deal_hdlink_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:

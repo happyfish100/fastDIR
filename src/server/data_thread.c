@@ -261,6 +261,23 @@ static inline int check_parent(FDIRBinlogRecord *record)
     return record->me.parent != NULL ? 0 : ENOENT;
 }
 
+static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
+{
+    if ((record->hdlink.src_dentry=inode_index_get_dentry(
+                    record->hdlink.src_inode)) == NULL)
+    {
+        return ENOENT;
+    }
+
+    if (S_ISDIR(record->hdlink.src_dentry->stat.mode) ||
+            FDIR_IS_DENTRY_HARD_LINK(record->hdlink.src_dentry->stat.mode))
+    {
+        return EPERM;
+    }
+
+    return 0;
+}
+
 static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -294,6 +311,12 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
                 break;
             }
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
+                if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+                    if ((result=set_hdlink_src_dentry(record)) != 0) {
+                        ignore_errno = 0;
+                        break;
+                    }
+                }
                 result = dentry_create(thread_ctx, record);
                 ignore_errno = EEXIST;
             } else {

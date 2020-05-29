@@ -239,6 +239,70 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
             FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP, dentry);
 }
 
+int fdir_client_link_dentry(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
+        const mode_t mode, FDIRDEntryInfo *dentry)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoHDLinkDEntry *req;
+    FDIRProtoDEntryInfo *dest_pentry;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoHDLinkDEntry)
+        + 2 * (NAME_MAX + PATH_MAX)];
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoHDLinkDEntry *)(out_buff + sizeof(FDIRProtoHeader));
+    if ((result=client_check_set_proto_dentry(src, &req->src)) != 0) {
+        return result;
+    }
+
+    dest_pentry = (FDIRProtoDEntryInfo *)((char *)(&req->src + 1) +
+            src->ns.len + src->path.len);
+    if ((result=client_check_set_proto_dentry(dest, dest_pentry)) != 0) {
+        return result;
+    }
+
+    int2buff(mode, req->front.mode);
+    out_bytes = ((char *)(dest_pentry + 1) + dest->ns.len +
+            dest->path.len) - out_buff;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    return do_update_dentry(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP, dentry);
+}
+
+int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
+        const int64_t src_inode, const string_t *ns,
+        const FDIRDEntryPName *pname, const mode_t mode,
+        FDIRDEntryInfo *dentry)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoHDLinkDEntryByPName *req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoHDLinkDEntryByPName) + 2 * NAME_MAX];
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoHDLinkDEntryByPName *)(header + 1);
+
+    if ((result=client_check_set_proto_pname(ns, pname, &req->dest)) != 0) {
+        return result;
+    }
+
+    int2buff(mode, req->front.mode);
+    long2buff(src_inode, req->front.src_inode);
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoHDLinkDEntryByPName) + ns->len + pname->name.len;
+    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    return do_update_dentry(client_ctx, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP, dentry);
+}
+
 static int do_rename_dentry(FDIRClientContext *client_ctx,
         char *out_buff, const int out_bytes, const int expect_cmd,
         FDIRDEntryInfo **dentry)
@@ -486,7 +550,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
                     &response, g_fdir_client_vars.network_timeout,
                     expect_cmd)) == 0)
     {
-        if (response.header.body_len > size) {
+        if (response.header.body_len >= size) {
             logError("file: "__FILE__", line: %d, "
                     "body length: %d exceeds max size: %d",
                     __LINE__, response.header.body_len, size);
@@ -494,8 +558,11 @@ static int do_readlink(FDIRClientContext *client_ctx,
             return EOVERFLOW;
         }
 
-        result = tcprecvdata_nb_ex(conn->sock, link->str, response.header.
-                body_len, g_fdir_client_vars.network_timeout, &link->len);
+        if ((result=tcprecvdata_nb_ex(conn->sock, link->str, response.header.
+                body_len, g_fdir_client_vars.network_timeout, &link->len)) == 0)
+        {
+            *(link->str + link->len) = '\0';
+        }
     }
 
     if (result != 0) {
