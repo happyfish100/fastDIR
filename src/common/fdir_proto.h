@@ -347,6 +347,7 @@ typedef struct fdir_proto_list_dentry_resp_body_header {
 
 typedef struct fdir_proto_list_dentry_resp_body_part {
     char inode[8];
+    FDIRProtoDEntryStat stat;
     unsigned char name_len;
     char name_str[0];
 } FDIRProtoListDEntryRespBodyPart;

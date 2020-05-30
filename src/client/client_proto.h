@@ -7,6 +7,7 @@
 
 typedef struct fdir_client_dentry {
     int64_t inode;
+    FDIRDEntryStatus stat;
     string_t name;
 } FDIRClientDentry;
 

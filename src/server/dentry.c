@@ -653,12 +653,11 @@ int dentry_remove(FDIRDataThreadContext *db_context,
                 return result;
             }
 
+            free_dentry = true;
+        } else {
             logInfo("file: "__FILE__", line: %d, "
                     "dentry: %"PRId64", nlink: %d > 0, skip remove", __LINE__,
                     record->me.dentry->inode, record->me.dentry->stat.nlink);
-
-            free_dentry = true;
-        } else {
             free_dentry = false;
         }
     }
