@@ -1157,7 +1157,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
     FDIRProtoListDEntryRespBodyPart *part;
-    FDIRClientDentry *dentry;
+    FDIRClientDentry *cd;
     FDIRClientDentry *start;
     FDIRClientDentry *end;
     char *p;
@@ -1202,7 +1202,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
     p = array->buffer.buff + sizeof(FDIRProtoListDEntryRespBodyHeader);
     start = array->entries + array->count;
     end = start + count;
-    for (dentry=start; dentry<end; dentry++) {
+    for (cd=start; cd<end; cd++) {
         part = (FDIRProtoListDEntryRespBodyPart *)p;
         entry_len = sizeof(FDIRProtoListDEntryRespBodyPart) + part->name_len;
         if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
@@ -1213,12 +1213,12 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
             return EINVAL;
         }
 
-        dentry->inode = buff2long(part->inode);
-        fdir_proto_unpack_dentry_stat(&part->stat, &dentry->stat);
+        cd->dentry.inode = buff2long(part->inode);
+        fdir_proto_unpack_dentry_stat(&part->stat, &cd->dentry.stat);
         if (body_header->is_last) {
-            FC_SET_STRING_EX(dentry->name, part->name_str, part->name_len);
+            FC_SET_STRING_EX(cd->name, part->name_str, part->name_len);
         } else if ((result=fast_mpool_alloc_string_ex(&array->name_allocator.mpool,
-                        &dentry->name, part->name_str, part->name_len)) != 0)
+                        &cd->name, part->name_str, part->name_len)) != 0)
         {
             response->error.length = sprintf(response->error.message,
                     "strdup %d bytes fail", part->name_len);
