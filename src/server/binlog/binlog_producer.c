@@ -20,9 +20,6 @@
 #include "binlog_local_consumer.h"
 #include "binlog_producer.h"
 
-#define SLEEP_NANO_SECONDS   (10 * 1000)
-#define MAX_SLEEP_COUNT      (50 * 1000)
-
 typedef struct producer_record_buffer_queue {
     struct server_binlog_record_buffer *head;
     struct server_binlog_record_buffer *tail;
@@ -259,7 +256,7 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
     ServerBinlogRecordBuffer **current;
 
     distance = rb->data_version - next_data_version;
-    if (distance >= (proceduer_ctx.ring.size -1)) {
+    if (distance >= (proceduer_ctx.ring.size - 1)) {
         logWarning("file: "__FILE__", line: %d, "
                 "data_version: %"PRId64", is too large, "
                 "exceeds %"PRId64" + %d", __LINE__,

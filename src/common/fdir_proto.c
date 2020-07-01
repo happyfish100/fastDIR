@@ -176,8 +176,6 @@ const char *fdir_get_server_status_caption(const int status)
             return "INIT";
         case FDIR_SERVER_STATUS_BUILDING:
             return "BUILDING";
-        case FDIR_SERVER_STATUS_DUMPING:
-            return "DUMPING";
         case FDIR_SERVER_STATUS_OFFLINE:
             return "OFFLINE";
         case FDIR_SERVER_STATUS_SYNCING:

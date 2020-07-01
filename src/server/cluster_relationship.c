@@ -73,6 +73,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
 
+    response.error.length = 0;
 	if ((result=fdir_send_and_check_response_header(conn, out_buff,
 			sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
             FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP)) != 0)
@@ -139,6 +140,7 @@ static int proto_join_master(ConnectionInfo *conn)
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
+    response.error.length = 0;
     if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_PROTO_ACK)) != 0)
@@ -165,6 +167,7 @@ static int proto_ping_master(ConnectionInfo *conn)
 
     FDIR_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
 
+    response.error.length = 0;
     if ((result=fdir_send_and_check_response_header(conn, (char *)&header,
                     sizeof(header), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) == 0)
@@ -370,6 +373,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     FDIR_PROTO_SET_HEADER(header, cmd, sizeof(out_buff) -
             sizeof(FDIRProtoHeader));
     int2buff(master->server->id, out_buff + sizeof(FDIRProtoHeader));
+    response.error.length = 0;
     if ((result=fdir_send_and_recv_none_body_response(&conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_PROTO_ACK)) != 0)
@@ -680,7 +684,7 @@ static int cluster_ping_master(ConnectionInfo *conn)
         conn_pool_disconnect_server(conn);
     }
 
-    return 0;
+    return result;
 }
 
 static void *cluster_thread_entrance(void* arg)

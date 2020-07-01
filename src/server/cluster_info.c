@@ -18,7 +18,6 @@
 #define SERVER_SECTION_PREFIX_STR            "server-"
 #define CLUSTER_INFO_ITEM_IS_MASTER          "is_master"
 #define CLUSTER_INFO_ITEM_STATUS             "status"
-#define CLUSTER_INFO_ITEM_LAST_DATA_VERSION  "last_data_version"
 
 static int cluster_info_write_to_file();
 
