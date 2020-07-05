@@ -46,3 +46,4 @@ src/client/test/test_flock
 logs
 *.pid
 *.swp
+*.swo

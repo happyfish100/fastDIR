@@ -61,7 +61,7 @@ static void replay_done_callback(const int result,
     bool notify;
 
     ctx = (ReplicaConsumerThreadContext *)args;
-    r = fast_mblock_alloc_object(&ctx->result_allocater);
+    r = fast_mblock_alloc_object(&ctx->result_allocator);
     if (r != NULL) {
         r->err_no = result;
         r->data_version = record->data_version;
@@ -93,14 +93,14 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     }
 
     memset(ctx, 0, sizeof(ReplicaConsumerThreadContext));
-    if ((*err_no=fast_mblock_init_ex2(&ctx->result_allocater,
+    if ((*err_no=fast_mblock_init_ex2(&ctx->result_allocator,
                     "process_result", sizeof(RecordProcessResult), 8192,
                     NULL, NULL, true, NULL, NULL, NULL)) != 0)
     {
         return NULL;
     }
 
-    ctx->runnings[0] = ctx->runnings[1] = false;
+    ctx->running = false;
     ctx->continue_flag = true;
     ctx->task = task;
 
@@ -140,7 +140,7 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     ctx->recv_rbuffer = (ServerBinlogRecordBuffer *)common_blocked_queue_pop(
                 &ctx->queues.free);
 
-    if ((*err_no=fc_create_thread(&ctx->tids[0], deal_binlog_thread_func,
+    if ((*err_no=fc_create_thread(&ctx->tid, deal_binlog_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
         return NULL;
@@ -160,11 +160,11 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_terminate(&ctx->queues.result);
 
     count = 0;
-    while ((ctx->runnings[0] || ctx->runnings[1]) && count++ < 10) {
+    while (ctx->running && count++ < 10) {
         usleep(200);
     }
 
-    if (ctx->runnings[0] || ctx->runnings[1]) {
+    if (ctx->running) {
         logWarning("file: "__FILE__", line: %d, "
                 "wait thread exit timeout", __LINE__);
     }
@@ -177,7 +177,7 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_destroy(&ctx->queues.result);
 
     binlog_replay_destroy(&ctx->replay_ctx);
-    fast_mblock_destroy(&ctx->result_allocater);
+    fast_mblock_destroy(&ctx->result_allocator);
 
     free(ctx);
     logInfo("file: "__FILE__", line: %d, "
@@ -339,7 +339,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
                 err_no);
         p += sizeof(FDIRProtoPushBinlogRespBodyPart);
 
-        fast_mblock_free_object(&ctx->result_allocater, r);
+        fast_mblock_free_object(&ctx->result_allocator, r);
         ++count;
 
         if ((p - ctx->task->data) + sizeof(FDIRProtoPushBinlogRespBodyPart) >
@@ -392,7 +392,7 @@ static void *deal_binlog_thread_func(void *arg)
             "deal_binlog_thread_func start", __LINE__);
 
     ctx = (ReplicaConsumerThreadContext *)arg;
-    ctx->runnings[0] = true;
+    ctx->running = true;
     while (ctx->continue_flag) {
         node = common_blocked_queue_pop_all_nodes(&ctx->queues.input);
         if (node == NULL) {
@@ -416,6 +416,6 @@ static void *deal_binlog_thread_func(void *arg)
         common_blocked_queue_free_all_nodes(&ctx->queues.input, node);
     }
 
-    ctx->runnings[0] = false;
+    ctx->running = false;
     return NULL;
 }

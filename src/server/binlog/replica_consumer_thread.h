@@ -18,9 +18,9 @@ typedef struct replica_consumer_thread_result {
 
 typedef struct replica_consumer_thread_context {
     volatile bool continue_flag;
-    bool runnings[2];
-    pthread_t tids[2];
-    struct fast_mblock_man result_allocater;
+    bool running;
+    pthread_t tid;
+    struct fast_mblock_man result_allocator;
     ServerBinlogRecordBuffer binlog_buffers[REPLICA_CONSUMER_THREAD_BUFFER_COUNT];
     struct {
         struct common_blocked_queue free;   //free ServerBinlogRecordBuffer ptr
