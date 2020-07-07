@@ -30,10 +30,8 @@ static int init_cluster_server_array()
 
     bytes = sizeof(FDIRClusterServerInfo) *
         FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
-    CLUSTER_SERVER_ARRAY.servers = (FDIRClusterServerInfo *)malloc(bytes);
+    CLUSTER_SERVER_ARRAY.servers = (FDIRClusterServerInfo *)fc_malloc(bytes);
     if (CLUSTER_SERVER_ARRAY.servers == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(CLUSTER_SERVER_ARRAY.servers, 0, bytes);

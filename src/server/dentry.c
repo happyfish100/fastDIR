@@ -75,10 +75,8 @@ int dentry_init()
     fdir_manager.hashtable.count = 0;
     bytes = sizeof(FDIRNamespaceEntry *) * g_server_global_vars.
         namespace_hashtable_capacity;
-    fdir_manager.hashtable.buckets = (FDIRNamespaceEntry **)malloc(bytes);
+    fdir_manager.hashtable.buckets = (FDIRNamespaceEntry **)fc_malloc(bytes);
     if (fdir_manager.hashtable.buckets == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(fdir_manager.hashtable.buckets, 0, bytes);
@@ -1056,10 +1054,8 @@ static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int targ
     }
 
     bytes = sizeof(FDIRServerDentry *) * new_alloc;
-    entries = (FDIRServerDentry **)malloc(bytes);
+    entries = (FDIRServerDentry **)fc_malloc(bytes);
     if (entries == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
 

@@ -768,12 +768,8 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
 
-    server_context = (FDIRServerContext *)malloc(sizeof(FDIRServerContext));
+    server_context = (FDIRServerContext *)fc_malloc(sizeof(FDIRServerContext));
     if (server_context == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail, errno: %d, error info: %s",
-                __LINE__, (int)sizeof(FDIRServerContext),
-                errno, strerror(errno));
         return NULL;
     }
 

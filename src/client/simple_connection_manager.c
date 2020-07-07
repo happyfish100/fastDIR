@@ -33,10 +33,8 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
         alloc_size = 4;
     }
     bytes = sizeof(ConnectionInfo) * alloc_size;
-    servers = (ConnectionInfo *)malloc(bytes);
+    servers = (ConnectionInfo *)fc_malloc(bytes);
     if (servers == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return errno != 0 ? errno : ENOMEM;
     }
     memset(servers, 0, bytes);
@@ -186,11 +184,8 @@ int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
     FDIRServerGroup *cluster_sarray;
     int result;
 
-    cluster_sarray = (FDIRServerGroup *)malloc(sizeof(FDIRServerGroup));
+    cluster_sarray = (FDIRServerGroup *)fc_malloc(sizeof(FDIRServerGroup));
     if (cluster_sarray == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__,
-                (int)sizeof(FDIRServerGroup));
         return ENOMEM;
     }
 

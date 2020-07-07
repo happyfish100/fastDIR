@@ -98,10 +98,8 @@ static int binlog_producer_init_ring()
 
     proceduer_ctx.ring.size = 4096;
     bytes = sizeof(ServerBinlogRecordBuffer *) * proceduer_ctx.ring.size;
-    proceduer_ctx.ring.entries = (ServerBinlogRecordBuffer **)malloc(bytes);
+    proceduer_ctx.ring.entries = (ServerBinlogRecordBuffer **)fc_malloc(bytes);
     if (proceduer_ctx.ring.entries == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(proceduer_ctx.ring.entries, 0, bytes);

@@ -50,10 +50,8 @@ static int server_load_admin_config(IniContext *ini_context)
     lengths.secret_key = g_server_global_vars.admin.secret_key.len + 1;
 
     bytes = lengths.username + lengths.secret_key;
-    buff = (char *)malloc(bytes);
+    buff = (char *)fc_malloc(bytes);
     if (buff == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
 
@@ -240,18 +238,14 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
 
     if (*data_path == '/') {
         DATA_PATH_LEN = strlen(data_path);
-        DATA_PATH_STR = strdup(data_path);
+        DATA_PATH_STR = fc_strdup1(data_path, DATA_PATH_LEN);
         if (DATA_PATH_STR == NULL) {
-            logError("file: "__FILE__", line: %d, "
-                    "malloc %d bytes fail", __LINE__, DATA_PATH_LEN + 1);
             return ENOMEM;
         }
     } else {
         DATA_PATH_LEN = strlen(SF_G_BASE_PATH) + strlen(data_path) + 1;
-        DATA_PATH_STR = (char *)malloc(DATA_PATH_LEN + 1);
+        DATA_PATH_STR = (char *)fc_malloc(DATA_PATH_LEN + 1);
         if (DATA_PATH_STR == NULL) {
-            logError("file: "__FILE__", line: %d, "
-                    "malloc %d bytes fail", __LINE__, DATA_PATH_LEN + 1);
             return ENOMEM;
         }
         DATA_PATH_LEN = sprintf(DATA_PATH_STR, "%s/%s",

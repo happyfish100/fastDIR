@@ -81,13 +81,10 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     ServerBinlogRecordBuffer *rbuffer;
     int i;
 
-    ctx = (ReplicaConsumerThreadContext *)malloc(
+    ctx = (ReplicaConsumerThreadContext *)fc_malloc(
             sizeof(ReplicaConsumerThreadContext));
     if (ctx == NULL) {
 
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, (int)
-                sizeof(ReplicaConsumerThreadContext));
         *err_no = ENOMEM;
         return NULL;
     }

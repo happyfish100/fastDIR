@@ -27,10 +27,8 @@ int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
     }
 
     bytes = sizeof(FDIRBinlogPushResultEntry) * alloc_size;
-    ctx->ring.entries = (FDIRBinlogPushResultEntry *)malloc(bytes);
+    ctx->ring.entries = (FDIRBinlogPushResultEntry *)fc_malloc(bytes);
     if (ctx->ring.entries == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(ctx->ring.entries, 0, bytes);

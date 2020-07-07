@@ -47,10 +47,8 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
     int bytes;
 
     bytes = sizeof(ConnectionInfo) * alloc_size;
-    server_group->servers = (ConnectionInfo *)malloc(bytes);
+    server_group->servers = (ConnectionInfo *)fc_malloc(bytes);
     if (server_group->servers == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return errno != 0 ? errno : ENOMEM;
     }
     memset(server_group->servers, 0, bytes);

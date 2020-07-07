@@ -164,10 +164,8 @@ static int init_data_thread_array()
 
     bytes = sizeof(FDIRDataThreadContext) * DATA_THREAD_COUNT;
     g_data_thread_vars.thread_array.contexts =
-        (FDIRDataThreadContext *)malloc(bytes);
+        (FDIRDataThreadContext *)fc_malloc(bytes);
     if (g_data_thread_vars.thread_array.contexts == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(g_data_thread_vars.thread_array.contexts, 0, bytes);

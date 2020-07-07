@@ -19,6 +19,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
+#include "sf/sf_func.h"
 #include "sf/sf_nio.h"
 #include "sf/sf_service.h"
 #include "sf/sf_util.h"
@@ -84,6 +85,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    sf_enable_exit_on_oom();
     srand(time(NULL));
     fast_mblock_manager_init();
 

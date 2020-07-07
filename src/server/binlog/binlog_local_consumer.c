@@ -45,10 +45,8 @@ static int init_binlog_local_consumer_array()
 
     bytes = sizeof(FDIRSlaveReplication) * count;
     slave_replication_array.replications = (FDIRSlaveReplication *)
-        malloc(bytes);
+        fc_malloc(bytes);
     if (slave_replication_array.replications == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(slave_replication_array.replications, 0, bytes);

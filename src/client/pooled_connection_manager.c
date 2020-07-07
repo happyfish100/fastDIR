@@ -149,11 +149,8 @@ int fdir_pooled_connection_manager_init(FDIRConnectionManager *conn_manager,
     ConnectionPool *cp;
     int result;
 
-    cp = (ConnectionPool *)malloc(sizeof(ConnectionPool));
+    cp = (ConnectionPool *)fc_malloc(sizeof(ConnectionPool));
     if (cp == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__,
-                (int)sizeof(ConnectionPool));
         return ENOMEM;
     }
 

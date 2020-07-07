@@ -299,10 +299,8 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
     } else {
         int bytes;
         bytes = sizeof(FDIRClusterServerStatus) * CLUSTER_SERVER_ARRAY.count;
-        cs_status = (FDIRClusterServerStatus *)malloc(bytes);
+        cs_status = (FDIRClusterServerStatus *)fc_malloc(bytes);
         if (cs_status == NULL) {
-            logError("file: "__FILE__", line: %d, "
-                    "malloc %d bytes fail", __LINE__, bytes);
             return ENOMEM;
         }
     }

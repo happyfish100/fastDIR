@@ -82,10 +82,8 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
             &DATA_CURRENT_VERSION, 0);
     replay_ctx->record_array.size = batch_size * DATA_THREAD_COUNT;
     bytes = sizeof(FDIRBinlogRecord) * replay_ctx->record_array.size;
-    replay_ctx->record_array.records = (FDIRBinlogRecord *)malloc(bytes);
+    replay_ctx->record_array.records = (FDIRBinlogRecord *)fc_malloc(bytes);
     if (replay_ctx->record_array.records == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(replay_ctx->record_array.records, 0, bytes);

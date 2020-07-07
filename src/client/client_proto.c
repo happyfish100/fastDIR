@@ -1095,7 +1095,7 @@ static int check_realloc_client_buffer(FDIRResponseInfo *response,
     while (alloc_size < response->header.body_len) {
         alloc_size *= 2;
     }
-    new_buff = (char *)malloc(alloc_size);
+    new_buff = (char *)fc_malloc(alloc_size);
     if (new_buff == NULL) {
         response->error.length = sprintf(response->error.message,
                 "malloc %d bytes fail", alloc_size);
@@ -1134,7 +1134,7 @@ static int check_realloc_dentry_array(FDIRResponseInfo *response,
     }
 
     bytes = sizeof(FDIRClientDentry) * new_alloc;
-    new_entries = (FDIRClientDentry *)malloc(bytes);
+    new_entries = (FDIRClientDentry *)fc_malloc(bytes);
     if (new_entries == NULL) {
         response->error.length = sprintf(response->error.message,
                 "malloc %d bytes fail", bytes);
@@ -1478,7 +1478,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
                     network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(fixed_buff)) {
-            in_buff = (char *)malloc(response.header.body_len);
+            in_buff = (char *)fc_malloc(response.header.body_len);
             if (in_buff == NULL) {
                 response.error.length = sprintf(response.error.message,
                         "malloc %d bytes fail", response.header.body_len);
@@ -1643,7 +1643,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
                     network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(fixed_buff)) {
-            in_buff = (char *)malloc(response.header.body_len);
+            in_buff = (char *)fc_malloc(response.header.body_len);
             if (in_buff == NULL) {
                 response.error.length = sprintf(response.error.message,
                         "malloc %d bytes fail", response.header.body_len);

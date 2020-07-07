@@ -39,10 +39,8 @@ static int check_alloc_ptr_array(FDIRSlaveReplicationPtrArray *array)
     }
 
     bytes = sizeof(FDIRSlaveReplication *) * CLUSTER_SERVER_ARRAY.count;
-    array->replications = (FDIRSlaveReplication **)malloc(bytes);
+    array->replications = (FDIRSlaveReplication **)fc_malloc(bytes);
     if (array->replications == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(array->replications, 0, bytes);
@@ -651,12 +649,9 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
 static int start_binlog_read_thread(FDIRSlaveReplication *replication)
 {
     int result;
-    replication->context.reader_ctx = (BinlogReadThreadContext *)malloc(
+    replication->context.reader_ctx = (BinlogReadThreadContext *)fc_malloc(
             sizeof(BinlogReadThreadContext));
     if (replication->context.reader_ctx == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__,
-                (int)sizeof(BinlogReadThreadContext));
         return ENOMEM;
     }
 

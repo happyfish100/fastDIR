@@ -36,10 +36,8 @@ static int init_inode_shared_ctx_array()
 
     inode_shared_ctx_array.count = INODE_SHARED_LOCKS_COUNT;
     bytes = sizeof(InodeSharedContext) * inode_shared_ctx_array.count;
-    inode_shared_ctx_array.contexts = (InodeSharedContext *)malloc(bytes);
+    inode_shared_ctx_array.contexts = (InodeSharedContext *)fc_malloc(bytes);
     if (inode_shared_ctx_array.contexts == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %d bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
 
@@ -66,10 +64,8 @@ static int init_inode_hashtable()
 
     inode_hashtable.capacity = INODE_HASHTABLE_CAPACITY;
     bytes = sizeof(FDIRServerDentry *) * inode_hashtable.capacity;
-    inode_hashtable.buckets = (FDIRServerDentry **)malloc(bytes);
+    inode_hashtable.buckets = (FDIRServerDentry **)fc_malloc(bytes);
     if (inode_hashtable.buckets == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc %"PRId64" bytes fail", __LINE__, bytes);
         return ENOMEM;
     }
     memset(inode_hashtable.buckets, 0, bytes);
