@@ -326,10 +326,19 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     p = ctx->task->data + sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogRespBodyHeader);
 
+    last = NULL;
     current = node;
     do {
-        r = (RecordProcessResult *)current->data;
+        if ((p - ctx->task->data) + sizeof(FDIRProtoPushBinlogRespBodyPart) >
+                ctx->task->size)
+        {
+            last->next = NULL;
+            common_blocked_queue_return_nodes(
+                    &ctx->queues.result, current);
+            break;
+        }
 
+        r = (RecordProcessResult *)current->data;
         long2buff(r->data_version, ((FDIRProtoPushBinlogRespBodyPart *)
                     p)->data_version);
         short2buff(r->err_no, ((FDIRProtoPushBinlogRespBodyPart *)p)->
@@ -339,20 +348,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
         fast_mblock_free_object(&ctx->result_allocator, r);
         ++count;
 
-        if ((p - ctx->task->data) + sizeof(FDIRProtoPushBinlogRespBodyPart) >
-                ctx->task->size)
-        {
-            last = current;
-            current = current->next;
-
-            last->next = NULL;
-            if (current != NULL) {
-                common_blocked_queue_return_nodes(
-                        &ctx->queues.result, current);
-            }
-            break;
-        }
-
+        last = current;
         current = current->next;
     } while (current != NULL);
     common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
