@@ -59,18 +59,18 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
 }
 
 int fdir_load_server_group_ex(FDIRServerGroup *server_group,
-        const char *conf_filename, IniContext *pIniContext)
+        IniFullContext *ini_ctx)
 {
     int result;
     IniItem *dir_servers;
     int count;
 
-    dir_servers = iniGetValuesEx(NULL, "dir_server",
-            pIniContext, &count);
+    dir_servers = iniGetValuesEx(ini_ctx->section_name,
+            "dir_server", ini_ctx->context, &count);
     if (count == 0) {
         logError("file: "__FILE__", line: %d, "
             "conf file \"%s\", item \"dir_server\" not exist",
-            __LINE__, conf_filename);
+            __LINE__, ini_ctx->filename);
         return ENOENT;
     }
 
@@ -78,7 +78,7 @@ int fdir_load_server_group_ex(FDIRServerGroup *server_group,
         return result;
     }
 
-    if ((result=copy_dir_servers(server_group, conf_filename,
+    if ((result=copy_dir_servers(server_group, ini_ctx->filename,
             dir_servers, count)) != 0)
     {
         server_group->count = 0;
@@ -91,12 +91,12 @@ int fdir_load_server_group_ex(FDIRServerGroup *server_group,
 }
 
 static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
-        const char *conf_filename, IniContext *iniContext)
+        IniFullContext *ini_ctx)
 {
     char *pBasePath;
     int result;
 
-    pBasePath = iniGetStrValue(NULL, "base_path", iniContext);
+    pBasePath = iniGetStrValue(NULL, "base_path", ini_ctx->context);
     if (pBasePath == NULL) {
         strcpy(g_fdir_client_vars.base_path, "/tmp");
     } else {
@@ -119,20 +119,20 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         }
     }
 
-    g_fdir_client_vars.connect_timeout = iniGetIntValue(NULL,
-            "connect_timeout", iniContext, DEFAULT_CONNECT_TIMEOUT);
+    g_fdir_client_vars.connect_timeout = iniGetIntValue(ini_ctx->section_name,
+            "connect_timeout", ini_ctx->context, DEFAULT_CONNECT_TIMEOUT);
     if (g_fdir_client_vars.connect_timeout <= 0) {
         g_fdir_client_vars.connect_timeout = DEFAULT_CONNECT_TIMEOUT;
     }
 
-    g_fdir_client_vars.network_timeout = iniGetIntValue(NULL,
-            "network_timeout", iniContext, DEFAULT_NETWORK_TIMEOUT);
+    g_fdir_client_vars.network_timeout = iniGetIntValue(ini_ctx->section_name,
+            "network_timeout", ini_ctx->context, DEFAULT_NETWORK_TIMEOUT);
     if (g_fdir_client_vars.network_timeout <= 0) {
         g_fdir_client_vars.network_timeout = DEFAULT_NETWORK_TIMEOUT;
     }
 
-    if ((result=fdir_load_server_group_ex(&client_ctx->server_group,
-                    conf_filename, iniContext)) != 0)
+    if ((result=fdir_load_server_group_ex(&client_ctx->
+                    server_group, ini_ctx)) != 0)
     {
         return result;
     }
@@ -154,22 +154,28 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
     return 0;
 }
 
-int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
-        const char *conf_filename)
+int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
+        IniFullContext *ini_ctx)
 {
     IniContext iniContext;
     int result;
 
-    if ((result=iniLoadFromFile(conf_filename, &iniContext)) != 0) {
-        logError("file: "__FILE__", line: %d, "
-            "load conf file \"%s\" fail, ret code: %d",
-            __LINE__, conf_filename, result);
-        return result;
+    if (ini_ctx->context == NULL) {
+        if ((result=iniLoadFromFile(ini_ctx->filename, &iniContext)) != 0) {
+            logError("file: "__FILE__", line: %d, "
+                    "load conf file \"%s\" fail, ret code: %d",
+                    __LINE__, ini_ctx->filename, result);
+            return result;
+        }
+        ini_ctx->context = &iniContext;
     }
 
-    result = fdir_client_do_init_ex(client_ctx, conf_filename,
-                &iniContext);
-    iniFreeContext(&iniContext);
+    result = fdir_client_do_init_ex(client_ctx, ini_ctx);
+
+    if (ini_ctx->context == &iniContext) {
+        iniFreeContext(&iniContext);
+        ini_ctx->context = NULL;
+    }
 
     return result;
 }
@@ -182,15 +188,13 @@ static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
     srand(time(NULL));
 }
 
-int fdir_client_init_ex(FDIRClientContext *client_ctx,
-        const char *conf_filename, const FDIRConnectionManager *conn_manager)
+int fdir_client_init_ex1(FDIRClientContext *client_ctx,
+        IniFullContext *ini_ctx, const FDIRConnectionManager *conn_manager)
 {
     int result;
     FDIRClientConnManagerType conn_manager_type;
 
-    if ((result=fdir_client_load_from_file_ex(
-                    client_ctx, conf_filename)) != 0)
-    {
+    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
 
@@ -211,14 +215,12 @@ int fdir_client_init_ex(FDIRClientContext *client_ctx,
     return 0;
 }
 
-int fdir_client_simple_init_ex(FDIRClientContext *client_ctx,
-        const char *conf_filename)
+int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
+        IniFullContext *ini_ctx)
 {
     int result;
 
-    if ((result=fdir_client_load_from_file_ex(
-                    client_ctx, conf_filename)) != 0)
-    {
+    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
 
@@ -232,15 +234,13 @@ int fdir_client_simple_init_ex(FDIRClientContext *client_ctx,
     return 0;
 }
 
-int fdir_client_pooled_init_ex(FDIRClientContext *client_ctx,
-        const char *conf_filename, const int max_count_per_entry,
+int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
+        IniFullContext *ini_ctx, const int max_count_per_entry,
         const int max_idle_time)
 {
     int result;
 
-    if ((result=fdir_client_load_from_file_ex(
-                    client_ctx, conf_filename)) != 0)
-    {
+    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
 
