@@ -2413,9 +2413,9 @@ void *service_alloc_thread_extra_data(const int thread_index)
     }
 
     memset(server_context, 0, sizeof(FDIRServerContext));
-    if (fast_mblock_init_ex2(&server_context->service.record_allocator,
+    if (fast_mblock_init_ex1(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
-                NULL, NULL, false, NULL, NULL, NULL) != 0)
+                0, NULL, NULL, false) != 0)
     {
         free(server_context);
         return NULL;

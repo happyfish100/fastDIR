@@ -39,33 +39,30 @@ static int sys_task_alloc_init_func(void *element, void *args)
 int flock_init(FLockContext *ctx)
 {
     int result;
-    if ((result=fast_mblock_init_ex2(&ctx->allocators.entry,
+    if ((result=fast_mblock_init_ex1(&ctx->allocators.entry,
                     "flock_entry", sizeof(FLockEntry), 4096,
-                    flock_entry_alloc_init_func, NULL, false,
-                    NULL, NULL, NULL)) != 0)
+                    0, flock_entry_alloc_init_func, NULL, false)) != 0)
     {
         return result;
     }
 
-    if ((result=fast_mblock_init_ex2(&ctx->allocators.region,
+    if ((result=fast_mblock_init_ex1(&ctx->allocators.region,
                     "flock_region", sizeof(FLockRegion), 4096,
-                    NULL, NULL, false, NULL, NULL, NULL)) != 0)
+                    0, NULL, NULL, false)) != 0)
     {
         return result;
     }
 
-    if ((result=fast_mblock_init_ex2(&ctx->allocators.ftask,
+    if ((result=fast_mblock_init_ex1(&ctx->allocators.ftask,
                     "flock_task", sizeof(FLockTask), 4096,
-                    flock_task_alloc_init_func, NULL, false,
-                    NULL, NULL, NULL)) != 0)
+                    0, flock_task_alloc_init_func, NULL, false)) != 0)
     {
         return result;
     }
 
-    if ((result=fast_mblock_init_ex2(&ctx->allocators.sys_task,
+    if ((result=fast_mblock_init_ex1(&ctx->allocators.sys_task,
                     "sys_lck_task", sizeof(SysLockTask), 4096,
-                    sys_task_alloc_init_func, NULL, false,
-                    NULL, NULL, NULL)) != 0)
+                    0, sys_task_alloc_init_func, NULL, false)) != 0)
     {
         return result;
     }

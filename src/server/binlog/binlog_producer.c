@@ -118,10 +118,9 @@ int binlog_producer_init()
     element_size = sizeof(ServerBinlogRecordBuffer) +
         sizeof(struct server_binlog_record_buffer *) *
         CLUSTER_SERVER_ARRAY.count;
-    if ((result=fast_mblock_init_ex2(&proceduer_ctx.rb_allocator,
-                    "record_buffer", element_size, 1024,
-                    record_buffer_alloc_init_func, NULL, true,
-                    NULL, NULL, NULL)) != 0)
+    if ((result=fast_mblock_init_ex1(&proceduer_ctx.rb_allocator,
+                    "record_buffer", element_size, 1024, 0,
+                    record_buffer_alloc_init_func, NULL, true)) != 0)
     {
         return result;
     }
