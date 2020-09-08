@@ -228,6 +228,10 @@ static int cluster_info_write_to_file()
             result, STRERROR(result));
     }
 
+    logInfo("file: "__FILE__", line: %d, "
+            "=== write to file: %s successfully ==== ",
+            __LINE__, full_filename);
+
     return result;
 }
 
@@ -249,7 +253,7 @@ int cluster_info_setup_sync_to_file_task()
     ScheduleArray schedule_array;
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
-            0, 0, 0, 1, cluster_info_sync_to_file, NULL);
+            0, 0, 0, 1, cluster_info_sync_to_file, (void *)0x1234);
 
     schedule_array.count = 1;
     schedule_array.entries = &schedule_entry;
