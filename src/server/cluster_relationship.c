@@ -219,10 +219,8 @@ static int proto_ping_master(ConnectionInfo *conn)
     for (; body_part < body_end; body_part++) {
         server_id = buff2int(body_part->server_id);
         if ((cs=fdir_get_server_by_id(server_id)) != NULL) {
-            if (cs->status != body_part->status) {
-                cluster_info_set_status(cs, body_part->status);
-                //logInfo("server_id: %d, status: %d", server_id, body_part->status);
-            }
+            cluster_info_set_status(cs, body_part->status);
+            //logInfo("server_id: %d, status: %d", server_id, body_part->status);
         }
     }
 
@@ -262,7 +260,8 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
         server_status->is_master = MYSELF_IS_MASTER;
-        server_status->status = CLUSTER_MYSELF_PTR->status;
+        server_status->status = __sync_fetch_and_add(
+                &CLUSTER_MYSELF_PTR->status, 0);
         server_status->server_id = CLUSTER_MY_SERVER_ID;
         server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
@@ -406,24 +405,35 @@ static inline void cluster_unset_master()
 {
     FDIRClusterServerInfo *old_master;
 
-    old_master = CLUSTER_MASTER_PTR;
+    old_master = CLUSTER_MASTER_ATOM_PTR;
     if (old_master != NULL) {
         old_master->is_master = false;
-        CLUSTER_MASTER_PTR = NULL;
+        __sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR, old_master, NULL);
     }
 }
 
-static int cluster_relationship_set_master(FDIRClusterServerInfo *master)
+static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
 {
     int result;
+    int old_status;
+    FDIRClusterServerInfo *old_master;
 
-    if (CLUSTER_MYSELF_PTR == master) {
+    if (CLUSTER_MYSELF_PTR == new_master) {
         inode_generator_skip();  //skip SN avoid conflict
     }
 
-    CLUSTER_MASTER_PTR = master;
-    master->is_master = true;
-    if (CLUSTER_MYSELF_PTR == master) {
+    old_master = CLUSTER_MASTER_ATOM_PTR;
+    do {
+        if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR,
+                    old_master, new_master))
+        {
+            break;
+        }
+        old_master = CLUSTER_MASTER_ATOM_PTR;
+    } while (old_master != new_master);
+
+    new_master->is_master = true;
+    if (CLUSTER_MYSELF_PTR == new_master) {
         if ((result=binlog_producer_init()) != 0) {
             cluster_unset_master();
             return result;
@@ -431,7 +441,16 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *master)
 
         binlog_local_consumer_replication_start();
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
-        CLUSTER_MASTER_PTR->status = FDIR_SERVER_STATUS_ACTIVE;
+
+        old_status = __sync_add_and_fetch(&CLUSTER_MASTER_PTR->status, 0);
+        while (old_status != FDIR_SERVER_STATUS_ACTIVE) {
+            if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR->status,
+                        old_status, FDIR_SERVER_STATUS_ACTIVE))
+            {
+                break;
+            }
+            old_status = __sync_add_and_fetch(&CLUSTER_MASTER_PTR->status, 0);
+        }
         __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     } else {
         if (MYSELF_IS_MASTER) {
@@ -441,9 +460,9 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *master)
 
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
-                __LINE__, master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
+                __LINE__, new_master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
     }
 
     return 0;
@@ -655,11 +674,11 @@ static int cluster_ping_master(ConnectionInfo *conn)
     int result;
     FDIRClusterServerInfo *master;
 
-    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
+    master = CLUSTER_MASTER_ATOM_PTR;
+    if (CLUSTER_MYSELF_PTR == master) {
         return 0;  //do not need ping myself
     }
 
-    master = CLUSTER_MASTER_PTR;
     if (master == NULL) {
         return ENOENT;
     }
@@ -700,7 +719,7 @@ static void *cluster_thread_entrance(void* arg)
     fail_count = 0;
     sleep_seconds = 1;
     while (SF_G_CONTINUE_FLAG) {
-        master = CLUSTER_MASTER_PTR;
+        master = CLUSTER_MASTER_ATOM_PTR;
         if (master == NULL) {
             if (cluster_select_master() != 0) {
                 sleep_seconds = 1 + (int)((double)rand()

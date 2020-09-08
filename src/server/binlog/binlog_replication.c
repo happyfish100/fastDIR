@@ -81,10 +81,12 @@ static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
 static inline void set_replication_stage(FDIRSlaveReplication *
         replication, const int stage)
 {
+    int status;
     switch (stage) {
         case FDIR_REPLICATION_STAGE_NONE:
-            if (replication->slave->status == FDIR_SERVER_STATUS_SYNCING ||
-                    replication->slave->status == FDIR_SERVER_STATUS_ACTIVE)
+            status = __sync_add_and_fetch(&replication->slave->status, 0);
+            if (status == FDIR_SERVER_STATUS_SYNCING ||
+                    status == FDIR_SERVER_STATUS_ACTIVE)
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_OFFLINE);
@@ -92,11 +94,11 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             break;
 
         case FDIR_REPLICATION_STAGE_SYNC_FROM_DISK:
-            if (replication->slave->status == FDIR_SERVER_STATUS_INIT) {
+            status = __sync_add_and_fetch(&replication->slave->status, 0);
+            if (status == FDIR_SERVER_STATUS_INIT) {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_BUILDING);
-            } else if (replication->slave->status !=
-                    FDIR_SERVER_STATUS_BUILDING)
+            } else if (status != FDIR_SERVER_STATUS_BUILDING)
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_SYNCING);

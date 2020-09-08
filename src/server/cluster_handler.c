@@ -128,7 +128,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
 
     resp->is_master = MYSELF_IS_MASTER;
-    resp->status = CLUSTER_MYSELF_PTR->status;
+    resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
     long2buff(DATA_CURRENT_VERSION, resp->data_version);
 
@@ -177,7 +177,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
         return result;
     }
 
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -200,6 +200,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
 static int cluster_deal_ping_master(struct fast_task_info *task)
 {
     int result;
+    int cluster_change_version;
     FDIRProtoPingMasterRespHeader *resp_header;
     FDIRProtoPingMasterRespBodyPart *body_part;
     FDIRClusterServerInfo *cs;
@@ -216,7 +217,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -227,14 +228,17 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
     body_part = (FDIRProtoPingMasterRespBodyPart *)(REQUEST.body +
             sizeof(FDIRProtoPingMasterRespHeader));
     long2buff(CURRENT_INODE_SN, resp_header->inode_sn);
-    if (CLUSTER_PEER->last_change_version < CLUSTER_SERVER_ARRAY.change_version) {
-        CLUSTER_PEER->last_change_version = CLUSTER_SERVER_ARRAY.change_version;
+
+    cluster_change_version = __sync_add_and_fetch(
+            &CLUSTER_SERVER_ARRAY.change_version, 0);
+    if (CLUSTER_PEER->last_change_version != cluster_change_version) {
+        CLUSTER_PEER->last_change_version = cluster_change_version;
         int2buff(CLUSTER_SERVER_ARRAY.count, resp_header->server_count);
 
         end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
         for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++, body_part++) {
             int2buff(cs->server->id, body_part->server_id);
-            body_part->status = cs->status;
+            body_part->status = __sync_fetch_and_add(&cs->status, 0);
         }
     } else {
         int2buff(0, resp_header->server_count);
@@ -256,7 +260,7 @@ static int cluster_deal_next_master(struct fast_task_info *task)
         return result;
     }
 
-    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
+    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am already master");
@@ -472,7 +476,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EBUSY;
     }
 
-    master = CLUSTER_MASTER_PTR;
+    master = CLUSTER_MASTER_ATOM_PTR;
     if (peer != master) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -793,7 +797,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
                 */
     }
 
-    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
+    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {

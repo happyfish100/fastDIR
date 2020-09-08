@@ -113,8 +113,8 @@ static int service_deal_service_stat(struct fast_task_info *task)
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)REQUEST.body;
 
-    stat_resp->is_master = CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR ? 1 : 0;
-    stat_resp->status = CLUSTER_MYSELF_PTR->status;
+    stat_resp->is_master = CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ? 1 : 0;
+    stat_resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
@@ -154,7 +154,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
         int2buff(cs->server->id, body_part->server_id);
         body_part->is_master = cs->is_master;
-        body_part->status = cs->status;
+        body_part->status = __sync_fetch_and_add(&cs->status, 0);
 
         snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
                 SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
@@ -180,7 +180,7 @@ static int service_deal_get_master(struct fast_task_info *task)
         return result;
     }
 
-    master = CLUSTER_MASTER_PTR;
+    master = CLUSTER_MASTER_ATOM_PTR;
     if (master == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -229,7 +229,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
         }
 
         int2buff(cs->server->id, body_part->server_id);
-        body_part->status = cs->status;
+        body_part->status = __sync_fetch_and_add(&cs->status, 0);
 
         addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 cs->server), task->client_ip);
@@ -257,7 +257,7 @@ static FDIRClusterServerInfo *get_readable_server()
     FDIRClusterServerInfo *send;
 
     index = rand() % CLUSTER_SERVER_ARRAY.count;
-    if (CLUSTER_SERVER_ARRAY.servers[index].status ==
+    if (__sync_fetch_and_add(&CLUSTER_SERVER_ARRAY.servers[index].status, 0) ==
             FDIR_SERVER_STATUS_ACTIVE)
     {
         return CLUSTER_SERVER_ARRAY.servers + index;
@@ -268,7 +268,9 @@ static FDIRClusterServerInfo *get_readable_server()
     do {
         old_index = acc_index;
         for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
-            if (cs->status == FDIR_SERVER_STATUS_ACTIVE) {
+            if (__sync_fetch_and_add(&cs->status, 0) ==
+                    FDIR_SERVER_STATUS_ACTIVE)
+            {
                 if (acc_index++ == index) {
                     return cs;
                 }
@@ -2129,7 +2131,7 @@ static inline void init_task_context(struct fast_task_info *task)
 
 static inline int service_check_master(struct fast_task_info *task)
 {
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_PTR) {
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
@@ -2141,8 +2143,9 @@ static inline int service_check_master(struct fast_task_info *task)
 
 static inline int service_check_readable(struct fast_task_info *task)
 {
-    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR ||
-                CLUSTER_MYSELF_PTR->status == FDIR_SERVER_STATUS_ACTIVE))
+    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ||
+                __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) ==
+                FDIR_SERVER_STATUS_ACTIVE))
     {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,

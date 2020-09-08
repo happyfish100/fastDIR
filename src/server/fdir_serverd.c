@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        sched_print_all_entries();
+        //sched_print_all_entries();
 
         if ((result=inode_generator_init()) != 0) {
             break;
@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
         }
 
         fdir_proto_init();
-        sched_print_all_entries();
+        //sched_print_all_entries();
 
         result = sf_service_init_ex(&CLUSTER_SF_CTX,
                 cluster_alloc_thread_extra_data,
@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
     }
 
     setup_mblock_stat_task();
-    sched_print_all_entries();
+    //sched_print_all_entries();
 
     sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
     sf_accept_loop();

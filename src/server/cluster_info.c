@@ -214,8 +214,9 @@ static int cluster_info_write_to_file()
                 "%s=%d\n\n",
                 SERVER_SECTION_PREFIX_STR, cs->server->id,
                 CLUSTER_INFO_ITEM_IS_MASTER,
-                cs == CLUSTER_MASTER_PTR ? 1 : 0,
-                CLUSTER_INFO_ITEM_STATUS, cs->status
+                cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0,
+                CLUSTER_INFO_ITEM_STATUS,
+                __sync_fetch_and_add(&cs->status, 0)
                 );
     }
 
@@ -227,10 +228,6 @@ static int cluster_info_write_to_file()
             __LINE__, full_filename,
             result, STRERROR(result));
     }
-
-    logInfo("file: "__FILE__", line: %d, "
-            "=== write to file: %s successfully ==== ",
-            __LINE__, full_filename);
 
     return result;
 }
