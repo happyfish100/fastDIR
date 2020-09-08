@@ -144,10 +144,6 @@ int main(int argc, char *argv[])
         fdir_proto_init();
         //sched_print_all_entries();
 
-        if ((result=cluster_relationship_init()) != 0) {
-            break;
-        }
-
         result = sf_service_init_ex(&CLUSTER_SF_CTX,
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
@@ -170,6 +166,10 @@ int main(int argc, char *argv[])
             break;
         }
         sf_set_remove_from_ready_list(false);
+
+        if ((result=cluster_relationship_init()) != 0) {
+            break;
+        }
     } while (0);
 
     if (result != 0) {

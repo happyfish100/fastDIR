@@ -124,9 +124,8 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     task = free_queue_pop();
     if (task == NULL) {
         logError("file: "__FILE__", line: %d, "
-                "malloc task buff failed, you should "
-                "increase the parameter: max_connections",
-                __LINE__);
+                "malloc task buff failed, you should increase "
+                "the parameter: max_connections", __LINE__);
         return ENOMEM;
     }
 
@@ -194,52 +193,6 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     return result;
 }
 
-static int async_connect_server(ConnectionInfo *conn)
-{
-    int result;
-    int domain;
-    sockaddr_convert_t convert;
-
-    if (conn->socket_domain == AF_INET || conn->socket_domain == AF_INET6) {
-        domain = conn->socket_domain;
-    } else {
-        domain = is_ipv6_addr(conn->ip_addr) ? AF_INET6 : AF_INET;
-    }
-    conn->sock = socket(domain, SOCK_STREAM, 0);
-    if(conn->sock < 0) {
-        logError("file: "__FILE__", line: %d, "
-                "socket create fail, errno: %d, "
-                "error info: %s", __LINE__, errno, STRERROR(errno));
-        return errno != 0 ? errno : EPERM;
-    }
-
-    SET_SOCKOPT_NOSIGPIPE(conn->sock);
-    if ((result=tcpsetnonblockopt(conn->sock)) != 0) {
-        close(conn->sock);
-        conn->sock = -1;
-        return result;
-    }
-
-    if ((result=setsockaddrbyip(conn->ip_addr, conn->port, &convert)) != 0) {
-        return result;
-    }
-
-    if (connect(conn->sock, &convert.sa.addr, convert.len) < 0) {
-        result = errno != 0 ? errno : EINPROGRESS;
-        if (result != EINPROGRESS) {
-            logError("file: "__FILE__", line: %d, "
-                    "connect to %s:%d fail, errno: %d, error info: %s",
-                    __LINE__, conn->ip_addr, conn->port,
-                    result, STRERROR(result));
-            close(conn->sock);
-            conn->sock = -1;
-        }
-        return result;
-    }
-
-    return 0;
-}
-
 static void calc_next_connect_time(FDIRSlaveReplication *replication)
 {
     int interval;
@@ -292,7 +245,7 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
         replication->connection_info.start_time = g_current_time;
         replication->connection_info.conn = addr->conn;
         calc_next_connect_time(replication);
-        if ((result=async_connect_server(&replication->
+        if ((result=conn_pool_async_connect_server(&replication->
                         connection_info.conn)) == 0)
         {
             return 0;

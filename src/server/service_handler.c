@@ -2214,12 +2214,14 @@ int service_deal_task(struct fast_task_info *task)
 {
     int result;
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "task: %p, sock: %d, nio_stage: %d, continue: %d, cmd: %d (%s)",
             __LINE__, task, task->event.fd, task->nio_stage,
             task->nio_stage == SF_NIO_STAGE_CONTINUE,
             ((FDIRProtoHeader *)task->data)->cmd,
             fdir_get_cmd_caption(((FDIRProtoHeader *)task->data)->cmd));
+            */
 
     if (task->nio_stage == SF_NIO_STAGE_CONTINUE) {
         task->nio_stage = SF_NIO_STAGE_SEND;

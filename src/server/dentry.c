@@ -92,6 +92,7 @@ void dentry_destroy()
 {
 }
 
+/*
 static void dentry_children_print(FDIRServerDentry *dentry)
 {
     FDIRServerDentry *current;
@@ -109,6 +110,7 @@ static void dentry_children_print(FDIRServerDentry *dentry)
                 current->name.str, current->name.len);
     }
 }
+*/
 
 static int dentry_compare(const void *p1, const void *p2)
 {
@@ -525,6 +527,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         FC_SET_STRING_NULL(current->link);
     }
 
+    /*
     {
         char hex1[256];
         char hex2[256];
@@ -536,6 +539,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
             current->name.str, current->name.len, hex1, record->me.pname.name.len,
             record->me.pname.name.str, record->me.pname.name.len, hex2);
     }
+    */
 
     if (record->inode == 0) {
         current->inode = inode_generator_next();
@@ -721,9 +725,11 @@ static int rename_check(FDIRDataThreadContext *db_context,
         return 0;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "record->rename.flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
             __LINE__, record->rename.flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
+            */
 
     if ((record->rename.flags & RENAME_NOREPLACE)) {
         return EEXIST;
@@ -794,10 +800,12 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
     pair->holder = dentry->name;
     dentry->name = cloned_name;
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "dentry old name: %.*s, new name: %.*s",
             __LINE__, pair->ptr->len, pair->ptr->str,
             dentry->name.len, dentry->name.str);
+            */
 
     return 0;
 }
@@ -903,6 +911,7 @@ static int move_dentry(FDIRDataThreadContext *db_context,
             break;
         }
 
+        /*
         logInfo("file: "__FILE__", line: %d, "
                 "old src dentry name: %.*s, "
                 "new src dentry name: %.*s, dest dentry: %p",
@@ -911,6 +920,7 @@ static int move_dentry(FDIRDataThreadContext *db_context,
                 record->rename.src.dentry->name.len,
                 record->rename.src.dentry->name.str,
                 record->rename.dest.dentry);
+                */
 
         record->rename.overwritten = record->rename.dest.dentry;
         if (record->rename.dest.dentry != NULL) {
@@ -954,10 +964,12 @@ int dentry_rename(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "record->rename.flags: %d, dest.dentry: %p, src.dentry: %p",
             __LINE__, record->rename.flags, record->rename.dest.dentry,
             record->rename.src.dentry);
+            */
 
     if (record->rename.dest.dentry == record->rename.src.dentry) {
         return EEXIST;
@@ -981,16 +993,18 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);
 
+    /*
     logInfo("new src dentry name: %.*s(%d), dest dentry name: %.*s(%d)",
             record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
             record->rename.src.dentry->name.len,
             record->rename.dest.pname.name.len, record->rename.dest.pname.name.str,
             record->rename.dest.pname.name.len);
+            */
 
     if ((record->rename.flags & RENAME_EXCHANGE)) {
         return exchange_dentry(db_context, record, name_changed);
     } else {
-        dentry_children_print(record->rename.src.parent);
+        //dentry_children_print(record->rename.src.parent);
         return move_dentry(db_context, record, name_changed);
     }
 }
