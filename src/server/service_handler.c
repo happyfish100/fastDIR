@@ -1964,9 +1964,9 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
 
     logInfo("file: "__FILE__", line: %d, func: %s, "
-            "task: %p, callback: %p, status: %d, nio_stage: %d, fd: %d",
+            "task: %p, callback: %p, status: %d, nio stage: %d, fd: %d",
             __LINE__, __FUNCTION__, task, callback, RESPONSE_STATUS,
-            task->nio_stage, task->event.fd);
+            SF_NIO_TASK_STAGE_FETCH(task), task->event.fd);
 
     SYS_LOCK_TASK = NULL;
     if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
@@ -2217,18 +2217,21 @@ static int deal_task_done(struct fast_task_info *task)
 int service_deal_task(struct fast_task_info *task)
 {
     int result;
+    int stage;
+
+    stage = SF_NIO_TASK_STAGE_FETCH(task);
 
     /*
     logInfo("file: "__FILE__", line: %d, "
-            "task: %p, sock: %d, nio_stage: %d, continue: %d, cmd: %d (%s)",
-            __LINE__, task, task->event.fd, task->nio_stage,
-            task->nio_stage == SF_NIO_STAGE_CONTINUE,
+            "task: %p, sock: %d, nio stage: %d, continue: %d, cmd: %d (%s)",
+            __LINE__, task, task->event.fd, stage,
+            stage == SF_NIO_STAGE_CONTINUE,
             ((FDIRProtoHeader *)task->data)->cmd,
             fdir_get_cmd_caption(((FDIRProtoHeader *)task->data)->cmd));
             */
 
-    if (task->nio_stage == SF_NIO_STAGE_CONTINUE) {
-        task->nio_stage = SF_NIO_STAGE_SEND;
+    if (stage == SF_NIO_STAGE_CONTINUE) {
+        sf_nio_swap_stage(task, stage, SF_NIO_STAGE_SEND);
         if (TASK_ARG->context.deal_func != NULL) {
             result = TASK_ARG->context.deal_func(task);
         } else {
