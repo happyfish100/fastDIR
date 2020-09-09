@@ -113,7 +113,8 @@ static int service_deal_service_stat(struct fast_task_info *task)
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)REQUEST.body;
 
-    stat_resp->is_master = CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ? 1 : 0;
+    stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
+        CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
     stat_resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
 
@@ -153,7 +154,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
         int2buff(cs->server->id, body_part->server_id);
-        body_part->is_master = cs->is_master;
+        body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
         body_part->status = __sync_fetch_and_add(&cs->status, 0);
 
         snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
@@ -224,7 +225,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
 
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
-        if (cs->is_master) {
+        if (cs == CLUSTER_MASTER_ATOM_PTR) {
             continue;
         }
 

@@ -407,8 +407,29 @@ static inline void cluster_unset_master()
 
     old_master = CLUSTER_MASTER_ATOM_PTR;
     if (old_master != NULL) {
-        old_master->is_master = false;
-        __sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR, old_master, NULL);
+        if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR,
+                    old_master, NULL))
+        {
+            __sync_bool_compare_and_swap(&old_master->is_master, 1, 0);
+        }
+    }
+}
+
+static void update_field_is_master(FDIRClusterServerInfo *new_master)
+{
+    FDIRClusterServerInfo *server;
+    FDIRClusterServerInfo *send;
+    int old_value;
+    int new_value;
+
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
+        old_value = __sync_add_and_fetch(&server->is_master, 0);
+        new_value = (server == new_master ? 1 : 0);
+        if (new_value != old_value) {
+            __sync_bool_compare_and_swap(&server->is_master,
+                    old_value, new_value);
+        }
     }
 }
 
@@ -418,11 +439,20 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
     int old_status;
     FDIRClusterServerInfo *old_master;
 
+    old_master = CLUSTER_MASTER_ATOM_PTR;
+    if (new_master == old_master) {
+        logWarning("file: "__FILE__", line: %d, "
+                "the server id: %d, ip %s:%d already is master",
+                __LINE__, new_master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
+        return 0;
+    }
+
     if (CLUSTER_MYSELF_PTR == new_master) {
         inode_generator_skip();  //skip SN avoid conflict
     }
 
-    old_master = CLUSTER_MASTER_ATOM_PTR;
     do {
         if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR,
                     old_master, new_master))
@@ -432,7 +462,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
         old_master = CLUSTER_MASTER_ATOM_PTR;
     } while (old_master != new_master);
 
-    new_master->is_master = true;
+    update_field_is_master(new_master);
     if (CLUSTER_MYSELF_PTR == new_master) {
         if ((result=binlog_producer_init()) != 0) {
             cluster_unset_master();
@@ -451,13 +481,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
             }
             old_status = __sync_add_and_fetch(&CLUSTER_MASTER_PTR->status, 0);
         }
-        __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     } else {
-        if (MYSELF_IS_MASTER) {
-            MYSELF_IS_MASTER = false;
-            __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
-        }
-
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%d",
                 __LINE__, new_master->server->id,
@@ -465,6 +489,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
     }
 
+    __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     return 0;
 }
 

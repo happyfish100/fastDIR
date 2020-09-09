@@ -187,7 +187,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     {
         replication_queue_discard_all(replication);
         push_result_ring_clear_all(&replication->context.push_result_ctx);
-        if (MYSELF_IS_MASTER) {
+        if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
             result = binlog_replication_bind_thread(replication);
         }
     }
