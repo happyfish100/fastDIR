@@ -157,8 +157,8 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_terminate(&ctx->queues.result);
 
     count = 0;
-    while (ctx->running && count++ < 10) {
-        usleep(200);
+    while (ctx->running && count++ < 300) {
+        fc_sleep_ms(10);
     }
 
     if (ctx->running) {
@@ -272,7 +272,7 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         }
 
         ++waiting_count;
-        usleep(100);
+        fc_sleep_ms(10);
     }
 
     if (waiting_count > max_waiting_count) {

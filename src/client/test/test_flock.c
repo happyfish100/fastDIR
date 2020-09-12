@@ -13,7 +13,7 @@ static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename = /etc/fdir/client.conf] "
             "[-N non-block] [-S do NOT output dentry stat] "
-            "[-s sleep micro seconds = 0] [-t thread count = 8] "
+            "[-s sleep milliseconds = 0] [-t thread count = 8] "
             "<-n namespace> <path>\n", argv[0]);
 }
 
@@ -21,7 +21,7 @@ static int64_t inode;
 
 static char *config_filename = "/etc/fdir/client.conf";
 static int flock_flags = 0;
-static int usleep_time = 0;
+static int msleep_time = 0;
 static int threads = 8;
 static bool output_stat = true;
 static volatile int thread_count = 0;
@@ -79,8 +79,9 @@ static void *thread_func(void *args)
     do {
         int64_t offset;
         int64_t length;
+
         if ((result=fdir_client_pooled_init_ex(&client_ctx,
-                        config_filename, 0, 4 * 3600)) != 0)
+                        config_filename, NULL, 0, 4 * 3600)) != 0)
         {
             break;
         }
@@ -123,8 +124,8 @@ static void *thread_func(void *args)
             output_dentry_stat(&dentry);
         }
 
-        if (usleep_time > 0) {
-            usleep(usleep_time);
+        if (msleep_time > 0) {
+            fc_sleep_ms(msleep_time);
         }
 
         if ((result=fdir_client_flock_dentry_ex(&session,
@@ -182,7 +183,7 @@ int main(int argc, char *argv[])
                 output_stat  = false;
                 break;
             case 's':
-                usleep_time = strtol(optarg, NULL, 10);
+                msleep_time = strtol(optarg, NULL, 10);
                 break;
             case 't':
                 threads = strtol(optarg, NULL, 10);
@@ -224,7 +225,7 @@ int main(int argc, char *argv[])
     }
 
     while (thread_count != 0) {
-        usleep(10000);
+        fc_sleep_ms(10);
     }
 
     time_used = get_current_time_ms() - start_time;

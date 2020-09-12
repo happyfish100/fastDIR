@@ -202,7 +202,7 @@ int data_thread_init()
         while (__sync_add_and_fetch(&running_thread_count, 0) <
                 g_data_thread_vars.thread_array.count && count++ < 100)
         {
-            usleep(1000);
+            fc_sleep_ms(1);
         }
     }
     return result;
@@ -244,7 +244,7 @@ void data_thread_terminate()
     while (__sync_add_and_fetch(&running_thread_count, 0) != 0 &&
             count++ < 100)
     {
-        usleep(1000);
+        fc_sleep_ms(1);
     }
 }
 

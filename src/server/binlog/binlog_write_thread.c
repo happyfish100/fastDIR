@@ -340,7 +340,7 @@ static int deal_binlog_records(struct common_blocked_node *node)
         while ((rb->data_version > DATA_CURRENT_VERSION) &&
                 (++wait_count < 100))
         {
-            usleep(1000);
+            fc_sleep_ms(1);
         }
 
         if (wait_count > 0) {
@@ -377,7 +377,7 @@ void binlog_write_thread_finish()
     if (g_writer_queue != NULL) {
         count = 0;
         while (write_thread_running && ++count < 100) {
-            usleep(100 * 1000);
+            fc_sleep_ms(100);
         }
         
         if (write_thread_running) {

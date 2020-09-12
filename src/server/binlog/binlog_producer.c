@@ -144,7 +144,7 @@ void binlog_producer_destroy()
     pthread_cond_signal(&proceduer_ctx.queue.cond);
     count = 0;
     while (running && count++ < 100) {
-        usleep(1000);
+        fc_sleep_ms(1);
     }
 
     pthread_cond_destroy(&proceduer_ctx.queue.cond);
