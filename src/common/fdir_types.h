@@ -3,6 +3,7 @@
 
 #include "fastcommon/common_define.h"
 #include "fastcommon/server_id_func.h"
+#include "sf/sf_types.h"
 
 #define FDIR_ERROR_INFO_SIZE   256
 #define FDIR_REPLICA_KEY_SIZE    8
@@ -55,28 +56,6 @@
         (pname)->parent_inode = inode; \
         (pname)->name = *nm_ptr;       \
     } while (0)
-
-typedef struct {
-    int body_len;      //body length
-    short flags;
-    short status;
-    unsigned char cmd; //command
-} FDIRHeaderInfo;
-
-typedef struct {
-    FDIRHeaderInfo header;
-    char *body;
-} FDIRRequestInfo;
-
-typedef struct {
-    int length;
-    char message[FDIR_ERROR_INFO_SIZE];
-} FDIRErrorInfo;
-
-typedef struct {
-    FDIRHeaderInfo header;
-    FDIRErrorInfo error;
-} FDIRResponseInfo;
 
 typedef struct fdir_dentry_full_name {
     string_t ns;    //namespace

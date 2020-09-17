@@ -34,7 +34,7 @@ typedef struct fdir_cluster_server_status {
 } FDIRClusterServerStatus;
 
 static void fdir_log_network_error_ex(const ConnectionInfo *conn,
-        const FDIRResponseInfo *response, const int line,
+        const SFResponseInfo *response, const int line,
         const char *func, const int result)
 {
     if (response->error.length > 0) {
@@ -61,12 +61,12 @@ static int proto_get_server_status(ConnectionInfo *conn,
 	FDIRProtoHeader *header;
     FDIRProtoGetServerStatusReq *req;
     FDIRProtoGetServerStatusResp *resp;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
 	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoGetServerStatusReq)];
 	char in_body[sizeof(FDIRProtoGetServerStatusResp)];
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoGetServerStatusReq *)(out_buff + sizeof(FDIRProtoHeader));
@@ -74,7 +74,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
 
     response.error.length = 0;
-	if ((result=fdir_send_and_check_response_header(conn, out_buff,
+	if ((result=sf_send_and_check_response_header(conn, out_buff,
 			sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
             FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP)) != 0)
     {
@@ -127,12 +127,12 @@ static int proto_join_master(ConnectionInfo *conn)
 	int result;
 	FDIRProtoHeader *header;
     FDIRProtoJoinMasterReq *req;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
 	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinMasterReq)];
 
     generate_replica_key();
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
+    SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
@@ -141,9 +141,9 @@ static int proto_join_master(ConnectionInfo *conn)
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
     response.error.length = 0;
-    if ((result=fdir_send_and_recv_none_body_response(conn, out_buff,
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
-                    FDIR_PROTO_ACK)) != 0)
+                    SF_PROTO_ACK)) != 0)
     {
         fdir_log_network_error(conn, &response, result);
     }
@@ -154,7 +154,7 @@ static int proto_join_master(ConnectionInfo *conn)
 static int proto_ping_master(ConnectionInfo *conn)
 {
     FDIRProtoHeader header;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     char in_buff[8 * 1024];
     FDIRProtoPingMasterRespHeader *body_header;
     FDIRProtoPingMasterRespBodyPart *body_part;
@@ -165,10 +165,10 @@ static int proto_ping_master(ConnectionInfo *conn)
     int server_id;
     int result;
 
-    FDIR_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
+    SF_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
 
     response.error.length = 0;
-    if ((result=fdir_send_and_check_response_header(conn, (char *)&header,
+    if ((result=sf_send_and_check_response_header(conn, (char *)&header,
                     sizeof(header), &response, SF_G_NETWORK_TIMEOUT,
                     FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) == 0)
     {
@@ -355,7 +355,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     char out_buff[sizeof(FDIRProtoHeader) + 4];
     ConnectionInfo conn;
     FDIRProtoHeader *header;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
@@ -367,13 +367,13 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     *bConnectFail = false;
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, cmd, sizeof(out_buff) -
+    SF_PROTO_SET_HEADER(header, cmd, sizeof(out_buff) -
             sizeof(FDIRProtoHeader));
     int2buff(master->server->id, out_buff + sizeof(FDIRProtoHeader));
     response.error.length = 0;
-    if ((result=fdir_send_and_recv_none_body_response(&conn, out_buff,
+    if ((result=sf_send_and_recv_none_body_response(&conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
-                    FDIR_PROTO_ACK)) != 0)
+                    SF_PROTO_ACK)) != 0)
     {
         fdir_log_network_error(&conn, &response, result);
     }

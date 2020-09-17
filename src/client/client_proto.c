@@ -117,7 +117,7 @@ static int do_update_dentry(FDIRClientContext *client_ctx,
         FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int result;
 
@@ -129,7 +129,7 @@ static int do_update_dentry(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
+    if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     expect_cmd, (char *)&proto_stat,
                     sizeof(proto_stat))) == 0)
@@ -166,7 +166,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
     int2buff(mode, req->front.mode);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoCreateDEntryReq)
         + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -204,7 +204,7 @@ int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
     memcpy(req->front.link_str, link->str, link->len);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSymlinkDEntryReq)
         + fullname->ns.len + fullname->path.len + link->len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -232,7 +232,7 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
 
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoRemoveDEntry)
         + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -266,7 +266,7 @@ int fdir_client_link_dentry(FDIRClientContext *client_ctx,
     int2buff(mode, req->front.mode);
     out_bytes = ((char *)(dest_pentry + 1) + dest->ns.len +
             dest->path.len) - out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -296,7 +296,7 @@ int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
     int2buff(mode, req->front.mode);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoHDLinkDEntryByPName) + ns->len + pname->name.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -308,7 +308,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
         FDIRDEntryInfo **dentry)
 {
     ConnectionInfo *conn;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int expect_body_lens[2];
     int body_len;
@@ -324,7 +324,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
     expect_body_lens[1] = sizeof(proto_stat);
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response_ex(conn, out_buff, out_bytes,
+    if ((result=sf_send_and_recv_response_ex(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     expect_cmd, (char *)&proto_stat, expect_body_lens,
                     2, &body_len)) == 0)
@@ -369,7 +369,7 @@ int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
     int2buff(flags, req->front.flags);
     out_bytes = ((char *)(dest_pentry + 1) + dest->ns.len +
             dest->path.len) - out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_rename_dentry(client_ctx, out_buff, out_bytes,
@@ -408,7 +408,7 @@ int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
     int2buff(flags, req->front.flags);
     out_bytes = ((char *)(dest_pentry + 1) + dest_ns->len +
             dest_pname->name.len) - out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_rename_dentry(client_ctx, out_buff, out_bytes,
@@ -429,7 +429,7 @@ static int setup_req_by_dentry_fullname(const FDIRDEntryFullName *fullname,
     }
     *out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
         + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
+    SF_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
     return 0;
 }
 
@@ -453,7 +453,7 @@ static int setup_req_by_dentry_pname(const FDIRDEntryPName *pname,
     memcpy(req->name_str, pname->name.str, pname->name.len);
     *out_bytes = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoStatDEntryByPNameReq) + pname->name.len;
-    FDIR_PROTO_SET_HEADER(header, req_cmd,
+    SF_PROTO_SET_HEADER(header, req_cmd,
             *out_bytes - sizeof(FDIRProtoHeader));
     return 0;
 }
@@ -465,7 +465,7 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
     ConnectionInfo *conn;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
         + NAME_MAX + PATH_MAX];
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int out_bytes;
     int result;
 
@@ -483,7 +483,7 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
+    if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     resp_cmd, in_buff, in_len)) != 0)
     {
@@ -535,7 +535,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
         string_t *link, const int size)
 {
     ConnectionInfo *conn;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     if ((conn=client_ctx->conn_manager.get_readable_connection(
@@ -546,7 +546,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_check_response_header(conn, out_buff, out_bytes,
+    if ((result=sf_send_and_check_response_header(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     expect_cmd)) == 0)
     {
@@ -618,7 +618,7 @@ static inline void setup_req_by_dentry_inode(const int64_t inode,
 
     header = (FDIRProtoHeader *)out_buff;
     *out_bytes = sizeof(FDIRProtoHeader) + 8;
-    FDIR_PROTO_SET_HEADER(header, req_cmd, 8);
+    SF_PROTO_SET_HEADER(header, req_cmd, 8);
     long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
 }
 
@@ -639,7 +639,7 @@ int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
         const int out_bytes, const int expect_cmd, FDIRDEntryInfo *dentry)
 {
     ConnectionInfo *conn;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int result;
 
@@ -651,7 +651,7 @@ int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, out_bytes,
+    if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, g_fdir_client_vars.network_timeout,
                     expect_cmd, (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
@@ -717,7 +717,7 @@ int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoCreateDEntryByPNameReq) + ns->len + pname->name.len;
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -757,7 +757,7 @@ int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSymlinkDEntryByNameReq) + ns->len +
         pname->name.len + link->len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -783,7 +783,7 @@ int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoRemoveDEntryByPName) +
         ns->len + pname->name.len;
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -819,7 +819,7 @@ int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
     memcpy(req + 1, ns->str, ns->len);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSetDentrySizeReq) + ns->len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -852,7 +852,7 @@ int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
     fdir_proto_pack_dentry_stat(stat, &req->stat);
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoModifyDentryStatReq) + ns->len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, out_buff, out_bytes,
@@ -897,7 +897,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
     FDIRProtoHeader *header;
     FDIRProtoFlockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoFlockDEntryReq)];
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     if (session->mconn == NULL) {
@@ -906,7 +906,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
 
     header = (FDIRProtoHeader *)out_buff;
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
             sizeof(FDIRProtoFlockDEntryReq));
     req = (FDIRProtoFlockDEntryReq *)(header + 1);
     int2buff(operation, req->operation);
@@ -918,7 +918,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(session->mconn, out_buff,
+    if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     sizeof(out_buff), &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
@@ -938,7 +938,7 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
     FDIRProtoGetlkDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoGetlkDEntryReq)];
     FDIRProtoGetlkDEntryResp getlk_resp;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     if ((conn=client_ctx->conn_manager.get_master_connection(
@@ -955,12 +955,12 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
     long2buff(*length, req->length);
     int2buff(*pid, req->pid);
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
             sizeof(FDIRProtoGetlkDEntryReq));
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP,
                     (char *)&getlk_resp, sizeof(getlk_resp))) == 0)
@@ -986,7 +986,7 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
     FDIRProtoSysLockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoSysLockDEntryReq)];
     FDIRProtoSysLockDEntryResp resp;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     if (session->mconn == NULL) {
@@ -998,12 +998,12 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
     long2buff(inode, req->inode);
     int2buff(flags, req->flags);
 
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ,
             sizeof(FDIRProtoSysLockDEntryReq));
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(session->mconn, out_buff,
+    if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     sizeof(out_buff), &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
                     (char *)&resp, sizeof(resp))) == 0)
@@ -1026,7 +1026,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
     FDIRProtoSysUnlockDEntryReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSysUnlockDEntryReq) + NAME_MAX];
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int new_flags;
     int pkg_len;
     int result;
@@ -1065,12 +1065,12 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
     }
     pkg_len = sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoSysUnlockDEntryReq) + req->ns_len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ,
             pkg_len - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_recv_response(session->mconn, out_buff, pkg_len,
+    if ((result=sf_send_and_recv_response(session->mconn, out_buff, pkg_len,
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
@@ -1081,7 +1081,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
     return result;
 }
 
-static int check_realloc_client_buffer(FDIRResponseInfo *response,
+static int check_realloc_client_buffer(SFResponseInfo *response,
         FDIRClientBuffer *buffer)
 {
     char *new_buff;
@@ -1111,7 +1111,7 @@ static int check_realloc_client_buffer(FDIRResponseInfo *response,
     return 0;
 }
 
-static int check_realloc_dentry_array(FDIRResponseInfo *response,
+static int check_realloc_dentry_array(SFResponseInfo *response,
         FDIRClientDentryArray *array, const int inc_count)
 {
     FDIRClientDentry *new_entries;
@@ -1152,7 +1152,7 @@ static int check_realloc_dentry_array(FDIRResponseInfo *response,
 }
 
 static int parse_list_dentry_response_body(ConnectionInfo *conn,
-        FDIRResponseInfo *response, FDIRClientDentryArray *array,
+        SFResponseInfo *response, FDIRClientDentryArray *array,
         string_t *next_token)
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
@@ -1242,7 +1242,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
 }
 
 static int deal_list_dentry_response_body(ConnectionInfo *conn,
-        FDIRResponseInfo *response, FDIRClientDentryArray *array,
+        SFResponseInfo *response, FDIRClientDentryArray *array,
         string_t *next_token)
 {
     int result;
@@ -1267,7 +1267,7 @@ static int deal_list_dentry_response_body(ConnectionInfo *conn,
 }
 
 static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
-        FDIRResponseInfo *response, FDIRClientDentryArray *array)
+        SFResponseInfo *response, FDIRClientDentryArray *array)
 {
     FDIRProtoHeader *header;
     FDIRProtoListDEntryNextBody *entry_body;
@@ -1281,11 +1281,11 @@ static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
         (out_buff + sizeof(FDIRProtoHeader));
     out_bytes = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoListDEntryNextBody);
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     memcpy(entry_body->token, next_token->str, next_token->len);
     int2buff(array->count, entry_body->offset);
-    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+    if ((result=sf_send_and_check_response_header(conn, out_buff,
                     out_bytes, response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
@@ -1297,7 +1297,7 @@ static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
 }
 
 static int deal_list_dentry_response(ConnectionInfo *conn,
-        FDIRResponseInfo *response, FDIRClientDentryArray *array)
+        SFResponseInfo *response, FDIRClientDentryArray *array)
 {
     string_t next_token;
     int result;
@@ -1322,7 +1322,7 @@ static int list_dentry(FDIRClientContext *client_ctx,
         char *out_buff, const int out_bytes, FDIRClientDentryArray *array)
 {
     ConnectionInfo *conn;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
 
     array->count = 0;
@@ -1338,7 +1338,7 @@ static int list_dentry(FDIRClientContext *client_ctx,
     }
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+    if ((result=sf_send_and_check_response_header(conn, out_buff,
                     out_bytes, &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
@@ -1374,7 +1374,7 @@ int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
 
     out_bytes = sizeof(FDIRProtoHeader) + sizeof(FDIRProtoListDEntryByPathBody)
         + fullname->ns.len + fullname->path.len;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return  list_dentry(client_ctx, out_buff, out_bytes, array);
 }
@@ -1389,7 +1389,7 @@ int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
     header = (FDIRProtoHeader *)out_buff;
     long2buff(inode, out_buff + sizeof(FDIRProtoHeader));
     out_bytes = sizeof(out_buff);
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return  list_dentry(client_ctx, out_buff, out_bytes, array);
 }
@@ -1401,7 +1401,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     ConnectionInfo *conn;
     ConnectionInfo target_conn;
     char out_buff[sizeof(FDIRProtoHeader)];
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoServiceStatResp stat_resp;
     int result;
 
@@ -1413,9 +1413,9 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_SERVICE_STAT_RESP,
                     (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
@@ -1458,7 +1458,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     char out_buff[sizeof(FDIRProtoHeader)];
     char fixed_buff[8 * 1024];
     char *in_buff;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
     int calc_size;
 
@@ -1469,11 +1469,11 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     in_buff = fixed_buff;
-    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+    if ((result=sf_send_and_check_response_header(conn, out_buff,
                     sizeof(out_buff), &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
     {
@@ -1547,7 +1547,7 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
     int result;
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
@@ -1557,9 +1557,9 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_MASTER_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_MASTER_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_GET_MASTER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
@@ -1582,7 +1582,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
     int result;
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
@@ -1592,9 +1592,9 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
-    if ((result=fdir_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
                     &response, g_fdir_client_vars.network_timeout,
                     FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
@@ -1623,7 +1623,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     char out_buff[sizeof(FDIRProtoHeader)];
     char fixed_buff[8 * 1024];
     char *in_buff;
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
     int calc_size;
 
@@ -1634,11 +1634,11 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     }
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_SLAVES_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_SLAVES_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     in_buff = fixed_buff;
-    if ((result=fdir_send_and_check_response_header(conn, out_buff,
+    if ((result=sf_send_and_check_response_header(conn, out_buff,
                     sizeof(out_buff), &response, g_fdir_client_vars.
                     network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
     {

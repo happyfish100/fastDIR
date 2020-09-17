@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
         result = sf_service_init_ex(&CLUSTER_SF_CTX,
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
-                fdir_proto_set_body_length, cluster_deal_task,
+                sf_proto_set_body_length, cluster_deal_task,
                 cluster_task_finish_cleanup, NULL, 1000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
         if (result != 0) {
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
         result = sf_service_init_ex(&g_sf_context,
                 service_alloc_thread_extra_data, NULL,
                 service_accep_done_callback,
-                fdir_proto_set_body_length, service_deal_task,
+                sf_proto_set_body_length, service_deal_task,
                 service_task_finish_cleanup, NULL, 1000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
         if (result != 0) {

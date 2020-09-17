@@ -1119,7 +1119,7 @@ int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
 }
 
 int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
-        FDIRErrorInfo *error_info)
+        SFErrorInfo *error_info)
 {
     FDIRServerDentry *current;
     string_t *parts[FDIR_MAX_PATH_COUNT];

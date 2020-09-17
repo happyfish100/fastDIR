@@ -191,6 +191,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
         return EEXIST;
     }
 
+    peer->last_change_version = -1;  //push cluster info to the slave
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
@@ -610,7 +611,7 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
 static inline void init_task_context(struct fast_task_info *task)
 {
     TASK_ARG->req_start_time = get_current_time_us();
-    RESPONSE.header.cmd = FDIR_PROTO_ACK;
+    RESPONSE.header.cmd = SF_PROTO_ACK;
     RESPONSE.header.body_len = 0;
     RESPONSE.header.status = 0;
     RESPONSE.error.length = 0;
@@ -717,8 +718,8 @@ int cluster_deal_task(struct fast_task_info *task)
         init_task_context(task);
 
         switch (REQUEST.header.cmd) {
-            case FDIR_PROTO_ACTIVE_TEST_REQ:
-                RESPONSE.header.cmd = FDIR_PROTO_ACTIVE_TEST_RESP;
+            case SF_PROTO_ACTIVE_TEST_REQ:
+                RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
                 result = cluster_deal_actvie_test(task);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
@@ -749,7 +750,7 @@ int cluster_deal_task(struct fast_task_info *task)
                 result = cluster_deal_push_binlog_resp(task);
                 TASK_ARG->context.need_response = false;
                 break;
-            case FDIR_PROTO_ACK:
+            case SF_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
                 TASK_ARG->context.need_response = false;
                 break;

@@ -357,7 +357,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
                 (ctx->task->data + sizeof(FDIRProtoHeader)))->count);
 
     ctx->task->length = p - ctx->task->data;
-    FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->data,
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->data,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP,
             ctx->task->length - sizeof(FDIRProtoHeader));
     sf_send_add_event(ctx->task);

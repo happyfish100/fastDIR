@@ -242,7 +242,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server);
 
 
-static inline void fdir_log_network_error_ex(FDIRResponseInfo *response,
+static inline void fdir_log_network_error_ex(SFResponseInfo *response,
         const ConnectionInfo *conn, const int result, const int line)
 {
     if (response->error.length > 0) {

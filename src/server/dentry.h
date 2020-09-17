@@ -33,7 +33,7 @@ extern "C" {
             const string_t *name, FDIRServerDentry **dentry);
 
     int dentry_get_full_path(const FDIRServerDentry *dentry,
-            BufferInfo *full_path, FDIRErrorInfo *error_info);
+            BufferInfo *full_path, SFErrorInfo *error_info);
 
     int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array);
 

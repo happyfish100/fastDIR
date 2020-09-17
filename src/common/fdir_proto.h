@@ -6,14 +6,10 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/connection_pool.h"
 #include "fastcommon/ini_file_reader.h"
+#include "sf/sf_proto.h"
 #include "fdir_types.h"
 
 #define FDIR_STATUS_MASTER_INCONSISTENT     9999
-
-#define FDIR_PROTO_ACK                      6
-
-#define FDIR_PROTO_ACTIVE_TEST_REQ         11
-#define FDIR_PROTO_ACTIVE_TEST_RESP        12
 
 //service commands
 #define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ        15
@@ -98,45 +94,7 @@
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          93
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         94
 
-#define FDIR_PROTO_MAGIC_CHAR        '#'
-#define FDIR_PROTO_SET_MAGIC(m)   \
-    m[0] = m[1] = m[2] = m[3] = FDIR_PROTO_MAGIC_CHAR
-
-#define FDIR_PROTO_CHECK_MAGIC(m) \
-    (m[0] == FDIR_PROTO_MAGIC_CHAR && m[1] == FDIR_PROTO_MAGIC_CHAR && \
-     m[2] == FDIR_PROTO_MAGIC_CHAR && m[3] == FDIR_PROTO_MAGIC_CHAR)
-
-#define FDIR_PROTO_MAGIC_FORMAT "0x%02X%02X%02X%02X"
-#define FDIR_PROTO_MAGIC_EXPECT_PARAMS \
-    FDIR_PROTO_MAGIC_CHAR, FDIR_PROTO_MAGIC_CHAR, \
-    FDIR_PROTO_MAGIC_CHAR, FDIR_PROTO_MAGIC_CHAR
-
-#define FDIR_PROTO_MAGIC_PARAMS(m) \
-    m[0], m[1], m[2], m[3]
-
-#define FDIR_PROTO_SET_HEADER(header, _cmd, _body_len) \
-    do {  \
-        FDIR_PROTO_SET_MAGIC((header)->magic);   \
-        (header)->cmd = _cmd;      \
-        (header)->status[0] = (header)->status[1] = 0; \
-        int2buff(_body_len, (header)->body_len); \
-    } while (0)
-
-#define FDIR_PROTO_SET_RESPONSE_HEADER(proto_header, resp_header) \
-    do {  \
-        (proto_header)->cmd = (resp_header).cmd;       \
-        short2buff((resp_header).status, (proto_header)->status);  \
-        int2buff((resp_header).body_len, (proto_header)->body_len);\
-    } while (0)
-
-typedef struct fdir_proto_header {
-    unsigned char magic[4]; //magic number
-    char body_len[4];       //body length
-    char status[2];         //status to store errno
-    char flags[2];
-    unsigned char cmd;      //the command code
-    char padding[3];
-} FDIRProtoHeader;
+typedef SFCommonProtoHeader  FDIRProtoHeader;
 
 typedef struct fdir_proto_dentry_info {
     unsigned char ns_len;  //namespace length
@@ -469,71 +427,6 @@ extern "C" {
 
 void fdir_proto_init();
 
-int fdir_proto_set_body_length(struct fast_task_info *task);
-
-int fdir_check_response(ConnectionInfo *conn, FDIRResponseInfo *response,
-        const int network_timeout, const unsigned char expect_cmd);
-
-int fdir_send_and_recv_response_header(ConnectionInfo *conn, char *data,
-        const int len, FDIRResponseInfo *response, const int network_timeout);
-
-static inline int fdir_send_and_check_response_header(ConnectionInfo *conn,
-        char *data, const int len, FDIRResponseInfo *response,
-        const int network_timeout,  const unsigned char expect_cmd)
-{
-    int result;
-
-    if ((result=fdir_send_and_recv_response_header(conn, data, len,
-                    response, network_timeout)) != 0)
-    {
-        return result;
-    }
-
-
-    if ((result=fdir_check_response(conn, response, network_timeout,
-                    expect_cmd)) != 0)
-    {
-        return result;
-    }
-
-    return 0;
-}
-
-int fdir_send_and_recv_response_ex(ConnectionInfo *conn, char *send_data,
-        const int send_len, FDIRResponseInfo *response,
-        const int network_timeout, const unsigned char expect_cmd,
-        char *recv_data, const int *expect_body_lens,
-        const int expect_body_len_count, int *body_len);
-
-static inline int fdir_send_and_recv_response(ConnectionInfo *conn,
-        char *send_data, const int send_len, FDIRResponseInfo *response,
-        const int network_timeout, const unsigned char expect_cmd,
-        char *recv_data, const int expect_body_len)
-{
-    return fdir_send_and_recv_response_ex(conn, send_data, send_len, response,
-            network_timeout, expect_cmd, recv_data, &expect_body_len, 1, NULL);
-}
-
-static inline int fdir_send_and_recv_none_body_response(ConnectionInfo *conn,
-        char *send_data, const int send_len, FDIRResponseInfo *response,
-        const int network_timeout, const unsigned char expect_cmd)
-{
-    char *recv_data = NULL;
-    const int expect_body_len = 0;
-
-    return fdir_send_and_recv_response(conn, send_data, send_len, response,
-        network_timeout, expect_cmd, recv_data, expect_body_len);
-}
-
-static inline void fdir_proto_extract_header(const FDIRProtoHeader *proto,
-        FDIRHeaderInfo *info)
-{
-    info->cmd = proto->cmd;
-    info->body_len = buff2int(proto->body_len);
-    info->flags = buff2short(proto->flags);
-    info->status = buff2short(proto->status);
-}
-
 static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStatus *stat,
         FDIRProtoDEntryStat *proto, const bool server_side)
 {
@@ -573,7 +466,7 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->space_end = buff2long(proto->space_end);
 }
 
-int fdir_active_test(ConnectionInfo *conn, FDIRResponseInfo *response,
+int fdir_active_test(ConnectionInfo *conn, SFResponseInfo *response,
         const int network_timeout);
 
 const char *fdir_get_server_status_caption(const int status);

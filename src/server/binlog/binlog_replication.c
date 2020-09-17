@@ -294,7 +294,7 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
 	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinSlaveReq)];
 
     header = (FDIRProtoHeader *)out_buff;
-    FDIR_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoJoinSlaveReq *)(out_buff + sizeof(FDIRProtoHeader));
@@ -592,7 +592,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
             body_header->binlog_length);
     long2buff(last_data_version, body_header->last_data_version);
 
-    FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
     sf_send_add_event(replication->task);
 
@@ -652,7 +652,7 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
     body_header = (FDIRProtoPushBinlogReqBodyHeader *)
         (replication->task->data + sizeof(FDIRProtoHeader));
     body_len = sizeof(FDIRProtoPushBinlogReqBodyHeader) + r->buffer.length;
-    FDIR_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
 
     int2buff(r->buffer.length, body_header->binlog_length);

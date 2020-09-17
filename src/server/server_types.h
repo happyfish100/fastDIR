@@ -194,8 +194,8 @@ typedef struct server_task_arg {
     int64_t req_start_time;
 
     struct {
-        FDIRRequestInfo request;
-        FDIRResponseInfo response;
+        SFRequestInfo request;
+        SFResponseInfo response;
         int (*deal_func)(struct fast_task_info *task);
         bool response_done;
         bool log_error;

@@ -130,7 +130,7 @@ static void close_connection(FDIRClientContext *client_ctx,
 
 static int validate_connection_callback(ConnectionInfo *conn, void *args)
 {
-    FDIRResponseInfo response;
+    SFResponseInfo response;
     int result;
     if ((result=fdir_active_test(conn, &response, g_fdir_client_vars.
                     network_timeout)) != 0)

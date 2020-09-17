@@ -383,7 +383,7 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    if ((result=sf_load_config_ex("fdir_serverd", filename, &ini_context,
+    if ((result=sf_load_config("fdir_serverd", filename, &ini_context,
                     "service", FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
     {
