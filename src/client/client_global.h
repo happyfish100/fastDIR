@@ -6,8 +6,6 @@
 #include "client_types.h"
 
 typedef struct fdir_client_global_vars {
-    int connect_timeout;
-    int network_timeout;
     char base_path[MAX_PATH_SIZE];
 
     FDIRClientContext client_ctx;

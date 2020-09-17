@@ -466,9 +466,6 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->space_end = buff2long(proto->space_end);
 }
 
-int fdir_active_test(ConnectionInfo *conn, SFResponseInfo *response,
-        const int network_timeout);
-
 const char *fdir_get_server_status_caption(const int status);
 
 const char *fdir_get_cmd_caption(const int cmd);

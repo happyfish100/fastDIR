@@ -33,27 +33,6 @@ typedef struct fdir_cluster_server_status {
     int64_t data_version;
 } FDIRClusterServerStatus;
 
-static void fdir_log_network_error_ex(const ConnectionInfo *conn,
-        const SFResponseInfo *response, const int line,
-        const char *func, const int result)
-{
-    if (response->error.length > 0) {
-        logError("file: "__FILE__", line: %d, func: %s, "
-                "server %s:%d, %s", line, func,
-                conn->ip_addr, conn->port,
-                response->error.message);
-    } else {
-        logError("file: "__FILE__", line: %d, func: %s, "
-                "communicate with server %s:%d fail, "
-                "errno: %d, error info: %s",
-                line, func, conn->ip_addr, conn->port,
-                result, STRERROR(result));
-    }
-}
-
-#define fdir_log_network_error(conn, response, result) \
-    fdir_log_network_error_ex(conn, response, __LINE__, __FUNCTION__, result)
-
 static int proto_get_server_status(ConnectionInfo *conn,
         FDIRClusterServerStatus *server_status)
 {
@@ -78,7 +57,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
 			sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
             FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP)) != 0)
     {
-        fdir_log_network_error(conn, &response, result);
+        sf_log_network_error(&response, conn, result);
         return result;
     }
 
@@ -145,7 +124,7 @@ static int proto_join_master(ConnectionInfo *conn)
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     SF_PROTO_ACK)) != 0)
     {
-        fdir_log_network_error(conn, &response, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -201,7 +180,7 @@ static int proto_ping_master(ConnectionInfo *conn)
     }
 
     if (result != 0) {
-        fdir_log_network_error(conn, &response, result);
+        sf_log_network_error(&response, conn, result);
         return result;
     }
 
@@ -375,7 +354,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     SF_PROTO_ACK)) != 0)
     {
-        fdir_log_network_error(&conn, &response, result);
+        sf_log_network_error(&response, &conn, result);
     }
 
     conn_pool_disconnect_server(&conn);

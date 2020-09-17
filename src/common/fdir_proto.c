@@ -11,17 +11,6 @@ void fdir_proto_init()
 {
 }
 
-int fdir_active_test(ConnectionInfo *conn, SFResponseInfo *response,
-        const int network_timeout)
-{
-    FDIRProtoHeader fdir_header_proto;
-
-    SF_PROTO_SET_HEADER(&fdir_header_proto, SF_PROTO_ACTIVE_TEST_REQ, 0);
-    return sf_send_and_recv_none_body_response(conn,
-            (char *)&fdir_header_proto, sizeof(FDIRProtoHeader), response,
-            network_timeout, SF_PROTO_ACTIVE_TEST_RESP);
-}
-
 const char *fdir_get_server_status_caption(const int status)
 {
 

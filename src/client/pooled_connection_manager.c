@@ -132,16 +132,17 @@ static int validate_connection_callback(ConnectionInfo *conn, void *args)
 {
     SFResponseInfo response;
     int result;
-    if ((result=fdir_active_test(conn, &response, g_fdir_client_vars.
-                    network_timeout)) != 0)
+    if ((result=sf_active_test(conn, &response, ((FDIRClientContext *)
+                        args)->network_timeout)) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     return result;
 }
 
-int fdir_pooled_connection_manager_init(FDIRConnectionManager *conn_manager,
+int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
+        FDIRConnectionManager *conn_manager,
         const int max_count_per_entry, const int max_idle_time)
 {
     const int socket_domain = AF_INET;
@@ -154,10 +155,10 @@ int fdir_pooled_connection_manager_init(FDIRConnectionManager *conn_manager,
         return ENOMEM;
     }
 
-    if ((result=conn_pool_init_ex1(cp, g_fdir_client_vars.connect_timeout,
+    if ((result=conn_pool_init_ex1(cp, client_ctx->connect_timeout,
                     max_count_per_entry, max_idle_time, socket_domain,
                     htable_init_capacity, NULL, NULL,
-                    validate_connection_callback, NULL, 0)) != 0)
+                    validate_connection_callback, client_ctx, 0)) != 0)
     {
         return result;
     }

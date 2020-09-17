@@ -130,13 +130,13 @@ static int do_update_dentry(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     expect_cmd, (char *)&proto_stat,
                     sizeof(proto_stat))) == 0)
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -325,7 +325,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response_ex(conn, out_buff, out_bytes,
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     expect_cmd, (char *)&proto_stat, expect_body_lens,
                     2, &body_len)) == 0)
     {
@@ -335,7 +335,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
             *dentry = NULL;
         }
     } else {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -484,10 +484,10 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     resp_cmd, in_buff, in_len)) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -547,7 +547,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_check_response_header(conn, out_buff, out_bytes,
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     expect_cmd)) == 0)
     {
         if (response.header.body_len >= size) {
@@ -559,14 +559,14 @@ static int do_readlink(FDIRClientContext *client_ctx,
         }
 
         if ((result=tcprecvdata_nb_ex(conn->sock, link->str, response.header.
-                body_len, g_fdir_client_vars.network_timeout, &link->len)) == 0)
+                body_len, client_ctx->network_timeout, &link->len)) == 0)
         {
             *(link->str + link->len) = '\0';
         }
     }
 
     if (result != 0) {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -652,12 +652,12 @@ int do_stat_dentry(FDIRClientContext *client_ctx, char *out_buff,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     expect_cmd, (char *)&proto_stat, sizeof(proto_stat))) == 0)
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -919,11 +919,11 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
-                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    sizeof(out_buff), &response, session->ctx->
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        fdir_log_network_error(&response, session->mconn, result);
+        sf_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -961,7 +961,7 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP,
                     (char *)&getlk_resp, sizeof(getlk_resp))) == 0)
     {
@@ -971,7 +971,7 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         *owner_id = buff2long(getlk_resp.owner.id);
         *pid = buff2int(getlk_resp.owner.pid);
     } else {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -1004,14 +1004,14 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
-                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    sizeof(out_buff), &response, session->ctx->
                     network_timeout, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
                     (char *)&resp, sizeof(resp))) == 0)
     {
         *file_size = buff2long(resp.size);
         *space_end = buff2long(resp.space_end);
     } else {
-        fdir_log_network_error(&response, session->mconn, result);
+        sf_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -1070,12 +1070,12 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
 
     response.error.length = 0;
     response.error.message[0] = '\0';
-    if ((result=sf_send_and_recv_response(session->mconn, out_buff, pkg_len,
-                    &response, g_fdir_client_vars.network_timeout,
+    if ((result=sf_send_and_recv_response(session->mconn, out_buff,
+                    pkg_len, &response, session->ctx->network_timeout,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        fdir_log_network_error(&response, session->mconn, result);
+        sf_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -1241,9 +1241,9 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
     return 0;
 }
 
-static int deal_list_dentry_response_body(ConnectionInfo *conn,
-        SFResponseInfo *response, FDIRClientDentryArray *array,
-        string_t *next_token)
+static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, SFResponseInfo *response,
+        FDIRClientDentryArray *array, string_t *next_token)
 {
     int result;
     if ((result=check_realloc_client_buffer(response, &array->buffer)) != 0) {
@@ -1251,7 +1251,7 @@ static int deal_list_dentry_response_body(ConnectionInfo *conn,
     }
 
     if ((result=tcprecvdata_nb(conn->sock, array->buffer.buff,
-                    response->header.body_len, g_fdir_client_vars.
+                    response->header.body_len, client_ctx->
                     network_timeout)) != 0)
     {
         response->error.length = snprintf(response->error.message,
@@ -1266,7 +1266,8 @@ static int deal_list_dentry_response_body(ConnectionInfo *conn,
     return parse_list_dentry_response_body(conn, response, array, next_token);
 }
 
-static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
+static int do_list_dentry_next(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, string_t *next_token,
         SFResponseInfo *response, FDIRClientDentryArray *array)
 {
     FDIRProtoHeader *header;
@@ -1286,31 +1287,33 @@ static int do_list_dentry_next(ConnectionInfo *conn, string_t *next_token,
     memcpy(entry_body->token, next_token->str, next_token->len);
     int2buff(array->count, entry_body->offset);
     if ((result=sf_send_and_check_response_header(conn, out_buff,
-                    out_bytes, response, g_fdir_client_vars.
+                    out_bytes, response, client_ctx->
                     network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
-        return deal_list_dentry_response_body(conn, response,
-                    array, next_token);
+        return deal_list_dentry_response_body(client_ctx,
+                conn, response, array, next_token);
     }
 
     return result;
 }
 
-static int deal_list_dentry_response(ConnectionInfo *conn,
-        SFResponseInfo *response, FDIRClientDentryArray *array)
+static int deal_list_dentry_response(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, SFResponseInfo *response,
+        FDIRClientDentryArray *array)
 {
     string_t next_token;
     int result;
 
-    if ((result=deal_list_dentry_response_body(conn, response,
-                    array, &next_token)) != 0)
+    if ((result=deal_list_dentry_response_body(client_ctx, conn,
+                    response, array, &next_token)) != 0)
     {
         return result;
     }
 
     while (next_token.len > 0) {
-        if ((result=do_list_dentry_next(conn, &next_token,
-                        response, array)) != 0) {
+        if ((result=do_list_dentry_next(client_ctx, conn,
+                        &next_token, response, array)) != 0)
+        {
             break;
         }
     }
@@ -1318,8 +1321,8 @@ static int deal_list_dentry_response(ConnectionInfo *conn,
     return result;
 }
 
-static int list_dentry(FDIRClientContext *client_ctx,
-        char *out_buff, const int out_bytes, FDIRClientDentryArray *array)
+static int list_dentry(FDIRClientContext *client_ctx, char *out_buff,
+        const int out_bytes, FDIRClientDentryArray *array)
 {
     ConnectionInfo *conn;
     SFResponseInfo response;
@@ -1339,14 +1342,14 @@ static int list_dentry(FDIRClientContext *client_ctx,
     response.error.length = 0;
     response.error.message[0] = '\0';
     if ((result=sf_send_and_check_response_header(conn, out_buff,
-                    out_bytes, &response, g_fdir_client_vars.
+                    out_bytes, &response, client_ctx->
                     network_timeout, FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
-        result = deal_list_dentry_response(conn, &response, array);
+        result = deal_list_dentry_response(client_ctx, conn, &response, array);
     }
 
     if (result != 0) {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -1416,11 +1419,11 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_SERVICE_STAT_RESP,
                     (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     }
 
     fdir_client_release_connection(client_ctx, conn, result);
@@ -1474,7 +1477,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
 
     in_buff = fixed_buff;
     if ((result=sf_send_and_check_response_header(conn, out_buff,
-                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    sizeof(out_buff), &response, client_ctx->
                     network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(fixed_buff)) {
@@ -1488,7 +1491,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
 
         if (result == 0) {
             result = tcprecvdata_nb(conn->sock, in_buff,
-                    response.header.body_len, g_fdir_client_vars.
+                    response.header.body_len, client_ctx->
                     network_timeout);
         }
     }
@@ -1518,7 +1521,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (stat=stats; body_part<body_end; body_part++, stat++) {
@@ -1560,11 +1563,11 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_MASTER_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_GET_MASTER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     } else {
         master->server_id = buff2int(server_resp.server_id);
         memcpy(master->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
@@ -1595,11 +1598,11 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, g_fdir_client_vars.network_timeout,
+                    &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     } else {
         server->server_id = buff2int(server_resp.server_id);
         memcpy(server->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
@@ -1639,7 +1642,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 
     in_buff = fixed_buff;
     if ((result=sf_send_and_check_response_header(conn, out_buff,
-                    sizeof(out_buff), &response, g_fdir_client_vars.
+                    sizeof(out_buff), &response, client_ctx->
                     network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(fixed_buff)) {
@@ -1653,7 +1656,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 
         if (result == 0) {
             result = tcprecvdata_nb(conn->sock, in_buff,
-                    response.header.body_len, g_fdir_client_vars.
+                    response.header.body_len, client_ctx->
                     network_timeout);
         }
     }
@@ -1683,7 +1686,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        fdir_log_network_error(&response, conn, result);
+        sf_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (slave=slaves; body_part<body_end; body_part++, slave++) {

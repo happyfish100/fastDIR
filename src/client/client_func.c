@@ -94,6 +94,7 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx)
 {
     char *pBasePath;
+    char net_retry_output[256];
     int result;
 
     pBasePath = iniGetStrValue(NULL, "base_path", ini_ctx->context);
@@ -119,17 +120,21 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         }
     }
 
-    g_fdir_client_vars.connect_timeout = iniGetIntValue(ini_ctx->section_name,
-            "connect_timeout", ini_ctx->context, DEFAULT_CONNECT_TIMEOUT);
-    if (g_fdir_client_vars.connect_timeout <= 0) {
-        g_fdir_client_vars.connect_timeout = DEFAULT_CONNECT_TIMEOUT;
+    client_ctx->connect_timeout = iniGetIntValueEx(
+            ini_ctx->section_name, "connect_timeout",
+            ini_ctx->context, DEFAULT_CONNECT_TIMEOUT, true);
+    if (client_ctx->connect_timeout <= 0) {
+        client_ctx->connect_timeout = DEFAULT_CONNECT_TIMEOUT;
     }
 
-    g_fdir_client_vars.network_timeout = iniGetIntValue(ini_ctx->section_name,
-            "network_timeout", ini_ctx->context, DEFAULT_NETWORK_TIMEOUT);
-    if (g_fdir_client_vars.network_timeout <= 0) {
-        g_fdir_client_vars.network_timeout = DEFAULT_NETWORK_TIMEOUT;
+    client_ctx->network_timeout = iniGetIntValueEx(
+            ini_ctx->section_name, "network_timeout",
+            ini_ctx->context, DEFAULT_NETWORK_TIMEOUT, true);
+    if (client_ctx->network_timeout <= 0) {
+        client_ctx->network_timeout = DEFAULT_NETWORK_TIMEOUT;
     }
+
+    sf_load_read_rule_config(&client_ctx->read_rule, ini_ctx);
 
     if ((result=fdir_load_server_group_ex(&client_ctx->
                     server_group, ini_ctx)) != 0)
@@ -137,19 +142,29 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         return result;
     }
 
-#ifdef DEBUG_FLAG
+    if ((result=sf_load_net_retry_config(&client_ctx->
+                    net_retry_cfg, ini_ctx)) != 0)
+    {
+        return result;
+    }
+
+    sf_net_retry_config_to_string(&client_ctx->net_retry_cfg,
+            net_retry_output, sizeof(net_retry_output));
+
     logDebug("FastDIR v%d.%02d, "
             "base_path=%s, "
             "connect_timeout=%d, "
             "network_timeout=%d, "
+            "read_rule: %s, %s, "
             "dir_server_count=%d",
             g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_client_vars.base_path,
-            g_fdir_client_vars.connect_timeout,
-            g_fdir_client_vars.network_timeout,
+            client_ctx->connect_timeout,
+            client_ctx->network_timeout,
+            sf_get_read_rule_caption(client_ctx->read_rule),
+            net_retry_output,
             client_ctx->server_group.count);
-#endif
 
     return 0;
 }
@@ -244,7 +259,7 @@ int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if ((result=fdir_pooled_connection_manager_init(
+    if ((result=fdir_pooled_connection_manager_init(client_ctx,
                     &client_ctx->conn_manager, max_count_per_entry,
                     max_idle_time)) != 0)
     {

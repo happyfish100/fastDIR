@@ -7,14 +7,14 @@
 #include "client_proto.h"
 #include "simple_connection_manager.h"
 
-static inline int make_connection(ConnectionInfo *conn)
+static inline int make_connection(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn)
 {
     if (conn->sock >= 0) {
         return 0;
     }
 
-    return conn_pool_connect_server(conn, g_fdir_client_vars.
-            connect_timeout);
+    return conn_pool_connect_server(conn, client_ctx->connect_timeout);
 }
 
 static int check_realloc_group_servers(FDIRServerGroup *server_group)
@@ -74,7 +74,7 @@ static ConnectionInfo *get_spec_connection(FDIRClientContext *client_ctx,
         conn_pool_set_server_info(conn, target->ip_addr, target->port);
     }
 
-    if ((*err_no=make_connection(conn)) != 0) {
+    if ((*err_no=make_connection(client_ctx, conn)) != 0) {
         return NULL;
     }
     return conn;

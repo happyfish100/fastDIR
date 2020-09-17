@@ -241,28 +241,6 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server);
 
-
-static inline void fdir_log_network_error_ex(SFResponseInfo *response,
-        const ConnectionInfo *conn, const int result, const int line)
-{
-    if (response->error.length > 0) {
-        logError("file: "__FILE__", line: %d, "
-                "server %s:%d, sock fd: %d, %s", line,
-                conn->ip_addr, conn->port, conn->sock,
-                response->error.message);
-    } else {
-        logError("file: "__FILE__", line: %d, "
-                "communicate with dir server %s:%d fail, "
-                "sock fd: %d, errno: %d, error info: %s", line,
-                conn->ip_addr, conn->port, conn->sock,
-                result, STRERROR(result));
-    }
-}
-
-#define fdir_log_network_error(response, conn, result) \
-        fdir_log_network_error_ex(response, conn, result, __LINE__)
-
-
 #ifdef __cplusplus
 }
 #endif

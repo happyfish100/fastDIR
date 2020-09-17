@@ -3,6 +3,7 @@
 
 #include "fastcommon/common_define.h"
 #include "fastcommon/connection_pool.h"
+#include "sf/sf_configs.h"
 #include "fdir_types.h"
 
 struct fdir_client_context;
@@ -75,6 +76,11 @@ typedef struct fdir_client_context {
     FDIRConnectionManager conn_manager;
     FDIRClientConnManagerType conn_manager_type;
     bool cloned;
+    bool idempotency_enabled;
+    SFDataReadRule read_rule;  //the rule for read
+    int connect_timeout;
+    int network_timeout;
+    SFNetRetryConfig net_retry_cfg;
 } FDIRClientContext;
 
 #endif
