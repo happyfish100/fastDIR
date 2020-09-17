@@ -154,7 +154,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     replication->context.sync_by_disk_stat.binlog_size = 0;
     replication->context.sync_by_disk_stat.record_count = 0;
 
-    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER;
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_MASTER;
     CLUSTER_REPLICA = replication;
     replication->connection_info.conn.sock = -1;
     replication->task = task;

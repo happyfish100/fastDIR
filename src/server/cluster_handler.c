@@ -45,28 +45,28 @@ int cluster_handler_destroy()
 
 void cluster_task_finish_cleanup(struct fast_task_info *task)
 {
-    switch (CLUSTER_TASK_TYPE) {
-        case FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP:
+    switch (SERVER_TASK_TYPE) {
+        case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
                 CLUSTER_PEER = NULL;
             }
-            CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
+            SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
-        case  FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER:
+        case  FDIR_SERVER_TASK_TYPE_REPLICA_MASTER:
             if (CLUSTER_REPLICA != NULL) {
                 binlog_replication_rebind_thread(CLUSTER_REPLICA);
                 CLUSTER_REPLICA = NULL;
             }
-            CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
+            SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
-        case FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE:
+        case FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE:
             if (CLUSTER_CONSUMER_CTX != NULL) {
                 replica_consumer_thread_terminate(CLUSTER_CONSUMER_CTX);
                 CLUSTER_CONSUMER_CTX = NULL;
                 ((FDIRServerContext *)task->thread_data->arg)->
                     cluster.consumer_ctx = NULL;
             }
-            CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_NONE;
+            SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
         default:
             break;
@@ -193,7 +193,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
 
     peer->last_change_version = -1;  //push cluster info to the slave
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
-    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP;
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
     return 0;
 }
@@ -298,11 +298,11 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return result;
     }
 
-    if (CLUSTER_TASK_TYPE != FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE) {
+    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
-                "invalid task type: %d != %d", CLUSTER_TASK_TYPE,
-                FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE);
+                "invalid task type: %d != %d", SERVER_TASK_TYPE,
+                FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE);
         return -EINVAL;
     }
     if (CLUSTER_CONSUMER_CTX == NULL) {
@@ -334,11 +334,11 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 
 static inline int cluster_check_replication_task(struct fast_task_info *task)
 {
-    if (CLUSTER_TASK_TYPE != FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER) {
+    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_MASTER) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
-                "invalid task type: %d != %d", CLUSTER_TASK_TYPE,
-                FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER);
+                "invalid task type: %d != %d", SERVER_TASK_TYPE,
+                FDIR_SERVER_TASK_TYPE_REPLICA_MASTER);
         return EINVAL;
     }
 
@@ -509,7 +509,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EEXIST;
     }
 
-    CLUSTER_TASK_TYPE = FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE;
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE;
     CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
          BINLOG_BUFFER_INIT_SIZE, &result);
     if (CLUSTER_CONSUMER_CTX == NULL) {

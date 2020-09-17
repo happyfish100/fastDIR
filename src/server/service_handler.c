@@ -22,6 +22,8 @@
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
 #include "sf/sf_global.h"
+#include "sf/idempotency/server/server_channel.h"
+#include "sf/idempotency/server/server_handler.h"
 #include "common/fdir_proto.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_pack.h"
@@ -98,6 +100,48 @@ void service_task_finish_cleanup(struct fast_task_info *task)
 static int service_deal_actvie_test(struct fast_task_info *task)
 {
     return server_expect_body_length(task, 0);
+}
+
+static int service_deal_client_join(struct fast_task_info *task)
+{
+    int result;
+    uint32_t channel_id;
+    int key;
+    int flags;
+    FDIRProtoClientJoinReq *req;
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoClientJoinReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoClientJoinReq *)REQUEST.body;
+    flags = buff2int(req->flags);
+    channel_id = buff2int(req->idempotency.channel_id);
+    key = buff2int(req->idempotency.key);
+    if ((flags & FDIR_CLIENT_JOIN_FLAGS_IDEMPOTENCY_REQUEST) != 0) {
+        if (IDEMPOTENCY_CHANNEL != NULL) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "channel already exist, the channel id: %d",
+                    IDEMPOTENCY_CHANNEL->id);
+            return EEXIST;
+        }
+
+        IDEMPOTENCY_CHANNEL = idempotency_channel_find_and_hold(
+                channel_id, key, &result);
+        if (IDEMPOTENCY_CHANNEL == NULL) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "find channel fail, channel id: %d, result: %d",
+                    channel_id, result);
+            return SF_RETRIABLE_ERROR_NO_CHANNEL;
+        }
+
+        SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_CHANNEL_USER;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP;
+    return 0;
 }
 
 static int service_deal_service_stat(struct fast_task_info *task)
@@ -502,6 +546,19 @@ static inline void free_record_object(struct fast_task_info *task)
     RECORD = NULL;
 }
 
+void service_idempotency_request_finish(struct fast_task_info *task,
+        const int result)
+{
+    if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
+            IDEMPOTENCY_REQUEST != NULL)
+    {
+        IDEMPOTENCY_REQUEST->finished = true;
+        IDEMPOTENCY_REQUEST->output.result = result;
+        idempotency_request_release(IDEMPOTENCY_REQUEST);
+        IDEMPOTENCY_REQUEST = NULL;
+    }
+}
+
 static int server_binlog_produce(struct fast_task_info *task)
 {
     ServerBinlogRecordBuffer *rbuffer;
@@ -753,6 +810,47 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
 
     return service_set_record_pname_info(task,
             sizeof(FDIRProtoStatDEntryResp));
+}
+
+static int service_update_prepare_and_check(struct fast_task_info *task,
+        bool *deal_done)
+{
+    if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
+            IDEMPOTENCY_CHANNEL != NULL)
+    {
+        IdempotencyRequest *request;
+        int result;
+
+        request = sf_server_update_prepare_and_check(
+                task, &SERVER_CTX->service.request_allocator,
+                IDEMPOTENCY_CHANNEL, &RESPONSE, &result);
+        if (request != NULL) {
+            if (result != 0) {
+                if (result == EEXIST) { //found
+                    result = request->output.result;
+
+                    //TODO
+                    /*
+                       du_handler_fill_slice_update_response(task,
+                       ((FSUpdateOutput *)request->output.
+                       response)->inc_alloc);
+                     */
+                }
+
+                fast_mblock_free_object(request->allocator, request);
+                *deal_done = true;
+                return result;
+            }
+        } else {
+            *deal_done = true;
+            return result;
+        }
+
+        IDEMPOTENCY_REQUEST = request;
+    }
+
+    *deal_done = false;
+    return 0;
 }
 
 static int service_deal_create_dentry(struct fast_task_info *task)
@@ -2250,6 +2348,9 @@ int service_deal_task(struct fast_task_info *task)
                 RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
                 result = service_deal_actvie_test(task);
                 break;
+            case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
+                result = service_deal_client_join(task);
+                break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_create_dentry(task);
@@ -2415,6 +2516,7 @@ int service_deal_task(struct fast_task_info *task)
 void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
+    int element_size;
 
     server_context = (FDIRServerContext *)fc_malloc(sizeof(FDIRServerContext));
     if (server_context == NULL) {
@@ -2425,6 +2527,16 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
                 0, NULL, NULL, false) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+
+    element_size = sizeof(IdempotencyRequest) + sizeof(FDIRDEntryInfo);
+    if (fast_mblock_init_ex1(&server_context->service.request_allocator,
+                "idempotency_request", element_size,
+                1024, 0, idempotency_request_alloc_init,
+                &server_context->service.request_allocator, true) != 0)
     {
         free(server_context);
         return NULL;

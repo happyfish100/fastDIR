@@ -10,6 +10,7 @@
 #include "fastcommon/uniq_skiplist.h"
 #include "fastcommon/server_id_func.h"
 #include "fastcommon/fc_list.h"
+#include "sf/idempotency/server/server_types.h"
 #include "common/fdir_types.h"
 
 #define FDIR_CLUSTER_ID_BITS                 10
@@ -22,10 +23,9 @@
 #define FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT     163
 #define FDIR_DEFAULT_DATA_THREAD_COUNT              1
 
-#define FDIR_CLUSTER_TASK_TYPE_NONE               0
-#define FDIR_CLUSTER_TASK_TYPE_RELATIONSHIP       1   //slave  -> master
-#define FDIR_CLUSTER_TASK_TYPE_REPLICA_MASTER     2   //[Master] -> slave
-#define FDIR_CLUSTER_TASK_TYPE_REPLICA_SLAVE      3   //master -> [Slave]
+#define FDIR_SERVER_TASK_TYPE_RELATIONSHIP       1   //slave  -> master
+#define FDIR_SERVER_TASK_TYPE_REPLICA_MASTER     2   //[Master] -> slave
+#define FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE      3   //master -> [Slave]
 
 #define FDIR_REPLICATION_STAGE_NONE               0
 #define FDIR_REPLICATION_STAGE_CONNECTING         1
@@ -48,7 +48,11 @@
 #define CLUSTER_PEER      TASK_ARG->context.cluster.peer
 #define CLUSTER_REPLICA   TASK_ARG->context.cluster.replica
 #define CLUSTER_CONSUMER_CTX  TASK_ARG->context.cluster.consumer_ctx
-#define CLUSTER_TASK_TYPE TASK_ARG->context.cluster.task_type
+#define SERVER_TASK_TYPE  TASK_ARG->context.task_type
+#define IDEMPOTENCY_CHANNEL  TASK_ARG->context.service.idempotency_channel
+#define IDEMPOTENCY_REQUEST  TASK_ARG->context.service.idempotency_request
+
+#define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
@@ -200,6 +204,7 @@ typedef struct server_task_arg {
         bool response_done;
         bool log_error;
         bool need_response;
+        int task_type;
 
         union {
             struct {
@@ -213,12 +218,13 @@ typedef struct server_task_arg {
                 struct fc_list_head ftasks;  //for flock
                 struct sys_lock_task *sys_lock_task; //for append and ftruncate
 
+                struct idempotency_channel *idempotency_channel;
+                struct idempotency_request *idempotency_request;
                 struct fdir_binlog_record *record;
                 volatile int waiting_rpc_count;
             } service;
 
             struct {
-                int task_type;
                 FDIRClusterServerInfo *peer;   //the peer server in the cluster
 
                 FDIRSlaveReplication *replica; //master side
@@ -235,6 +241,7 @@ typedef struct fdir_server_context {
     union {
         struct {
             struct fast_mblock_man record_allocator;
+            struct fast_mblock_man request_allocator; //for idempotency_request
         } service;
 
         struct {

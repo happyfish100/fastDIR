@@ -12,6 +12,9 @@
 #define FDIR_STATUS_MASTER_INCONSISTENT     9999
 
 //service commands
+#define FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ          13
+#define FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP         14
+
 #define FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ        15
 #define FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP       16
 #define FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ      17 //by parent inode and name
@@ -95,6 +98,15 @@
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         94
 
 typedef SFCommonProtoHeader  FDIRProtoHeader;
+
+typedef struct fdir_proto_client_join_req {
+    char flags[4];
+    struct {
+        char channel_id[4];
+        char key[4];
+    } idempotency;
+    char padding[4];
+} FDIRProtoClientJoinReq;
 
 typedef struct fdir_proto_dentry_info {
     unsigned char ns_len;  //namespace length

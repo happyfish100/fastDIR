@@ -20,6 +20,11 @@ typedef void (*fdir_release_connection_func)(
 typedef void (*fdir_close_connection_func)(
         struct fdir_client_context *client_ctx, ConnectionInfo *conn);
 
+typedef struct fdir_connection_parameters {
+    int buffer_size;
+    struct idempotency_client_channel *channel;
+} FDIRConnectionParameters;
+
 typedef struct fdir_client_server_entry {
     int server_id;
     ConnectionInfo conn;
@@ -55,6 +60,7 @@ typedef struct fdir_connection_manager {
     struct {
         ConnectionInfo *conn;
         ConnectionInfo holder;
+        pthread_mutex_t lock;
     } master_cache;
 
     void *args[2];   //extra data

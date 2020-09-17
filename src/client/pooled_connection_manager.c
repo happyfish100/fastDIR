@@ -45,6 +45,12 @@ static ConnectionInfo *get_connection(FDIRClientContext *client_ctx,
     return NULL;
 }
 
+#define CM_MASTER_CACHE_MUTEX_LOCK(client_ctx) \
+    PTHREAD_MUTEX_LOCK(&(client_ctx->conn_manager.master_cache.lock))
+
+#define CM_MASTER_CACHE_MUTEX_UNLOCK(client_ctx) \
+    PTHREAD_MUTEX_UNLOCK(&(client_ctx->conn_manager.master_cache.lock))
+
 static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
         int *err_no)
 {
@@ -52,7 +58,9 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
     ConnectionInfo mconn;
     FDIRClientServerEntry master;
 
+    CM_MASTER_CACHE_MUTEX_LOCK(client_ctx);
     mconn = *(client_ctx->conn_manager.master_cache.conn);
+    CM_MASTER_CACHE_MUTEX_UNLOCK(client_ctx);
     if (mconn.port > 0) {
         return get_spec_connection(client_ctx, &mconn, err_no);
     }
@@ -68,8 +76,10 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
             break;
         }
 
+        CM_MASTER_CACHE_MUTEX_LOCK(client_ctx);
         conn_pool_set_server_info(client_ctx->conn_manager.
                 master_cache.conn, conn->ip_addr, conn->port);
+        CM_MASTER_CACHE_MUTEX_UNLOCK(client_ctx);
         return conn;
     } while (0);
 
@@ -117,16 +127,48 @@ static void release_connection(FDIRClientContext *client_ctx,
 static void close_connection(FDIRClientContext *client_ctx,
         ConnectionInfo *conn)
 {
+    CM_MASTER_CACHE_MUTEX_LOCK(client_ctx);
     if (client_ctx->conn_manager.master_cache.conn->port == conn->port &&
             strcmp(client_ctx->conn_manager.master_cache.conn->ip_addr,
                 conn->ip_addr) == 0)
     {
         client_ctx->conn_manager.master_cache.conn->port = 0;
     }
+    CM_MASTER_CACHE_MUTEX_UNLOCK(client_ctx);
 
     conn_pool_close_connection_ex((ConnectionPool *)client_ctx->
             conn_manager.args[0], conn, true);
 }
+
+/*
+static int connect_done_callback(ConnectionInfo *conn, void *args)
+{
+    FSConnectionParameters *params;
+    int result;
+
+    params = (FSConnectionParameters *)conn->args;
+    if (((FSClientContext *)args)->idempotency_enabled) {
+        params->channel = idempotency_client_channel_get(conn->ip_addr,
+                conn->port, ((FSClientContext *)args)->connect_timeout,
+                &result);
+        if (params->channel == NULL) {
+            logError("file: "__FILE__", line: %d, "
+                    "server %s:%d, idempotency channel get fail, "
+                    "result: %d, error info: %s", __LINE__, conn->ip_addr,
+                    conn->port, result, STRERROR(result));
+            return result;
+        }
+    } else {
+        params->channel = NULL;
+    }
+
+    result = fs_client_proto_join_server((FSClientContext *)args, conn, params);
+    if (result == SF_RETRIABLE_ERROR_NO_CHANNEL && params->channel != NULL) {
+        idempotency_client_channel_check_reconnect(params->channel);
+    }
+    return result;
+}
+*/
 
 static int validate_connection_callback(ConnectionInfo *conn, void *args)
 {
@@ -173,6 +215,10 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
     conn_manager->release_connection = release_connection;
     conn_manager->close_connection = close_connection;
     conn_manager->master_cache.conn = &conn_manager->master_cache.holder;
+    if ((result=init_pthread_lock(&conn_manager->master_cache.lock)) != 0) {
+        return result;
+    }
+
     conn_pool_set_server_info(conn_manager->master_cache.conn, "", 0);
     return 0;
 }
