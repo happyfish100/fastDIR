@@ -4,6 +4,7 @@
 #include "fastcommon/common_define.h"
 #include "fastcommon/connection_pool.h"
 #include "sf/sf_configs.h"
+#include "sf/idempotency/client/client_types.h"
 #include "fdir_types.h"
 
 struct fdir_client_context;
@@ -21,7 +22,7 @@ typedef void (*fdir_close_connection_func)(
         struct fdir_client_context *client_ctx, ConnectionInfo *conn);
 
 typedef struct fdir_connection_parameters {
-    int buffer_size;
+    int buffer_size;   //reserved for future usage
     struct idempotency_client_channel *channel;
 } FDIRConnectionParameters;
 

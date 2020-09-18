@@ -109,6 +109,7 @@ static int service_deal_client_join(struct fast_task_info *task)
     int key;
     int flags;
     FDIRProtoClientJoinReq *req;
+    FDIRProtoClientJoinResp *join_resp;
 
     if ((result=server_expect_body_length(task,
                     sizeof(FDIRProtoClientJoinReq))) != 0)
@@ -140,7 +141,12 @@ static int service_deal_client_join(struct fast_task_info *task)
         SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_CHANNEL_USER;
     }
 
+    join_resp = (FDIRProtoClientJoinResp *)REQUEST.body;
+    int2buff(g_sf_global_vars.min_buff_size - 128,
+            join_resp->buffer_size);
+    RESPONSE.header.body_len = sizeof(FDIRProtoClientJoinResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP;
+    TASK_ARG->context.response_done = true;
     return 0;
 }
 

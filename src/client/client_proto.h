@@ -4,6 +4,7 @@
 
 #include "fastcommon/fast_mpool.h"
 #include "fdir_types.h"
+#include "client_types.h"
 
 typedef struct fdir_client_dentry {
     FDIRDEntryInfo dentry;
@@ -61,92 +62,77 @@ typedef struct fdir_client_cluster_stat_entry {
 extern "C" {
 #endif
 
+static inline void fdir_client_release_connection(
+        FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const int result)
+{
+    if (SF_FORCE_CLOSE_CONNECTION_ERROR(result)) {
+        client_ctx->conn_manager.close_connection(client_ctx, conn);
+    } else if (client_ctx->conn_manager.release_connection != NULL) {
+        client_ctx->conn_manager.release_connection(client_ctx, conn);
+    }
+}
+
 int fdir_client_init_session(FDIRClientContext *client_ctx,
     FDIRClientSession *session);
 
 void fdir_client_close_session(FDIRClientSession *session,
         const bool force_close);
 
-int fdir_client_create_dentry(FDIRClientContext *client_ctx,
+int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, FDIRConnectionParameters *conn_params);
+
+int fdir_client_proto_create_dentry(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *fullname, const mode_t mode,
         FDIRDEntryInfo *dentry);
 
-int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
+int fdir_client_proto_create_dentry_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const FDIRDEntryPName *pname,
         const mode_t mode, FDIRDEntryInfo *dentry);
 
-int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
+int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *link, const FDIRDEntryFullName *fullname,
         const mode_t mode, FDIRDEntryInfo *dentry);
 
-int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
+int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *link, const string_t *ns,
         const FDIRDEntryPName *pname, const mode_t mode,
         FDIRDEntryInfo *dentry);
 
-int fdir_client_link_dentry(FDIRClientContext *client_ctx,
+int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
         const mode_t mode, FDIRDEntryInfo *dentry);
 
-int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
+int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const int64_t src_inode, const string_t *ns,
         const FDIRDEntryPName *pname, const mode_t mode,
         FDIRDEntryInfo *dentry);
 
-int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
+int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
 
-static inline int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname)
-{
-    FDIRDEntryInfo dentry;
-    return fdir_client_remove_dentry_ex(client_ctx,
-            fullname, &dentry);
-}
-
-int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const FDIRDEntryPName *pname,
         FDIRDEntryInfo *dentry);
 
-static inline int fdir_client_remove_dentry_by_pname(
-        FDIRClientContext *client_ctx, const string_t *ns,
-        const FDIRDEntryPName *pname)
-{
-    FDIRDEntryInfo dentry;
-    return fdir_client_remove_dentry_by_pname_ex(client_ctx,
-            ns, pname, &dentry);
-}
-
-int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
+int fdir_client_proto_rename_dentry_ex(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
         const int flags, FDIRDEntryInfo **dentry);
 
-static inline int fdir_client_rename_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const int flags)
-{
-    FDIRDEntryInfo dentry;
-    FDIRDEntryInfo *p;
-    p = &dentry;
-    return fdir_client_rename_dentry_ex(client_ctx, src, dest, flags, &p);
-}
-
-int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+int fdir_client_proto_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *src_ns, const FDIRDEntryPName *src_pname,
         const string_t *dest_ns, const FDIRDEntryPName *dest_pname,
         const int flags, FDIRDEntryInfo **dentry);
-
-static inline int fdir_client_rename_dentry_by_pname(
-        FDIRClientContext *client_ctx, const string_t *src_ns,
-        const FDIRDEntryPName *src_pname, const string_t *dest_ns,
-        const FDIRDEntryPName *dest_pname, const int flags)
-{
-    FDIRDEntryInfo dentry;
-    FDIRDEntryInfo *p;
-    p = &dentry;
-    return fdir_client_rename_dentry_by_pname_ex(client_ctx, src_ns,
-            src_pname, dest_ns, dest_pname, flags, &p);
-}
 
 int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, int64_t *inode);
@@ -169,12 +155,14 @@ int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
 int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, string_t *link, const int size);
 
-int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
+int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const int64_t inode, const int64_t size,
         const int64_t inc_alloc, const bool force, FDIRDEntryInfo *dentry,
         const int flags);
 
-int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
+int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const int64_t inode, const int64_t flags,
         const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry);
 

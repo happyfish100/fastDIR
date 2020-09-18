@@ -108,6 +108,11 @@ typedef struct fdir_proto_client_join_req {
     char padding[4];
 } FDIRProtoClientJoinReq;
 
+typedef struct fdir_proto_client_join_resp {
+    char buffer_size[4];
+    char padding[4];
+} FDIRProtoClientJoinResp;
+
 typedef struct fdir_proto_dentry_info {
     unsigned char ns_len;  //namespace length
     char path_len[2];
