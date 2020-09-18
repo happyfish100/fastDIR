@@ -546,7 +546,7 @@ static inline void free_record_object(struct fast_task_info *task)
     RECORD = NULL;
 }
 
-void service_idempotency_request_finish(struct fast_task_info *task,
+static void service_idempotency_request_finish(struct fast_task_info *task,
         const int result)
 {
     if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
@@ -555,8 +555,20 @@ void service_idempotency_request_finish(struct fast_task_info *task,
         IDEMPOTENCY_REQUEST->finished = true;
         IDEMPOTENCY_REQUEST->output.result = result;
         idempotency_request_release(IDEMPOTENCY_REQUEST);
+        SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
         IDEMPOTENCY_REQUEST = NULL;
     }
+}
+
+static int handle_replica_done(struct fast_task_info *task)
+{
+    TASK_ARG->context.deal_func = NULL;
+    service_idempotency_request_finish(task, RESPONSE_STATUS);
+
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "response cmd: %d, status: %d", __LINE__,
+            __FUNCTION__, RESPONSE.header.cmd, RESPONSE_STATUS);
+    return RESPONSE_STATUS;
 }
 
 static int server_binlog_produce(struct fast_task_info *task)
@@ -568,7 +580,7 @@ static int server_binlog_produce(struct fast_task_info *task)
         return ENOMEM;
     }
 
-    TASK_ARG->context.deal_func = NULL;
+    TASK_ARG->context.deal_func = handle_replica_done;
     rbuffer->data_version = RECORD->data_version;
     RECORD->timestamp = g_current_time;
 
@@ -582,27 +594,48 @@ static int server_binlog_produce(struct fast_task_info *task)
         rbuffer->task_version = __sync_add_and_fetch(
                 &((FDIRServerTaskArg *)task->arg)->task_version, 0);
         binlog_push_to_producer_queue(rbuffer);
-        return SLAVE_SERVER_COUNT > 0 ? TASK_STATUS_CONTINUE : result;
+        return (SLAVE_SERVER_COUNT > 0) ? TASK_STATUS_CONTINUE : result;
     } else {
         server_binlog_free_rbuffer(rbuffer);
         return result;
     }
 }
 
-static inline void dentry_stat_output(struct fast_task_info *task,
-        FDIRServerDentry *dentry)
+static inline void dstat_output(struct fast_task_info *task,
+            const int64_t inode, const FDIRDEntryStatus *stat)
 {
     FDIRProtoStatDEntryResp *resp;
 
-    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
-        dentry = dentry->src_dentry;
-    }
-
     resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
-    long2buff(dentry->inode, resp->inode);
-    fdir_proto_pack_dentry_stat_ex(&dentry->stat, &resp->stat, true);
+    long2buff(inode, resp->inode);
+    fdir_proto_pack_dentry_stat_ex(stat, &resp->stat, true);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
     TASK_ARG->context.response_done = true;
+}
+
+static inline void dentry_stat_output(struct fast_task_info *task,
+        FDIRServerDentry **dentry)
+{
+    if (FDIR_IS_DENTRY_HARD_LINK((*dentry)->stat.mode)) {
+        *dentry = (*dentry)->src_dentry;
+    }
+    dstat_output(task, (*dentry)->inode, &(*dentry)->stat);
+}
+
+static inline void set_update_result_and_output(
+        struct fast_task_info *task, FDIRServerDentry *dentry)
+{
+    dentry_stat_output(task, &dentry);
+    if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
+            IDEMPOTENCY_REQUEST != NULL)
+    {
+        FDIRDEntryInfo *dinfo;
+
+        dinfo = (FDIRDEntryInfo *)IDEMPOTENCY_REQUEST->output.response;
+        IDEMPOTENCY_REQUEST->output.flags = TASK_UPDATE_FLAG_OUTPUT_DENTRY;
+        dinfo->inode = dentry->inode;
+        dinfo->stat = dentry->stat;
+    }
 }
 
 static void record_deal_done_notify(FDIRBinlogRecord *record,
@@ -635,10 +668,11 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
         if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
                 record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
         {
-            dentry_stat_output(task, record->me.dentry);
+            set_update_result_and_output(task, record->me.dentry);
         } else if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
             if (RECORD->rename.overwritten != NULL) {
-                dentry_stat_output(task, RECORD->rename.overwritten);
+                set_update_result_and_output(task,
+                        RECORD->rename.overwritten);
             }
         }
     }
@@ -649,11 +683,18 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
 
 static int handle_record_deal_done(struct fast_task_info *task)
 {
+    int result;
+
     if (RESPONSE_STATUS == 0) {
-        return server_binlog_produce(task);
+        result = server_binlog_produce(task);
     } else {
-        return RESPONSE_STATUS;
+        result = RESPONSE_STATUS;
     }
+
+    if (result != TASK_STATUS_CONTINUE) {
+        service_idempotency_request_finish(task, result);
+    }
+    return result;
 }
 
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
@@ -824,28 +865,29 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         request = sf_server_update_prepare_and_check(
                 task, &SERVER_CTX->service.request_allocator,
                 IDEMPOTENCY_CHANNEL, &RESPONSE, &result);
-        if (request != NULL) {
-            if (result != 0) {
-                if (result == EEXIST) { //found
-                    result = request->output.result;
-
-                    //TODO
-                    /*
-                       du_handler_fill_slice_update_response(task,
-                       ((FSUpdateOutput *)request->output.
-                       response)->inc_alloc);
-                     */
-                }
-
-                fast_mblock_free_object(request->allocator, request);
-                *deal_done = true;
-                return result;
-            }
-        } else {
+        if (request == NULL) {
             *deal_done = true;
             return result;
         }
 
+        if (result != 0) {
+            if (result == EEXIST) { //found
+                result = request->output.result;
+                if ((result == 0) && (request->output.flags &
+                            TASK_UPDATE_FLAG_OUTPUT_DENTRY))
+                {
+                    FDIRDEntryInfo *dentry;
+                    dentry = (FDIRDEntryInfo *)request->output.response;
+                    dstat_output(task, dentry->inode, &dentry->stat);
+                }
+            }
+
+            fast_mblock_free_object(request->allocator, request);
+            *deal_done = true;
+            return result;
+        }
+
+        request->output.flags = 0;
         IDEMPOTENCY_REQUEST = request;
     }
 
@@ -1293,7 +1335,7 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
     }
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
-    dentry_stat_output(task, dentry);
+    dentry_stat_output(task, &dentry);
     return 0;
 }
 
@@ -1438,7 +1480,7 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
         return ENOENT;
     }
 
-    dentry_stat_output(task, dentry);
+    dentry_stat_output(task, &dentry);
     return 0;
 }
 
@@ -1476,7 +1518,7 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
         return ENOENT;
     }
 
-    dentry_stat_output(task, dentry);
+    dentry_stat_output(task, &dentry);
     return 0;
 }
 
@@ -1579,7 +1621,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
             file_size, inc_alloc, flags, req->force, &result, true);
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
-            dentry_stat_output(task, dentry);
+            set_update_result_and_output(task, dentry);
         }
     }
 
@@ -1671,8 +1713,57 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
 
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
-            dentry_stat_output(task, dentry);
+            set_update_result_and_output(task, dentry);
         }
+    }
+
+    return result;
+}
+
+static inline int service_check_master(struct fast_task_info *task)
+{
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
+static inline int service_check_readable(struct fast_task_info *task)
+{
+    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ||
+                __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) ==
+                FDIR_SERVER_STATUS_ACTIVE))
+    {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not active");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
+static int service_process_update(struct fast_task_info *task,
+        sf_deal_task_func real_update_func)
+{
+    int result;
+    bool deal_done;
+
+    if ((result=service_check_master(task)) != 0) {
+        return result;
+    }
+
+    result = service_update_prepare_and_check(task, &deal_done);
+    if (result != 0 || deal_done) {
+        return result;
+    }
+
+    if ((result=service_deal_create_dentry(task)) != TASK_STATUS_CONTINUE) {
+        service_idempotency_request_finish(task, result);
     }
 
     return result;
@@ -2228,33 +2319,6 @@ static inline void init_task_context(struct fast_task_info *task)
     REQUEST.body = task->data + sizeof(FDIRProtoHeader);
 }
 
-static inline int service_check_master(struct fast_task_info *task)
-{
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not master");
-        return EINVAL;
-    }
-
-    return 0;
-}
-
-static inline int service_check_readable(struct fast_task_info *task)
-{
-    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ||
-                __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) ==
-                FDIR_SERVER_STATUS_ACTIVE))
-    {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not active");
-        return EINVAL;
-    }
-
-    return 0;
-}
-
 static int deal_task_done(struct fast_task_info *task)
 {
     FDIRProtoHeader *proto_header;
@@ -2352,64 +2416,52 @@ int service_deal_task(struct fast_task_info *task)
                 result = service_deal_client_join(task);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_create_dentry(task);
-                }
+                result = service_process_update(task,
+                        service_deal_create_dentry);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_create_by_pname(task);
-                }
+                result = service_process_update(task,
+                        service_deal_create_by_pname);
                 break;
             case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_symlink_dentry(task);
-                }
+                result = service_process_update(task,
+                        service_deal_symlink_dentry);
                 break;
             case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_symlink_by_pname(task);
-                }
+                result = service_process_update(task,
+                        service_deal_symlink_by_pname);
                 break;
             case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_hdlink_dentry(task);
-                }
+                result = service_process_update(task,
+                        service_deal_hdlink_dentry);
                 break;
             case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_hdlink_by_pname(task);
-                }
+                result = service_process_update(task,
+                        service_deal_hdlink_by_pname);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_remove_dentry(task);
-                }
+                result = service_process_update(task,
+                        service_deal_remove_dentry);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_remove_by_pname(task);
-                }
+                result = service_process_update(task,
+                        service_deal_remove_by_pname);
                 break;
             case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_rename_dentry(task);
-                }
+                result = service_process_update(task,
+                        service_deal_rename_dentry);
                 break;
             case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_rename_by_pname(task);
-                }
+                result = service_process_update(task,
+                        service_deal_rename_by_pname);
                 break;
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_set_dentry_size(task);
-                }
+                result = service_process_update(task,
+                        service_deal_set_dentry_size);
                 break;
             case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_modify_dentry_stat(task);
-                }
+                result = service_process_update(task,
+                        service_deal_modify_dentry_stat);
                 break;
             case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:
                 if ((result=service_check_readable(task)) == 0) {

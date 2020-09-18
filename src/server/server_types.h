@@ -33,7 +33,8 @@
 #define FDIR_REPLICATION_STAGE_SYNC_FROM_DISK     3
 #define FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE    4
 
-#define TASK_STATUS_CONTINUE   12345
+#define TASK_STATUS_CONTINUE           12345
+#define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
