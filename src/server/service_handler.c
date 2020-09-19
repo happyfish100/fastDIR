@@ -52,7 +52,11 @@ int service_handler_init()
     dstat_mflags_mask = mask.flags;
 
     next_token = ((int64_t)g_current_time) << 32;
-    return 0;
+
+    return idempotency_channel_init(SF_IDEMPOTENCY_MAX_CHANNEL_ID,
+            SF_IDEMPOTENCY_DEFAULT_REQUEST_HINT_CAPACITY,
+            SF_IDEMPOTENCY_DEFAULT_CHANNEL_RESERVE_INTERVAL,
+            SF_IDEMPOTENCY_DEFAULT_CHANNEL_SHARED_LOCK_COUNT);
 }
 
 int service_handler_destroy()
@@ -77,6 +81,20 @@ void service_task_finish_cleanup(struct fast_task_info *task)
 {
     //FDIRServerTaskArg *task_arg;
     //task_arg = (FDIRServerTaskArg *)task->arg;
+
+    switch (SERVER_TASK_TYPE) {
+        case SF_SERVER_TASK_TYPE_CHANNEL_HOLDER:
+        case SF_SERVER_TASK_TYPE_CHANNEL_USER:
+            if (IDEMPOTENCY_CHANNEL != NULL) {
+                idempotency_channel_release(IDEMPOTENCY_CHANNEL,
+                        SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_HOLDER);
+                IDEMPOTENCY_CHANNEL = NULL;
+            }
+            SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
+            break;
+        default:
+            break;
+    }
 
     if (!fc_list_empty(FTASK_HEAD_PTR)) {
         FLockTask *flck;
@@ -2555,6 +2573,22 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
                 result = service_deal_get_readable_server(task);
+                break;
+            case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
+                if ((result=sf_server_deal_setup_channel(task,
+                                &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL,
+                                &RESPONSE)) == 0)
+                {
+                    TASK_ARG->context.response_done = true;
+                }
+                break;
+            case SF_SERVICE_PROTO_CLOSE_CHANNEL_REQ:
+                result = sf_server_deal_close_channel(task,
+                        &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
+                break;
+            case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
+                result = sf_server_deal_report_req_receipt(task,
+                        &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
                 break;
             default:
                 RESPONSE.error.length = sprintf(
