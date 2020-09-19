@@ -86,6 +86,17 @@ int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
             NULL, fdir_client_proto_remove_dentry_ex, fullname, dentry);
 }
 
+int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRDEntryPName *pname,
+        FDIRDEntryInfo *dentry)
+{
+    const FDIRConnectionParameters *connection_params;
+
+    SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, GET_MASTER_CONNECTION,
+            NULL, fdir_client_proto_remove_dentry_by_pname_ex, ns,
+            pname, dentry);
+}
+
 int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
         const int flags, FDIRDEntryInfo **dentry)

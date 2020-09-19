@@ -41,6 +41,19 @@ int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
 
+int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRDEntryPName *pname,
+        FDIRDEntryInfo *dentry);
+
+static inline int fdir_client_remove_dentry_by_pname(
+        FDIRClientContext *client_ctx, const string_t *ns,
+        const FDIRDEntryPName *pname)
+{
+    FDIRDEntryInfo dentry;
+    return fdir_client_remove_dentry_by_pname_ex(client_ctx,
+            ns, pname, &dentry);
+}
+
 static inline int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname)
 {
