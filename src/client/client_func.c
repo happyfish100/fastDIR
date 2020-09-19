@@ -209,6 +209,7 @@ int fdir_client_init_ex1(FDIRClientContext *client_ctx,
     int result;
     FDIRClientConnManagerType conn_manager_type;
 
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
@@ -235,6 +236,7 @@ int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
 {
     int result;
 
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
@@ -255,6 +257,7 @@ int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
 {
     int result;
 
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }

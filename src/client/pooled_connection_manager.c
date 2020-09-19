@@ -165,6 +165,12 @@ static void close_connection(FDIRClientContext *client_ctx,
             conn_manager.args[0], conn, true);
 }
 
+static const struct fdir_connection_parameters *get_connection_params(
+        struct fdir_client_context *client_ctx, ConnectionInfo *conn)
+{
+    return (FDIRConnectionParameters *)conn->args;
+}
+
 static int connect_done_callback(ConnectionInfo *conn, void *args)
 {
     FDIRConnectionParameters *params;
@@ -223,7 +229,8 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
     if ((result=conn_pool_init_ex1(cp, client_ctx->connect_timeout,
                     max_count_per_entry, max_idle_time, socket_domain,
                     htable_init_capacity, connect_done_callback, client_ctx,
-                    validate_connection_callback, client_ctx, 0)) != 0)
+                    validate_connection_callback, client_ctx,
+                    sizeof(FDIRConnectionParameters))) != 0)
     {
         return result;
     }
@@ -237,6 +244,8 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
 
     conn_manager->release_connection = release_connection;
     conn_manager->close_connection = close_connection;
+    conn_manager->get_connection_params = get_connection_params;
+
     conn_manager->master_cache.conn = &conn_manager->master_cache.holder;
     if ((result=init_pthread_lock(&conn_manager->master_cache.lock)) != 0) {
         return result;

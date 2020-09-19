@@ -21,6 +21,9 @@ typedef void (*fdir_release_connection_func)(
 typedef void (*fdir_close_connection_func)(
         struct fdir_client_context *client_ctx, ConnectionInfo *conn);
 
+typedef const struct fdir_connection_parameters * (*fdir_get_connection_parameters)(
+        struct fdir_client_context *client_ctx, ConnectionInfo *conn);
+
 typedef struct fdir_connection_parameters {
     int buffer_size;   //reserved for future usage
     struct idempotency_client_channel *channel;
@@ -56,6 +59,8 @@ typedef struct fdir_connection_manager {
 
      /* disconnect the connecton on network error */
     fdir_close_connection_func close_connection;
+
+    fdir_get_connection_parameters get_connection_params;
 
     /* master connection cache */
     struct {

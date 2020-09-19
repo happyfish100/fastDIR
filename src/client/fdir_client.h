@@ -49,6 +49,10 @@ static inline int fdir_client_remove_dentry(FDIRClientContext *client_ctx,
             fullname, &dentry);
 }
 
+int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
+        const int flags, FDIRDEntryInfo **dentry);
+
 static inline int fdir_client_rename_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
         const int flags)
@@ -78,13 +82,44 @@ static inline int fdir_client_rename_dentry_by_pname(
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, FDIRDEntryInfo *dentry,
-        const int flags);
+        const int64_t inc_alloc, const bool force, const int flags,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t flags,
         const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry);
 
+int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
+        const int64_t inode, int *operation, int64_t *offset,
+        int64_t *length, int64_t *owner_id, pid_t *pid);
+
+
+int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, int64_t *inode);
+
+int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
+
+int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRDEntryInfo *dentry);
+
+int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, FDIRDEntryInfo *dentry);
+
+int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, string_t *link, const int size);
+
+int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, string_t *link, const int size);
+
+int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, string_t *link, const int size);
+
+int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);
+
+int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, FDIRClientDentryArray *array);
 
 #ifdef __cplusplus
 }

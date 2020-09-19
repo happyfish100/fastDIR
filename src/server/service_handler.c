@@ -893,6 +893,8 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
             return result;
         }
 
+        REQUEST.body += sizeof(SFProtoIdempotencyAdditionalHeader);
+        REQUEST.header.body_len -= sizeof(SFProtoIdempotencyAdditionalHeader);
         request->output.flags = 0;
         IDEMPOTENCY_REQUEST = request;
     }
@@ -1768,7 +1770,7 @@ static int service_process_update(struct fast_task_info *task,
         return result;
     }
 
-    if ((result=service_deal_create_dentry(task)) != TASK_STATUS_CONTINUE) {
+    if ((result=real_update_func(task)) != TASK_STATUS_CONTINUE) {
         service_idempotency_request_finish(task, result);
     }
 

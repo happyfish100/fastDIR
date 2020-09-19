@@ -179,6 +179,12 @@ static void close_connection(FDIRClientContext *client_ctx,
     conn_pool_disconnect_server(conn);
 }
 
+static const struct fdir_connection_parameters *get_connection_params(
+        struct fdir_client_context *client_ctx, ConnectionInfo *conn)
+{
+    return NULL;
+}
+
 int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
 {
     FDIRServerGroup *cluster_sarray;
@@ -202,6 +208,7 @@ int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager)
 
     conn_manager->release_connection = NULL;
     conn_manager->close_connection = close_connection;
+    conn_manager->get_connection_params = get_connection_params;
     conn_manager->master_cache.conn = NULL;
     return 0;
 }
