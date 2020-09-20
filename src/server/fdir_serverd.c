@@ -165,6 +165,7 @@ int main(int argc, char *argv[])
         if (result != 0) {
             break;
         }
+        sf_enable_thread_notify(true);
         sf_set_remove_from_ready_list(false);
 
         if ((result=cluster_relationship_init()) != 0) {

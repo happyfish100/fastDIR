@@ -49,6 +49,11 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
                 CLUSTER_PEER = NULL;
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                        "CLUSTER_PEER is NULL", __LINE__, task,
+                        SERVER_TASK_TYPE);
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
@@ -56,6 +61,11 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             if (CLUSTER_REPLICA != NULL) {
                 binlog_replication_rebind_thread(CLUSTER_REPLICA);
                 CLUSTER_REPLICA = NULL;
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                        "CLUSTER_REPLICA is NULL", __LINE__, task,
+                        SERVER_TASK_TYPE);
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
@@ -65,11 +75,23 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
                 CLUSTER_CONSUMER_CTX = NULL;
                 ((FDIRServerContext *)task->thread_data->arg)->
                     cluster.consumer_ctx = NULL;
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                        "CLUSTER_CONSUMER_CTX is NULL", __LINE__, task,
+                        SERVER_TASK_TYPE);
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
         default:
             break;
+    }
+
+    if (CLUSTER_PEER != NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                "CLUSTER_PEER: %p != NULL", __LINE__, task,
+                SERVER_TASK_TYPE, CLUSTER_PEER);
     }
 
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
@@ -509,12 +531,12 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EEXIST;
     }
 
-    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE;
     CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
          BINLOG_BUFFER_INIT_SIZE, &result);
     if (CLUSTER_CONSUMER_CTX == NULL) {
         return result;
     }
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE;
     server_ctx->cluster.consumer_ctx = CLUSTER_CONSUMER_CTX;
 
     binlog_get_current_write_position(&bf_position);

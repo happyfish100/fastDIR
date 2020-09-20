@@ -79,9 +79,6 @@ static inline void release_flock_task(struct fast_task_info *task,
 
 void service_task_finish_cleanup(struct fast_task_info *task)
 {
-    //FDIRServerTaskArg *task_arg;
-    //task_arg = (FDIRServerTaskArg *)task->arg;
-
     switch (SERVER_TASK_TYPE) {
         case SF_SERVER_TASK_TYPE_CHANNEL_HOLDER:
         case SF_SERVER_TASK_TYPE_CHANNEL_USER:
@@ -89,11 +86,24 @@ void service_task_finish_cleanup(struct fast_task_info *task)
                 idempotency_channel_release(IDEMPOTENCY_CHANNEL,
                         SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_HOLDER);
                 IDEMPOTENCY_CHANNEL = NULL;
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                        "IDEMPOTENCY_CHANNEL is NULL", __LINE__, task,
+                        SERVER_TASK_TYPE);
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
         default:
             break;
+    }
+
+    if (IDEMPOTENCY_CHANNEL != NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                "IDEMPOTENCY_CHANNEL: %p != NULL", __LINE__, task,
+                SERVER_TASK_TYPE, IDEMPOTENCY_CHANNEL);
+        IDEMPOTENCY_CHANNEL = NULL;
     }
 
     if (!fc_list_empty(FTASK_HEAD_PTR)) {
@@ -254,7 +264,7 @@ static int service_deal_get_master(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "the master NOT exist");
-        return ENOENT;
+        return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
     resp = (FDIRProtoGetServerResp *)REQUEST.body;
@@ -360,7 +370,7 @@ static int service_deal_get_readable_server(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "no active server");
-        return ENOENT;
+        return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
     resp = (FDIRProtoGetServerResp *)REQUEST.body;
@@ -579,7 +589,8 @@ static void service_idempotency_request_finish(struct fast_task_info *task,
         IDEMPOTENCY_REQUEST->finished = true;
         IDEMPOTENCY_REQUEST->output.result = result;
         idempotency_request_release(IDEMPOTENCY_REQUEST);
-        SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
+
+        /* server task type for channel ONLY, do NOT set task type to NONE!!! */
         IDEMPOTENCY_REQUEST = NULL;
     }
 }
@@ -630,7 +641,7 @@ static inline void dstat_output(struct fast_task_info *task,
 {
     FDIRProtoStatDEntryResp *resp;
 
-    resp = (FDIRProtoStatDEntryResp *)REQUEST.body;
+    resp = (FDIRProtoStatDEntryResp *)(task->data + sizeof(FDIRProtoHeader));
     long2buff(inode, resp->inode);
     fdir_proto_pack_dentry_stat_ex(stat, &resp->stat, true);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
@@ -1752,7 +1763,7 @@ static inline int service_check_master(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not master");
-        return EINVAL;
+        return SF_RETRIABLE_ERROR_NOT_MASTER;
     }
 
     return 0;
@@ -1767,7 +1778,7 @@ static inline int service_check_readable(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am not active");
-        return EINVAL;
+        return SF_RETRIABLE_ERROR_NOT_ACTIVE;
     }
 
     return 0;
@@ -2588,7 +2599,7 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
                 result = sf_server_deal_report_req_receipt(task,
-                        &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
+                        SERVER_TASK_TYPE, IDEMPOTENCY_CHANNEL, &RESPONSE);
                 break;
             default:
                 RESPONSE.error.length = sprintf(

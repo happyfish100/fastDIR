@@ -46,12 +46,13 @@
 #define SYS_LOCK_TASK     TASK_ARG->context.service.sys_lock_task
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
-#define CLUSTER_PEER      TASK_ARG->context.cluster.peer
-#define CLUSTER_REPLICA   TASK_ARG->context.cluster.replica
-#define CLUSTER_CONSUMER_CTX  TASK_ARG->context.cluster.consumer_ctx
+
 #define SERVER_TASK_TYPE  TASK_ARG->context.task_type
-#define IDEMPOTENCY_CHANNEL  TASK_ARG->context.service.idempotency_channel
-#define IDEMPOTENCY_REQUEST  TASK_ARG->context.service.idempotency_request
+#define CLUSTER_PEER      TASK_ARG->context.shared.cluster.peer
+#define CLUSTER_REPLICA   TASK_ARG->context.shared.cluster.replica
+#define CLUSTER_CONSUMER_CTX  TASK_ARG->context.shared.cluster.consumer_ctx
+#define IDEMPOTENCY_CHANNEL   TASK_ARG->context.shared.service.idempotency_channel
+#define IDEMPOTENCY_REQUEST   TASK_ARG->context.service.idempotency_request
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
@@ -209,30 +210,32 @@ typedef struct server_task_arg {
 
         union {
             struct {
-                struct {
-                    FDIRServerDentryArray array;
-                    int64_t token;
-                    int offset;
-                    time_t expires;  //expire time
-                } dentry_list_cache; //for dentry_list
-
-                struct fc_list_head ftasks;  //for flock
-                struct sys_lock_task *sys_lock_task; //for append and ftruncate
-
                 struct idempotency_channel *idempotency_channel;
-                struct idempotency_request *idempotency_request;
-                struct fdir_binlog_record *record;
-                volatile int waiting_rpc_count;
             } service;
 
-            struct {
+            union {
                 FDIRClusterServerInfo *peer;   //the peer server in the cluster
-
                 FDIRSlaveReplication *replica; //master side
-
                 struct replica_consumer_thread_context *consumer_ctx;//slave side
             } cluster;
-        };
+        } shared;
+
+        struct {
+            struct {
+                FDIRServerDentryArray array;
+                int64_t token;
+                int offset;
+                time_t expires;  //expire time
+            } dentry_list_cache; //for dentry_list
+
+            struct fc_list_head ftasks;  //for flock
+            struct sys_lock_task *sys_lock_task; //for append and ftruncate
+
+            struct idempotency_request *idempotency_request;
+            struct fdir_binlog_record *record;
+            volatile int waiting_rpc_count;
+        } service;
+
     } context;
 
 } FDIRServerTaskArg;
