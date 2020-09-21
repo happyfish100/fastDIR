@@ -347,8 +347,8 @@ static int deal_binlog_records(struct common_blocked_node *node)
             if (max_wait_count < wait_count) {
                 max_wait_count = wait_count;
                 logWarning("file: "__FILE__", line: %d, "
-                        "curent write data version: %"PRId64" "
-                        "reach max wait count: %d", __LINE__,
+                        "current write data version: %"PRId64" "
+                        "reachs max wait count: %d", __LINE__,
                         rb->data_version, wait_count);
             }
             if (wait_count == 100) {

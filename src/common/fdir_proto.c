@@ -33,6 +33,10 @@ const char *fdir_get_server_status_caption(const int status)
 const char *fdir_get_cmd_caption(const int cmd)
 {
     switch (cmd) {
+        case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
+            return "CLIENT_JOIN_REQ";
+        case FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP:
+            return "CLIENT_JOIN_RESP";
         case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
             return "CREATE_DENTRY_REQ";
         case FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP:

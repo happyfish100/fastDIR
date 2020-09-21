@@ -28,6 +28,7 @@ int handler_deal_task_done(struct fast_task_info *task)
     FDIRProtoHeader *proto_header;
     int r;
     int time_used;
+    int log_level;
     char time_buff[32];
 
     if (TASK_ARG->context.log_level != LOG_NOTHING &&
@@ -46,17 +47,25 @@ int handler_deal_task_done(struct fast_task_info *task)
 
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_RESP:
+                log_level = LOG_NOTHING;
+                break;
+            case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
+            case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
+                log_level = LOG_DEBUG;
                 break;
             default:
-                logInfo("file: "__FILE__", line: %d, "
-                        "client %s:%d, req cmd: %d (%s), req body_len: %d, "
-                        "status: %d, time used: %s us", __LINE__,
-                        task->client_ip, task->port, REQUEST.header.cmd,
-                        fdir_get_cmd_caption(REQUEST.header.cmd),
-                        REQUEST.header.body_len, RESPONSE_STATUS,
-                        long_to_comma_str(time_used, time_buff));
+                log_level = LOG_DEBUG;
+                //log_level = LOG_INFO;
                 break;
         }
+
+        log_it_ex(&g_log_context, log_level, "file: "__FILE__", line: %d, "
+                "client %s:%d, req cmd: %d (%s), req body_len: %d, "
+                "status: %d, time used: %s us", __LINE__,
+                task->client_ip, task->port, REQUEST.header.cmd,
+                fdir_get_cmd_caption(REQUEST.header.cmd),
+                REQUEST.header.body_len, RESPONSE_STATUS,
+                long_to_comma_str(time_used, time_buff));
 
         if (RESPONSE_STATUS == 0) {
             task->offset = task->length = 0;
@@ -82,7 +91,7 @@ int handler_deal_task_done(struct fast_task_info *task)
 
     r = sf_send_add_event(task);
     time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
-    if (time_used > 50 * 1000) {
+    if (time_used > 100 * 1000) {
         logWarning("file: "__FILE__", line: %d, "
                 "process a request timed used: %s us, "
                 "cmd: %d (%s), req body len: %d, resp body len: %d",
@@ -95,20 +104,27 @@ int handler_deal_task_done(struct fast_task_info *task)
     switch (REQUEST.header.cmd) {
         case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
         case SF_PROTO_ACTIVE_TEST_REQ:
+            log_level = LOG_NOTHING;
+            break;
+        case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
+            log_level = LOG_DEBUG;
             break;
         default:
-            logInfo("file: "__FILE__", line: %d, "
-                    "client %s:%d, req cmd: %d (%s), req body_len: %d, "
-                    "resp cmd: %d (%s), status: %d, resp body_len: %d, "
-                    "time used: %s us", __LINE__,
-                    task->client_ip, task->port, REQUEST.header.cmd,
-                    fdir_get_cmd_caption(REQUEST.header.cmd),
-                    REQUEST.header.body_len, RESPONSE.header.cmd,
-                    fdir_get_cmd_caption(RESPONSE.header.cmd),
-                    RESPONSE_STATUS, RESPONSE.header.body_len,
-                    long_to_comma_str(time_used, time_buff));
+            log_level = LOG_DEBUG;
+            //log_level = LOG_INFO;
             break;
     }
+
+    log_it_ex(&g_log_context, log_level, "file: "__FILE__", line: %d, "
+            "client %s:%d, req cmd: %d (%s), req body_len: %d, "
+            "resp cmd: %d (%s), status: %d, resp body_len: %d, "
+            "time used: %s us", __LINE__,
+            task->client_ip, task->port, REQUEST.header.cmd,
+            fdir_get_cmd_caption(REQUEST.header.cmd),
+            REQUEST.header.body_len, RESPONSE.header.cmd,
+            fdir_get_cmd_caption(RESPONSE.header.cmd),
+            RESPONSE_STATUS, RESPONSE.header.body_len,
+            long_to_comma_str(time_used, time_buff));
 
     return r == 0 ? RESPONSE_STATUS : r;
 }

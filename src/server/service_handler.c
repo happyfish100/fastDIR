@@ -890,7 +890,7 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
 }
 
 static int service_update_prepare_and_check(struct fast_task_info *task,
-        bool *deal_done)
+        const int resp_cmd, bool *deal_done)
 {
     if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
             IDEMPOTENCY_CHANNEL != NULL)
@@ -915,6 +915,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                     FDIRDEntryInfo *dentry;
                     dentry = (FDIRDEntryInfo *)request->output.response;
                     dstat_output(task, dentry->inode, &dentry->stat);
+                    RESPONSE.header.cmd = resp_cmd;
                 }
             }
 
@@ -1794,7 +1795,7 @@ static inline int service_check_readable(struct fast_task_info *task)
 }
 
 static int service_process_update(struct fast_task_info *task,
-        sf_deal_task_func real_update_func)
+        sf_deal_task_func real_update_func, const int resp_cmd)
 {
     int result;
     bool deal_done;
@@ -1803,7 +1804,7 @@ static int service_process_update(struct fast_task_info *task,
         return result;
     }
 
-    result = service_update_prepare_and_check(task, &deal_done);
+    result = service_update_prepare_and_check(task, resp_cmd, &deal_done);
     if (result != 0 || deal_done) {
         return result;
     }
@@ -2413,51 +2414,63 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
                 result = service_process_update(task,
-                        service_deal_create_dentry);
+                        service_deal_create_dentry,
+                        FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP);
                 break;
             case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
                 result = service_process_update(task,
-                        service_deal_create_by_pname);
+                        service_deal_create_by_pname,
+                        FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP);
                 break;
             case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
                 result = service_process_update(task,
-                        service_deal_symlink_dentry);
+                        service_deal_symlink_dentry,
+                        FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP);
                 break;
             case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
                 result = service_process_update(task,
-                        service_deal_symlink_by_pname);
+                        service_deal_symlink_by_pname,
+                        FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP);
                 break;
             case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
                 result = service_process_update(task,
-                        service_deal_hdlink_dentry);
+                        service_deal_hdlink_dentry,
+                        FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
                 break;
             case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
                 result = service_process_update(task,
-                        service_deal_hdlink_by_pname);
+                        service_deal_hdlink_by_pname,
+                        FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
                 result = service_process_update(task,
-                        service_deal_remove_dentry);
+                        service_deal_remove_dentry,
+                        FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP);
                 break;
             case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
                 result = service_process_update(task,
-                        service_deal_remove_by_pname);
+                        service_deal_remove_by_pname,
+                        FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP);
                 break;
             case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
                 result = service_process_update(task,
-                        service_deal_rename_dentry);
+                        service_deal_rename_dentry,
+                        FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP);
                 break;
             case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
                 result = service_process_update(task,
-                        service_deal_rename_by_pname);
+                        service_deal_rename_by_pname,
+                        FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP);
                 break;
             case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
                 result = service_process_update(task,
-                        service_deal_set_dentry_size);
+                        service_deal_set_dentry_size,
+                        FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP);
                 break;
             case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
                 result = service_process_update(task,
-                        service_deal_modify_dentry_stat);
+                        service_deal_modify_dentry_stat,
+                        FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP);
                 break;
             case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:
                 if ((result=service_check_readable(task)) == 0) {
