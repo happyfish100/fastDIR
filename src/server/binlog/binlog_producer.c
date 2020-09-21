@@ -317,7 +317,7 @@ static void deal_queue()
 
     if (proceduer_ctx.ring.count > max_ring_count) {
         max_ring_count = proceduer_ctx.ring.count;
-        logInfo("max proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
+        //logInfo("max proceduer_ctx.ring.count ==== %d", proceduer_ctx.ring.count);
     }
 
     PTHREAD_MUTEX_LOCK(&proceduer_ctx.queue.lock);

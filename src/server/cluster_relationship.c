@@ -199,7 +199,6 @@ static int proto_ping_master(ConnectionInfo *conn)
         server_id = buff2int(body_part->server_id);
         if ((cs=fdir_get_server_by_id(server_id)) != NULL) {
             cluster_info_set_status(cs, body_part->status);
-            //logInfo("server_id: %d, status: %d", server_id, body_part->status);
         }
     }
 
@@ -309,7 +308,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 		cluster_cmp_server_status);
 
 	for (i=0; i<*active_count; i++) {
-        logInfo("file: "__FILE__", line: %d, "
+        logDebug("file: "__FILE__", line: %d, "
                 "server_id: %d, ip addr %s:%d, is_master: %d, "
                 "status: %d(%s), data_version: %"PRId64, __LINE__,
                 cs_status[i].server_id,
@@ -626,7 +625,7 @@ static int cluster_select_master()
                     fdir_get_server_status_caption(server_status.status));
         } else {
             *status_prompt = '\0';
-            if (i == 3) {
+            if (i == 5) {
                 break;
             }
         }

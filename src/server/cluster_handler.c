@@ -31,6 +31,7 @@
 #include "dentry.h"
 #include "server_binlog.h"
 #include "cluster_relationship.h"
+#include "common_handler.h"
 #include "cluster_handler.h"
 
 int cluster_handler_init()
@@ -349,7 +350,6 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return -EINVAL;
     }
 
-    //logInfo("push_binlog body length: %d", REQUEST.header.body_len);
     return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
             (body_header + 1), binlog_length, last_data_version);
 }
@@ -422,8 +422,6 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
                     ", result: %d", data_version, err_no);
             break;
         }
-
-        //logInfo("push_binlog_resp data_version: %"PRId64", errno: %d", data_version, err_no);
 
         if ((result=binlog_replications_check_response_data_version(
                         CLUSTER_REPLICA, data_version)) != 0)
@@ -586,129 +584,17 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
         return result;
     }
 
-    if (REQUEST_STATUS != 0) {
-        if (REQUEST.header.body_len > 0) {
-            int remain_size;
-            int len;
-
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "message from peer %s:%u => ",
-                    task->client_ip, task->port);
-            remain_size = sizeof(RESPONSE.error.message) -
-                RESPONSE.error.length;
-            if (REQUEST.header.body_len >= remain_size) {
-                len = remain_size - 1;
-            } else {
-                len = REQUEST.header.body_len;
-            }
-
-            memcpy(RESPONSE.error.message + RESPONSE.error.length,
-                    REQUEST.body, len);
-            RESPONSE.error.length += len;
-            *(RESPONSE.error.message + RESPONSE.error.length) = '\0';
-        }
-
-        if (REQUEST_STATUS == FDIR_STATUS_MASTER_INCONSISTENT) {
+    if ((result=sf_proto_deal_ack(task, &REQUEST, &RESPONSE)) != 0) {
+        if (result == FDIR_STATUS_MASTER_INCONSISTENT) {
             logWarning("file: "__FILE__", line: %d, "
                     "more than one masters occur, master brain-split maybe "
                     "happened, will trigger reselecting master", __LINE__);
             cluster_relationship_trigger_reselect_master();
-            REQUEST_STATUS = EEXIST;
-        }
-
-        return REQUEST_STATUS;
-    }
-
-    if (REQUEST.header.body_len > 0) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "ACK body length: %d != 0",
-                REQUEST.header.body_len);
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
-static inline void init_task_context(struct fast_task_info *task)
-{
-    TASK_ARG->req_start_time = get_current_time_us();
-    RESPONSE.header.cmd = SF_PROTO_ACK;
-    RESPONSE.header.body_len = 0;
-    RESPONSE.header.status = 0;
-    RESPONSE.error.length = 0;
-    RESPONSE.error.message[0] = '\0';
-    TASK_ARG->context.log_error = true;
-    TASK_ARG->context.response_done = false;
-    TASK_ARG->context.need_response = true;
-
-    REQUEST.header.cmd = ((FDIRProtoHeader *)task->data)->cmd;
-    REQUEST.header.body_len = task->length - sizeof(FDIRProtoHeader);
-    REQUEST.header.status = buff2short(((FDIRProtoHeader *)task->data)->status);
-    REQUEST.body = task->data + sizeof(FDIRProtoHeader);
-}
-
-static int deal_task_done(struct fast_task_info *task)
-{
-    FDIRProtoHeader *proto_header;
-    int r;
-    int time_used;
-
-    if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
-        logError("file: "__FILE__", line: %d, "
-                "peer %s:%u, cmd: %d (%s), req body length: %d, %s",
-                __LINE__, task->client_ip, task->port, REQUEST.header.cmd,
-                fdir_get_cmd_caption(REQUEST.header.cmd),
-                REQUEST.header.body_len, RESPONSE.error.message);
-    }
-
-    if (!TASK_ARG->context.need_response) {
-        if (RESPONSE_STATUS == 0) {
-            task->offset = task->length = 0;
-            return sf_set_read_event(task);
-        }
-        return RESPONSE_STATUS > 0 ? -1 * RESPONSE_STATUS : RESPONSE_STATUS;
-    }
-
-    proto_header = (FDIRProtoHeader *)task->data;
-    if (!TASK_ARG->context.response_done) {
-        RESPONSE.header.body_len = RESPONSE.error.length;
-        if (RESPONSE.error.length > 0) {
-            memcpy(task->data + sizeof(FDIRProtoHeader),
-                    RESPONSE.error.message, RESPONSE.error.length);
+            result = EEXIST;
         }
     }
 
-    short2buff(RESPONSE_STATUS >= 0 ? RESPONSE_STATUS : -1 * RESPONSE_STATUS,
-            proto_header->status);
-    proto_header->cmd = RESPONSE.header.cmd;
-    int2buff(RESPONSE.header.body_len, proto_header->body_len);
-    task->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
-
-    r = sf_send_add_event(task);
-    time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
-    if (time_used > 50 * 1000) {
-        lwarning("process a request timed used: %d us, "
-                "cmd: %d (%s), req body len: %d, resp body len: %d",
-                time_used, REQUEST.header.cmd,
-                fdir_get_cmd_caption(REQUEST.header.cmd),
-                REQUEST.header.body_len,
-                RESPONSE.header.body_len);
-    }
-
-    if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
-    logInfo("file: "__FILE__", line: %d, "
-            "client ip: %s, req cmd: %d (%s), req body_len: %d, "
-            "resp cmd: %d (%s), status: %d, resp body_len: %d, "
-            "time used: %d us", __LINE__,
-            task->client_ip, REQUEST.header.cmd,
-            fdir_get_cmd_caption(REQUEST.header.cmd),
-            REQUEST.header.body_len, RESPONSE.header.cmd,
-            fdir_get_cmd_caption(RESPONSE.header.cmd),
-            RESPONSE_STATUS, RESPONSE.header.body_len, time_used);
-    }
-
-    return r == 0 ? RESPONSE_STATUS : r;
+    return result;
 }
 
 int cluster_deal_task(struct fast_task_info *task)
@@ -737,7 +623,7 @@ int cluster_deal_task(struct fast_task_info *task)
             }
         }
     } else {
-        init_task_context(task);
+        handler_init_task_context(task);
 
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
@@ -789,7 +675,7 @@ int cluster_deal_task(struct fast_task_info *task)
         return 0;
     } else {
         RESPONSE_STATUS = result;
-        return deal_task_done(task);
+        return handler_deal_task_done(task);
     }
 }
 
@@ -830,11 +716,12 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
             result = deal_replica_push_task(server_ctx->cluster.consumer_ctx);
             return result == EAGAIN ? 0 : result;
         } else if (server_ctx->cluster.clean_connected_replicas) {
-            logInfo("file: "__FILE__", line: %d, "
+            logWarning("file: "__FILE__", line: %d, "
                     "cluster thread #%d, will clean %d connected "
                     "replications because i am no longer master",
                     __LINE__, SF_THREAD_INDEX(CLUSTER_SF_CTX, thread_data),
                     server_ctx->cluster.connected.count);
+
             server_ctx->cluster.clean_connected_replicas = false;
             clean_connected_replications(server_ctx);
         }

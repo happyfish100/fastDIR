@@ -636,9 +636,11 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     if (FDIR_IS_DENTRY_HARD_LINK(record->me.dentry->stat.mode)) {
         if (record->me.dentry->src_dentry->stat.nlink == 1) {
 
+            /*
             logInfo("file: "__FILE__", line: %d, "
                     "remove hard link src dentry: %"PRId64, __LINE__,
                     record->me.dentry->src_dentry->inode);
+                    */
 
             if ((result=remove_src_dentry(db_context,
                             record->me.dentry->src_dentry)) != 0)
@@ -657,9 +659,11 @@ int dentry_remove(FDIRDataThreadContext *db_context,
 
             free_dentry = true;
         } else {
+            /*
             logInfo("file: "__FILE__", line: %d, "
                     "dentry: %"PRId64", nlink: %d > 0, skip remove", __LINE__,
                     record->me.dentry->inode, record->me.dentry->stat.nlink);
+                    */
             free_dentry = false;
         }
     }
@@ -725,9 +729,11 @@ static int rename_check(FDIRDataThreadContext *db_context,
         return 0;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "record->rename.flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
             __LINE__, record->rename.flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
+            */
 
     if ((record->rename.flags & RENAME_NOREPLACE)) {
         return EEXIST;
@@ -820,10 +826,12 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
         return 0;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "src parent inode: %"PRId64", dest parent inode: %"PRId64,
             __LINE__, record->rename.dest.parent->inode,
             record->rename.src.parent->inode);
+            */
 
     if ((result=uniq_skiplist_delete_ex(record->rename.src.parent->
                     children, record->rename.src.dentry, false)) != 0) {
@@ -963,10 +971,12 @@ int dentry_rename(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "record->rename.flags: %d, dest.dentry: %p, src.dentry: %p",
             __LINE__, record->rename.flags, record->rename.dest.dentry,
             record->rename.src.dentry);
+            */
 
     if (record->rename.dest.dentry == record->rename.src.dentry) {
         return EEXIST;
@@ -990,11 +1000,13 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);
 
+    /*
     logInfo("new src dentry name: %.*s(%d), dest dentry name: %.*s(%d), rename_exchange: %d",
             record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
             record->rename.src.dentry->name.len,
             record->rename.dest.pname.name.len, record->rename.dest.pname.name.str,
             record->rename.dest.pname.name.len, (record->rename.flags & RENAME_EXCHANGE));
+            */
 
     if ((record->rename.flags & RENAME_EXCHANGE)) {
         return exchange_dentry(db_context, record, name_changed);

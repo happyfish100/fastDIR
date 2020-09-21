@@ -570,8 +570,6 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
                     rb->buffer.data, rb->buffer.length);
             replication->task->length += rb->buffer.length;
 
-            //logInfo("call push_result_ring_add data_version: %"PRId64, rb->data_version);
-
             if ((result=push_result_ring_add(&replication->context.
                             push_result_ctx, rb->data_version,
                             waiting_task, rb->task_version)) != 0)
@@ -611,9 +609,11 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
         return ENOMEM;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, binlog index: %d, offset: %"PRId64,
             __LINE__, replication->slave->binlog_pos_hint.index,
             replication->slave->binlog_pos_hint.offset);
+            */
 
     if ((result=free_queue_realloc_max_buffer(replication->task)) != 0) {
         return result;
@@ -785,7 +785,8 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
     static int count = 0;
 
     if (++count % 10000 == 0) {
-        logInfo("server_ctx %p, connected.count: %d", server_ctx, server_ctx->cluster.connected.count);
+        logInfo("server_ctx %p, connected.count: %d", server_ctx,
+        server_ctx->cluster.connected.count);
     }
     */
 

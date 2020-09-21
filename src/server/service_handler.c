@@ -32,6 +32,7 @@
 #include "dentry.h"
 #include "inode_index.h"
 #include "cluster_relationship.h"
+#include "common_handler.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -599,10 +600,6 @@ static int handle_replica_done(struct fast_task_info *task)
 {
     TASK_ARG->context.deal_func = NULL;
     service_idempotency_request_finish(task, RESPONSE_STATUS);
-
-    logInfo("file: "__FILE__", line: %d, func: %s, "
-            "response cmd: %d, status: %d", __LINE__,
-            __FUNCTION__, RESPONSE.header.cmd, RESPONSE_STATUS);
     return RESPONSE_STATUS;
 }
 
@@ -821,10 +818,12 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
             fullname.ns.len, fullname.ns.str,
             fullname.path.len, fullname.path.str);
+            */
 
     if ((result=dentry_find_parent(&fullname, &parent_dentry, &name)) != 0) {
         if (!(result == ENOENT && is_create)) {
@@ -878,11 +877,13 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
     RECORD->me.parent = parent_dentry;
     RECORD->me.dentry = NULL;
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "parent inode: %"PRId64", ns: %.*s, name: %.*s",
             __LINE__, RECORD->me.pname.parent_inode, RECORD->ns.len,
             RECORD->ns.str, RECORD->me.pname.name.len,
             RECORD->me.pname.name.str);
+            */
 
     return service_set_record_pname_info(task,
             sizeof(FDIRProtoStatDEntryResp));
@@ -1064,6 +1065,7 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
 static int do_hdlink_dentry(struct fast_task_info *task,
         FDIRServerDentry *src_dentry, const int mode, const int resp_cmd)
 {
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "resp_cmd: %d, src inode: %"PRId64", "
             "dest parent: %"PRId64", name: %.*s", __LINE__,
@@ -1071,6 +1073,7 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             RECORD->hdlink.dest.pname.parent_inode,
             RECORD->hdlink.dest.pname.name.len,
             RECORD->hdlink.dest.pname.name.str);
+            */
 
     RECORD->hdlink.src_dentry = src_dentry;
     RECORD->hdlink.src_inode = src_dentry->inode;
@@ -1114,10 +1117,12 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "src ns: %.*s, path: %.*s",
             __LINE__, src_fullname.ns.len, src_fullname.ns.str,
             src_fullname.path.len, src_fullname.path.str);
+            */
 
     if (!fc_string_equal(&RECORD->ns, &src_fullname.ns)) {
         free_record_object(task);
@@ -1277,10 +1282,12 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "src ns: %.*s, path: %.*s",
             __LINE__, src_fullname.ns.len, src_fullname.ns.str,
             src_fullname.path.len, src_fullname.path.str);
+            */
 
     if ((result=set_rename_src_dentry(task, &src_fullname)) != 0) {
         free_record_object(task);
@@ -1294,6 +1301,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "src parent: %"PRId64", name: %.*s, "
             "dest parent: %"PRId64", name: %.*s", __LINE__,
@@ -1303,6 +1311,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             RECORD->rename.dest.pname.parent_inode,
             RECORD->rename.dest.pname.name.len,
             RECORD->rename.dest.pname.name.str);
+            */
 
     RECORD->rename.overwritten = NULL;
     RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
@@ -1836,9 +1845,14 @@ static int flock_unlock_dentry(struct fast_task_info *task,
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
 
-        logInfo("==type: %d, which_queue: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.id: %"PRId64", owner.pid: %d", flck->type, flck->which_queue, flck->dentry->inode,
-            flck->region->offset, flck->region->length, flck->owner.id, flck->owner.pid);
+        /*
+        logInfo("==type: %d, which_queue: %d, inode: %"PRId64", "
+                "offset: %"PRId64", length: %"PRId64", "
+                "owner.id: %"PRId64", owner.pid: %d",
+                flck->type, flck->which_queue, flck->dentry->inode,
+                flck->region->offset, flck->region->length,
+                flck->owner.id, flck->owner.pid);
+                */
 
         if (flck->which_queue != FDIR_FLOCK_TASK_IN_LOCKED_QUEUE) {
             continue;
@@ -1880,11 +1894,14 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     owner.pid = buff2int(req->owner.pid);
     operation = buff2int(req->operation);
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
-            "sock: %d, operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
+            "sock: %d, operation: %d, inode: %"PRId64", "
+            "offset: %"PRId64", length: %"PRId64", "
             "owner.id: %"PRId64", owner.pid: %d", __LINE__,
             task->event.fd, operation, inode,
             offset, length, owner.id, owner.pid);
+            */
 
     if (operation & LOCK_UN) {
         return flock_unlock_dentry(task, &owner, inode, offset, length);
@@ -1913,11 +1930,14 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
-            "===operation: %d, inode: %"PRId64", offset: %"PRId64", length: %"PRId64", "
-            "owner.id: %"PRId64", owner.pid: %d, result: %d, task: %p, deal_func: %p",
-            __LINE__, operation, inode, offset, length, owner.id, owner.pid,
+            "===operation: %d, inode: %"PRId64", offset: %"PRId64", "
+            "length: %"PRId64", owner.id: %"PRId64", owner.pid: %d, "
+            "result: %d, task: %p, deal_func: %p", __LINE__, operation,
+            inode, offset, length, owner.id, owner.pid,
             result, task, TASK_ARG->context.deal_func);
+            */
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
     return result == 0 ? 0 : TASK_STATUS_CONTINUE;
@@ -1950,10 +1970,12 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     operation = buff2int(req->operation);
     pid = buff2int(req->pid);
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64, 
             __LINE__, operation, inode, offset, length);
+            */
 
     if (operation & LOCK_EX) {
         ftask.type = LOCK_EX;
@@ -2016,11 +2038,13 @@ static int handle_sys_lock_done(struct fast_task_info *task)
                 __LINE__, task);
         return ENOENT;
     } else {
+        /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
                 "inode: %"PRId64", file size: %"PRId64,
                 __LINE__, __FUNCTION__,
                 SYS_LOCK_TASK->dentry->inode,
                 SYS_LOCK_TASK->dentry->stat.size);
+                */
 
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
         return 0;
@@ -2063,18 +2087,24 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     }
 
     if (result == 0) {
+        /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
-                "locked for inode: %"PRId64", task: %p, sock: %d, version: %"PRId64,
-                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
-                task, task->event.fd, TASK_ARG->task_version);
+                "locked for inode: %"PRId64", task: %p, sock: %d, "
+                "version: %"PRId64, __LINE__, __FUNCTION__,
+                SYS_LOCK_TASK->dentry->inode, task,
+                task->event.fd, TASK_ARG->task_version);
+                */
 
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
         return 0;
     } else {
+        /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
-                "waiting lock for inode: %"PRId64", task: %p, sock: %d, version: %"PRId64,
-                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
-                task, task->event.fd, TASK_ARG->task_version);
+                "waiting lock for inode: %"PRId64", task: %p, "
+                "sock: %d, version: %"PRId64, __LINE__, __FUNCTION__,
+                SYS_LOCK_TASK->dentry->inode, task, task->event.fd,
+                TASK_ARG->task_version);
+                */
 
         TASK_ARG->context.deal_func = handle_sys_lock_done;
         return TASK_STATUS_CONTINUE;
@@ -2189,10 +2219,12 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "task: %p, callback: %p, status: %d, nio stage: %d, fd: %d",
             __LINE__, __FUNCTION__, task, callback, RESPONSE_STATUS,
             SF_NIO_TASK_STAGE_FETCH(task), task->event.fd);
+            */
 
     SYS_LOCK_TASK = NULL;
     if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
@@ -2340,79 +2372,6 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
-static inline void init_task_context(struct fast_task_info *task)
-{
-    TASK_ARG->req_start_time = get_current_time_us();
-    RESPONSE.header.cmd = SF_PROTO_ACK;
-    RESPONSE.header.body_len = 0;
-    RESPONSE.header.status = 0;
-    RESPONSE.error.length = 0;
-    RESPONSE.error.message[0] = '\0';
-    TASK_ARG->context.log_error = true;
-    TASK_ARG->context.response_done = false;
-
-    REQUEST.header.cmd = ((FDIRProtoHeader *)task->data)->cmd;
-    REQUEST.header.body_len = task->length - sizeof(FDIRProtoHeader);
-    REQUEST.body = task->data + sizeof(FDIRProtoHeader);
-}
-
-static int deal_task_done(struct fast_task_info *task)
-{
-    FDIRProtoHeader *proto_header;
-    int r;
-    int time_used;
-    char time_buff[32];
-
-    if (TASK_ARG->context.log_error && RESPONSE.error.length > 0) {
-        logError("file: "__FILE__", line: %d, "
-                "client ip: %s, cmd: %d (%s), req body length: %d, %s",
-                __LINE__, task->client_ip, REQUEST.header.cmd,
-                fdir_get_cmd_caption(REQUEST.header.cmd),
-                REQUEST.header.body_len,
-                RESPONSE.error.message);
-    }
-
-    proto_header = (FDIRProtoHeader *)task->data;
-    if (!TASK_ARG->context.response_done) {
-        RESPONSE.header.body_len = RESPONSE.error.length;
-        if (RESPONSE.error.length > 0) {
-            memcpy(task->data + sizeof(FDIRProtoHeader),
-                    RESPONSE.error.message, RESPONSE.error.length);
-        }
-    }
-
-    short2buff(RESPONSE_STATUS >= 0 ? RESPONSE_STATUS : -1 * RESPONSE_STATUS,
-            proto_header->status);
-    proto_header->cmd = RESPONSE.header.cmd;
-    int2buff(RESPONSE.header.body_len, proto_header->body_len);
-    task->length = sizeof(FDIRProtoHeader) + RESPONSE.header.body_len;
-
-    r = sf_send_add_event(task);
-    time_used = (int)(get_current_time_us() - TASK_ARG->req_start_time);
-    if (time_used > 20 * 1000) {
-        lwarning("process a request timed used: %s us, "
-                "cmd: %d (%s), req body len: %d, resp body len: %d",
-                long_to_comma_str(time_used, time_buff),
-                REQUEST.header.cmd, fdir_get_cmd_caption(REQUEST.header.cmd),
-                REQUEST.header.body_len, RESPONSE.header.body_len);
-    }
-
-    if (REQUEST.header.cmd != FDIR_CLUSTER_PROTO_PING_MASTER_REQ) {
-    logInfo("file: "__FILE__", line: %d, "
-            "client ip: %s, task: %p, fd: %d, req cmd: %d (%s), "
-            "req body_len: %d, resp cmd: %d (%s), status: %d, "
-            "resp body_len: %d, time used: %s us", __LINE__,
-            task->client_ip, task, task->event.fd, REQUEST.header.cmd,
-            fdir_get_cmd_caption(REQUEST.header.cmd),
-            REQUEST.header.body_len, RESPONSE.header.cmd,
-            fdir_get_cmd_caption(RESPONSE.header.cmd),
-            RESPONSE_STATUS, RESPONSE.header.body_len,
-            long_to_comma_str(time_used, time_buff));
-    }
-
-    return r == 0 ? RESPONSE_STATUS : r;
-}
-
 int service_deal_task(struct fast_task_info *task)
 {
     int result;
@@ -2442,7 +2401,7 @@ int service_deal_task(struct fast_task_info *task)
             }
         }
     } else {
-        init_task_context(task);
+        handler_init_task_context(task);
 
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
@@ -2614,7 +2573,7 @@ int service_deal_task(struct fast_task_info *task)
         return 0;
     } else {
         RESPONSE_STATUS = result;
-        return deal_task_done(task);
+        return handler_deal_task_done(task);
     }
 }
 

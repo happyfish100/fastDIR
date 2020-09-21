@@ -168,10 +168,13 @@ void push_result_ring_clear_timeouts(FDIRBinlogPushResultContext *ctx)
                 ctx->ring.start->expires < g_current_time)
         {
             logWarning("file: "__FILE__", line: %d, "
-                    "waiting push response timeout, "
-                    "data_version: %"PRId64", task: %p",
-                    __LINE__, ctx->ring.start->data_version,
-                    ctx->ring.start->waiting_task);
+                    "waiting push response from server %s:%d timeout, "
+                    "data_version: %"PRId64"", __LINE__,
+                    (ctx->ring.start->waiting_task != NULL ?
+                    ctx->ring.start->waiting_task->server_ip : ""),
+                    (ctx->ring.start->waiting_task != NULL ?
+                    ctx->ring.start->waiting_task->port : 0),
+                    ctx->ring.start->data_version);
 
             desc_task_waiting_rpc_count(ctx->ring.start);
             ctx->ring.start->data_version = 0;

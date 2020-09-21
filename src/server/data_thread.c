@@ -116,10 +116,8 @@ static int deal_delay_free_queque(FDIRDataThreadContext *thread_ctx)
     while ((node != NULL) && (node->expires < g_current_time)) {
         if (node->free_func != NULL) {
             node->free_func(node->ptr);
-            //logInfo("free ptr: %p", node->ptr);
         } else {
             node->free_func_ex(node->ctx, node->ptr);
-            //logInfo("free ex func, ctx: %p, ptr: %p", node->ctx, node->ptr);
         }
 
         deleted = node;
@@ -359,11 +357,13 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         record->notify.func(record, result, is_error);
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, record: %p, "
             "operation: %d, hash code: %u, inode: %"PRId64
              ", data_version: %"PRId64", result: %d", __LINE__,
              record, record->operation, record->hash_code,
              record->inode, record->data_version, result);
+             */
 
     return result;
 }

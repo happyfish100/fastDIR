@@ -204,7 +204,7 @@ typedef struct server_task_arg {
         SFResponseInfo response;
         int (*deal_func)(struct fast_task_info *task);
         bool response_done;
-        bool log_error;
+        char log_level;   //level for error log
         bool need_response;
         int task_type;
 

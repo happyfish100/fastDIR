@@ -339,7 +339,7 @@ static int find_data_version(ServerBinlogReader *reader,
         if (result == EAGAIN || result == EOVERFLOW) {
             continue;
         }
-        logInfo("binlog_detect_record result: %d", result);
+        //logInfo("binlog_detect_record result: %d", result);
 
         if (*error_info != '\0') {
             logError("file: "__FILE__", line: %d, "
@@ -360,9 +360,11 @@ static int find_data_version(ServerBinlogReader *reader,
         return result;
     }
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "found position, index: %d, offset: %"PRId64, __LINE__,
             reader->position.index, reader->position.offset);
+            */
     return open_readable_binlog(reader);
 }
 
@@ -391,9 +393,11 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
             return result;
         }
 
+        /*
         logInfo("binlog index: %d, min_data_version: %"PRId64", "
                 "max_data_version: %"PRId64, reader->position.index,
                 min_data_version,  max_data_version);
+                */
 
         if (last_data_version < min_data_version) {
             if (dirction == 0) {
@@ -473,9 +477,11 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
             if (last_data_version == data_version) {
                 reader->position.offset += (p - buff) + rend_offset;
 
+                /*
                 logInfo("file: "__FILE__", line: %d, "
                         "found position, index: %d, offset: %"PRId64, __LINE__,
                         reader->position.index, reader->position.offset);
+                        */
                 return open_readable_binlog(reader);
             }
 
@@ -491,9 +497,11 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         }
     }
 
+    /*
     logInfo("binlog index: %d, reader->position.offset: %"PRId64", "
                 "last_data_version: %"PRId64, reader->position.index,
                 reader->position.offset,  last_data_version);
+                */
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 
