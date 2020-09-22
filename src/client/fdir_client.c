@@ -153,18 +153,18 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
             offset, length, owner_id, pid);
 }
 
-int fdir_client_lookup_inode(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname,
-        const int enoent_log_level, int64_t *inode)
+int fdir_client_lookup_inode_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const int enoent_log_level,
+        int64_t *inode)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
             NULL, fdir_client_proto_lookup_inode, fullname,
             enoent_log_level, inode);
 }
 
-int fdir_client_stat_dentry_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname,
-        const int enoent_log_level, FDIRDEntryInfo *dentry)
+int fdir_client_stat_dentry_by_path_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const int enoent_log_level,
+        FDIRDEntryInfo *dentry)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
             NULL, fdir_client_proto_stat_dentry_by_path, fullname,
@@ -178,9 +178,9 @@ int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
             NULL, fdir_client_proto_stat_dentry_by_inode, inode, dentry);
 }
 
-int fdir_client_stat_dentry_by_pname(FDIRClientContext *client_ctx,
-        const FDIRDEntryPName *pname,
-        const int enoent_log_level, FDIRDEntryInfo *dentry)
+int fdir_client_stat_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, const int enoent_log_level,
+        FDIRDEntryInfo *dentry)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
             NULL, fdir_client_proto_stat_dentry_by_pname, pname,
