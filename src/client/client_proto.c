@@ -490,13 +490,14 @@ static int setup_req_by_dentry_pname(const FDIRDEntryPName *pname,
 static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const int req_cmd, const int resp_cmd, char *in_buff,
-        const int in_len)
+        const int in_len, const int enoent_log_level)
 {
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoDEntryInfo)
         + NAME_MAX + PATH_MAX];
     SFResponseInfo response;
     int out_bytes;
     int result;
+    int log_level;
 
     if ((result=setup_req_by_dentry_fullname(fullname, req_cmd,
                     out_buff, &out_bytes)) != 0)
@@ -509,7 +510,8 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
                     &response, client_ctx->network_timeout,
                     resp_cmd, in_buff, in_len)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
+        sf_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -517,7 +519,7 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        int64_t *inode)
+        const int enoent_log_level, int64_t *inode)
 {
     FDIRProtoLookupInodeResp proto_resp;
     int result;
@@ -525,7 +527,8 @@ int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
     if ((result=query_by_dentry_fullname(client_ctx, conn, fullname,
                     FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ,
                     FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP,
-                    (char *)&proto_resp, sizeof(proto_resp))) == 0)
+                    (char *)&proto_resp, sizeof(proto_resp),
+                    enoent_log_level)) == 0)
     {
         *inode = buff2long(proto_resp.inode);
     } else {
@@ -537,7 +540,7 @@ int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        FDIRDEntryInfo *dentry)
+        const int enoent_log_level, FDIRDEntryInfo *dentry)
 {
     FDIRProtoStatDEntryResp proto_stat;
     int result;
@@ -545,7 +548,8 @@ int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
     if ((result=query_by_dentry_fullname(client_ctx, conn, fullname,
                     FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ,
                     FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP,
-                    (char *)&proto_stat, sizeof(proto_stat))) == 0)
+                    (char *)&proto_stat, sizeof(proto_stat),
+                    enoent_log_level)) == 0)
     {
         proto_unpack_dentry(&proto_stat, dentry);
     }
@@ -653,11 +657,13 @@ int fdir_client_proto_readlink_by_inode(FDIRClientContext *client_ctx,
 
 static inline int do_stat_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, char *out_buff, const int out_bytes,
-        const int expect_cmd, FDIRDEntryInfo *dentry)
+        const int expect_cmd, FDIRDEntryInfo *dentry,
+        const int enoent_log_level)
 {
     SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
     int result;
+    int log_level;
 
     response.error.length = 0;
     if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
@@ -666,7 +672,8 @@ static inline int do_stat_dentry(FDIRClientContext *client_ctx,
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        sf_log_network_error(&response, conn, result);
+        log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
+        sf_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -681,12 +688,12 @@ int fdir_client_proto_stat_dentry_by_inode(FDIRClientContext *client_ctx,
     setup_req_by_dentry_inode(inode, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ,
             out_buff, &out_bytes);
     return do_stat_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP, dentry);
+            FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_stat_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryPName *pname,
-        FDIRDEntryInfo *dentry)
+        const int enoent_log_level, FDIRDEntryInfo *dentry)
 {
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
             FDIRProtoStatDEntryByPNameReq) + NAME_MAX];
@@ -701,7 +708,7 @@ int fdir_client_proto_stat_dentry_by_pname(FDIRClientContext *client_ctx,
     }
 
     return do_stat_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP, dentry);
+            FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP, dentry, enoent_log_level);
 }
 
 int fdir_client_proto_create_dentry_by_pname(FDIRClientContext *client_ctx,
