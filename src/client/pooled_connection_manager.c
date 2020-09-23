@@ -65,7 +65,9 @@ static ConnectionInfo *get_master_connection(FDIRClientContext *client_ctx,
     mconn = *(client_ctx->conn_manager.master_cache.conn);
     CM_MASTER_CACHE_MUTEX_UNLOCK(client_ctx);
     if (mconn.port > 0) {
-        return get_spec_connection(client_ctx, &mconn, err_no);
+        if ((conn=get_spec_connection(client_ctx, &mconn, err_no)) != NULL) {
+            return conn;
+        }
     }
 
     sf_init_net_retry_interval_context(&net_retry_ctx,
