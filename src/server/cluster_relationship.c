@@ -63,7 +63,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
 
     if (response.header.body_len != sizeof(FDIRProtoGetServerStatusResp)) {
         logError("file: "__FILE__", line: %d, "
-                "server %s:%d, recv body length: %d != %d",
+                "server %s:%u, recv body length: %d != %d",
                 __LINE__, conn->ip_addr, conn->port,
                 response.header.body_len,
                 (int)sizeof(FDIRProtoGetServerStatusResp));
@@ -74,7 +74,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
                     SF_G_NETWORK_TIMEOUT)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
-                "recv from server %s:%d fail, "
+                "recv from server %s:%u fail, "
                 "errno: %d, error info: %s",
                 __LINE__, conn->ip_addr, conn->port,
                 result, STRERROR(result));
@@ -309,7 +309,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 
 	for (i=0; i<*active_count; i++) {
         logDebug("file: "__FILE__", line: %d, "
-                "server_id: %d, ip addr %s:%d, is_master: %d, "
+                "server_id: %d, ip addr %s:%u, is_master: %d, "
                 "status: %d(%s), data_version: %"PRId64, __LINE__,
                 cs_status[i].server_id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
@@ -420,7 +420,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
     old_master = CLUSTER_MASTER_ATOM_PTR;
     if (new_master == old_master) {
         logWarning("file: "__FILE__", line: %d, "
-                "the server id: %d, ip %s:%d already is master",
+                "the server id: %d, ip %s:%u already is master",
                 __LINE__, new_master->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
@@ -461,7 +461,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
         }
     } else {
         logInfo("file: "__FILE__", line: %d, "
-                "the master server id: %d, ip %s:%d",
+                "the master server id: %d, ip %s:%u",
                 __LINE__, new_master->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
@@ -650,7 +650,7 @@ static int cluster_select_master()
 		}
 
 		logInfo("file: "__FILE__", line: %d, "
-			"I am the new master, id: %d, ip %s:%d",
+			"I am the new master, id: %d, ip %s:%u",
 			__LINE__, next_master->server->id,
             CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
             CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
@@ -662,7 +662,7 @@ static int cluster_select_master()
 		{
 			logInfo("file: "__FILE__", line: %d, "
 				"waiting for the candidate master server id: %d, "
-                "ip %s:%d notify ...", __LINE__, next_master->server->id,
+                "ip %s:%u notify ...", __LINE__, next_master->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
 			return ENOENT;
@@ -737,7 +737,7 @@ static void *cluster_thread_entrance(void* arg)
             } else {
                 ++fail_count;
                 logError("file: "__FILE__", line: %d, "
-                        "%dth ping master id: %d, ip %s:%d fail",
+                        "%dth ping master id: %d, ip %s:%u fail",
                         __LINE__, fail_count, master->server->id,
                         CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
                         CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));

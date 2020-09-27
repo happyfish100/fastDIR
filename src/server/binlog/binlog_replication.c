@@ -307,7 +307,7 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
                     out_buff, sizeof(out_buff), SF_G_NETWORK_TIMEOUT)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
-                "send data to server %s:%d fail, "
+                "send data to server %s:%u fail, "
                 "errno: %d, error info: %s", __LINE__,
                 replication->connection_info.conn.ip_addr,
                 replication->connection_info.conn.port,
@@ -450,7 +450,7 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
             {
                 replication->connection_info.last_errno = result;
                 logError("file: "__FILE__", line: %d, "
-                        "%dth connect to %s:%d fail, time used: %ds, "
+                        "%dth connect to %s:%u fail, time used: %ds, "
                         "errno: %d, error info: %s", __LINE__,
                         replication->connection_info.fail_count + 1,
                         replication->connection_info.conn.ip_addr,
@@ -472,7 +472,7 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
             *prompt = '\0';
         }
         logInfo("file: "__FILE__", line: %d, "
-                "connect to slave %s:%d successfully%s.", __LINE__,
+                "connect to slave %s:%u successfully%s.", __LINE__,
                 replication->connection_info.conn.ip_addr,
                 replication->connection_info.conn.port, prompt);
 
@@ -719,7 +719,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         time_used = get_current_time_ms() - replication->context.
             sync_by_disk_stat.start_time_ms;
         logInfo("file: "__FILE__", line: %d, "
-                "sync to slave %s:%d by disk done, record count: %"PRId64", "
+                "sync to slave %s:%u by disk done, record count: %"PRId64", "
                 "binlog size: %s, time used: %s ms", __LINE__,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->slave->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(replication->slave->server),

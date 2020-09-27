@@ -1172,7 +1172,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
     if (response->header.body_len < sizeof(FDIRProtoListDEntryRespBodyHeader)) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "server %s:%d response body length: %d < expected: %d",
+                "server %s:%u response body length: %d < expected: %d",
                 conn->ip_addr, conn->port, response->header.body_len,
                 (int)sizeof(FDIRProtoListDEntryRespBodyHeader));
         return EINVAL;
@@ -1212,7 +1212,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
         if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
             response->error.length = snprintf(response->error.message,
                     sizeof(response->error.message),
-                    "server %s:%d response body length exceeds header's %d",
+                    "server %s:%u response body length exceeds header's %d",
                     conn->ip_addr, conn->port, response->header.body_len);
             return EINVAL;
         }
@@ -1235,7 +1235,7 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
     if ((int)(p - array->buffer.buff) != response->header.body_len) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "server %s:%d response body length: %d != header's %d",
+                "server %s:%u response body length: %d != header's %d",
                 conn->ip_addr, conn->port, (int)(p - array->buffer.buff),
                 response->header.body_len);
         return EINVAL;
@@ -1260,7 +1260,7 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
     {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "recv from server %s:%d fail, "
+                "recv from server %s:%u fail, "
                 "errno: %d, error info: %s",
                 conn->ip_addr, conn->port,
                 result, STRERROR(result));

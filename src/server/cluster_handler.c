@@ -492,7 +492,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
                     RESPONSE.error.message,
                     "master selection in progress, the candidate "
                     "master id: %d", next_master->server->id);
-            return FDIR_STATUS_MASTER_INCONSISTENT;
+            return SF_CLUSTER_ERROR_MASTER_INCONSISTENT;
         }
         return EBUSY;
     }
@@ -504,7 +504,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
                 "master NOT consistent, peer server id: %d, "
                 "local master id: %d", server_id, master != NULL ?
                 master->server->id : 0);
-        return master != NULL ? FDIR_STATUS_MASTER_INCONSISTENT : EFAULT;
+        return master != NULL ? SF_CLUSTER_ERROR_MASTER_INCONSISTENT : EFAULT;
     }
 
     if (memcmp(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE) != 0) {
@@ -585,7 +585,7 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
     }
 
     if ((result=sf_proto_deal_ack(task, &REQUEST, &RESPONSE)) != 0) {
-        if (result == FDIR_STATUS_MASTER_INCONSISTENT) {
+        if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
             logWarning("file: "__FILE__", line: %d, "
                     "more than one masters occur, master brain-split maybe "
                     "happened, will trigger reselecting master", __LINE__);

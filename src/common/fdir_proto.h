@@ -9,8 +9,6 @@
 #include "sf/sf_proto.h"
 #include "fdir_types.h"
 
-#define FDIR_STATUS_MASTER_INCONSISTENT     9999
-
 //service commands
 #define FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ          13
 #define FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP         14

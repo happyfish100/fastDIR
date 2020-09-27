@@ -33,7 +33,7 @@ static int copy_dir_servers(FDIRServerGroup *server_group,
         for (server=server_group->servers; server<server_group->servers+
                 server_group->count; server++)
         {
-            printf("dir_server=%s:%d\n", server->ip_addr, server->port);
+            printf("dir_server=%s:%u\n", server->ip_addr, server->port);
         }
     }
     */

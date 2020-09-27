@@ -22,7 +22,7 @@ typedef struct server_global_vars {
     int check_alive_interval;
 
     struct {
-        short id;  //cluster id for generate inode
+        uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
         struct {

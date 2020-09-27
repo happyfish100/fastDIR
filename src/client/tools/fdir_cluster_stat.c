@@ -21,7 +21,7 @@ static void output(FDIRClientClusterStatEntry *stats, const int count)
 
     end = stats + count;
     for (stat=stats; stat<end; stat++) {
-        printf( "server_id: %d, host: %s:%d, "
+        printf( "server_id: %d, host: %s:%u, "
                 "status: %d (%s), "
                 "is_master: %d\n",
                 stat->server_id,

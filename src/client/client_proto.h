@@ -55,7 +55,7 @@ typedef struct fdir_client_cluster_stat_entry {
     bool is_master;
     char status;
     char ip_addr[IP_ADDRESS_SIZE];
-    short port;
+    uint16_t port;
 } FDIRClientClusterStatEntry;
 
 #ifdef __cplusplus

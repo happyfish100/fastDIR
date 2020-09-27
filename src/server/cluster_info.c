@@ -82,8 +82,8 @@ static int find_myself_in_cluster_config(const char *filename)
                 } else if (myself != CLUSTER_MYSELF_PTR) {
                     logError("file: "__FILE__", line: %d, "
                             "cluster config file: %s, my ip and port "
-                            "in more than one servers, %s:%d in "
-                            "server id %d, and %s:%d in server id %d",
+                            "in more than one servers, %s:%u in "
+                            "server id %d, and %s:%u in server id %d",
                             __LINE__, filename, found.ip_addr, found.port,
                             CLUSTER_MY_SERVER_ID, local_ip,
                             ports[i], myself->server->id);
