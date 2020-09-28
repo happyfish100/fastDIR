@@ -445,7 +445,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int server_id;
     int buffer_size;
     FDIRServerContext *server_ctx;
-    FDIRBinlogFilePosition bf_position;
+    SFBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
     FDIRClusterServerInfo *peer;
     FDIRClusterServerInfo *master;

@@ -10,6 +10,7 @@
 #include "fastcommon/uniq_skiplist.h"
 #include "fastcommon/server_id_func.h"
 #include "fastcommon/fc_list.h"
+#include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
 #include "common/fdir_types.h"
 
@@ -35,6 +36,9 @@
 
 #define TASK_STATUS_CONTINUE           12345
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
+
+#define FDIR_BINLOG_SUBDIR_NAME      "binlog"
+#define FDIR_BINLOG_MAX_RECORD_SIZE  (4 * 1024)
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
@@ -90,17 +94,12 @@ typedef struct fdir_server_dentry_array {
     struct fdir_server_dentry **entries;
 } FDIRServerDentryArray;  //for list entry
 
-typedef struct fdir_binlog_file_position {
-    int index;      //current binlog file
-    int64_t offset; //current file offset
-} FDIRBinlogFilePosition;
-
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];  //for slave server
     volatile char status;          //the slave status
     volatile char is_master;       //if I am master
-    FDIRBinlogFilePosition binlog_pos_hint;  //for replication
+    SFBinlogFilePosition binlog_pos_hint;  //for replication
     volatile int64_t last_data_version;  //for replication
     volatile int last_change_version;    //for push server status to the slave
 } FDIRClusterServerInfo;

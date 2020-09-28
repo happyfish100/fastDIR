@@ -17,7 +17,7 @@ void binlog_write_thread_finish();
 void *binlog_write_thread_func(void *arg);
 
 int binlog_get_current_write_index();
-void binlog_get_current_write_position(FDIRBinlogFilePosition *position);
+void binlog_get_current_write_position(SFBinlogFilePosition *position);
 
 #define push_to_binlog_write_queue(rbuffer)  \
     common_blocked_queue_push(g_writer_queue, rbuffer)

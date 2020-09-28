@@ -9,6 +9,7 @@
 #include "fastcommon/local_ip_func.h"
 #include "sf/sf_global.h"
 #include "sf/sf_service.h"
+#include "sf/sf_binlog_writer.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "cluster_info.h"
@@ -463,6 +464,8 @@ int server_load_config(const char *filename)
     }
 
     iniFreeContext(&ini_context);
+
+    g_sf_binlog_data_path = DATA_PATH_STR;
 
     load_local_host_ip_addrs();
     server_log_configs();

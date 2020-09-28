@@ -506,7 +506,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 }
 
 int binlog_reader_init(ServerBinlogReader *reader,
-        const FDIRBinlogFilePosition *hint_pos,
+        const SFBinlogFilePosition *hint_pos,
         const int64_t last_data_version)
 {
     int result;
@@ -538,7 +538,7 @@ void binlog_reader_destroy(ServerBinlogReader *reader)
         reader->fd = -1;
     }
 
-    binlog_buffer_destroy(&reader->binlog_buffer);
+    sf_binlog_buffer_destroy(&reader->binlog_buffer);
 }
 
 int binlog_get_first_record_version(const int file_index,

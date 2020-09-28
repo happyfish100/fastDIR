@@ -123,7 +123,7 @@ void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
          const char *buff, const int len,
-         FDIRBinlogFilePosition *binlog_position)
+         SFBinlogFilePosition *binlog_position)
 {
     const char *p;
     const char *end;

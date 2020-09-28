@@ -25,7 +25,7 @@
 static void *binlog_read_thread_func(void *arg);
 
 int binlog_read_thread_init(BinlogReadThreadContext *ctx,
-        const FDIRBinlogFilePosition *hint_pos, const int64_t
+        const SFBinlogFilePosition *hint_pos, const int64_t
         last_data_version, const int buffer_size)
 {
     int result;

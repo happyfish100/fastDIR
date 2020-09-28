@@ -11,8 +11,8 @@
 typedef struct {
     char filename[PATH_MAX];
     int fd;
-    FDIRBinlogFilePosition position;
-    ServerBinlogBuffer binlog_buffer;
+    SFBinlogFilePosition position;
+    SFBinlogBuffer binlog_buffer;
 } ServerBinlogReader;
 
 #ifdef __cplusplus
@@ -20,7 +20,7 @@ extern "C" {
 #endif
 
 int binlog_reader_init(ServerBinlogReader *reader,
-        const FDIRBinlogFilePosition *hint_pos,
+        const SFBinlogFilePosition *hint_pos,
         const int64_t last_data_version);
 
 void binlog_reader_destroy(ServerBinlogReader *reader);

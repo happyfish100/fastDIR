@@ -35,7 +35,7 @@ typedef struct {
     int binlog_compress_index;
     int file_size;
     int fd;
-    ServerBinlogBuffer binlog_buffer;
+    SFBinlogBuffer binlog_buffer;
     struct common_blocked_queue queue;
 } BinlogWriterContext;
 
@@ -286,7 +286,7 @@ int binlog_get_current_write_index()
     return writer_context.binlog_index;
 }
 
-void binlog_get_current_write_position(FDIRBinlogFilePosition *position)
+void binlog_get_current_write_position(SFBinlogFilePosition *position)
 {
     position->index = writer_context.binlog_index;
     position->offset = writer_context.file_size;

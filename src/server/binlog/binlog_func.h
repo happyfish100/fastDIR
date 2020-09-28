@@ -3,6 +3,8 @@
 #ifndef _BINLOG_FUNC_H_
 #define _BINLOG_FUNC_H_
 
+#include "sf/sf_func.h"
+#include "../server_global.h"
 #include "binlog_types.h"
 
 
@@ -10,21 +12,10 @@
 extern "C" {
 #endif
 
-int binlog_buffer_init_ex(ServerBinlogBuffer *buffer, const int size);
-
-static inline int binlog_buffer_init(ServerBinlogBuffer *buffer)
+static inline int binlog_buffer_init(SFBinlogBuffer *buffer)
 {
     const int size = BINLOG_BUFFER_SIZE;
-    return binlog_buffer_init_ex(buffer, size);
-}
-
-static inline void binlog_buffer_destroy(ServerBinlogBuffer *buffer)
-{
-    if (buffer->buff != NULL) {
-        free(buffer->buff);
-        buffer->current = buffer->end = buffer->buff = NULL;
-        buffer->size = 0;
-    }
+    return sf_binlog_buffer_init(buffer, size);
 }
 
 #ifdef __cplusplus
