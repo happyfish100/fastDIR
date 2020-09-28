@@ -12,7 +12,7 @@
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename] [-m mode] "
-            "<-n namespace> <path>\n", argv[0]);
+            "[-u uid] [-g gid] <-n namespace> <path>\n", argv[0]);
 }
 
 int main(int argc, char *argv[])
@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 	int result;
     int base;
     char *endptr;
-    mode_t mode = 0755;
+    FDIRClientOwnerModePair omp;
     FDIRDEntryInfo dentry;
 
     if (argc < 2) {
@@ -33,8 +33,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    omp.mode = 0755;
+    omp.uid = geteuid();
+    omp.gid = getegid();
     ns = NULL;
-    while ((ch=getopt(argc, argv, "hc:m:n:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:g:m:n:u:")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -51,7 +54,13 @@ int main(int argc, char *argv[])
                 } else {
                     base = 10;
                 }
-                mode = strtol(optarg, &endptr, base);
+                omp.mode = strtol(optarg, &endptr, base);
+                break;
+            case 'u':
+                omp.uid = strtol(optarg, &endptr, 10);
+                break;
+            case 'g':
+                omp.gid = strtol(optarg, &endptr, 10);
                 break;
             default:
                 usage(argv);
@@ -72,9 +81,9 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    mode |= S_IFDIR;
+    omp.mode |= S_IFDIR;
     FC_SET_STRING(fullname.ns, ns);
     FC_SET_STRING(fullname.path, path);
     return fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
-                    &fullname, mode, &dentry);
+                    &fullname, &omp, &dentry);
 }

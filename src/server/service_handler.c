@@ -805,6 +805,8 @@ static void init_record_for_create_ex(struct fast_task_info *task,
     RECORD->options.atime = RECORD->options.btime = RECORD->options.ctime =
         RECORD->options.mtime = 1;
     RECORD->options.mode = 1;
+    RECORD->options.uid = 1;
+    RECORD->options.gid = 1;
 }
 
 static int server_parse_dentry_for_update(struct fast_task_info *task,
