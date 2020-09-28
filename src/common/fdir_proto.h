@@ -120,6 +120,8 @@ typedef struct fdir_proto_dentry_info {
 
 typedef struct fdir_proto_create_dentry_front {
     char mode[4];
+    char uid[4];
+    char gid[4];
 } FDIRProtoCreateDEntryFront;
 
 typedef struct fdir_proto_create_dentry_req {
@@ -141,7 +143,8 @@ typedef struct fdir_proto_create_dentry_by_pname_req {
 } FDIRProtoCreateDEntryByPNameReq;
 
 typedef struct fdir_proto_symlink_dentry_front {
-    char mode[4];
+    FDIRProtoCreateDEntryFront common;
+    char padding[2];
     char link_len[2];
     char link_str[0];
 } FDIRProtoSymlinkDEntryFront;
@@ -156,17 +159,16 @@ typedef struct fdir_proto_symlink_dentry_req {
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoSymlinkDEntryReq;
 
-typedef FDIRProtoCreateDEntryFront FDIRProtoHDLinkDEntryFront;
-
 typedef struct fdir_proto_hdlink_dentry {
-    FDIRProtoHDLinkDEntryFront front;
+    FDIRProtoCreateDEntryFront front;
     FDIRProtoDEntryInfo src;
     FDIRProtoDEntryInfo dest;
 } FDIRProtoHDLinkDEntry;
 
 typedef struct fdir_proto_hdlink_by_pname_front {
+    FDIRProtoCreateDEntryFront common;
+    char padding[4];
     char src_inode[8];
-    char mode[4];
 } FDIRProtoHDlinkByPNameFront;
 
 typedef struct fdir_proto_hdlink_dentry_by_pname {

@@ -13,29 +13,30 @@ extern "C" {
 #endif
 
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const mode_t mode,
+        const FDIRDEntryFullName *fullname,
+        const FDIRClientOwnerModePair *omp,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
-        const mode_t mode, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
         const string_t *link, const FDIRDEntryFullName *fullname,
-        const mode_t mode, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
 
 int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *link, const string_t *ns,
-        const FDIRDEntryPName *pname, const mode_t mode,
+        const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_link_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const mode_t mode, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
 
 int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
         const int64_t src_inode, const string_t *ns,
-        const FDIRDEntryPName *pname, const mode_t mode,
+        const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,

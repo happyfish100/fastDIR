@@ -795,7 +795,10 @@ static void init_record_for_create_ex(struct fast_task_info *task,
     }
     RECORD->stat.mode = new_mode;
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
-    RECORD->stat.uid = RECORD->stat.gid = 0;
+    RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
+                REQUEST.body)->uid);
+    RECORD->stat.gid = buff2int(((FDIRProtoCreateDEntryFront *)
+                REQUEST.body)->gid);
     RECORD->stat.size = 0;
     RECORD->stat.atime = RECORD->stat.btime = RECORD->stat.ctime =
         RECORD->stat.mtime = g_current_time;
@@ -991,7 +994,7 @@ static int parse_symlink_dentry_front(struct fast_task_info *task,
         return EINVAL;
     }
 
-    *mode = buff2int(front->mode);
+    *mode = buff2int(front->common.mode);
     *mode = (*mode & (~S_IFMT)) | S_IFLNK;
     return 0;
 }
@@ -1103,7 +1106,7 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     }
 
     if ((result=server_parse_dentry_info(task, REQUEST.body +
-                    sizeof(FDIRProtoHDLinkDEntryFront),
+                    sizeof(FDIRProtoCreateDEntryFront),
                     &src_fullname)) != 0)
     {
         return result;
@@ -1114,7 +1117,7 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     }
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoHDLinkDEntryFront) +
+                    sizeof(FDIRProtoCreateDEntryFront) +
                     sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
                     src_fullname.path.len, false)) != 0)
     {
@@ -1135,7 +1138,7 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
-    mode = buff2int(((FDIRProtoHDLinkDEntryFront *)REQUEST.body)->mode);
+    mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
     return do_hdlink_dentry(task, src_dentry, mode,
             FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
 }
@@ -1154,7 +1157,7 @@ static int parse_hdlink_dentry_front(struct fast_task_info *task,
 
     front = (FDIRProtoHDlinkByPNameFront *)REQUEST.body;
     *src_inode = buff2long(front->src_inode);
-    *mode = buff2int(front->mode);
+    *mode = buff2int(front->common.mode);
     return 0;
 }
 
