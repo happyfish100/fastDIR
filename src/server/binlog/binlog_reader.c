@@ -18,7 +18,7 @@
 #include "../server_global.h"
 #include "binlog_func.h"
 #include "binlog_producer.h"
-#include "binlog_write_thread.h"
+#include "binlog_write.h"
 #include "binlog_pack.h"
 #include "binlog_reader.h"
 
@@ -30,8 +30,9 @@ static int open_readable_binlog(ServerBinlogReader *reader)
         close(reader->fd);
     }
 
-    GET_BINLOG_FILENAME(reader->filename, sizeof(reader->filename),
-            reader->position.index);
+    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+            reader->position.index, reader->filename,
+            sizeof(reader->filename));
     reader->fd = open(reader->filename, O_RDONLY);
     if (reader->fd < 0) {
         result = errno != 0 ? errno : EACCES;
@@ -555,7 +556,8 @@ int binlog_get_first_record_version(const int file_index,
     int64_t bytes;
     int offset;
 
-    GET_BINLOG_FILENAME(filename, sizeof(filename), file_index);
+    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+            file_index, filename, sizeof(filename));
 
     *error_info = '\0';
     result = ENOENT;
@@ -612,7 +614,8 @@ int binlog_get_last_record_version(const int file_index,
     int64_t file_size = 0;
     int64_t bytes;
 
-    GET_BINLOG_FILENAME(filename, sizeof(filename), file_index);
+    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+            file_index, filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         result = getFileSize(filename, &file_size);
     } else {

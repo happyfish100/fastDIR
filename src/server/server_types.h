@@ -38,7 +38,6 @@
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
 #define FDIR_BINLOG_SUBDIR_NAME      "binlog"
-#define FDIR_BINLOG_MAX_RECORD_SIZE  (4 * 1024)
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
@@ -46,6 +45,7 @@
 #define RESPONSE_STATUS   RESPONSE.header.status
 #define REQUEST_STATUS    REQUEST.header.status
 #define RECORD            TASK_ARG->context.service.record
+#define RBUFFER           TASK_ARG->context.service.rbuffer
 #define FTASK_HEAD_PTR    &TASK_ARG->context.service.ftasks
 #define SYS_LOCK_TASK     TASK_ARG->context.service.sys_lock_task
 #define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
@@ -232,6 +232,7 @@ typedef struct server_task_arg {
 
             struct idempotency_request *idempotency_request;
             struct fdir_binlog_record *record;
+            struct server_binlog_record_buffer *rbuffer;
             volatile int waiting_rpc_count;
         } service;
 

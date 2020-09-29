@@ -22,7 +22,7 @@
 #include "binlog_func.h"
 #include "binlog_reader.h"
 #include "binlog_producer.h"
-#include "binlog_write_thread.h"
+#include "binlog_write.h"
 #include "replica_consumer_thread.h"
 
 static void *deal_binlog_thread_func(void *arg);
@@ -187,7 +187,7 @@ static inline int push_to_replica_consumer_queues(
 {
     int result;
 
-    __sync_add_and_fetch(&rbuffer->reffer_count, 2);
+    __sync_add_and_fetch(&rbuffer->reffer_count, 1);
     if ((result=push_to_binlog_write_queue(rbuffer)) != 0) {
         logCrit("file: "__FILE__", line: %d, "
                 "push_to_binlog_write_queue fail, program exit!",

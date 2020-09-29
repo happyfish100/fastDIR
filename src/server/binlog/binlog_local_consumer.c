@@ -17,8 +17,9 @@
 #include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
-#include "binlog_write_thread.h"
+#include "binlog_write.h"
 #include "binlog_replication.h"
+#include "binlog_producer.h"
 #include "binlog_local_consumer.h"
 
 static FDIRSlaveReplicationArray slave_replication_array;
@@ -78,15 +79,7 @@ static int init_binlog_local_consumer_array()
 
 int binlog_local_consumer_init()
 {
-    int result;
-    pthread_t tid;
-
-    if ((result=binlog_write_thread_init()) != 0) {
-        return result;
-    }
-
-    return fc_create_thread(&tid, binlog_write_thread_func, NULL,
-            SF_G_THREAD_STACK_SIZE);
+    return binlog_write_init();
 }
 
 int binlog_local_consumer_replication_start()
@@ -134,10 +127,7 @@ void binlog_local_consumer_terminate()
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
 
-    if (g_writer_queue != NULL) {
-        common_blocked_queue_terminate(g_writer_queue);
-    }
-
+    binlog_write_finish();
     end = slave_replication_array.replications + slave_replication_array.count;
     for (replication=slave_replication_array.replications; replication<end;
             replication++) {
@@ -173,22 +163,9 @@ int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
     struct fast_task_info *task;
-    int result;
 
     __sync_add_and_fetch(&rbuffer->reffer_count,
-            slave_replication_array.count + 1);
-
-     if ((result=push_to_binlog_write_queue(rbuffer)) != 0) {
-        logCrit("file: "__FILE__", line: %d, "
-                "push_to_binlog_write_queue fail, program exit!",
-                __LINE__);
-        SF_G_CONTINUE_FLAG = false;
-        return result;
-    }
-
-    if (slave_replication_array.count == 0) {
-        return 0;
-    }
+            slave_replication_array.count);
 
     task = (struct fast_task_info *)rbuffer->args;
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->context.

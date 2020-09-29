@@ -4,6 +4,7 @@
 #define _BINLOG_WRITE_H_
 
 #include "sf/sf_binlog_writer.h"
+#include "../server_global.h"
 #include "binlog_types.h"
 
 #ifdef __cplusplus
@@ -13,6 +14,13 @@ extern "C" {
 extern SFBinlogWriterContext g_binlog_writer_ctx;
 
 int binlog_write_init();
+
+static inline int binlog_write_set_next_version()
+{
+    return sf_binlog_writer_change_next_version(&g_binlog_writer_ctx.writer,
+            __sync_sub_and_fetch(&DATA_CURRENT_VERSION, 0) + 1);
+}
+
 static inline void binlog_write_finish()
 {
     sf_binlog_writer_finish(&g_binlog_writer_ctx.writer);
@@ -40,10 +48,28 @@ static inline int push_to_binlog_write_queue(ServerBinlogRecordBuffer *rbuffer)
         return ENOMEM;
     }
 
+    if (wbuffer->bf.alloc_size < rbuffer->buffer.length) {
+        char *new_buff;
+        int alloc_size;
+
+        alloc_size = wbuffer->bf.alloc_size * 2;
+        while (alloc_size < rbuffer->buffer.length) {
+            alloc_size *= 2;
+        }
+        new_buff = (char *)fc_malloc(alloc_size);
+        if (new_buff == NULL) {
+            return ENOMEM;
+        }
+
+        free(wbuffer->bf.buff);
+        wbuffer->bf.buff = new_buff;
+        wbuffer->bf.alloc_size = alloc_size;
+    }
+
     memcpy(wbuffer->bf.buff, rbuffer->buffer.data, rbuffer->buffer.length);
     wbuffer->bf.length = rbuffer->buffer.length;
     wbuffer->version = rbuffer->data_version;
-    sf_push_to_binlog_write_queue(&g_binlog_writer_ctx.thread, wbuffer);
+    sf_push_to_binlog_write_queue(&g_binlog_writer_ctx.writer, wbuffer);
     return 0;
 }
 

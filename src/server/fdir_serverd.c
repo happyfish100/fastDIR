@@ -141,6 +141,10 @@ int main(int argc, char *argv[])
             break;
         }
 
+        if ((result=binlog_write_set_next_version()) != 0) {
+            break;
+        }
+
         fdir_proto_init();
         //sched_print_all_entries();
 

@@ -17,7 +17,6 @@
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_local_consumer.h"
-#include "binlog/binlog_write_thread.h"
 #include "server_global.h"
 #include "server_binlog.h"
 
@@ -43,5 +42,4 @@ void server_binlog_destroy()
 void server_binlog_terminate()
 {
     binlog_local_consumer_terminate();
-    binlog_write_thread_finish();
 }

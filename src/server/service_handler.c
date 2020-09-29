@@ -25,8 +25,9 @@
 #include "sf/idempotency/server/server_channel.h"
 #include "sf/idempotency/server/server_handler.h"
 #include "common/fdir_proto.h"
-#include "binlog/binlog_producer.h"
 #include "binlog/binlog_pack.h"
+#include "binlog/binlog_producer.h"
+#include "binlog/binlog_write.h"
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
@@ -598,9 +599,22 @@ static void service_idempotency_request_finish(struct fast_task_info *task,
 
 static int handle_replica_done(struct fast_task_info *task)
 {
+    int result;
+
     TASK_ARG->context.deal_func = NULL;
-    service_idempotency_request_finish(task, RESPONSE_STATUS);
-    return RESPONSE_STATUS;
+    service_idempotency_request_finish(task, 0);
+
+    logInfo("RBUFFER: %p", RBUFFER);
+
+    if (RBUFFER != NULL) {
+        logInfo("data_version: %"PRId64, RBUFFER->data_version);
+        result = push_to_binlog_write_queue(RBUFFER);
+        server_binlog_release_rbuffer(RBUFFER);
+        RBUFFER = NULL;
+        return result;
+    }
+
+    return 0;
 }
 
 static int server_binlog_produce(struct fast_task_info *task)
@@ -608,7 +622,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     ServerBinlogRecordBuffer *rbuffer;
     int result;
 
-    if ((rbuffer=server_binlog_alloc_rbuffer()) == NULL) {
+    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
         return ENOMEM;
     }
 
@@ -625,8 +639,13 @@ static int server_binlog_produce(struct fast_task_info *task)
         rbuffer->args = task;
         rbuffer->task_version = __sync_add_and_fetch(
                 &((FDIRServerTaskArg *)task->arg)->task_version, 0);
-        binlog_push_to_producer_queue(rbuffer);
-        return (SLAVE_SERVER_COUNT > 0) ? TASK_STATUS_CONTINUE : result;
+        RBUFFER = rbuffer;
+        if (SLAVE_SERVER_COUNT > 0) {
+            binlog_push_to_producer_queue(rbuffer);
+            return TASK_STATUS_CONTINUE;
+        } else {
+            return result;
+        }
     } else {
         server_binlog_free_rbuffer(rbuffer);
         return result;

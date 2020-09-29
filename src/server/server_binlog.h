@@ -6,7 +6,7 @@
 #include "binlog/binlog_types.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_local_consumer.h"
-#include "binlog/binlog_write_thread.h"
+#include "binlog/binlog_write.h"
 #include "binlog/binlog_read_thread.h"
 #include "binlog/replica_consumer_thread.h"
 #include "binlog/binlog_pack.h"

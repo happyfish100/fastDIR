@@ -23,6 +23,9 @@ SFBinlogWriterContext g_binlog_writer_ctx;
 
 int binlog_write_init()
 {
+    const int binlog_init_buffer_size = 1024;
+    const int writer_count = 1;
+    const bool use_fixed_buffer_size = false;
     int result;
 
     if ((result=sf_binlog_writer_init_by_version(&g_binlog_writer_ctx.writer,
@@ -32,7 +35,7 @@ int binlog_write_init()
         return result;
     }
 
-    return sf_binlog_writer_init_thread(&g_binlog_writer_ctx.thread,
+    return sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
             &g_binlog_writer_ctx.writer, SF_BINLOG_WRITER_TYPE_ORDER_BY_VERSION,
-            FDIR_BINLOG_MAX_RECORD_SIZE);
+            binlog_init_buffer_size, writer_count, use_fixed_buffer_size);
 }

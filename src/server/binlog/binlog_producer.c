@@ -48,7 +48,6 @@ static BinlogProducerContext proceduer_ctx = {
 static uint64_t next_data_version = 0;
 static bool running = false;
 
-static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer * rbuffer);
 static void *producer_thread_func(void *arg);
 
 int record_buffer_alloc_init_func(void *element, void *args)
@@ -158,7 +157,7 @@ void binlog_producer_destroy()
     proceduer_ctx.queue.head = proceduer_ctx.queue.tail = NULL;
 }
 
-ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
+ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
 {
     ServerBinlogRecordBuffer *rbuffer;
 
@@ -168,16 +167,15 @@ ServerBinlogRecordBuffer *server_binlog_alloc_rbuffer()
         return NULL;
     }
 
+    rbuffer->reffer_count = 1;
     return rbuffer;
 }
 
-static void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
+void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
-        /*
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
-                */
         fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
     }
 }
