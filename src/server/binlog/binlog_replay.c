@@ -77,7 +77,7 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     replay_ctx->last_errno = 0;
     replay_ctx->waiting_count = 0;
     replay_ctx->notify.func = notify_func;
-    replay_ctx->notify.args  = args;
+    replay_ctx->notify.args = args;
     replay_ctx->data_current_version = __sync_add_and_fetch(
             &DATA_CURRENT_VERSION, 0);
     replay_ctx->record_array.size = batch_size * DATA_THREAD_COUNT;

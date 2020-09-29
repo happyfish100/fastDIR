@@ -110,7 +110,6 @@ static int binlog_producer_init_ring()
 
 int binlog_producer_init()
 {
-    pthread_t tid;
     int result;
     int element_size;
 
@@ -132,6 +131,12 @@ int binlog_producer_init()
         return result;
     }
 
+    return 0;
+}
+
+int binlog_producer_start()
+{
+    pthread_t tid;
     return fc_create_thread(&tid, producer_thread_func, NULL,
             SF_G_THREAD_STACK_SIZE);
 }
@@ -174,8 +179,10 @@ ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
 void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
+        /*
         logInfo("file: "__FILE__", line: %d, "
                 "free record buffer: %p", __LINE__, rbuffer);
+                */
         fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
     }
 }
@@ -342,7 +349,7 @@ static void deal_queue()
 
 static void *producer_thread_func(void *arg)
 {
-    logInfo("file: "__FILE__", line: %d, "
+    logDebug("file: "__FILE__", line: %d, "
             "producer_thread_func start", __LINE__);
 
     running = true;
@@ -357,7 +364,7 @@ static void *producer_thread_func(void *arg)
     }
     running = false;
 
-    logInfo("file: "__FILE__", line: %d, "
+    logDebug("file: "__FILE__", line: %d, "
             "producer_thread_func exit", __LINE__);
     return NULL;
 }

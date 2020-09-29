@@ -429,6 +429,34 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
 
     if (CLUSTER_MYSELF_PTR == new_master) {
         inode_generator_skip();  //skip SN avoid conflict
+
+        if ((result=binlog_producer_init()) != 0) {
+            logCrit("file: "__FILE__", line: %d, "
+                    "binlog_producer_init fail, "
+                    "program exit!", __LINE__);
+            SF_G_CONTINUE_FLAG = false;
+            return result;
+        }
+
+        g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
+        binlog_write_set_order_by(SF_BINLOG_THREAD_TYPE_ORDER_BY_VERSION);
+        binlog_write_set_next_version();
+
+        old_status = __sync_add_and_fetch(&new_master->status, 0);
+        while (old_status != FDIR_SERVER_STATUS_ACTIVE) {
+            if (__sync_bool_compare_and_swap(&new_master->status,
+                        old_status, FDIR_SERVER_STATUS_ACTIVE))
+            {
+                break;
+            }
+            old_status = __sync_add_and_fetch(&new_master->status, 0);
+        }
+    } else {
+        logInfo("file: "__FILE__", line: %d, "
+                "the master server id: %d, ip %s:%u",
+                __LINE__, new_master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
     }
 
     do {
@@ -439,32 +467,18 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
         }
         old_master = CLUSTER_MASTER_ATOM_PTR;
     } while (old_master != new_master);
-
     update_field_is_master(new_master);
+
     if (CLUSTER_MYSELF_PTR == new_master) {
-        if ((result=binlog_producer_init()) != 0) {
-            cluster_unset_master();
+        if ((result=binlog_producer_start()) != 0) {
+            logCrit("file: "__FILE__", line: %d, "
+                    "binlog_producer_start fail, "
+                    "program exit!", __LINE__);
+            SF_G_CONTINUE_FLAG = false;
             return result;
         }
 
         binlog_local_consumer_replication_start();
-        g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
-
-        old_status = __sync_add_and_fetch(&CLUSTER_MASTER_PTR->status, 0);
-        while (old_status != FDIR_SERVER_STATUS_ACTIVE) {
-            if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR->status,
-                        old_status, FDIR_SERVER_STATUS_ACTIVE))
-            {
-                break;
-            }
-            old_status = __sync_add_and_fetch(&CLUSTER_MASTER_PTR->status, 0);
-        }
-    } else {
-        logInfo("file: "__FILE__", line: %d, "
-                "the master server id: %d, ip %s:%u",
-                __LINE__, new_master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
     }
 
     __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
@@ -500,9 +514,11 @@ void cluster_relationship_trigger_reselect_master()
     struct nio_thread_data *thread_data;
     struct nio_thread_data *data_end;
 
+    g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
+    binlog_write_set_order_by(SF_BINLOG_THREAD_TYPE_ORDER_BY_NONE);
+
     cluster_unset_master();
     __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
-    g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
 
     data_end = CLUSTER_SF_CTX.thread_data + CLUSTER_SF_CTX.work_threads;
     for (thread_data=CLUSTER_SF_CTX.thread_data;

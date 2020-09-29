@@ -36,6 +36,7 @@ int binlog_write_init()
     }
 
     return sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
-            &g_binlog_writer_ctx.writer, SF_BINLOG_WRITER_TYPE_ORDER_BY_VERSION,
-            binlog_init_buffer_size, writer_count, use_fixed_buffer_size);
+            &g_binlog_writer_ctx.writer, SF_BINLOG_THREAD_ORDER_MODE_VARY,
+            SF_BINLOG_THREAD_TYPE_ORDER_BY_NONE, binlog_init_buffer_size,
+            writer_count, use_fixed_buffer_size);
 }

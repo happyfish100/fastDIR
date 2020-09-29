@@ -26,17 +26,12 @@ static FDIRSlaveReplicationArray slave_replication_array;
 
 static int init_binlog_local_consumer_array()
 {
-    static bool inited = false;
     int result;
     int count;
     int bytes;
     FDIRClusterServerInfo *server;
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
-
-    if (inited) {
-        return 0;
-    }
 
     count = CLUSTER_SERVER_ARRAY.count - 1;
     if (count == 0) {
@@ -73,12 +68,16 @@ static int init_binlog_local_consumer_array()
     }
 
     slave_replication_array.count = count;
-    inited = true;
     return 0;
 }
 
 int binlog_local_consumer_init()
 {
+    int result;
+
+    if ((result=init_binlog_local_consumer_array()) != 0) {
+        return result;
+    }
     return binlog_write_init();
 }
 
@@ -87,10 +86,6 @@ int binlog_local_consumer_replication_start()
     int result;
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
-
-    if ((result=init_binlog_local_consumer_array()) != 0) {
-        return result;
-    }
 
     end = slave_replication_array.replications + slave_replication_array.count;
     for (replication=slave_replication_array.replications; replication<end;

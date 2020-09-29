@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 int binlog_producer_init();
+int binlog_producer_start();
 void binlog_producer_destroy();
 
 ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer();

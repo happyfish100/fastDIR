@@ -32,17 +32,11 @@ static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
     ReplicaConsumerThreadContext *ctx;
     bool notify;
 
-    if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
-        /*
-        logInfo("file: "__FILE__", line: %d, "
-                "free record buffer: %p", __LINE__, rbuffer);
-                */
 
-        ctx = (ReplicaConsumerThreadContext *)rbuffer->args;
-        common_blocked_queue_push_ex(&ctx->queues.free, rbuffer, &notify);
-        if (notify) {
-            iovent_notify_thread(ctx->task->thread_data);
-        }
+    ctx = (ReplicaConsumerThreadContext *)rbuffer->args;
+    common_blocked_queue_push_ex(&ctx->queues.free, rbuffer, &notify);
+    if (notify) {
+        iovent_notify_thread(ctx->task->thread_data);
     }
 }
 
@@ -177,26 +171,8 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     fast_mblock_destroy(&ctx->result_allocator);
 
     free(ctx);
-    logInfo("file: "__FILE__", line: %d, "
+    logDebug("file: "__FILE__", line: %d, "
             "replica_consumer_thread_terminated", __LINE__);
-}
-
-static inline int push_to_replica_consumer_queues(
-        ReplicaConsumerThreadContext *ctx,
-        ServerBinlogRecordBuffer *rbuffer)
-{
-    int result;
-
-    __sync_add_and_fetch(&rbuffer->reffer_count, 1);
-    if ((result=push_to_binlog_write_queue(rbuffer)) != 0) {
-        logCrit("file: "__FILE__", line: %d, "
-                "push_to_binlog_write_queue fail, program exit!",
-                __LINE__);
-        SF_G_CONTINUE_FLAG = false;
-        return result;
-    }
-
-    return common_blocked_queue_push(&ctx->queues.input, rbuffer);
 }
 
 static inline int push_and_set_next_recv_buffer(
@@ -207,7 +183,7 @@ static inline int push_and_set_next_recv_buffer(
     int binlog_length;
 
     binlog_length = ctx->recv_rbuffer->buffer.length;
-    if ((result=push_to_replica_consumer_queues(ctx,
+    if ((result=common_blocked_queue_push(&ctx->queues.input,
                     ctx->recv_rbuffer)) != 0)
     {
         common_blocked_queue_push(&ctx->queues.free, rb);
@@ -381,7 +357,7 @@ static void *deal_binlog_thread_func(void *arg)
     struct common_blocked_node *current;
     ServerBinlogRecordBuffer *rb;
 
-    logInfo("file: "__FILE__", line: %d, "
+    logDebug("file: "__FILE__", line: %d, "
             "deal_binlog_thread_func start", __LINE__);
 
     ctx = (ReplicaConsumerThreadContext *)arg;
@@ -394,14 +370,33 @@ static void *deal_binlog_thread_func(void *arg)
 
         current = node;
         do {
-            /*
-               logInfo("file: "__FILE__", line: %d, "
-               "replay binlog buffer length: %d", __LINE__, rb->buffer.length);
-             */
-
             rb = (ServerBinlogRecordBuffer *)current->data;
-            binlog_replay_deal_buffer(&ctx->replay_ctx,
-                    rb->buffer.data, rb->buffer.length, NULL);
+
+            /*
+            logInfo("file: "__FILE__", line: %d, "
+                    "replay binlog buffer length: %d, data_version: %"PRId64,
+                    __LINE__, rb->buffer.length, rb->data_version);
+                    */
+
+            if (binlog_replay_deal_buffer(&ctx->replay_ctx,
+                    rb->buffer.data, rb->buffer.length, NULL) == 0)
+            {
+                if (push_to_binlog_write_queue(rb) != 0) {
+                    logCrit("file: "__FILE__", line: %d, "
+                            "push_to_binlog_write_queue fail, "
+                            "program exit!", __LINE__);
+                    ctx->continue_flag = false;
+                    SF_G_CONTINUE_FLAG = false;
+                    break;
+                }
+            } else {
+                logCrit("file: "__FILE__", line: %d, "
+                        "binlog replay deal buffer fail, "
+                        "program exit!", __LINE__);
+                ctx->continue_flag = false;
+                SF_G_CONTINUE_FLAG = false;
+                break;
+            }
 
             rb->release_func(rb);
             current = current->next;

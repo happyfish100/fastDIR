@@ -604,10 +604,7 @@ static int handle_replica_done(struct fast_task_info *task)
     TASK_ARG->context.deal_func = NULL;
     service_idempotency_request_finish(task, 0);
 
-    logInfo("RBUFFER: %p", RBUFFER);
-
     if (RBUFFER != NULL) {
-        logInfo("data_version: %"PRId64, RBUFFER->data_version);
         result = push_to_binlog_write_queue(RBUFFER);
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
@@ -1808,9 +1805,8 @@ static inline int service_check_master(struct fast_task_info *task)
 
 static inline int service_check_readable(struct fast_task_info *task)
 {
-    if (!(CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR ||
-                __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) ==
-                FDIR_SERVER_STATUS_ACTIVE))
+    if (__sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) !=
+                FDIR_SERVER_STATUS_ACTIVE)
     {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
