@@ -128,7 +128,7 @@ void binlog_local_consumer_terminate()
             replication<end; replication++)
     {
         if (replication->task != NULL) {
-            iovent_notify_thread(replication->task->thread_data);
+            ioevent_notify_thread(replication->task->thread_data);
         }
     }
 }
@@ -152,7 +152,7 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (notify) {
-        iovent_notify_thread(replication->task->thread_data);
+        ioevent_notify_thread(replication->task->thread_data);
     }
 }
 

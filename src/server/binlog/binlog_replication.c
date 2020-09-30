@@ -506,7 +506,7 @@ void clean_connected_replications(FDIRServerContext *server_ctx)
 
     for (i=0; i<server_ctx->cluster.connected.count; i++) {
         replication = server_ctx->cluster.connected.replications[i];
-        iovent_add_to_deleted_list(replication->task);
+        ioevent_add_to_deleted_list(replication->task);
     }
 }
 
@@ -797,7 +797,7 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
     for (i=0; i<server_ctx->cluster.connected.count; i++) {
         replication = server_ctx->cluster.connected.replications[i];
         if (deal_connected_replication(replication) != 0) {
-            iovent_add_to_deleted_list(replication->task);
+            ioevent_add_to_deleted_list(replication->task);
         }
     }
 

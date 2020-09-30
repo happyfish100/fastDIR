@@ -36,7 +36,7 @@ static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
     ctx = (ReplicaConsumerThreadContext *)rbuffer->args;
     common_blocked_queue_push_ex(&ctx->queues.free, rbuffer, &notify);
     if (notify) {
-        iovent_notify_thread(ctx->task->thread_data);
+        ioevent_notify_thread(ctx->task->thread_data);
     }
 }
 
@@ -61,7 +61,7 @@ static void replay_done_callback(const int result,
         r->data_version = record->data_version;
         common_blocked_queue_push_ex(&ctx->queues.result, r, &notify);
         if (notify) {
-            iovent_notify_thread(ctx->task->thread_data);
+            ioevent_notify_thread(ctx->task->thread_data);
         }
     }
 }
