@@ -386,7 +386,7 @@ static void *deal_binlog_thread_func(void *arg)
                             "push_to_binlog_write_queue fail, "
                             "program exit!", __LINE__);
                     ctx->continue_flag = false;
-                    SF_G_CONTINUE_FLAG = false;
+                    sf_terminate_myself();
                     break;
                 }
             } else {
@@ -394,7 +394,7 @@ static void *deal_binlog_thread_func(void *arg)
                         "binlog replay deal buffer fail, "
                         "program exit!", __LINE__);
                 ctx->continue_flag = false;
-                SF_G_CONTINUE_FLAG = false;
+                sf_terminate_myself();
                 break;
             }
 

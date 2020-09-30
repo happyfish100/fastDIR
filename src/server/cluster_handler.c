@@ -99,11 +99,6 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-static int cluster_deal_actvie_test(struct fast_task_info *task)
-{
-    return server_expect_body_length(task, 0);
-}
-
 static int cluster_check_config_sign(struct fast_task_info *task,
         const int server_id, const char *config_sign)
 {
@@ -307,6 +302,25 @@ static int cluster_deal_next_master(struct fast_task_info *task)
     }
 }
 
+static inline int check_replication_slave_task(struct fast_task_info *task)
+{
+    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid task type: %d != %d", SERVER_TASK_TYPE,
+                FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE);
+        return -EINVAL;
+    }
+    if (CLUSTER_CONSUMER_CTX == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "please join first");
+        return -EINVAL;
+    }
+
+    return 0;
+}
+
 static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {
     int result;
@@ -321,18 +335,8 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return result;
     }
 
-    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "invalid task type: %d != %d", SERVER_TASK_TYPE,
-                FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE);
-        return -EINVAL;
-    }
-    if (CLUSTER_CONSUMER_CTX == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "please join first");
-        return -EINVAL;
+    if ((result=check_replication_slave_task(task)) != 0) {
+        return result;
     }
 
     body_header = (FDIRProtoPushBinlogReqBodyHeader *)(task->data +
@@ -354,7 +358,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
             (body_header + 1), binlog_length, last_data_version);
 }
 
-static inline int cluster_check_replication_task(struct fast_task_info *task)
+static inline int check_replication_master_task(struct fast_task_info *task)
 {
     if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_MASTER) {
         RESPONSE.error.length = sprintf(
@@ -384,7 +388,7 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
     FDIRProtoPushBinlogRespBodyPart *body_part;
     FDIRProtoPushBinlogRespBodyPart *bp_end;
 
-    if ((result=cluster_check_replication_task(task)) != 0) {
+    if ((result=check_replication_master_task(task)) != 0) {
         return result;
     }
 
@@ -576,20 +580,38 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     return 0;
 }
 
+static void cluster_notify_slave_quit(struct fast_task_info *task,
+        const int binlog_count, const uint64_t first_unmatched_dv)
+{
+    FDIRProtoNotifySlaveQuit *req;
+
+    req = (FDIRProtoNotifySlaveQuit *)REQUEST.body;
+    RESPONSE.header.body_len = sizeof(FDIRProtoNotifySlaveQuit);
+
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    int2buff(binlog_count, req->binlog_count);
+    long2buff(first_unmatched_dv, req->first_unmatched_dv);
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT;
+    TASK_ARG->context.response_done = true;
+}
 
 static int cluster_check_binlog_consistency(struct fast_task_info *task,
         string_t *binlog, SFBinlogFilePosition *hint_pos)
 {
     int result;
+    int binlog_count;
     uint64_t first_unmatched_dv;
 
     if ((result=binlog_check_consistency(binlog, hint_pos,
-                    &first_unmatched_dv)) != 0)
+                    &binlog_count, &first_unmatched_dv)) != 0)
     {
         char prompt[128];
         if (result == SF_CLUSTER_ERROR_BINLOG_INCONSISTENT) {
             sprintf(prompt, "first unmatched data "
                     "version: %"PRId64, first_unmatched_dv);
+
+            cluster_notify_slave_quit(task, binlog_count, first_unmatched_dv);
+            TASK_ARG->context.need_response = true;
         } else {
             sprintf(prompt, "some mistake happen, "
                     "error code is %d", result);
@@ -610,7 +632,7 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
     SFBinlogFilePosition hint_pos;
     FDIRProtoJoinSlaveResp *resp;
 
-    if ((result=cluster_check_replication_task(task)) != 0) {
+    if ((result=check_replication_master_task(task)) != 0) {
         return result;
     }
 
@@ -647,11 +669,41 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
     return 0;
 }
 
+static int cluster_deal_notify_slave_quit(struct fast_task_info *task)
+{
+    FDIRProtoNotifySlaveQuit *req;
+    int result;
+    int server_id;
+    int binlog_count;
+    int64_t first_unmatched_dv;
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoNotifySlaveQuit))) != 0)
+    {
+        return result;
+    }
+
+    if ((result=check_replication_slave_task(task)) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoNotifySlaveQuit *)REQUEST.body;
+    server_id = buff2int(req->server_id);
+    binlog_count = buff2int(req->binlog_count);
+    first_unmatched_dv = buff2long(req->first_unmatched_dv);
+    logCrit("file: "__FILE__", line: %d, "
+            "my last %d binlogs NOT consistent with master server: %d, "
+            "the first unmatched data version: %"PRId64", program exit!",
+            __LINE__, binlog_count, server_id, first_unmatched_dv);
+    sf_terminate_myself();
+    return -EBUSY;
+}
+
 static int cluster_deal_slave_ack(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=cluster_check_replication_task(task)) != 0) {
+    if ((result=check_replication_master_task(task)) != 0) {
         return result;
     }
 
@@ -699,7 +751,7 @@ int cluster_deal_task(struct fast_task_info *task)
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
                 RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
-                result = cluster_deal_actvie_test(task);
+                result = sf_proto_deal_actvie_test(task, &REQUEST, &RESPONSE);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
                 result = cluster_deal_get_server_status(task);
@@ -718,8 +770,8 @@ int cluster_deal_task(struct fast_task_info *task)
                 result = cluster_deal_join_slave_req(task);
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
-                result = cluster_deal_join_slave_resp(task);
                 TASK_ARG->context.need_response = false;
+                result = cluster_deal_join_slave_resp(task);
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
                 result = cluster_deal_push_binlog_req(task);
@@ -727,6 +779,10 @@ int cluster_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
                 result = cluster_deal_push_binlog_resp(task);
+                TASK_ARG->context.need_response = false;
+                break;
+            case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
+                result = cluster_deal_notify_slave_quit(task);
                 TASK_ARG->context.need_response = false;
                 break;
             case SF_PROTO_ACK:

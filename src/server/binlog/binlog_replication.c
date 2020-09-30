@@ -574,7 +574,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
                             push_result_ctx, rb->data_version,
                             waiting_task, rb->task_version)) != 0)
             {
-                SF_G_CONTINUE_FLAG = false;
+                sf_terminate_myself();
                 return result;
             }
         }

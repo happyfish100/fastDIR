@@ -179,6 +179,8 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "PUSH_BINLOG_REQ";
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
             return "PUSH_BINLOG_RESP";
+        case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
+            return "NOTIFY_SLAVE_QUIT";
         default:
             return sf_get_cmd_caption(cmd);
     }

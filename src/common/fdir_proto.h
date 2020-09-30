@@ -94,6 +94,7 @@
 #define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP          92
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          93
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         94
+#define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        95  //when slave binlog not consistent
 
 typedef SFCommonProtoHeader  FDIRProtoHeader;
 
@@ -415,6 +416,12 @@ typedef struct fdir_proto_join_slave_resp {
     char last_data_version[8];   //the slave's last data version
     char binlog[0];
 } FDIRProtoJoinSlaveResp;
+
+typedef struct fdir_proto_notify_slave_quit {
+    char server_id[4];      //the master server id
+    char binlog_count[4];
+    char first_unmatched_dv[8];   //the slave's first unmatched data version
+} FDIRProtoNotifySlaveQuit;
 
 typedef struct fdir_proto_ping_master_resp_header {
     char inode_sn[8];  //current inode sn of master

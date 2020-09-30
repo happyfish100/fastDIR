@@ -124,9 +124,12 @@ void binlog_local_consumer_terminate()
 
     binlog_write_finish();
     end = slave_replication_array.replications + slave_replication_array.count;
-    for (replication=slave_replication_array.replications; replication<end;
-            replication++) {
-        iovent_notify_thread(replication->task->thread_data);
+    for (replication=slave_replication_array.replications;
+            replication<end; replication++)
+    {
+        if (replication->task != NULL) {
+            iovent_notify_thread(replication->task->thread_data);
+        }
     }
 }
 

@@ -15,7 +15,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
-#include "sf/sf_global.h"
+#include "sf/sf_func.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "server_binlog.h"
@@ -434,7 +434,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
             logCrit("file: "__FILE__", line: %d, "
                     "binlog_producer_init fail, "
                     "program exit!", __LINE__);
-            SF_G_CONTINUE_FLAG = false;
+            sf_terminate_myself();
             return result;
         }
 
@@ -474,7 +474,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
             logCrit("file: "__FILE__", line: %d, "
                     "binlog_producer_start fail, "
                     "program exit!", __LINE__);
-            SF_G_CONTINUE_FLAG = false;
+            sf_terminate_myself();
             return result;
         }
 

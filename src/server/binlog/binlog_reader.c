@@ -696,8 +696,6 @@ int binlog_unpack_records(const string_t *buffer,
     p = buffer->str;
     end = buffer->str + buffer->len;
     while (p < end) {
-        logInfo("=======file: "__FILE__", line: %d, remain len: %d", __LINE__, (int)(end - p));
-
         if ((result=binlog_unpack_record(p, end - p,
                         record++, (const char **)&rec_end,
                         error_info, sizeof(error_info))) != 0)
@@ -835,8 +833,10 @@ static int check_records_consistency(FDIRBinlogRecord *slave_records,
     mend = master_records + master_rows;
     while ((sr < send) && (mr < mend)) {
 
+        /*
         logInfo("master version: %"PRId64", slave version: %"PRId64,
                 mr->data_version, sr->data_version);
+                */
 
         if (sr->data_version < mr->data_version) {
             sr++;
@@ -864,7 +864,7 @@ static int check_records_consistency(FDIRBinlogRecord *slave_records,
 
 int binlog_check_consistency(const string_t *sbinlog,
         const SFBinlogFilePosition *hint_pos,
-        uint64_t *first_unmatched_dv)
+        int *binlog_count, uint64_t *first_unmatched_dv)
 {
     int result;
     ServerBinlogReader reader;
@@ -877,23 +877,22 @@ int binlog_check_consistency(const string_t *sbinlog,
     int master_rows;
     int64_t last_data_version;
 
+    *first_unmatched_dv = 0;
     if (sbinlog->len == 0) {
+        *binlog_count = 0;
         return 0;
     }
 
-    logInfo("=======file: "__FILE__", line: %d", __LINE__);
-
-    *first_unmatched_dv = 0;
     if ((result=binlog_unpack_records(sbinlog, slave_records,
                     FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS,
                     &slave_rows)) != 0)
     {
+        *binlog_count = 0;
         return result;
     }
 
-    logInfo("=======file: "__FILE__", line: %d", __LINE__);
-    logInfo("slave rows: %d", slave_rows);
-
+    *binlog_count = slave_rows;
+    //logInfo("slave rows: %d", slave_rows);
     if ((result=binlog_reader_init(&reader, hint_pos,
                     slave_records[0].data_version - 1)) != 0)
     {
@@ -927,7 +926,7 @@ int binlog_check_consistency(const string_t *sbinlog,
             break;
         }
 
-        logInfo("master rows: %d", master_rows);
+        //logInfo("master rows: %d", master_rows);
         result = check_records_consistency(slave_records, slave_rows,
                 master_records, master_rows, first_unmatched_dv);
     } while (0);

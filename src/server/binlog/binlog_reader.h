@@ -41,7 +41,7 @@ int binlog_get_max_record_version(int64_t *data_version);
 
 int binlog_check_consistency(const string_t *sbinlog,
         const SFBinlogFilePosition *hint_pos,
-        uint64_t *first_unmatched_dv);
+        int *binlog_count, uint64_t *first_unmatched_dv);
 
 #ifdef __cplusplus
 }
