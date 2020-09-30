@@ -239,7 +239,9 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
             BINLOG_RECORD_FIELD_NAME_TIMESTAMP, record->timestamp);
 
     if (record->options.path_info.flags != 0) {
-        if (record->me.pname.parent_inode == 0 && record->me.pname.name.len > 0) {
+        if (record->me.pname.parent_inode == 0 &&
+                record->me.pname.name.len > 0)
+        {
             logError("file: "__FILE__", line: %d, "
                     "subname: %.*s, expect parent inode", __LINE__,
                     record->me.pname.name.len, record->me.pname.name.str);

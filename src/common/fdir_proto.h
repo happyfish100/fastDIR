@@ -402,16 +402,18 @@ typedef struct fdir_proto_join_master_req {
 typedef struct fdir_proto_join_slave_req {
     char cluster_id[4];  //the cluster id
     char server_id[4];   //the master server id
-    char buffer_size[4];   //the master task task size
+    char buffer_size[4]; //the master task size
     char key[FDIR_REPLICA_KEY_SIZE];  //the slave key passed / set by JOIN_MASTER
 } FDIRProtoJoinSlaveReq;
 
 typedef struct fdir_proto_join_slave_resp {
+    char binlog_length[4]; //last N rows for consistency check
     struct {
         char index[4];   //binlog file index
         char offset[8];  //binlog file offset
     } binlog_pos_hint;
     char last_data_version[8];   //the slave's last data version
+    char binlog[0];
 } FDIRProtoJoinSlaveResp;
 
 typedef struct fdir_proto_ping_master_resp_header {

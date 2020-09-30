@@ -322,6 +322,7 @@ static void server_log_configs()
             "cluster_id = %d, my server id = %d, data_path = %s, "
             "data_threads = %d, dentry_max_data_size = %d, "
             "binlog_buffer_size = %d KB, "
+            "slave_binlog_check_last_rows = %d, "
             "admin config {username: %s, secret_key: %s}, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
@@ -332,6 +333,7 @@ static void server_log_configs()
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
+            SLAVE_BINLOG_CHECK_LAST_ROWS,
             g_server_global_vars.admin.username.str,
             g_server_global_vars.admin.secret_key.str,
             g_server_global_vars.reload_interval_ms,
@@ -419,6 +421,18 @@ int server_load_config(const char *filename)
 
     if ((result=load_binlog_buffer_size(&ini_context, filename)) != 0) {
         return result;
+    }
+
+    SLAVE_BINLOG_CHECK_LAST_ROWS = iniGetIntValue(NULL,
+            "slave_binlog_check_last_rows", &ini_context,
+            FDIR_DEFAULT_SLAVE_BINLOG_CHECK_LAST_ROWS);
+    if (SLAVE_BINLOG_CHECK_LAST_ROWS > FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS) {
+        logWarning("file: "__FILE__", line: %d, "
+                "config file: %s , slave_binlog_check_last_rows: %d "
+                "is too large, set it to %d", __LINE__, filename,
+                SLAVE_BINLOG_CHECK_LAST_ROWS,
+                FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS);
+        SLAVE_BINLOG_CHECK_LAST_ROWS = FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS;
     }
 
     g_server_global_vars.reload_interval_ms = iniGetIntValue(NULL,

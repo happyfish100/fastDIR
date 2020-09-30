@@ -53,6 +53,7 @@ typedef struct server_global_vars {
         volatile uint64_t current_version; //binlog version
         string_t path;   //data path
         int binlog_buffer_size;
+        int slave_binlog_check_last_rows;
         int thread_count;
     } data;
 
@@ -82,6 +83,9 @@ typedef struct server_global_vars {
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
+#define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars.data. \
+    slave_binlog_check_last_rows
+
 #define CURRENT_INODE_SN        g_server_global_vars.inode.generator.sn
 #define INODE_CLUSTER_PART      g_server_global_vars.inode.generator.cluster
 #define INODE_SHARED_LOCKS_COUNT g_server_global_vars.inode.entries.shared_locks_count

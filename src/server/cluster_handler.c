@@ -438,12 +438,34 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
     return result;
 }
 
+static int fill_binlog_last_lines(struct fast_task_info *task,
+        int *binlog_length)
+{
+    int front_length;
+    int buffer_size;
+    int binlog_count;
+
+    if (SLAVE_BINLOG_CHECK_LAST_ROWS <= 0) {
+        *binlog_length = 0;
+        return 0;
+    }
+
+    front_length = sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoJoinSlaveResp);
+    buffer_size = task->size - front_length;
+    binlog_count = SLAVE_BINLOG_CHECK_LAST_ROWS;
+    return sf_binlog_writer_get_last_lines(FDIR_BINLOG_SUBDIR_NAME,
+            binlog_get_current_write_index(), task->data + front_length,
+            buffer_size, &binlog_count, binlog_length);
+}
+
 static int cluster_deal_join_slave_req(struct fast_task_info *task)
 {
     int result;
     int cluster_id;
     int server_id;
     int buffer_size;
+    int binlog_length;
     FDIRServerContext *server_ctx;
     SFBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
@@ -515,18 +537,20 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     }
 
     if (CLUSTER_CONSUMER_CTX != NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "master server id: %d already joined", server_id);
         return EEXIST;
     }
 
     server_ctx = (FDIRServerContext *)task->thread_data->arg;
     if (server_ctx->cluster.consumer_ctx != NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "replica consumer thread already exist");
         return EEXIST;
+    }
+
+    if ((result=fill_binlog_last_lines(task, &binlog_length)) != 0) {
+        return result;
     }
 
     CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
@@ -543,10 +567,38 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     long2buff(DATA_CURRENT_VERSION, resp->last_data_version);
     int2buff(bf_position.index, resp->binlog_pos_hint.index);
     long2buff(bf_position.offset, resp->binlog_pos_hint.offset);
+    int2buff(binlog_length, resp->binlog_length);
 
     TASK_ARG->context.response_done = true;
     RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
-    RESPONSE.header.body_len = sizeof(FDIRProtoJoinSlaveResp);
+    RESPONSE.header.body_len = sizeof(FDIRProtoJoinSlaveResp) + binlog_length;
+
+    return 0;
+}
+
+
+static int cluster_check_binlog_consistency(struct fast_task_info *task,
+        string_t *binlog, SFBinlogFilePosition *hint_pos)
+{
+    int result;
+    uint64_t first_unmatched_dv;
+
+    if ((result=binlog_check_consistency(binlog, hint_pos,
+                    &first_unmatched_dv)) != 0)
+    {
+        char prompt[128];
+        if (result == SF_CLUSTER_ERROR_BINLOG_INCONSISTENT) {
+            sprintf(prompt, "first unmatched data "
+                    "version: %"PRId64, first_unmatched_dv);
+        } else {
+            sprintf(prompt, "some mistake happen, "
+                    "error code is %d", result);
+        }
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "slave server id: %d, binlog consistency check fail, %s",
+                CLUSTER_REPLICA->slave->server->id, prompt);
+        return result;
+    }
 
     return 0;
 }
@@ -554,25 +606,44 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
 static int cluster_deal_join_slave_resp(struct fast_task_info *task)
 {
     int result;
-    FDIRProtoJoinSlaveResp *req;
+    string_t binlog;
+    SFBinlogFilePosition hint_pos;
+    FDIRProtoJoinSlaveResp *resp;
 
     if ((result=cluster_check_replication_task(task)) != 0) {
         return result;
     }
 
-    if ((result=server_expect_body_length(task,
+    if ((result=server_check_min_body_length(task,
                     sizeof(FDIRProtoJoinSlaveResp))) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    resp = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    binlog.len = buff2int(resp->binlog_length);
+    if (REQUEST.header.body_len != sizeof(FDIRProtoJoinSlaveResp) +
+            binlog.len)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "response body length: %d != sizeof(FDIRProtoJoinSlaveResp)"
+                ": %d + binlog_length: %d", REQUEST.header.body_len,
+                (int)sizeof(FDIRProtoJoinSlaveResp), binlog.len);
+        return EINVAL;
+    }
+
+    hint_pos.index = buff2int(resp->binlog_pos_hint.index);
+    hint_pos.offset = buff2long(resp->binlog_pos_hint.offset);
+    binlog.str = resp->binlog;
+    if ((result=cluster_check_binlog_consistency(task,
+                    &binlog, &hint_pos)) != 0)
+    {
+        return result;
+    }
+
     CLUSTER_REPLICA->slave->last_data_version = buff2long(
-            req->last_data_version);
-    CLUSTER_REPLICA->slave->binlog_pos_hint.index = buff2int(
-            req->binlog_pos_hint.index);
-    CLUSTER_REPLICA->slave->binlog_pos_hint.offset = buff2long(
-            req->binlog_pos_hint.offset);
+            resp->last_data_version);
+    CLUSTER_REPLICA->slave->binlog_pos_hint = hint_pos;
     return 0;
 }
 

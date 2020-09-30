@@ -209,7 +209,7 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
                 __LINE__, reader->filename, line_count, error_info);
 
         *data_version = 0;
-        return result == ENOENT ? EFAULT : result;
+        return result == ENOENT ? EAGAIN : result;
     }
 
     remain_len = (buff + *read_bytes) - rec_end;
@@ -678,5 +678,262 @@ int binlog_get_max_record_version(int64_t *data_version)
                 data_version);
     }
 
+    return result;
+}
+
+int binlog_unpack_records(const string_t *buffer,
+        FDIRBinlogRecord *records, const int size, int *count)
+{
+    int result;
+    char *p;
+    char *end;
+    char *rec_end;
+    char error_info[FDIR_ERROR_INFO_SIZE];
+    FDIRBinlogRecord *record;
+
+    *count = 0;
+    record = records;
+    p = buffer->str;
+    end = buffer->str + buffer->len;
+    while (p < end) {
+        logInfo("=======file: "__FILE__", line: %d, remain len: %d", __LINE__, (int)(end - p));
+
+        if ((result=binlog_unpack_record(p, end - p,
+                        record++, (const char **)&rec_end,
+                        error_info, sizeof(error_info))) != 0)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "binlog unpack record fail, %s",
+                    __LINE__, error_info);
+            return result;
+        }
+
+        if (++(*count) == size) {
+            break;
+        }
+        p = rec_end;
+    }
+
+    return 0;
+}
+
+static inline int compare_string(const string_t *s1, const string_t *s2)
+{
+    int sub;
+    if ((sub=(int)s1->len - (int)s2->len) != 0) {
+        return sub;
+    }
+    if (s1->len > 0) {
+        return memcmp(s1->str, s2->str, s1->len);
+    } else {
+        return 0;
+    }
+}
+
+static inline int compare_dentry_pname(
+        const FDIRDEntryPName *p1,
+        const FDIRDEntryPName *p2)
+{
+    int sub;
+    if ((sub=fc_compare_int64(p1->parent_inode, p2->parent_inode)) != 0) {
+        return sub;
+    }
+
+    return compare_string(&p1->name, &p2->name);
+}
+
+static inline int compare_rename_operation(
+        const FDIRBinlogRecord *r1,
+        const FDIRBinlogRecord *r2)
+{
+    int sub;
+
+    if (r1->operation == BINLOG_OP_RENAME_DENTRY_INT) {
+        if ((sub=compare_dentry_pname(&r1->rename.src.pname,
+                        &r2->rename.src.pname)) != 0)
+        {
+            return sub;
+        }
+
+        if ((sub=fc_compare_int64(r1->rename.flags,
+                        r2->rename.flags)) != 0)
+        {
+            return sub;
+        }
+    }
+
+    return 0;
+}
+
+static int compare_record(const FDIRBinlogRecord *r1,
+        const FDIRBinlogRecord *r2)
+{
+    int sub;
+
+    if ((sub=(int)r1->operation - (int)r2->operation) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(r1->hash_code, r2->hash_code)) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(r1->inode, r2->inode)) != 0) {
+        return sub;
+    }
+
+    if ((sub=fc_compare_int64(r1->options.flags, r2->options.flags)) != 0) {
+        return sub;
+    }
+
+    if (r1->options.path_info.ns) {
+        if ((sub=compare_string(&r1->ns, &r2->ns)) != 0) {
+            return sub;
+        }
+    }
+
+    if (r1->options.path_info.subname) {
+        if ((sub=compare_dentry_pname(&r1->me.pname,
+                        &r2->me.pname)) != 0)
+        {
+            return sub;
+        }
+    }
+
+    if (r1->options.src_inode) {
+        if ((sub=fc_compare_int64(r1->hdlink.src_inode,
+                    r2->hdlink.src_inode)) != 0)
+        {
+            return sub;
+        }
+    }
+
+    if (r1->options.link) {
+        if ((sub=compare_string(&r1->link, &r2->link)) != 0) {
+            return sub;
+        }
+    }
+    if ((sub=compare_rename_operation(r1, r2)) != 0) {
+        return sub;
+    }
+
+    return memcmp(&r1->stat, &r2->stat, sizeof(FDIRDEntryStatus));
+}
+
+static int check_records_consistency(FDIRBinlogRecord *slave_records,
+        const int slave_rows, FDIRBinlogRecord *master_records,
+        const int master_rows, uint64_t *first_unmatched_dv)
+{
+    FDIRBinlogRecord *sr;
+    FDIRBinlogRecord *mr;
+    FDIRBinlogRecord *send;
+    FDIRBinlogRecord *mend;
+
+    sr = slave_records;
+    mr = master_records;
+    send = slave_records + slave_rows;
+    mend = master_records + master_rows;
+    while ((sr < send) && (mr < mend)) {
+
+        logInfo("master version: %"PRId64", slave version: %"PRId64,
+                mr->data_version, sr->data_version);
+
+        if (sr->data_version < mr->data_version) {
+            sr++;
+        } else if (sr->data_version == mr->data_version) {
+            //TODO
+            /*
+            if (sr->source == BINLOG_SOURCE_RPC &&
+                    mr->source == BINLOG_SOURCE_RPC)
+                    */
+            {
+                if (compare_record(sr, mr) != 0) {
+                    *first_unmatched_dv = sr->data_version;
+                    return SF_CLUSTER_ERROR_BINLOG_INCONSISTENT;
+                }
+            }
+            sr++;
+            mr++;
+        } else {
+            mr++;
+        }
+    }
+
+    return 0;
+}
+
+int binlog_check_consistency(const string_t *sbinlog,
+        const SFBinlogFilePosition *hint_pos,
+        uint64_t *first_unmatched_dv)
+{
+    int result;
+    ServerBinlogReader reader;
+    FDIRBinlogRecord slave_records[FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS];
+    FDIRBinlogRecord master_records[FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS];
+    char fixed_buff[16 * 1024];
+    string_t mbinlog;
+    int buff_size;
+    int slave_rows;
+    int master_rows;
+    int64_t last_data_version;
+
+    if (sbinlog->len == 0) {
+        return 0;
+    }
+
+    logInfo("=======file: "__FILE__", line: %d", __LINE__);
+
+    *first_unmatched_dv = 0;
+    if ((result=binlog_unpack_records(sbinlog, slave_records,
+                    FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS,
+                    &slave_rows)) != 0)
+    {
+        return result;
+    }
+
+    logInfo("=======file: "__FILE__", line: %d", __LINE__);
+    logInfo("slave rows: %d", slave_rows);
+
+    if ((result=binlog_reader_init(&reader, hint_pos,
+                    slave_records[0].data_version - 1)) != 0)
+    {
+        return result;
+    }
+
+    if (sbinlog->len + 256 < sizeof(fixed_buff)) {
+        buff_size = sizeof(fixed_buff);
+        mbinlog.str = fixed_buff;
+    } else {
+        buff_size = sbinlog->len + 256;
+        mbinlog.str = (char *)fc_malloc(buff_size);
+        if (mbinlog.str == NULL) {
+            return ENOMEM;
+        }
+    }
+
+    result = binlog_reader_integral_read(&reader, mbinlog.str,
+            buff_size, &mbinlog.len, &last_data_version);
+    binlog_reader_destroy(&reader);
+    do {
+        if (result == ENOENT || result == EAGAIN) {
+            result = 0;
+            break;
+        }
+
+        if ((result=binlog_unpack_records(&mbinlog, master_records,
+                        FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS,
+                        &master_rows)) != 0)
+        {
+            break;
+        }
+
+        logInfo("master rows: %d", master_rows);
+        result = check_records_consistency(slave_records, slave_rows,
+                master_records, master_rows, first_unmatched_dv);
+    } while (0);
+
+    if (mbinlog.str != fixed_buff) {
+        free(mbinlog.str);
+    }
     return result;
 }
