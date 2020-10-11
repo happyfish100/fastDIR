@@ -281,16 +281,18 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
         get_sys_total_mem_size(&mem_size);
     }
 
+    /*
     logInfo("mem_size: %d MB, sizeof(FDIRServerDentry): %d",
             (int)(mem_size / (1024 * 1024)), (int)sizeof(FDIRServerDentry));
+            */
 
     inode_total = mem_size / 300;
-    inode_used = dentry_get_namespace_inode_used(&ns);
+    inode_used = dentry_get_namespace_inode_count(&ns);
 
     resp = (FDIRProtoNamespaceStatResp *)REQUEST.body;
-    long2buff(inode_total, resp->inode_useders.total);
-    long2buff(inode_used, resp->inode_useders.used);
-    long2buff(inode_total - inode_used, resp->inode_useders.avail);
+    long2buff(inode_total, resp->inode_counters.total);
+    long2buff(inode_used, resp->inode_counters.used);
+    long2buff(inode_total - inode_used, resp->inode_counters.avail);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP;

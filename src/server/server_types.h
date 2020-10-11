@@ -71,7 +71,16 @@ typedef struct fdir_path_info {
 } FDIRPathInfo;
 
 struct fdir_dentry_context;
+struct fdir_server_dentry;
 struct flock_entry;
+
+typedef struct fdir_namespace_entry {
+    string_t name;
+    struct fdir_server_dentry *dentry_root;
+    volatile int64_t dentry_count;
+    struct fdir_namespace_entry *next;  //for hashtable
+} FDIRNamespaceEntry;
+
 typedef struct fdir_server_dentry {
     int64_t inode;
     unsigned int hash_code;   //data thread dispach & mutex lock
@@ -86,6 +95,7 @@ typedef struct fdir_server_dentry {
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
     struct fdir_server_dentry *parent;
+    struct fdir_namespace_entry *ns_entry;
     struct flock_entry *flock_entry;
     struct fdir_server_dentry *ht_next;  //for inode hash table;
 } FDIRServerDentry;

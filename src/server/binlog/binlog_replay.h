@@ -21,8 +21,7 @@ typedef struct binlog_replay_context {
     int64_t skip_count;
     int64_t warning_count;
     volatile int64_t fail_count;
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
+    pthread_lock_cond_pair_t lcp;
     struct {
         binlog_replay_notify_func func;
         void *args;

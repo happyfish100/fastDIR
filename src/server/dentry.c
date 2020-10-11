@@ -18,13 +18,6 @@
 
 #define INIT_LEVEL_COUNT 2
 
-typedef struct fdir_namespace_entry {
-    string_t name;
-    FDIRServerDentry *dentry_root;
-    volatile int64_t dentry_count;
-    struct fdir_namespace_entry *next;  //for hashtable
-} FDIRNamespaceEntry;
-
 typedef struct fdir_namespace_hashtable {
     int count;
     FDIRNamespaceEntry **buckets;
@@ -463,7 +456,7 @@ static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
             return ENOENT;
         }
     } else {
-        *ns_entry = NULL;
+        *ns_entry = rec_entry->parent->ns_entry;
     }
 
     target.name = rec_entry->pname.name;
@@ -559,6 +552,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->inode = record->inode;
     }
 
+    current->ns_entry = ns_entry;
     current->stat.mode = record->stat.mode;
     current->stat.atime = record->stat.atime;
     current->stat.btime = record->stat.btime;
