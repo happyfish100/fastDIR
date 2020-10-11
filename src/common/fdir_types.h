@@ -114,4 +114,6 @@ typedef union {
     };
 } FDIRStatModifyFlags;
 
+typedef SFSpaceStat FDIRInodeStat;
+
 #endif

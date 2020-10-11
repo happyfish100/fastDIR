@@ -147,6 +147,9 @@ int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRClientDentryArray *array);
 
+int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
+        const string_t *ns, FDIRInodeStat *stat);
+
 #ifdef __cplusplus
 }
 #endif

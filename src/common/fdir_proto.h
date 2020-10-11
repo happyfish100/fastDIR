@@ -72,13 +72,15 @@
 #define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP        70
 #define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ         71
 #define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP        72
+#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ       73
+#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP      74
 
-#define FDIR_SERVICE_PROTO_GET_MASTER_REQ           73
-#define FDIR_SERVICE_PROTO_GET_MASTER_RESP          74
-#define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           75
-#define FDIR_SERVICE_PROTO_GET_SLAVES_RESP          76
-#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  77
-#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 78
+#define FDIR_SERVICE_PROTO_GET_MASTER_REQ           75
+#define FDIR_SERVICE_PROTO_GET_MASTER_RESP          76
+#define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           77
+#define FDIR_SERVICE_PROTO_GET_SLAVES_RESP          78
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  79
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 80
 
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ    81
@@ -360,6 +362,19 @@ typedef struct fdir_proto_cluster_stat_resp_body_part {
     char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
 } FDIRProtoClusterStatRespBodyPart;
+
+typedef struct fdir_proto_namespace_stat_req {
+    unsigned char ns_len; //namespace length
+    char ns_str[0];       //namespace string
+} FDIRProtoNamespaceStatReq;
+
+typedef struct fdir_proto_namespace_stat_resp {
+    struct {
+        char total[8];
+        char used[8];
+        char avail[8];
+    } inode_counters;
+} FDIRProtoNamespaceStatResp;
 
 /* for FDIR_SERVICE_PROTO_GET_MASTER_RESP and
    FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP

@@ -222,3 +222,10 @@ int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
             NULL, fdir_client_proto_list_dentry_by_inode, inode, array);
 }
+
+int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
+        const string_t *ns, FDIRInodeStat *stat)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_MASTER_CONNECTION,
+            NULL, fdir_client_proto_namespace_stat, ns, stat);
+}

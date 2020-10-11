@@ -145,6 +145,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "CLUSTER_STAT_REQ";
         case FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP:
             return "CLUSTER_STAT_RESP";
+        case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
+            return "NAMESPACE_STAT_REQ";
+        case FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP:
+            return "NAMESPACE_STAT_RESP";
         case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
             return "GET_MASTER_REQ";
         case FDIR_SERVICE_PROTO_GET_MASTER_RESP:

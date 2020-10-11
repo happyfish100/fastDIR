@@ -21,6 +21,7 @@
 typedef struct fdir_namespace_entry {
     string_t name;
     FDIRServerDentry *dentry_root;
+    volatile int64_t dentry_count;
     struct fdir_namespace_entry *next;  //for hashtable
 } FDIRNamespaceEntry;
 
@@ -308,6 +309,17 @@ static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
     return current;
 }
 
+int64_t dentry_get_namespace_inode_count(const string_t *ns)
+{
+    int result;
+    FDIRNamespaceEntry *ns_entry;
+
+    if ((ns_entry=get_namespace(NULL, ns, false, &result)) == NULL) {
+        return 0;
+    }
+    return __sync_add_and_fetch(&ns_entry->dentry_count, 0);
+}
+
 int dentry_find_parent(const FDIRDEntryFullName *fullname,
     FDIRServerDentry **parent, string_t *my_name)
 {
@@ -588,11 +600,12 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     } else {
         db_context->dentry_context.counters.file++;
     }
+    __sync_add_and_fetch(&ns_entry->dentry_count, 1);
     return 0;
 }
 
 static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
-        FDIRServerDentry *dentry)
+        FDIRNamespaceEntry *ns_entry, FDIRServerDentry *dentry)
 {
     int result;
 
@@ -602,6 +615,7 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
 
     dentry_free_func(dentry, delay_free_seconds);
     db_context->dentry_context.counters.file--;
+    __sync_sub_and_fetch(&ns_entry->dentry_count, 1);
     return 0;
 }
 
@@ -642,7 +656,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
                     record->me.dentry->src_dentry->inode);
                     */
 
-            if ((result=remove_src_dentry(db_context,
+            if ((result=remove_src_dentry(db_context, ns_entry,
                             record->me.dentry->src_dentry)) != 0)
             {
                 return result;
@@ -684,6 +698,8 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         } else {
             db_context->dentry_context.counters.file--;
         }
+
+        __sync_sub_and_fetch(&ns_entry->dentry_count, 1);
     }
 
     return 0;

@@ -121,14 +121,15 @@ int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
 
     SF_PROTO_SET_HEADER(proto_header, FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ,
             sizeof(FDIRProtoClientJoinReq));
+    response.error.length = 0;
     if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
                     &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP, (char *)&join_resp,
-                    sizeof(FDIRProtoClientJoinResp))) != 0)
+                    sizeof(FDIRProtoClientJoinResp))) == 0)
     {
-        sf_log_network_error(&response, conn, result);
-    } else {
         conn_params->buffer_size = buff2int(join_resp.buffer_size);
+    } else {
+        sf_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -938,7 +939,6 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
     int2buff(pid, req->owner.pid);
 
     response.error.length = 0;
-    response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     sizeof(out_buff), &response, session->ctx->
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
@@ -1014,7 +1014,6 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
             sizeof(FDIRProtoSysLockDEntryReq));
 
     response.error.length = 0;
-    response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     sizeof(out_buff), &response, session->ctx->
                     network_timeout, FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP,
@@ -1081,7 +1080,6 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
             pkg_len - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
-    response.error.message[0] = '\0';
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     pkg_len, &response, session->ctx->network_timeout,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP,
@@ -1713,6 +1711,50 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
         if (in_buff != NULL) {
             free(in_buff);
         }
+    }
+
+    return result;
+}
+
+int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const string_t *ns, FDIRInodeStat *stat)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoNamespaceStatReq *req;
+    FDIRProtoNamespaceStatResp resp;
+    SFResponseInfo response;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoNamespaceStatReq)
+        + NAME_MAX];
+    int out_bytes;
+    int result;
+
+    if (ns->len <= 0 || ns->len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid namespace length: %d, which <= 0 or > %d",
+                __LINE__, ns->len, NAME_MAX);
+        return EINVAL;
+    }
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoNamespaceStatReq *)(header + 1);
+    req->ns_len = ns->len;
+    memcpy(req->ns_str, ns->str, ns->len);
+
+    out_bytes = sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoNamespaceStatReq) + ns->len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->network_timeout,
+                    FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP, (char *)&resp,
+                    sizeof(FDIRProtoNamespaceStatResp))) == 0)
+    {
+        stat->total = buff2long(resp.inode_counters.total);
+        stat->used = buff2long(resp.inode_counters.used);
+        stat->avail = buff2long(resp.inode_counters.avail);
+    } else {
+        sf_log_network_error(&response, conn, result);
     }
 
     return result;

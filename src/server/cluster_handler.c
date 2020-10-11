@@ -283,6 +283,7 @@ static int cluster_deal_next_master(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "i am already master");
+        cluster_relationship_trigger_reselect_master();
         return EEXIST;
     }
 

@@ -17,7 +17,7 @@
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/ioevent_loop.h"
-#include "fastcommon/json_parser.h"
+#include "fastcommon/system_info.h"
 #include "sf/sf_util.h"
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
@@ -246,7 +246,55 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
     TASK_ARG->context.response_done = true;
+    return 0;
+}
 
+static int service_deal_namespace_stat(struct fast_task_info *task)
+{
+    int result;
+    int expect_blen;
+    static int64_t mem_size = 0;
+    int64_t inode_used;
+    int64_t inode_total;
+    string_t ns;
+    FDIRProtoNamespaceStatReq *req;
+    FDIRProtoNamespaceStatResp *resp;
+
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoNamespaceStatReq) + 1)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoNamespaceStatReq *)REQUEST.body;
+    ns.len = req->ns_len;
+    ns.str = req->ns_str;
+    expect_blen = sizeof(FDIRProtoNamespaceStatReq) + ns.len;
+    if (expect_blen != REQUEST.header.body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "request body length: %d != expect: %d",
+                REQUEST.header.body_len, expect_blen);
+        return EINVAL;
+    }
+
+    if (mem_size == 0) {
+        get_sys_total_mem_size(&mem_size);
+    }
+
+    logInfo("mem_size: %d MB, sizeof(FDIRServerDentry): %d",
+            (int)(mem_size / (1024 * 1024)), (int)sizeof(FDIRServerDentry));
+
+    inode_total = mem_size / 300;
+    inode_used = dentry_get_namespace_inode_used(&ns);
+
+    resp = (FDIRProtoNamespaceStatResp *)REQUEST.body;
+    long2buff(inode_total, resp->inode_useders.total);
+    long2buff(inode_used, resp->inode_useders.used);
+    long2buff(inode_total - inode_used, resp->inode_useders.avail);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP;
+    TASK_ARG->context.response_done = true;
     return 0;
 }
 
@@ -2570,6 +2618,9 @@ int service_deal_task(struct fast_task_info *task)
                 break;
             case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
                 result = service_deal_cluster_stat(task);
+                break;
+            case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
+                result = service_deal_namespace_stat(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
                 result = service_deal_get_master(task);

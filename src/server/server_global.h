@@ -57,11 +57,6 @@ typedef struct server_global_vars {
         int thread_count;
     } data;
 
-    /*
-    struct {
-        char key[FDIR_REPLICA_KEY_SIZE];   //slave distribute to master
-    } replica;
-    */
 } FDIRServerGlobalVars;
 
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx

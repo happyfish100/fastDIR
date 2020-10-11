@@ -12,6 +12,8 @@ extern "C" {
     int dentry_init();
     void dentry_destroy();
 
+    int64_t dentry_get_namespace_inode_count(const string_t *ns);
+
     int dentry_init_context(FDIRDataThreadContext *db_context);
 
     int dentry_create(FDIRDataThreadContext *db_context,
