@@ -53,6 +53,12 @@ static FDIRManager fdir_manager;
         } \
     } while (0)
 
+
+#define GET_REAL_DENTRY(dentry)  \
+    FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
+    (dentry)->src_dentry : dentry
+
+
 int dentry_init()
 {
     int result;
@@ -599,7 +605,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 }
 
 static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
-        FDIRNamespaceEntry *ns_entry, FDIRServerDentry *dentry)
+        FDIRServerDentry *dentry)
 {
     int result;
 
@@ -609,7 +615,60 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
 
     dentry_free_func(dentry, delay_free_seconds);
     db_context->dentry_context.counters.file--;
-    __sync_sub_and_fetch(&ns_entry->dentry_count, 1);
+    __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
+    return 0;
+}
+
+static int do_remove_dentry(FDIRDataThreadContext *db_context,
+        FDIRServerDentry *dentry, bool *free_dentry)
+{
+    int result;
+
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        if (dentry->src_dentry->stat.nlink == 1) {
+
+            /*
+            logInfo("file: "__FILE__", line: %d, "
+                    "remove hard link src dentry: %"PRId64, __LINE__,
+                    dentry->src_dentry->inode);
+                    */
+
+            if ((result=remove_src_dentry(db_context,
+                            dentry->src_dentry)) != 0)
+            {
+                return result;
+            }
+        } else {
+            dentry->src_dentry->stat.nlink--;
+        }
+        *free_dentry = true;
+    } else {
+        if (--(dentry->stat.nlink) == 0) {
+            if ((result=inode_index_del_dentry(dentry)) != 0) {
+                return result;
+            }
+
+            *free_dentry = true;
+        } else {
+            /*
+            logInfo("file: "__FILE__", line: %d, "
+                    "dentry: %"PRId64", nlink: %d > 0, skip remove",
+                    __LINE__, dentry->inode, dentry->stat.nlink);
+                    */
+            *free_dentry = false;
+        }
+    }
+
+    if (*free_dentry) {
+        if (S_ISDIR(dentry->stat.mode)) {
+            db_context->dentry_context.counters.dir--;
+        } else {
+            db_context->dentry_context.counters.file--;
+        }
+
+        __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
+    }
+
     return 0;
 }
 
@@ -617,7 +676,6 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
-    bool is_dir;
     bool free_dentry;
     int result;
 
@@ -635,45 +693,13 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         if (!uniq_skiplist_empty(record->me.dentry->children)) {
             return ENOTEMPTY;
         }
-        is_dir = true;
-    } else {
-        is_dir = false;
     }
 
     record->inode = record->me.dentry->inode;
-    if (FDIR_IS_DENTRY_HARD_LINK(record->me.dentry->stat.mode)) {
-        if (record->me.dentry->src_dentry->stat.nlink == 1) {
-
-            /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "remove hard link src dentry: %"PRId64, __LINE__,
-                    record->me.dentry->src_dentry->inode);
-                    */
-
-            if ((result=remove_src_dentry(db_context, ns_entry,
-                            record->me.dentry->src_dentry)) != 0)
-            {
-                return result;
-            }
-        } else {
-            record->me.dentry->src_dentry->stat.nlink--;
-        }
-        free_dentry = true;
-    } else {
-        if (--(record->me.dentry->stat.nlink) == 0) {
-            if ((result=inode_index_del_dentry(record->me.dentry)) != 0) {
-                return result;
-            }
-
-            free_dentry = true;
-        } else {
-            /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "dentry: %"PRId64", nlink: %d > 0, skip remove", __LINE__,
-                    record->me.dentry->inode, record->me.dentry->stat.nlink);
-                    */
-            free_dentry = false;
-        }
+    if ((result=do_remove_dentry(db_context, record->me.
+                    dentry, &free_dentry)) != 0)
+    {
+        return result;
     }
 
     if (record->me.parent == NULL) {
@@ -684,16 +710,6 @@ int dentry_remove(FDIRDataThreadContext *db_context,
         record->me.parent->stat.nlink--;
     } else {
         return result;
-    }
-
-    if (record->me.dentry->stat.nlink == 0) {
-        if (is_dir) {
-            db_context->dentry_context.counters.dir--;
-        } else {
-            db_context->dentry_context.counters.file--;
-        }
-
-        __sync_sub_and_fetch(&ns_entry->dentry_count, 1);
     }
 
     return 0;
@@ -941,11 +957,16 @@ static int move_dentry(FDIRDataThreadContext *db_context,
 
         record->rename.overwritten = record->rename.dest.dentry;
         if (record->rename.dest.dentry != NULL) {
-            result = uniq_skiplist_replace_ex(record->rename.dest.parent->
-                    children, record->rename.src.dentry, true);
+            bool free_dentry;
+            if ((result=do_remove_dentry(db_context, record->rename.
+                            dest.dentry, &free_dentry)) == 0)
+            {
+                result = uniq_skiplist_replace_ex(record->rename.dest.parent->
+                        children, record->rename.src.dentry, free_dentry);
+            }
         } else {
-            result = uniq_skiplist_insert(record->rename.dest.parent->children,
-                    record->rename.src.dentry);
+            result = uniq_skiplist_insert(record->rename.dest.
+                    parent->children, record->rename.src.dentry);
         }
 
         if (result != 0) {
@@ -1122,12 +1143,12 @@ int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
     }
 
     if (!S_ISDIR(dentry->stat.mode)) {
-        array->entries[array->count++] = dentry;
+        array->entries[array->count++] = GET_REAL_DENTRY(dentry);
     } else {
         pp = array->entries;
         uniq_skiplist_iterator(dentry->children, &iterator);
         while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
-           *pp++ = current;
+           *pp++ = GET_REAL_DENTRY(current);
         }
         array->count = pp - array->entries;
     }
