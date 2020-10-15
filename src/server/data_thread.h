@@ -18,6 +18,7 @@
 #ifndef _DATA_THREAD_H_
 #define _DATA_THREAD_H_
 
+#include "fastcommon/fc_queue.h"
 #include "fastcommon/server_id_func.h"
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
@@ -61,7 +62,7 @@ typedef struct server_delay_free_context {
 } ServerDelayFreeContext;
 
 typedef struct fdir_data_thread_context {
-    struct common_blocked_queue queue;
+    struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerDelayFreeContext delay_free_context;
 } FDIRDataThreadContext;
@@ -73,6 +74,7 @@ typedef struct fdir_data_thread_array {
 
 typedef struct fdir_data_thread_variables {
     FDIRDataThreadArray thread_array;
+    volatile int running_count;
     int error_mode;
 } FDIRDataThreadVariables;
 
@@ -96,12 +98,12 @@ extern "C" {
             const int delay_seconds);
 
 
-    static inline int push_to_data_thread_queue(FDIRBinlogRecord *record)
+    static inline void push_to_data_thread_queue(FDIRBinlogRecord *record)
     {
         FDIRDataThreadContext *context;
         context = g_data_thread_vars.thread_array.contexts +
             record->hash_code % g_data_thread_vars.thread_array.count;
-        return common_blocked_queue_push(&context->queue, record);
+        fc_queue_push(&context->queue, record);
     }
 
 #ifdef __cplusplus

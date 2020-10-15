@@ -36,8 +36,9 @@
 #include "inode_index.h"
 #include "data_thread.h"
 
-FDIRDataThreadVariables g_data_thread_vars;
-static volatile int running_thread_count = 0;
+#define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
+
+FDIRDataThreadVariables g_data_thread_vars = {{NULL, 0}, 0, 0};
 static void *data_thread_func(void *arg);
 
 void data_thread_sum_counters(FDIRDentryCounters *counters)
@@ -162,7 +163,9 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
         return result;
     }
 
-    if ((result=common_blocked_queue_init_ex(&context->queue, 4096)) != 0) {
+    if ((result=fc_queue_init(&context->queue, (long)
+                    (&((FDIRBinlogRecord *)NULL)->next))) != 0)
+    {
         return result;
     }
     return 0;
@@ -212,7 +215,7 @@ int data_thread_init()
             SF_G_THREAD_STACK_SIZE)) == 0)
     {
         count = 0;
-        while (__sync_add_and_fetch(&running_thread_count, 0) <
+        while (__sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 0) <
                 g_data_thread_vars.thread_array.count && count++ < 100)
         {
             fc_sleep_ms(1);
@@ -232,7 +235,7 @@ void data_thread_destroy()
         for (context=g_data_thread_vars.thread_array.contexts;
                 context<end; context++)
         {
-            common_blocked_queue_destroy(&context->queue);
+            fc_queue_destroy(&context->queue);
         }
         free(g_data_thread_vars.thread_array.contexts);
         g_data_thread_vars.thread_array.contexts = NULL;
@@ -250,11 +253,11 @@ void data_thread_terminate()
     for (context=g_data_thread_vars.thread_array.contexts;
             context<end; context++)
     {
-        common_blocked_queue_terminate(&context->queue);
+        fc_queue_terminate(&context->queue);
     }
 
     count = 0;
-    while (__sync_add_and_fetch(&running_thread_count, 0) != 0 &&
+    while (__sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 0) != 0 &&
             count++ < 100)
     {
         fc_sleep_ms(1);
@@ -383,39 +386,28 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-static void deal_binlog_records(FDIRDataThreadContext *thread_ctx,
-        struct common_blocked_node *node)
-{
-    FDIRBinlogRecord *record;
-
-    do {
-        record = (FDIRBinlogRecord *)node->data;
-        deal_binlog_one_record(thread_ctx, record);
-
-        node = node->next;
-    } while (node != NULL);
-}
-
 static void *data_thread_func(void *arg)
 {
-    struct common_blocked_queue *queue;
-    struct common_blocked_node *node;
+    FDIRBinlogRecord *record;
+    FDIRBinlogRecord *current;
     FDIRDataThreadContext *thread_ctx;
 
-    __sync_add_and_fetch(&running_thread_count, 1);
+    __sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     thread_ctx = (FDIRDataThreadContext *)arg;
-    queue = &thread_ctx->queue;
     while (SF_G_CONTINUE_FLAG) {
-        node = common_blocked_queue_pop_all_nodes(queue);
-        if (node == NULL) {
+        record = (FDIRBinlogRecord *)fc_queue_pop_all(&thread_ctx->queue);
+        if (record == NULL) {
             continue;
         }
 
-        deal_binlog_records(thread_ctx, node);
-        common_blocked_queue_free_all_nodes(queue, node);
+        do {
+            current = record;
+            record = record->next;
+            deal_binlog_one_record(thread_ctx, current);
+        } while (record != NULL);
 
         deal_delay_free_queque(thread_ctx);
     }
-    __sync_sub_and_fetch(&running_thread_count, 1);
+    __sync_sub_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     return NULL;
 }

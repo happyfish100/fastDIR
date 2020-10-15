@@ -434,7 +434,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
 
     old_master = CLUSTER_MASTER_ATOM_PTR;
     if (new_master == old_master) {
-        logWarning("file: "__FILE__", line: %d, "
+        logDebug("file: "__FILE__", line: %d, "
                 "the server id: %d, ip %s:%u already is master",
                 __LINE__, new_master->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),

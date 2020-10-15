@@ -812,14 +812,12 @@ static int handle_record_deal_done(struct fast_task_info *task)
 
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
 {
-    int result;
-
     RECORD->notify.func = record_deal_done_notify; //call by data thread
     RECORD->notify.args = task;
 
     TASK_ARG->context.deal_func = handle_record_deal_done;
-    result = push_to_data_thread_queue(RECORD);
-    return result == 0 ? TASK_STATUS_CONTINUE : result;
+    push_to_data_thread_queue(RECORD);
+    return TASK_STATUS_CONTINUE;
 }
 
 static int service_set_record_pname_info(struct fast_task_info *task,

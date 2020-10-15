@@ -96,6 +96,8 @@ typedef struct fdir_binlog_record {
         data_thread_notify_func func;
         void *args;    //for thread continue deal
     } notify;
+
+    struct fdir_binlog_record *next; //for data thread queue
 } FDIRBinlogRecord;
 
 typedef struct server_binlog_record_buffer {
