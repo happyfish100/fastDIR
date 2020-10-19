@@ -54,6 +54,8 @@
 static volatile int64_t next_token = 0;   //next token for dentry list
 static int64_t dstat_mflags_mask = 0;
 
+typedef int (*deal_task_func)(struct fast_task_info *task);
+
 int service_handler_init()
 {
     FDIRStatModifyFlags mask;
@@ -1876,7 +1878,7 @@ static inline int service_check_readable(struct fast_task_info *task)
 }
 
 static int service_process_update(struct fast_task_info *task,
-        sf_deal_task_func real_update_func, const int resp_cmd)
+        deal_task_func real_update_func, const int resp_cmd)
 {
     int result;
     bool deal_done;
@@ -2454,12 +2456,9 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
-int service_deal_task(struct fast_task_info *task)
+int service_deal_task(struct fast_task_info *task, const int stage)
 {
     int result;
-    int stage;
-
-    stage = SF_NIO_TASK_STAGE_FETCH(task);
 
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -2471,7 +2470,6 @@ int service_deal_task(struct fast_task_info *task)
             */
 
     if (stage == SF_NIO_STAGE_CONTINUE) {
-        sf_nio_swap_stage(task, stage, SF_NIO_STAGE_SEND);
         if (TASK_ARG->context.deal_func != NULL) {
             result = TASK_ARG->context.deal_func(task);
         } else {
