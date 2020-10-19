@@ -767,7 +767,7 @@ int cluster_deal_task(struct fast_task_info *task)
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
                 RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
-                result = sf_proto_deal_actvie_test(task, &REQUEST, &RESPONSE);
+                result = sf_proto_deal_active_test(task, &REQUEST, &RESPONSE);
                 break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
                 result = cluster_deal_get_server_status(task);

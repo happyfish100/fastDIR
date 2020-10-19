@@ -142,11 +142,6 @@ void service_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
-static int service_deal_actvie_test(struct fast_task_info *task)
-{
-    return server_expect_body_length(task, 0);
-}
-
 static int service_deal_client_join(struct fast_task_info *task)
 {
     int result;
@@ -2493,7 +2488,7 @@ int service_deal_task(struct fast_task_info *task)
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
                 RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
-                result = service_deal_actvie_test(task);
+                result = sf_proto_deal_active_test(task, &REQUEST, &RESPONSE);
                 break;
             case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
                 result = service_deal_client_join(task);
