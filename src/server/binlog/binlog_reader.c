@@ -881,11 +881,15 @@ int binlog_check_consistency(const string_t *sbinlog,
         const SFBinlogFilePosition *hint_pos,
         int *binlog_count, uint64_t *first_unmatched_dv)
 {
+#define FIXED_RECORD_SIZE   16
     int result;
+    int bytes;
     ServerBinlogReader reader;
-    FDIRBinlogRecord slave_records[FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS];
-    FDIRBinlogRecord master_records[FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS];
-    char fixed_buff[16 * 1024];
+    FDIRBinlogRecord fixed_slave_records[FIXED_RECORD_SIZE];
+    FDIRBinlogRecord fixed_master_records[FIXED_RECORD_SIZE];
+    FDIRBinlogRecord *slave_records;
+    FDIRBinlogRecord *master_records;
+    char fixed_buff[8 * 1024];
     string_t mbinlog;
     int buff_size;
     int slave_rows;
@@ -898,15 +902,28 @@ int binlog_check_consistency(const string_t *sbinlog,
         return 0;
     }
 
+    if (*binlog_count <= FIXED_RECORD_SIZE) {
+        slave_records = fixed_slave_records;
+        master_records = fixed_master_records;
+    } else {
+        bytes = sizeof(FDIRBinlogRecord) * (*binlog_count);
+        slave_records = (FDIRBinlogRecord *)fc_malloc(bytes);
+        if (slave_records == NULL) {
+            return ENOMEM;
+        }
+        master_records = (FDIRBinlogRecord *)fc_malloc(bytes);
+        if (master_records == NULL) {
+            return ENOMEM;
+        }
+    }
+
     if ((result=binlog_unpack_records(sbinlog, slave_records,
-                    FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS,
-                    &slave_rows)) != 0)
+                    *binlog_count, &slave_rows)) != 0)
     {
         *binlog_count = 0;
         return result;
     }
 
-    *binlog_count = slave_rows;
     //logInfo("slave rows: %d", slave_rows);
     if ((result=binlog_reader_init(&reader, hint_pos,
                     slave_records[0].data_version - 1)) != 0)
@@ -935,8 +952,7 @@ int binlog_check_consistency(const string_t *sbinlog,
         }
 
         if ((result=binlog_unpack_records(&mbinlog, master_records,
-                        FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS,
-                        &master_rows)) != 0)
+                        *binlog_count, &master_rows)) != 0)
         {
             break;
         }
@@ -949,5 +965,11 @@ int binlog_check_consistency(const string_t *sbinlog,
     if (mbinlog.str != fixed_buff) {
         free(mbinlog.str);
     }
+    if (slave_records != fixed_slave_records) {
+        free(slave_records);
+        free(master_records);
+    }
+
+    *binlog_count = slave_rows;
     return result;
 }

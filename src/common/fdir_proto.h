@@ -438,7 +438,10 @@ typedef struct fdir_proto_join_slave_req {
 } FDIRProtoJoinSlaveReq;
 
 typedef struct fdir_proto_join_slave_resp {
-    char binlog_length[4]; //last N rows for consistency check
+    //last N rows for consistency check
+    char binlog_count[4];
+    char binlog_length[4];
+
     struct {
         char index[4];   //binlog file index
         char offset[8];  //binlog file offset
