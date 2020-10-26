@@ -126,6 +126,8 @@ void fdir_client_destroy_ex(FDIRClientContext *client_ctx);
 int fdir_alloc_group_servers(FDIRServerGroup *server_group,
         const int alloc_size);
 
+void fdir_client_log_config(FDIRClientContext *client_ctx);
+
 #ifdef __cplusplus
 }
 #endif
