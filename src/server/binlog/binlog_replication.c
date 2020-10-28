@@ -32,6 +32,7 @@
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
+#include "sf/sf_service.h"
 #include "sf/sf_nio.h"
 #include "../../common/fdir_proto.h"
 #include "../server_global.h"
@@ -138,11 +139,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     struct fast_task_info *task;
     FDIRServerContext *server_ctx;
 
-    task = free_queue_pop();
-    if (task == NULL) {
-        logError("file: "__FILE__", line: %d, "
-                "malloc task buff failed, you should increase "
-                "the parameter: max_connections", __LINE__);
+    if ((task=sf_alloc_init_task(&CLUSTER_SF_CTX, -1)) == NULL) {
         return ENOMEM;
     }
 
@@ -150,12 +147,10 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     if ((result=push_result_ring_check_init(&replication->
                     context.push_result_ctx, alloc_size)) != 0)
     {
+        sf_release_task(task);
         return result;
     }
 
-    task->canceled = false;
-    task->ctx = &CLUSTER_SF_CTX;
-    task->event.fd = -1;
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
 
@@ -338,15 +333,6 @@ static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
 {
     struct fast_task_info *task;
     task = (struct fast_task_info *)rb->args;
-
-    if (rb->task_version != __sync_add_and_fetch(&((FDIRServerTaskArg *)
-                    task->arg)->task_version, 0))
-    {
-        logWarning("file: "__FILE__", line: %d, "
-                "task %p already cleanup", __LINE__, task);
-        return;
-    }
-
     if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)->
                 context.service.waiting_rpc_count, 1) == 0)
     {
@@ -567,31 +553,24 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         rb = head;
 
         waiting_task = (struct fast_task_info *)rb->args;
-        if (rb->task_version != __sync_add_and_fetch(&((FDIRServerTaskArg *)
-                        waiting_task->arg)->task_version, 0))
+        if (replication->task->length + rb->buffer.length >
+                replication->task->size)
         {
-            logWarning("file: "__FILE__", line: %d, "
-                    "task %p already cleanup", __LINE__, waiting_task);
-        } else {
-            if (replication->task->length + rb->buffer.length >
-                    replication->task->size)
-            {
-                break;
-            }
+            break;
+        }
 
-            last_data_version = rb->data_version;
-            replication->context.last_data_versions.by_queue = rb->data_version;
-            memcpy(replication->task->data + replication->task->length,
-                    rb->buffer.data, rb->buffer.length);
-            replication->task->length += rb->buffer.length;
+        last_data_version = rb->data_version;
+        replication->context.last_data_versions.by_queue = rb->data_version;
+        memcpy(replication->task->data + replication->task->length,
+                rb->buffer.data, rb->buffer.length);
+        replication->task->length += rb->buffer.length;
 
-            if ((result=push_result_ring_add(&replication->context.
-                            push_result_ctx, rb->data_version,
-                            waiting_task, rb->task_version)) != 0)
-            {
-                sf_terminate_myself();
-                return result;
-            }
+        if ((result=push_result_ring_add(&replication->context.
+                        push_result_ctx, rb->data_version,
+                        waiting_task)) != 0)
+        {
+            sf_terminate_myself();
+            return result;
         }
 
         head = head->nexts[replication->index];

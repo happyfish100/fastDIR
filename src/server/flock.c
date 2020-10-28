@@ -286,7 +286,7 @@ int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)
     return 0;
 }
 
-static int awake_waiting_tasks(FLockEntry *entry, FLockTask *ftask,
+static int awake_waiting_tasks(FLockEntry *entry,
         struct fc_list_head *waiting_head, const bool check_waiting)
 {
     FLockTask *wait;
@@ -319,12 +319,10 @@ void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask)
         case FDIR_FLOCK_TASK_IN_LOCKED_QUEUE:
             remove_from_locked(ftask);
             if (!fc_list_empty(&ftask->region->waiting)) {
-                awake_waiting_tasks(entry, ftask,
-                        &ftask->region->waiting, false);
+                awake_waiting_tasks(entry, &ftask->region->waiting, false);
             }
             if (!fc_list_empty(&entry->waiting_tasks)) {
-                awake_waiting_tasks(entry, ftask,
-                        &entry->waiting_tasks, true);
+                awake_waiting_tasks(entry, &entry->waiting_tasks, true);
             }
             ftask->region->ref_count--;
             break;

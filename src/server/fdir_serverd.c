@@ -56,6 +56,14 @@ static bool daemon_mode = true;
 static int setup_server_env(const char *config_filename);
 static int setup_mblock_stat_task();
 
+int init_nio_task(struct fast_task_info *task)
+{
+    task->connect_timeout = SF_G_CONNECT_TIMEOUT;
+    task->network_timeout = SF_G_NETWORK_TIMEOUT;
+    FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     char *config_filename;
@@ -159,24 +167,25 @@ int main(int argc, char *argv[])
         fdir_proto_init();
         //sched_print_all_entries();
 
-        result = sf_service_init_ex(&CLUSTER_SF_CTX,
+        result = sf_service_init_ex2(&CLUSTER_SF_CTX,
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
                 sf_proto_set_body_length, cluster_deal_task,
                 cluster_task_finish_cleanup, NULL, 1000,
-                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
+                init_nio_task);
         if (result != 0) {
             break;
         }
         sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
         sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 
-        result = sf_service_init_ex(&g_sf_context,
+        result = sf_service_init_ex2(&g_sf_context,
                 service_alloc_thread_extra_data, NULL,
-                service_accep_done_callback,
-                sf_proto_set_body_length, service_deal_task,
+                NULL, sf_proto_set_body_length, service_deal_task,
                 service_task_finish_cleanup, NULL, 1000,
-                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg));
+                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
+                init_nio_task);
         if (result != 0) {
             break;
         }

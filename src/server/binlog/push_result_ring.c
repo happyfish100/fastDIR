@@ -60,19 +60,7 @@ int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
 static inline void desc_task_waiting_rpc_count(
         FDIRBinlogPushResultEntry *entry)
 {
-    FDIRServerTaskArg *task_arg;
-
     if (entry->waiting_task == NULL) {
-        return;
-    }
-
-    task_arg = (FDIRServerTaskArg *)entry->waiting_task->arg;
-    if (entry->task_version != __sync_add_and_fetch(
-                &task_arg->task_version, 0))
-    {
-        logWarning("file: "__FILE__", line: %d, "
-                "task %p already cleanup",
-                __LINE__, entry->waiting_task);
         return;
     }
 
@@ -221,8 +209,7 @@ void push_result_ring_destroy(FDIRBinlogPushResultContext *ctx)
 }
 
 static int add_to_queue(FDIRBinlogPushResultContext *ctx,
-            const uint64_t data_version, struct fast_task_info *waiting_task,
-            const int64_t task_version)
+            const uint64_t data_version, struct fast_task_info *waiting_task)
 {
     FDIRBinlogPushResultEntry *entry;
     FDIRBinlogPushResultEntry *previous;
@@ -236,7 +223,6 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 
     entry->data_version = data_version;
     entry->waiting_task = waiting_task;
-    entry->task_version = task_version;
     entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
 
     if (ctx->queue.tail == NULL) {  //empty queue
@@ -271,8 +257,7 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 }
 
 int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
-        const uint64_t data_version, struct fast_task_info *waiting_task,
-        const int64_t task_version)
+        const uint64_t data_version, struct fast_task_info *waiting_task)
 {
     FDIRBinlogPushResultEntry *entry;
     FDIRBinlogPushResultEntry *previous;
@@ -302,7 +287,6 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
     if (matched) {
         entry->data_version = data_version;
         entry->waiting_task = waiting_task;
-        entry->task_version = task_version;
         entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         return 0;
     }
@@ -310,7 +294,7 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
     logWarning("file: "__FILE__", line: %d, "
             "can't found data version %"PRId64", in the ring",
             __LINE__, data_version);
-    return add_to_queue(ctx, data_version, waiting_task, task_version);
+    return add_to_queue(ctx, data_version, waiting_task);
 }
 
 static int remove_from_queue(FDIRBinlogPushResultContext *ctx,

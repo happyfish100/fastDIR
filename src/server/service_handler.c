@@ -36,6 +36,7 @@
 #include "sf/sf_util.h"
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
+#include "sf/sf_service.h"
 #include "sf/sf_global.h"
 #include "sf/idempotency/server/server_channel.h"
 #include "sf/idempotency/server/server_handler.h"
@@ -81,12 +82,6 @@ int service_handler_init()
 int service_handler_destroy()
 {   
     return 0;
-}
-
-void service_accep_done_callback(struct fast_task_info *task,
-        const bool bInnerPort)
-{
-    FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
 }
 
 static inline void release_flock_task(struct fast_task_info *task,
@@ -139,8 +134,6 @@ void service_task_finish_cleanup(struct fast_task_info *task)
     }
 
     dentry_array_free(&DENTRY_LIST_CACHE.array);
-
-    __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->task_version, 1);
     sf_task_finish_clean_up(task);
 }
 
@@ -647,9 +640,7 @@ static inline void free_record_object(struct fast_task_info *task)
 static void service_idempotency_request_finish(struct fast_task_info *task,
         const int result)
 {
-    if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
-            IDEMPOTENCY_REQUEST != NULL)
-    {
+    if (IDEMPOTENCY_REQUEST != NULL) {
         IDEMPOTENCY_REQUEST->finished = true;
         IDEMPOTENCY_REQUEST->output.result = result;
         idempotency_request_release(IDEMPOTENCY_REQUEST);
@@ -663,17 +654,19 @@ static int handle_replica_done(struct fast_task_info *task)
 {
     int result;
 
-    TASK_ARG->context.deal_func = NULL;
+    task->continue_callback = NULL;
     service_idempotency_request_finish(task, 0);
 
     if (RBUFFER != NULL) {
         result = push_to_binlog_write_queue(RBUFFER);
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
-        return result;
+    } else {
+        result = 0;
     }
 
-    return 0;
+    sf_release_task(task);
+    return result;
 }
 
 static int server_binlog_produce(struct fast_task_info *task)
@@ -682,31 +675,30 @@ static int server_binlog_produce(struct fast_task_info *task)
     int result;
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        sf_release_task(task);
         return ENOMEM;
     }
 
-    TASK_ARG->context.deal_func = handle_replica_done;
     rbuffer->data_version = RECORD->data_version;
     RECORD->timestamp = g_current_time;
 
     fast_buffer_reset(&rbuffer->buffer);
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
-
     free_record_object(task);
 
     if (result == 0) {
         rbuffer->args = task;
-        rbuffer->task_version = __sync_add_and_fetch(
-                &((FDIRServerTaskArg *)task->arg)->task_version, 0);
         RBUFFER = rbuffer;
         if (SLAVE_SERVER_COUNT > 0) {
+            task->continue_callback = handle_replica_done;
             binlog_push_to_producer_queue(rbuffer);
             return TASK_STATUS_CONTINUE;
         } else {
-            return result;
+            return handle_replica_done(task);
         }
     } else {
         server_binlog_free_rbuffer(rbuffer);
+        sf_release_task(task);
         return result;
     }
 }
@@ -736,9 +728,7 @@ static inline void set_update_result_and_output(
         struct fast_task_info *task, FDIRServerDentry *dentry)
 {
     dentry_stat_output(task, &dentry);
-    if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
-            IDEMPOTENCY_REQUEST != NULL)
-    {
+    if (IDEMPOTENCY_REQUEST != NULL) {
         FDIRDEntryInfo *dinfo;
 
         dinfo = (FDIRDEntryInfo *)IDEMPOTENCY_REQUEST->output.response;
@@ -794,15 +784,23 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
 static int handle_record_deal_done(struct fast_task_info *task)
 {
     int result;
+    bool need_release;
 
+    task->continue_callback = NULL;
     if (RESPONSE_STATUS == 0) {
         result = server_binlog_produce(task);
+        need_release = false;
     } else {
         result = RESPONSE_STATUS;
+        need_release = true;
     }
 
     if (result != TASK_STATUS_CONTINUE) {
         service_idempotency_request_finish(task, result);
+    }
+
+    if (need_release) {
+        sf_release_task(task);
     }
     return result;
 }
@@ -812,7 +810,8 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     RECORD->notify.func = record_deal_done_notify; //call by data thread
     RECORD->notify.args = task;
 
-    TASK_ARG->context.deal_func = handle_record_deal_done;
+    sf_hold_task(task);
+    task->continue_callback = handle_record_deal_done;
     push_to_data_thread_queue(RECORD);
     return TASK_STATUS_CONTINUE;
 }
@@ -1653,6 +1652,13 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
     return 0;
 }
 
+static inline int binlog_produce_directly(struct fast_task_info *task)
+{
+    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+    sf_hold_task(task);
+    return server_binlog_produce(task);
+}
+
 static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
         const int64_t file_size, const int64_t inc_alloc, const int flags,
@@ -1702,9 +1708,7 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         RECORD->stat.mtime = RECORD->me.dentry->stat.mtime;
     }
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-
-    *result = server_binlog_produce(task);
+    *result = binlog_produce_directly(task);
     return dentry;
 }
 
@@ -1782,8 +1786,7 @@ static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
     }
 
     RECORD->me.dentry = dentry;
-    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-    *result = server_binlog_produce(task);
+    *result = binlog_produce_directly(task);
     return dentry;
 }
 
@@ -2020,7 +2023,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             "length: %"PRId64", owner.id: %"PRId64", owner.pid: %d, "
             "result: %d, task: %p, deal_func: %p", __LINE__, operation,
             inode, offset, length, owner.id, owner.pid,
-            result, task, TASK_ARG->context.deal_func);
+            result, task, task->continue_callback);
             */
 
     fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
@@ -2116,21 +2119,31 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
 
 static int handle_sys_lock_done(struct fast_task_info *task)
 {
-    if (SYS_LOCK_TASK == NULL) {
-        logError("file: "__FILE__", line: %d, "
+    struct sys_lock_task *sys_lock_task;
+
+    if (__sync_add_and_fetch(&task->canceled, 0)) {
+        logWarning("file: "__FILE__", line: %d, "
+                "task: %p, already canceled!",
+                __LINE__, task);
+        return ECANCELED;
+    }
+
+    sys_lock_task = SYS_LOCK_TASK;
+    if (sys_lock_task == NULL) {
+        logWarning("file: "__FILE__", line: %d, "
                 "task: %p, SYS_LOCK_TASK is NULL!",
                 __LINE__, task);
         return ENOENT;
     } else {
         /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "inode: %"PRId64", file size: %"PRId64,
-                __LINE__, __FUNCTION__,
-                SYS_LOCK_TASK->dentry->inode,
-                SYS_LOCK_TASK->dentry->stat.size);
-                */
+           logInfo("file: "__FILE__", line: %d, func: %s, "
+           "inode: %"PRId64", file size: %"PRId64,
+           __LINE__, __FUNCTION__,
+           sys_lock_task->dentry->inode,
+           sys_lock_task->dentry->stat.size);
+         */
 
-        sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
+        sys_lock_dentry_output(task, sys_lock_task->dentry);
         return 0;
     }
 }
@@ -2173,10 +2186,9 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     if (result == 0) {
         /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
-                "locked for inode: %"PRId64", task: %p, sock: %d, "
-                "version: %"PRId64, __LINE__, __FUNCTION__,
-                SYS_LOCK_TASK->dentry->inode, task,
-                task->event.fd, TASK_ARG->task_version);
+                "locked for inode: %"PRId64", task: %p, sock: %d",
+                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
+                task, task->event.fd);
                 */
 
         sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
@@ -2185,12 +2197,11 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         /*
         logInfo("file: "__FILE__", line: %d, func: %s, "
                 "waiting lock for inode: %"PRId64", task: %p, "
-                "sock: %d, version: %"PRId64, __LINE__, __FUNCTION__,
-                SYS_LOCK_TASK->dentry->inode, task, task->event.fd,
-                TASK_ARG->task_version);
+                "sock: %d", __LINE__, __FUNCTION__,
+                SYS_LOCK_TASK->dentry->inode, task, task->event.fd);
                 */
 
-        TASK_ARG->context.deal_func = handle_sys_lock_done;
+        task->continue_callback = handle_sys_lock_done;
         return TASK_STATUS_CONTINUE;
     }
 }
@@ -2247,8 +2258,8 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
     if (SYS_LOCK_TASK == NULL) {
         logError("file: "__FILE__", line: %d, func: %s, "
-                "task: %p, sock: %d, version: %"PRId64, __LINE__, __FUNCTION__,
-                task, task->event.fd, TASK_ARG->task_version);
+                "task: %p, sock: %d", __LINE__, __FUNCTION__,
+                task, task->event.fd);
 
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -2462,16 +2473,16 @@ int service_deal_task(struct fast_task_info *task, const int stage)
 
     /*
     logInfo("file: "__FILE__", line: %d, "
-            "task: %p, sock: %d, nio stage: %d, continue: %d, cmd: %d (%s)",
-            __LINE__, task, task->event.fd, stage,
+            "task: %p, sock: %d, nio stage: %d, continue: %d, "
+            "cmd: %d (%s)", __LINE__, task, task->event.fd, stage,
             stage == SF_NIO_STAGE_CONTINUE,
             ((FDIRProtoHeader *)task->data)->cmd,
             fdir_get_cmd_caption(((FDIRProtoHeader *)task->data)->cmd));
             */
 
     if (stage == SF_NIO_STAGE_CONTINUE) {
-        if (TASK_ARG->context.deal_func != NULL) {
-            result = TASK_ARG->context.deal_func(task);
+        if (task->continue_callback != NULL) {
+            result = task->continue_callback(task);
         } else {
             result = RESPONSE_STATUS;
             if (result == TASK_STATUS_CONTINUE) {

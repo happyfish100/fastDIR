@@ -147,7 +147,6 @@ typedef struct fdir_record_buffer_queue {
 
 typedef struct fdir_binlog_push_result_entry {
     uint64_t data_version;
-    int64_t task_version;
     time_t expires;
     struct fast_task_info *waiting_task;
     struct fdir_binlog_push_result_entry *next;
@@ -222,13 +221,11 @@ struct flock_task;
 struct sys_lock_task;
 
 typedef struct server_task_arg {
-    volatile int64_t task_version;
     int64_t req_start_time;
 
     struct {
         SFRequestInfo request;
         SFResponseInfo response;
-        int (*deal_func)(struct fast_task_info *task);
         bool response_done;
         char log_level;   //level for error log
         bool need_response;

@@ -102,7 +102,6 @@ typedef struct fdir_binlog_record {
 
 typedef struct server_binlog_record_buffer {
     uint64_t data_version; //for idempotency (slave only)
-    int64_t task_version;
     volatile int reffer_count;
     void *args;  //for notify & release 
     release_binlog_rbuffer_func release_func;

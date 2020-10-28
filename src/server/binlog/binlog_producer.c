@@ -170,7 +170,7 @@ void binlog_producer_destroy()
     pthread_mutex_destroy(&proceduer_ctx.queue.lock);
     fast_mblock_destroy(&proceduer_ctx.rb_allocator);
 
-    //TODO  notify task in entryes
+    //TODO  notify task in entries
     free(proceduer_ctx.ring.entries);
     proceduer_ctx.ring.entries = NULL;
 
