@@ -23,7 +23,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "fastcommon/logger.h"
-#include "fastdir/fdir_client.h"
+#include "fastdir/client/fdir_client.h"
 
 #define SUBDIR_COUNT  200
 
