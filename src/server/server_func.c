@@ -391,6 +391,7 @@ static int load_binlog_buffer_size(IniContext *ini_context,
 
 int server_load_config(const char *filename)
 {
+    const int task_buffer_extra_size = 0;
     IniContext ini_context;
     int result;
 
@@ -403,7 +404,8 @@ int server_load_config(const char *filename)
 
     if ((result=sf_load_config("fdir_serverd", filename, &ini_context,
                     "service", FDIR_SERVER_DEFAULT_SERVICE_PORT,
-                    FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
+                    FDIR_SERVER_DEFAULT_SERVICE_PORT,
+                    task_buffer_extra_size)) != 0)
     {
         return result;
     }
