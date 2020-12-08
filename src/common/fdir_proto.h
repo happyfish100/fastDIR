@@ -68,50 +68,52 @@
 #define FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ    55
 #define FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP   56
 
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ      57  //modified by inode
-#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP     58
-#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ   59
-#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP  60
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ         61  //file lock
-#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP        62
-#define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ         63
-#define FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP        64
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ        57  //modified by inode
+#define FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP       58
+#define FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ  59  //modified by inode
+#define FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP 60
+#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ     61
+#define FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP    62
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ           63  //file lock
+#define FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP          64
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ           65
+#define FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP          66
 
 /* system lock for apend and ftruncate */
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ      65
-#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP     66
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ    67
-#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP   68
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ      67
+#define FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP     68
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ    69
+#define FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP   70
 
-#define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ         69
-#define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP        70
-#define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ         71
-#define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP        72
-#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ       73
-#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP      74
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_REQ         71
+#define FDIR_SERVICE_PROTO_SERVICE_STAT_RESP        72
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ         73
+#define FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP        74
+#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ       75
+#define FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP      76
 
-#define FDIR_SERVICE_PROTO_GET_MASTER_REQ           75
-#define FDIR_SERVICE_PROTO_GET_MASTER_RESP          76
-#define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           77
-#define FDIR_SERVICE_PROTO_GET_SLAVES_RESP          78
-#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  79
-#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 80
+#define FDIR_SERVICE_PROTO_GET_MASTER_REQ           77
+#define FDIR_SERVICE_PROTO_GET_MASTER_RESP          78
+#define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           79
+#define FDIR_SERVICE_PROTO_GET_SLAVES_RESP          80
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  81
+#define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 82
 
 //cluster commands
-#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ    81
-#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP   82
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER              83  //slave  -> master
-#define FDIR_CLUSTER_PROTO_PING_MASTER_REQ          85
-#define FDIR_CLUSTER_PROTO_PING_MASTER_RESP         86
-#define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER      87  //notify next leader to other servers
-#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER       88  //commit next leader to other servers
+#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ    91
+#define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP   92
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER              93  //slave  -> master
+#define FDIR_CLUSTER_PROTO_PING_MASTER_REQ          95
+#define FDIR_CLUSTER_PROTO_PING_MASTER_RESP         96
+#define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER      97  //notify next leader to other servers
+#define FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER       98  //commit next leader to other servers
 
 //replication commands, master -> slave
-#define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ           91
-#define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP          92
-#define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          93
-#define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         94
-#define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        95  //when slave binlog not consistent
+#define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ           101
+#define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP          102
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          103
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         104
+#define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        105  //when slave binlog not consistent
 
 typedef SFCommonProtoHeader  FDIRProtoHeader;
 
@@ -220,13 +222,27 @@ typedef struct fdir_proto_rename_dentry_by_pname {
 
 typedef struct fdir_proto_set_dentry_size_req {
     char inode[8];
-    char size[8];        /* file size in bytes */
+    char file_size[8];   /* file size in bytes */
     char inc_alloc[8];   /* increase alloc size in bytes */
     char flags[4];
     char force;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
 } FDIRProtoSetDentrySizeReq;
+
+typedef struct fdir_proto_batch_set_dentry_size_req_header {
+    char count[4];        //dentry count
+    unsigned char ns_len; //namespace length
+    char ns_str[0];       //namespace for hash code
+} FDIRProtoBatchSetDentrySizeReqHeader;
+
+typedef struct fdir_proto_batch_set_dentry_size_req_body {
+    char inode[8];
+    char file_size[8];   /* file size in bytes */
+    char inc_alloc[8];   /* increase alloc size in bytes */
+    char flags[4];
+    char force;
+} FDIRProtoBatchSetDentrySizeReqBody;
 
 typedef struct fdir_proto_dentry_stat {
     char mode[4];

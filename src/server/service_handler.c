@@ -669,6 +669,20 @@ static int handle_replica_done(struct fast_task_info *task)
     return result;
 }
 
+static inline int do_binlog_produce(struct fast_task_info *task,
+        ServerBinlogRecordBuffer *rbuffer)
+{
+    rbuffer->args = task;
+    RBUFFER = rbuffer;
+    if (SLAVE_SERVER_COUNT > 0) {
+        task->continue_callback = handle_replica_done;
+        binlog_push_to_producer_queue(rbuffer);
+        return TASK_STATUS_CONTINUE;
+    } else {
+        return handle_replica_done(task);
+    }
+}
+
 static int server_binlog_produce(struct fast_task_info *task)
 {
     ServerBinlogRecordBuffer *rbuffer;
@@ -682,20 +696,11 @@ static int server_binlog_produce(struct fast_task_info *task)
     rbuffer->data_version = RECORD->data_version;
     RECORD->timestamp = g_current_time;
 
-    fast_buffer_reset(&rbuffer->buffer);
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
     free_record_object(task);
 
     if (result == 0) {
-        rbuffer->args = task;
-        RBUFFER = rbuffer;
-        if (SLAVE_SERVER_COUNT > 0) {
-            task->continue_callback = handle_replica_done;
-            binlog_push_to_producer_queue(rbuffer);
-            return TASK_STATUS_CONTINUE;
-        } else {
-            return handle_replica_done(task);
-        }
+        return do_binlog_produce(task, rbuffer);
     } else {
         server_binlog_free_rbuffer(rbuffer);
         sf_release_task(task);
@@ -1659,10 +1664,55 @@ static inline int binlog_produce_directly(struct fast_task_info *task)
     return server_binlog_produce(task);
 }
 
-static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
-        const char *ns_str, const int ns_len, const int64_t inode,
-        const int64_t file_size, const int64_t inc_alloc, const int flags,
-        const bool force, int *result, const bool need_lock)
+static FDIRServerDentry *do_set_dentry_size(struct fast_task_info *task,
+        const char *ns_str, const int ns_len,
+        const FDIRSetDEntrySizeInfo *dsize, const bool need_lock,
+        int *result, int *modified_flags)
+{
+    FDIRServerDentry *dentry;
+
+    if ((dentry=inode_index_check_set_dentry_size(dsize,
+                    need_lock, modified_flags)) == NULL)
+    {
+        *result = ENOENT;
+        return NULL;
+    }
+
+    if (*modified_flags == 0) {  //no fields changed
+        *result = 0;
+        return dentry;
+    }
+
+    RECORD->inode = dsize->inode;
+    RECORD->me.dentry = dentry;
+    RECORD->hash_code = simple_hash(ns_str, ns_len);
+    RECORD->options.flags = 0;
+    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
+        RECORD->options.size = 1;
+        RECORD->stat.size = RECORD->me.dentry->stat.size;
+    }
+    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
+        RECORD->options.space_end = 1;
+        RECORD->stat.space_end = RECORD->me.dentry->stat.space_end;
+    }
+    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
+        RECORD->options.inc_alloc = 1;
+        RECORD->stat.alloc = dsize->inc_alloc;
+    }
+    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
+        RECORD->options.mtime = 1;
+        RECORD->stat.mtime = RECORD->me.dentry->stat.mtime;
+    }
+    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    *result = 0;
+    return dentry;
+}
+
+static FDIRServerDentry *set_dentry_size(
+        struct fast_task_info *task,
+        const char *ns_str, const int ns_len,
+        const FDIRSetDEntrySizeInfo *dsize,
+        const bool need_lock, int *result)
 {
     int modified_flags;
     FDIRServerDentry *dentry;
@@ -1671,56 +1721,30 @@ static FDIRServerDentry *set_dentry_size(struct fast_task_info *task,
         return NULL;
     }
 
-    modified_flags = flags;
-    if ((dentry=inode_index_check_set_dentry_size_ex(inode,
-                    file_size, inc_alloc, force, &modified_flags,
-                    need_lock)) == NULL)
-    {
+    dentry = do_set_dentry_size(task, ns_str, ns_len,
+            dsize, need_lock, result, &modified_flags);
+    if (dentry == NULL || modified_flags == 0) {
         free_record_object(task);
-        *result = ENOENT;
-        return NULL;
-    }
-
-    if (modified_flags == 0) {  //no fields changed
-        free_record_object(task);
-        *result = 0;
         return dentry;
     }
 
-    RECORD->inode = inode;
-    RECORD->me.dentry = dentry;
-    RECORD->hash_code = simple_hash(ns_str, ns_len);
-    RECORD->options.flags = 0;
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-        RECORD->options.size = 1;
-        RECORD->stat.size = RECORD->me.dentry->stat.size;
-    }
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-        RECORD->options.space_end = 1;
-        RECORD->stat.space_end = RECORD->me.dentry->stat.space_end;
-    }
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-        RECORD->options.inc_alloc = 1;
-        RECORD->stat.alloc = inc_alloc;
-    }
-    if ((modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
-        RECORD->options.mtime = 1;
-        RECORD->stat.mtime = RECORD->me.dentry->stat.mtime;
-    }
-    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     *result = binlog_produce_directly(task);
     return dentry;
 }
+
+#define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
+    dsize.inode = buff2long(req->inode); \
+    dsize.file_size = buff2long(req->file_size); \
+    dsize.inc_alloc = buff2long(req->inc_alloc); \
+    dsize.flags = buff2int(req->flags);  \
+    dsize.force = req->force
 
 static int service_deal_set_dentry_size(struct fast_task_info *task)
 {
     FDIRProtoSetDentrySizeReq *req;
     FDIRServerDentry *dentry;
+    FDIRSetDEntrySizeInfo dsize;
     int result;
-    int flags;
-    int64_t inode;
-    int64_t file_size;
-    int64_t inc_alloc;
 
     if ((result=server_check_body_length(task,
                     sizeof(FDIRProtoSetDentrySizeReq) + 1,
@@ -1747,13 +1771,10 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     }
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
-    inode = buff2long(req->inode);
-    file_size = buff2long(req->size);
-    inc_alloc = buff2long(req->inc_alloc);
-    flags = buff2int(req->flags);
+    SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req);
 
-    dentry = set_dentry_size(task, req->ns_str, req->ns_len, inode,
-            file_size, inc_alloc, flags, req->force, &result, true);
+    dentry = set_dentry_size(task, req->ns_str, req->ns_len,
+            &dsize, true, &result);
     if (result == 0 || result == TASK_STATUS_CONTINUE) {
         if (dentry != NULL) {
             set_update_result_and_output(task, dentry);
@@ -1761,6 +1782,89 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     }
 
     return result;
+}
+
+static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
+{
+    FDIRProtoBatchSetDentrySizeReqHeader *rheader;
+    FDIRProtoBatchSetDentrySizeReqBody *rbody;
+    FDIRProtoBatchSetDentrySizeReqBody *rbend;
+    ServerBinlogRecordBuffer *rbuffer;
+    FDIRServerDentry *dentry;
+    FDIRSetDEntrySizeInfo dsize;
+    int result;
+    int count;
+    int expect_blen;
+    int modified_flags;
+    int64_t last_data_version;
+
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + 1 +
+                    sizeof(FDIRProtoBatchSetDentrySizeReqBody))) != 0)
+    {
+        return result;
+    }
+
+    rheader = (FDIRProtoBatchSetDentrySizeReqHeader *)REQUEST.body;
+    if (rheader->ns_len <= 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "namespace length: %d is invalid which <= 0",
+                rheader->ns_len);
+        return EINVAL;
+    }
+    count = buff2int(rheader->count);
+    if (count <= 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "count: %d is invalid which <= 0", count);
+        return EINVAL;
+    }
+
+    expect_blen = sizeof(FDIRProtoBatchSetDentrySizeReqHeader) +
+        rheader->ns_len + sizeof(FDIRProtoBatchSetDentrySizeReqBody) * count;
+    if (REQUEST.header.body_len != expect_blen) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, expect_blen);
+        return EINVAL;
+    }
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        free_record_object(task);
+        return ENOMEM;
+    }
+
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
+    rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
+        (rheader->ns_str + rheader->ns_len);
+    rbend = rbody + count;
+    for (; rbody < rbend; rbody++) {
+        SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, rbody);
+        dentry = do_set_dentry_size(task, rheader->ns_str, rheader->ns_len,
+                &dsize, true, &result, &modified_flags);
+        if (dentry != NULL && modified_flags != 0) {
+            RECORD->data_version = __sync_add_and_fetch(
+                    &DATA_CURRENT_VERSION, 1);
+            RECORD->timestamp = g_current_time;
+            if ((result=binlog_pack_record(RECORD, &rbuffer->buffer)) != 0) {
+                break;
+            }
+        }
+    }
+
+    last_data_version = RECORD->data_version;
+    free_record_object(task);
+    if (result == 0) {
+        sf_hold_task(task);
+        rbuffer->data_version = last_data_version;
+        return do_binlog_produce(task, rbuffer);
+    } else {
+        server_binlog_free_rbuffer(rbuffer);
+        return result;
+    }
 }
 
 static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
@@ -2210,19 +2314,18 @@ static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
 {
     struct fast_task_info *task;
     FDIRProtoSysUnlockDEntryReq *req;
-    int64_t new_size;
-    int64_t inc_alloc;
+    FDIRSetDEntrySizeInfo dsize;
     int result;
-    int flags;
 
     task = (struct fast_task_info *)args;
     req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
-    new_size = buff2long(req->new_size);
-    inc_alloc = buff2long(req->inc_alloc);
-    flags = buff2int(req->flags);
-    set_dentry_size(task, req->ns_str, req->ns_len, SYS_LOCK_TASK->
-            dentry->inode, new_size, inc_alloc, flags,
-            req->force, &result, false);
+    dsize.inode = SYS_LOCK_TASK->dentry->inode;
+    dsize.file_size = buff2long(req->new_size);
+    dsize.inc_alloc = buff2long(req->inc_alloc);
+    dsize.flags = buff2int(req->flags);
+    dsize.force = req->force;
+    set_dentry_size(task, req->ns_str, req->ns_len,
+            &dsize, false, &result);
 
     RESPONSE_STATUS = result;
 }
@@ -2556,6 +2659,11 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                 result = service_process_update(task,
                         service_deal_set_dentry_size,
                         FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP);
+                break;
+            case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
+                result = service_process_update(task,
+                        service_deal_batch_set_dentry_size,
+                        FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP);
                 break;
             case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
                 result = service_process_update(task,

@@ -257,25 +257,25 @@ FDIRServerDentry *inode_index_get_dentry_by_pname(
     return dentry;
 }
 
-FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
-        const int64_t new_size, const int64_t inc_alloc, const bool force,
-        int *modified_flags, const bool need_lock)
+FDIRServerDentry *inode_index_check_set_dentry_size(
+        const FDIRSetDEntrySizeInfo *dsize,
+        const bool need_lock, int *modified_flags)
 {
     FDIRServerDentry *dentry;
     int flags;
 
-    SET_INODE_HT_BUCKET_AND_CTX(inode);
-    flags = *modified_flags;
+    SET_INODE_HT_BUCKET_AND_CTX(dsize->inode);
+    flags = dsize->flags;
     *modified_flags = 0;
     if (need_lock) {
         PTHREAD_MUTEX_LOCK(&ctx->lock);
     }
-    dentry = find_inode_entry(bucket, inode);
+    dentry = find_inode_entry(bucket, dsize->inode);
     if (dentry != NULL) {
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-            if (force || (dentry->stat.size < new_size)) {
-                if (dentry->stat.size != new_size) {
-                    dentry->stat.size = new_size;
+            if (dsize->force || (dentry->stat.size < dsize->file_size)) {
+                if (dentry->stat.size != dsize->file_size) {
+                    dentry->stat.size = dsize->file_size;
                     *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE;
                 }
             }
@@ -291,23 +291,23 @@ FDIRServerDentry *inode_index_check_set_dentry_size_ex(const int64_t inode,
         }
 
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-            if (force || (dentry->stat.space_end < new_size)) {
-                if (dentry->stat.space_end != new_size) {
-                    dentry->stat.space_end = new_size;
+            if (dsize->force || (dentry->stat.space_end < dsize->file_size)) {
+                if (dentry->stat.space_end != dsize->file_size) {
+                    dentry->stat.space_end = dsize->file_size;
                     *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END;
                 }
             }
         }
 
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-            dentry->stat.alloc += inc_alloc;
+            dentry->stat.alloc += dsize->inc_alloc;
             *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
         }
 
         /*
         logInfo("old size: %"PRId64", new size: %"PRId64", "
                 "old mtime: %d, new mtime: %d, modified_flags: %d",
-                dentry->stat.size, new_size, dentry->stat.mtime,
+                dentry->stat.size, dsize->file_size, dentry->stat.mtime,
                 (int)g_current_time, *modified_flags);
          */
     }

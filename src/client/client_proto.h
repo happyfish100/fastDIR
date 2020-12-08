@@ -21,6 +21,7 @@
 #include "fdir_types.h"
 #include "client_types.h"
 
+#define FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT  256
 
 typedef struct fdir_client_owner_mode_pair {
     uid_t uid;
@@ -174,9 +175,12 @@ int fdir_client_proto_readlink_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, const int flags,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsize,
         FDIRDEntryInfo *dentry);
+
+int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const FDIRSetDEntrySizeInfo *dsizes, const int count);
 
 int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,

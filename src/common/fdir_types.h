@@ -129,6 +129,14 @@ typedef union {
     };
 } FDIRStatModifyFlags;
 
+typedef struct fdir_set_dentry_size_info {
+    uint64_t inode;
+    int64_t file_size;
+    int inc_alloc;
+    bool force;
+    int flags;
+} FDIRSetDEntrySizeInfo;
+
 typedef SFSpaceStat FDIRInodeStat;
 
 #endif

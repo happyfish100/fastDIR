@@ -54,6 +54,7 @@ typedef struct binlog_producer_context {
     ProducerRecordBufferQueue queue;
 
     struct fast_mblock_man rb_allocator;
+    int rb_init_capacity;
 } BinlogProducerContext;
 
 static BinlogProducerContext proceduer_ctx = {
@@ -68,20 +69,11 @@ static void *producer_thread_func(void *arg);
 int record_buffer_alloc_init_func(void *element, void *args)
 {
     FastBuffer *buffer;
-    int min_bytes;
-    int init_capacity;
 
     buffer = &((ServerBinlogRecordBuffer *)element)->buffer;
-
-    min_bytes = NAME_MAX + PATH_MAX + 128;
-    init_capacity = 512;
-    while (init_capacity < min_bytes) {
-        init_capacity *= 2;
-    }
-
     ((ServerBinlogRecordBuffer *)element)->release_func =
         server_binlog_release_rbuffer;
-    return fast_buffer_init_ex(buffer, init_capacity);
+    return fast_buffer_init_ex(buffer, proceduer_ctx.rb_init_capacity);
 }
 
 static int binlog_producer_init_queue()
@@ -128,6 +120,7 @@ int binlog_producer_init()
     int result;
     int element_size;
 
+    proceduer_ctx.rb_init_capacity = 4 * 1024;
     element_size = sizeof(ServerBinlogRecordBuffer) +
         sizeof(struct server_binlog_record_buffer *) *
         CLUSTER_SERVER_ARRAY.count;
@@ -195,9 +188,14 @@ void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
 {
     if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
         /*
-        logInfo("file: "__FILE__", line: %d, "
-                "free record buffer: %p", __LINE__, rbuffer);
-                */
+           logInfo("file: "__FILE__", line: %d, "
+           "free record buffer: %p", __LINE__, rbuffer);
+         */
+        fast_buffer_reset(&rbuffer->buffer);
+        if (rbuffer->buffer.alloc_size >= 2 * proceduer_ctx.rb_init_capacity) {
+            fast_buffer_set_capacity(&rbuffer->buffer,
+                    proceduer_ctx.rb_init_capacity);
+        }
         fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
     }
 }

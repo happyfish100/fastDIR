@@ -110,9 +110,12 @@ static inline int fdir_client_rename_dentry_by_pname(
 }
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, const int flags,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsize,
         FDIRDEntryInfo *dentry);
+
+int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsizes,
+        const int count);
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t flags,

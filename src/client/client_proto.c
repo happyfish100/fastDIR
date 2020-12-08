@@ -827,10 +827,16 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
             FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP, dentry);
 }
 
+#define FDIR_CLIENT_PROTO_PACK_DENTRY_SIZE(dsize, req) \
+    long2buff(dsize->inode, req->inode);         \
+    long2buff(dsize->file_size, req->file_size); \
+    long2buff(dsize->inc_alloc, req->inc_alloc); \
+    int2buff(dsize->flags, req->flags); \
+    req->force = dsize->force
+
 int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, const int flags,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsize,
         FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
@@ -848,11 +854,7 @@ int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
     }
 
     CLIENT_PROTO_SET_REQ(out_buff, header, req, req_id, out_bytes);
-    long2buff(inode, req->inode);
-    long2buff(size, req->size);
-    long2buff(inc_alloc, req->inc_alloc);
-    int2buff(flags, req->flags);
-    req->force = force;
+    FDIR_CLIENT_PROTO_PACK_DENTRY_SIZE(dsize, req);
     req->ns_len = ns->len;
     memcpy(req + 1, ns->str, ns->len);
     out_bytes += ns->len;
@@ -861,6 +863,62 @@ int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
             FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP, dentry);
+}
+
+int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const FDIRSetDEntrySizeInfo *dsizes, const int count)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoBatchSetDentrySizeReqHeader *rheader;
+    FDIRProtoBatchSetDentrySizeReqBody *rbody;
+    const FDIRSetDEntrySizeInfo *dsize;
+    const FDIRSetDEntrySizeInfo *dsend;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(SFProtoIdempotencyAdditionalHeader) +
+        sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + NAME_MAX +
+        FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT *
+        sizeof(FDIRProtoBatchSetDentrySizeReqBody)];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    if (ns->len <= 0 || ns->len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid namespace length: %d, which <= 0 or > %d",
+                __LINE__, ns->len, NAME_MAX);
+        return EINVAL;
+    }
+    if (count <= 0 || count > FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid count: %d, which <= 0 or > %d", __LINE__,
+                count, FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT);
+        return EINVAL;
+    }
+
+    CLIENT_PROTO_SET_REQ(out_buff, header, rheader, req_id, out_bytes);
+    int2buff(count, rheader->count);
+    rheader->ns_len = ns->len;
+    memcpy(rheader + 1, ns->str, ns->len);
+
+    rbody = (FDIRProtoBatchSetDentrySizeReqBody *)(rheader->ns_str + ns->len);
+    dsend = dsizes + count;
+    for (dsize=dsizes; dsize<dsend; dsize++, rbody++) {
+        FDIR_CLIENT_PROTO_PACK_DENTRY_SIZE(dsize, rbody);
+    }
+
+    out_bytes = (char *)rbody - out_buff;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
+                    out_bytes, &response, client_ctx->network_timeout,
+                    FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP)) != 0)
+    {
+        sf_log_network_error(&response, conn, result);
+    }
+
+    return result;
 }
 
 int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,

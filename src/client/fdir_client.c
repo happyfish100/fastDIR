@@ -137,15 +137,23 @@ int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int64_t size,
-        const int64_t inc_alloc, const bool force, const int flags,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsize,
         FDIRDEntryInfo *dentry)
 {
     const FDIRConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, GET_MASTER_CONNECTION,
-            NULL, fdir_client_proto_set_dentry_size, ns, inode, size,
-            inc_alloc, force, flags, dentry);
+            NULL, fdir_client_proto_set_dentry_size, ns, dsize, dentry);
+}
+
+int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRSetDEntrySizeInfo *dsizes,
+        const int count)
+{
+    const FDIRConnectionParameters *connection_params;
+
+    SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, GET_MASTER_CONNECTION,
+            NULL, fdir_client_proto_batch_set_dentry_size, ns, dsizes, count);
 }
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
@@ -158,7 +166,6 @@ int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
             NULL, fdir_client_proto_modify_dentry_stat, ns, inode, flags,
             stat, dentry);
 }
-
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const int64_t inode, int *operation, int64_t *offset,

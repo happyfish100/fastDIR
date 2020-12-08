@@ -124,6 +124,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "SET_DENTRY_SIZE_REQ";
         case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP:
             return "SET_DENTRY_SIZE_RESP";
+        case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
+            return "BATCH_SET_DENTRY_SIZE_REQ";
+        case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP:
+            return "BATCH_SET_DENTRY_SIZE_RESP";
         case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
             return "MODIFY_DENTRY_STAT_REQ";
         case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP:
