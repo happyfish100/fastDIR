@@ -1102,9 +1102,8 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
 }
 
 int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
-        const string_t *ns, const int64_t inode, const bool force,
-        const int64_t old_size, const int64_t new_size,
-        const int64_t inc_alloc, const int flags)
+        const string_t *ns, const int64_t old_size,
+        const FDIRSetDEntrySizeInfo *dsize)
 {
     FDIRProtoHeader *header;
     FDIRProtoSysUnlockDEntryReq *req;
@@ -1125,22 +1124,22 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
                     __LINE__, ns->len, NAME_MAX);
             return EINVAL;
         }
-        new_flags = flags;
+        new_flags = dsize->flags;
     } else {
         new_flags = 0;
     }
-    if (inc_alloc != 0) {
+    if (dsize->inc_alloc != 0) {
         new_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
     }
 
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoSysUnlockDEntryReq *)(header + 1);
-    long2buff(inode, req->inode);
+    long2buff(dsize->inode, req->inode);
     long2buff(old_size, req->old_size);
-    long2buff(new_size, req->new_size);
-    long2buff(inc_alloc, req->inc_alloc);
+    long2buff(dsize->file_size, req->new_size);
+    long2buff(dsize->inc_alloc, req->inc_alloc);
     int2buff(new_flags, req->flags);
-    req->force = force;
+    req->force = dsize->force;
     if (ns != NULL) {
         req->ns_len = ns->len;
         memcpy(req + 1, ns->str, ns->len);

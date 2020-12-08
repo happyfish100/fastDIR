@@ -214,15 +214,19 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         int64_t *space_end);
 
 int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
-        const string_t *ns, const int64_t inode, const bool force,
-        const int64_t old_size, const int64_t new_size,
-        const int64_t inc_alloc, const int flags);
+        const string_t *ns, const int64_t old_size,
+        const FDIRSetDEntrySizeInfo *dsize);
 
 static inline int fdir_client_dentry_sys_unlock(
         FDIRClientSession *session, const int64_t inode)
 {
-    return fdir_client_dentry_sys_unlock_ex(session, NULL, inode,
-            false, 0, 0, 0, 0);
+    FDIRSetDEntrySizeInfo dsize;
+    dsize.inode = inode;
+    dsize.file_size = 0;
+    dsize.inc_alloc = 0;
+    dsize.flags = 0;
+    dsize.force = false;
+    return fdir_client_dentry_sys_unlock_ex(session, NULL, 0, &dsize);
 }
 
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
