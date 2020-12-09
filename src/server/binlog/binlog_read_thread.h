@@ -26,7 +26,7 @@
 typedef struct binlog_read_thread_result {
     int err_no;
     SFBinlogFilePosition binlog_position;
-    int64_t last_data_version;
+    SFVersionRange data_version;
     BufferInfo buffer;
 } BinlogReadThreadResult;
 

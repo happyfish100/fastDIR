@@ -23,6 +23,7 @@
 #include <pthread.h>
 #include "fastcommon/fast_buffer.h"
 #include "fastcommon/common_blocked_queue.h"
+#include "sf/sf_binlog_writer.h"
 #include "../server_types.h"
 
 #define BINLOG_OP_NONE_INT           0
@@ -101,7 +102,7 @@ typedef struct fdir_binlog_record {
 } FDIRBinlogRecord;
 
 typedef struct server_binlog_record_buffer {
-    uint64_t data_version; //for idempotency (slave only)
+    SFVersionRange data_version; //for binlog writer and idempotency (slave only)
     volatile int reffer_count;
     void *args;  //for notify & release 
     release_binlog_rbuffer_func release_func;

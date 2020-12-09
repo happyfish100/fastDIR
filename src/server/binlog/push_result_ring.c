@@ -32,6 +32,9 @@
 #include "sf/sf_global.h"
 #include "push_result_ring.h"
 
+
+#define DATA_VERSION_FOR_RING(version)  (version).last
+
 int push_result_ring_check_init(FDIRBinlogPushResultContext *ctx,
         const int alloc_size)
 {
@@ -137,9 +140,8 @@ static int  push_result_ring_clear_queue_timeouts(
         current = current->next;
 
         logWarning("file: "__FILE__", line: %d, "
-                "waiting push response timeout, "
-                "data_version: %"PRId64", task: %p",
-                __LINE__, deleted->data_version,
+                "waiting push response timeout, data_version: "
+                "%"PRId64", task: %p", __LINE__, deleted->data_version,
                 deleted->waiting_task);
         desc_task_waiting_rpc_count(deleted);
         fast_mblock_free_object(&ctx->queue.rentry_allocator, deleted);
@@ -172,11 +174,11 @@ void push_result_ring_clear_timeouts(FDIRBinlogPushResultContext *ctx)
         {
             logWarning("file: "__FILE__", line: %d, "
                     "waiting push response from server %s:%u timeout, "
-                    "data_version: %"PRId64"", __LINE__,
+                    "data_version: %"PRId64, __LINE__, (ctx->ring.start->
+                        waiting_task != NULL ? ctx->ring.start->
+                        waiting_task->server_ip : ""),
                     (ctx->ring.start->waiting_task != NULL ?
-                    ctx->ring.start->waiting_task->server_ip : ""),
-                    (ctx->ring.start->waiting_task != NULL ?
-                    ctx->ring.start->waiting_task->port : 0),
+                     ctx->ring.start->waiting_task->port : 0),
                     ctx->ring.start->data_version);
 
             desc_task_waiting_rpc_count(ctx->ring.start);
@@ -257,44 +259,65 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 }
 
 int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
-        const uint64_t data_version, struct fast_task_info *waiting_task)
+        const SFVersionRange *data_version,
+        struct fast_task_info *waiting_task)
 {
     FDIRBinlogPushResultEntry *entry;
     FDIRBinlogPushResultEntry *previous;
     FDIRBinlogPushResultEntry *next;
+    int64_t current_version;
+    int result;
     int index;
     bool matched;
+    int count;
+    int i;
 
     matched = false;
-    index = data_version % ctx->ring.size;
+    index = data_version->first % ctx->ring.size;
     entry = ctx->ring.entries + index;
     if (ctx->ring.end == ctx->ring.start) {  //empty
         ctx->ring.start = entry;
-        ctx->ring.end = ctx->ring.entries + (index + 1) % ctx->ring.size;
         matched = true;
     } else if (entry == ctx->ring.end) {
         previous = ctx->ring.entries + (index + ctx->ring.size - 1) %
             ctx->ring.size;
         next = ctx->ring.entries + (index + 1) % ctx->ring.size;
         if ((next != ctx->ring.start) &&
-                data_version == previous->data_version + 1)
+                data_version->first == previous->data_version + 1)
         {
-            ctx->ring.end = next;
             matched = true;
         }
     }
 
+    count = data_version->last - data_version->first;
     if (matched) {
-        entry->data_version = data_version;
+        ctx->ring.end = ctx->ring.entries +
+            (data_version->last + 1) % ctx->ring.size;
+        for (i=0; i<count; i++) {
+            current_version = data_version->first + i;
+            entry = ctx->ring.entries + current_version % ctx->ring.size;
+            entry->data_version = current_version;
+            entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
+        }
+
+        entry = ctx->ring.entries + data_version->last % ctx->ring.size;
+        entry->data_version = data_version->last;
         entry->waiting_task = waiting_task;
         entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         return 0;
     }
 
     logWarning("file: "__FILE__", line: %d, "
-            "can't found data version %"PRId64", in the ring",
-            __LINE__, data_version);
-    return add_to_queue(ctx, data_version, waiting_task);
+            "can't found data version %"PRId64" in the ring, "
+            "version count: %"PRId64, __LINE__, data_version->first,
+            (data_version->last - data_version->first) + 1);
+    for (i=0; i<count; i++) {
+        if ((result=add_to_queue(ctx, data_version->first + i, NULL)) != 0) {
+            return result;
+        }
+    }
+
+    return add_to_queue(ctx, data_version->last, waiting_task);
 }
 
 static int remove_from_queue(FDIRBinlogPushResultContext *ctx,

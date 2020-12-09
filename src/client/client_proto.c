@@ -877,7 +877,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
     char out_buff[sizeof(FDIRProtoHeader) +
         sizeof(SFProtoIdempotencyAdditionalHeader) +
         sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + NAME_MAX +
-        FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT *
+        FDIR_BATCH_SET_MAX_DENTRY_COUNT *
         sizeof(FDIRProtoBatchSetDentrySizeReqBody)];
     SFResponseInfo response;
     int out_bytes;
@@ -889,10 +889,10 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
                 __LINE__, ns->len, NAME_MAX);
         return EINVAL;
     }
-    if (count <= 0 || count > FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT) {
+    if (count <= 0 || count > FDIR_BATCH_SET_MAX_DENTRY_COUNT) {
         logError("file: "__FILE__", line: %d, "
                 "invalid count: %d, which <= 0 or > %d", __LINE__,
-                count, FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT);
+                count, FDIR_BATCH_SET_MAX_DENTRY_COUNT);
         return EINVAL;
     }
 

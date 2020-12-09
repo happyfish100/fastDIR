@@ -236,17 +236,23 @@ static void repush_to_queue(ServerBinlogRecordBuffer *rb)
     if (proceduer_ctx.queue.head == NULL) {
         rb->next = NULL;
         proceduer_ctx.queue.head = proceduer_ctx.queue.tail = rb;
-    } else if (rb->data_version <= proceduer_ctx.queue.head->data_version) {
+    } else if (rb->data_version.first <= proceduer_ctx.
+            queue.head->data_version.first)
+    {
         rb->next = proceduer_ctx.queue.head;
         proceduer_ctx.queue.head = rb;
-    } else if (rb->data_version > proceduer_ctx.queue.tail->data_version) {
+    } else if (rb->data_version.first > proceduer_ctx.
+            queue.tail->data_version.last)
+    {
         rb->next = NULL;
         proceduer_ctx.queue.tail->next = rb;
         proceduer_ctx.queue.tail = rb;
     } else {
         previous = proceduer_ctx.queue.head;
         current = proceduer_ctx.queue.head->next;
-        while (current != NULL && rb->data_version > current->data_version) {
+        while (current != NULL && rb->data_version.first >
+                current->data_version.last)
+        {
             previous = current;
             current = current->next;
         }
@@ -257,55 +263,81 @@ static void repush_to_queue(ServerBinlogRecordBuffer *rb)
     PTHREAD_MUTEX_UNLOCK(&proceduer_ctx.queue.lock);
 }
 
-#define PUSH_TO_CONSUMER_QUEQUES(rb) \
+#define PUSH_TO_CONSUMER_QUEQUES(rb, version_count) \
     do { \
         binlog_local_consumer_push_to_queues(rb); \
-        ++next_data_version;  \
+        next_data_version += version_count;       \
     } while (0)
+
+#define GET_RBUFFER_VERSION_COUNT(rb)  \
+        (((rb)->data_version.last - (rb)->data_version.first) + 1)
 
 static void deal_record(ServerBinlogRecordBuffer *rb)
 {
     int64_t distance;
-    int index;
+    int version_count;
+    int next_index;
     bool expand;
     ServerBinlogRecordBuffer **current;
 
-    distance = rb->data_version - next_data_version;
+    distance = (int64_t)rb->data_version.first - (int64_t)next_data_version;
     if (distance >= (proceduer_ctx.ring.size - 1)) {
         logWarning("file: "__FILE__", line: %d, "
-                "data_version: %"PRId64", is too large, "
+                "data_version: %"PRId64" is too large, "
                 "exceeds %"PRId64" + %d", __LINE__,
-                rb->data_version, next_data_version,
+                rb->data_version.first, next_data_version,
                 proceduer_ctx.ring.size - 1);
         repush_to_queue(rb);
         return;
+    } else if (distance < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "data_version: %"PRId64" is too small, "
+                "less than %"PRId64, __LINE__,
+                rb->data_version.first, next_data_version);
+        return;
     }
 
-    current = proceduer_ctx.ring.entries + rb->data_version %
+    current = proceduer_ctx.ring.entries + rb->data_version.first %
         proceduer_ctx.ring.size;
     if (current == proceduer_ctx.ring.start) {
-        PUSH_TO_CONSUMER_QUEQUES(rb);
+        version_count = GET_RBUFFER_VERSION_COUNT(rb);
+        PUSH_TO_CONSUMER_QUEQUES(rb, version_count);
 
-        index = proceduer_ctx.ring.start - proceduer_ctx.ring.entries;
+        next_index = (proceduer_ctx.ring.start -
+                proceduer_ctx.ring.entries) + version_count;
         if (proceduer_ctx.ring.start == proceduer_ctx.ring.end) {
             proceduer_ctx.ring.start = proceduer_ctx.ring.end =
-                proceduer_ctx.ring.entries +
-                (++index) % proceduer_ctx.ring.size;
+                proceduer_ctx.ring.entries + next_index %
+                proceduer_ctx.ring.size;
             return;
         }
 
         proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
-            (++index) % proceduer_ctx.ring.size;
+            next_index % proceduer_ctx.ring.size;
         while (proceduer_ctx.ring.start != proceduer_ctx.ring.end &&
                 *(proceduer_ctx.ring.start) != NULL)
         {
-            PUSH_TO_CONSUMER_QUEQUES(*(proceduer_ctx.ring.start));
-            *(proceduer_ctx.ring.start) = NULL;
+            current = proceduer_ctx.ring.start;
+            version_count = GET_RBUFFER_VERSION_COUNT(*current);
+            PUSH_TO_CONSUMER_QUEQUES(*current, version_count);
+            *current = NULL;
 
+            next_index += version_count;
             proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
-                (++index) % proceduer_ctx.ring.size;
+                next_index % proceduer_ctx.ring.size;
             proceduer_ctx.ring.count--;
         }
+        return;
+    }
+
+    distance = (int64_t)rb->data_version.last - (int64_t)next_data_version;
+    if (distance >= (proceduer_ctx.ring.size - 1)) {
+        logWarning("file: "__FILE__", line: %d, "
+                "data_version: %"PRId64", is too large, "
+                "exceeds %"PRId64" + %d", __LINE__,
+                rb->data_version.last, next_data_version,
+                proceduer_ctx.ring.size - 1);
+        repush_to_queue(rb);
         return;
     }
 
@@ -314,8 +346,11 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
     if (proceduer_ctx.ring.start == proceduer_ctx.ring.end) { //empty
         expand = true;
     } else if (proceduer_ctx.ring.end > proceduer_ctx.ring.start) {
+        ServerBinlogRecordBuffer **last;
+        last = proceduer_ctx.ring.entries + rb->data_version.last %
+            proceduer_ctx.ring.size;
         expand = !(current > proceduer_ctx.ring.start &&
-                current < proceduer_ctx.ring.end);
+                last < proceduer_ctx.ring.end);
     } else {
         expand = (current >= proceduer_ctx.ring.end &&
                 current < proceduer_ctx.ring.start);
@@ -323,7 +358,7 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
 
     if (expand) {
         proceduer_ctx.ring.end = proceduer_ctx.ring.entries +
-            (rb->data_version + 1) % proceduer_ctx.ring.size;
+            (rb->data_version.last + 1) % proceduer_ctx.ring.size;
     }
 }
 

@@ -21,8 +21,6 @@
 #include "fdir_types.h"
 #include "client_types.h"
 
-#define FDIR_CLIENT_BATCH_SET_DENTRY_MAX_COUNT  256
-
 typedef struct fdir_client_owner_mode_pair {
     uid_t uid;
     gid_t gid;

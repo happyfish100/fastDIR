@@ -192,7 +192,7 @@ int binlog_read_to_buffer(ServerBinlogReader *reader,
 }
 
 int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
-        const int size, int *read_bytes, int64_t *data_version)
+        const int size, int *read_bytes, SFVersionRange *data_version)
 {
     int result;
     int remain_len;
@@ -202,18 +202,38 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     if ((result=binlog_read_to_buffer(reader, buff, size,
                     read_bytes)) != 0)
     {
-        *data_version = 0;
+        data_version->first = data_version->last = 0;
         return result;
     }
 
+    if ((result=binlog_detect_record(buff, *read_bytes,
+                &data_version->first, (const char **)&rec_end,
+                error_info, sizeof(error_info))) != 0)
+    {
+        int64_t line_count;
+
+        fc_get_file_line_count_ex(reader->filename,
+                reader->position.offset - *read_bytes, &line_count);
+        if (*error_info == '\0') {
+            snprintf(error_info, sizeof(error_info),
+                    "%s", STRERROR(result));
+        }
+        logError("file: "__FILE__", line: %d, "
+                "binlog_detect_record fail, "
+                "binlog file: %s, line no: %"PRId64", error info: %s",
+                __LINE__, reader->filename, line_count, error_info);
+        data_version->first = data_version->last = 0;
+        return result == ENOENT ? EAGAIN : result;
+    }
+
     if ((result=binlog_detect_record_reverse(buff, *read_bytes,
-                    data_version, (const char **)&rec_end,
+                    &data_version->last, (const char **)&rec_end,
                     error_info, sizeof(error_info))) != 0)
     {
         int64_t line_count;
 
         fc_get_file_line_count_ex(reader->filename, reader->position.
-                offset + *read_bytes, &line_count);
+                offset, &line_count);
         if (*error_info == '\0') {
             snprintf(error_info, sizeof(error_info),
                     "%s", STRERROR(result));
@@ -223,7 +243,7 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
                 "binlog file: %s, line no: %"PRId64", error info: %s",
                 __LINE__, reader->filename, line_count, error_info);
 
-        *data_version = 0;
+        data_version->last = 0;
         return result == ENOENT ? EAGAIN : result;
     }
 
@@ -889,12 +909,12 @@ int binlog_check_consistency(const string_t *sbinlog,
     FDIRBinlogRecord fixed_master_records[FIXED_RECORD_SIZE];
     FDIRBinlogRecord *slave_records;
     FDIRBinlogRecord *master_records;
+    SFVersionRange data_version;
     char fixed_buff[8 * 1024];
     string_t mbinlog;
     int buff_size;
     int slave_rows;
     int master_rows;
-    int64_t last_data_version;
 
     *first_unmatched_dv = 0;
     if (sbinlog->len == 0) {
@@ -943,7 +963,7 @@ int binlog_check_consistency(const string_t *sbinlog,
     }
 
     result = binlog_reader_integral_read(&reader, mbinlog.str,
-            buff_size, &mbinlog.len, &last_data_version);
+            buff_size, &mbinlog.len, &data_version);
     binlog_reader_destroy(&reader);
     do {
         if (result == ENOENT || result == EAGAIN) {

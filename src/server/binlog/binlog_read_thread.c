@@ -124,7 +124,7 @@ static void *binlog_read_thread_func(void *arg)
         r->binlog_position = ctx->reader.position;
         r->err_no = binlog_reader_integral_read(&ctx->reader,
                 r->buffer.buff, r->buffer.alloc_size,
-                &r->buffer.length, &r->last_data_version);
+                &r->buffer.length, &r->data_version);
         common_blocked_queue_push(&ctx->queues.done, r);
     }
 

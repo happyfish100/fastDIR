@@ -693,7 +693,8 @@ static int server_binlog_produce(struct fast_task_info *task)
         return ENOMEM;
     }
 
-    rbuffer->data_version = RECORD->data_version;
+    rbuffer->data_version.first = RECORD->data_version;
+    rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
 
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
@@ -1664,7 +1665,7 @@ static inline int binlog_produce_directly(struct fast_task_info *task)
     return server_binlog_produce(task);
 }
 
-static FDIRServerDentry *do_set_dentry_size(struct fast_task_info *task,
+static FDIRServerDentry *do_set_dentry_size(FDIRBinlogRecord *record,
         const char *ns_str, const int ns_len,
         const FDIRSetDEntrySizeInfo *dsize, const bool need_lock,
         int *result, int *modified_flags)
@@ -1683,27 +1684,27 @@ static FDIRServerDentry *do_set_dentry_size(struct fast_task_info *task,
         return dentry;
     }
 
-    RECORD->inode = dsize->inode;
-    RECORD->me.dentry = dentry;
-    RECORD->hash_code = simple_hash(ns_str, ns_len);
-    RECORD->options.flags = 0;
+    record->inode = dsize->inode;
+    record->me.dentry = dentry;
+    record->hash_code = simple_hash(ns_str, ns_len);
+    record->options.flags = 0;
     if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-        RECORD->options.size = 1;
-        RECORD->stat.size = RECORD->me.dentry->stat.size;
+        record->options.size = 1;
+        record->stat.size = record->me.dentry->stat.size;
     }
     if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-        RECORD->options.space_end = 1;
-        RECORD->stat.space_end = RECORD->me.dentry->stat.space_end;
+        record->options.space_end = 1;
+        record->stat.space_end = record->me.dentry->stat.space_end;
     }
     if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-        RECORD->options.inc_alloc = 1;
-        RECORD->stat.alloc = dsize->inc_alloc;
+        record->options.inc_alloc = 1;
+        record->stat.alloc = dsize->inc_alloc;
     }
     if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
-        RECORD->options.mtime = 1;
-        RECORD->stat.mtime = RECORD->me.dentry->stat.mtime;
+        record->options.mtime = 1;
+        record->stat.mtime = record->me.dentry->stat.mtime;
     }
-    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    record->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     *result = 0;
     return dentry;
 }
@@ -1721,7 +1722,7 @@ static FDIRServerDentry *set_dentry_size(
         return NULL;
     }
 
-    dentry = do_set_dentry_size(task, ns_str, ns_len,
+    dentry = do_set_dentry_size(RECORD, ns_str, ns_len,
             dsize, need_lock, result, &modified_flags);
     if (dentry == NULL || modified_flags == 0) {
         free_record_object(task);
@@ -1792,11 +1793,15 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     ServerBinlogRecordBuffer *rbuffer;
     FDIRServerDentry *dentry;
     FDIRSetDEntrySizeInfo dsize;
+    FDIRBinlogRecord *records[FDIR_BATCH_SET_MAX_DENTRY_COUNT];
+    FDIRBinlogRecord **record;
+    FDIRBinlogRecord **recend;
+    uint64_t current_version;
+    int record_count;
     int result;
     int count;
     int expect_blen;
     int modified_flags;
-    int64_t last_data_version;
 
     if ((result=server_check_min_body_length(task,
                     sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + 1 +
@@ -1813,9 +1818,10 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
     count = buff2int(rheader->count);
-    if (count <= 0) {
+    if (count <= 0 || count > FDIR_BATCH_SET_MAX_DENTRY_COUNT) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "count: %d is invalid which <= 0", count);
+                "count: %d is invalid which <= 0 or > %d",
+                count, FDIR_BATCH_SET_MAX_DENTRY_COUNT);
         return EINVAL;
     }
 
@@ -1828,14 +1834,13 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
-
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
         free_record_object(task);
         return ENOMEM;
     }
+
+    memset(records, 0, sizeof(FDIRBinlogRecord *) * count);
+    record = records;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
@@ -1843,23 +1848,60 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     rbend = rbody + count;
     for (; rbody < rbend; rbody++) {
         SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, rbody);
-        dentry = do_set_dentry_size(task, rheader->ns_str, rheader->ns_len,
-                &dsize, true, &result, &modified_flags);
-        if (dentry != NULL && modified_flags != 0) {
-            RECORD->data_version = __sync_add_and_fetch(
-                    &DATA_CURRENT_VERSION, 1);
-            RECORD->timestamp = g_current_time;
-            if ((result=binlog_pack_record(RECORD, &rbuffer->buffer)) != 0) {
-                break;
+
+        if (*record == NULL) {
+            *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+                    &((FDIRServerContext *)task->thread_data->arg)->
+                    service.record_allocator);
+            if (*record == NULL) {
+                RESPONSE.error.length = sprintf(
+                        RESPONSE.error.message,
+                        "system busy, please try later");
+                return EBUSY;
             }
+        }
+
+        dentry = do_set_dentry_size(*record, rheader->ns_str,
+                rheader->ns_len, &dsize, true, &result, &modified_flags);
+        if (dentry != NULL && modified_flags != 0) {
+            record++;
         }
     }
 
-    last_data_version = RECORD->data_version;
-    free_record_object(task);
-    if (result == 0) {
+    recend = record;
+    record_count = recend - records;
+    rbuffer->data_version.last = __sync_add_and_fetch(
+                &DATA_CURRENT_VERSION, record_count);
+    rbuffer->data_version.first = rbuffer->
+        data_version.last - record_count + 1;
+    current_version = rbuffer->data_version.first;
+    for (record=records; record<recend; record++) {
+        (*record)->data_version = current_version++;
+        (*record)->timestamp = g_current_time;
+        if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
+            break;
+        }
+    }
+
+    for (record=records; record<recend; record++) {
+        fast_mblock_free_object(&((FDIRServerContext *)task->
+                    thread_data->arg)->service.record_allocator, *record);
+    }
+    if (record_count < count && *recend != NULL) {
+        fast_mblock_free_object(&((FDIRServerContext *)task->
+                    thread_data->arg)->service.record_allocator, *recend);
+    }
+
+    /*
+    logInfo("result: %d, count: %d, record_count: %d, "
+            "first data_version: %"PRId64", last data_version: %"PRId64
+            ", buffer length: %d", result, count, record_count,
+            rbuffer->data_version.first, rbuffer->data_version.last,
+            rbuffer->buffer.length);
+            */
+
+    if (result == 0 && record_count > 0) {
         sf_hold_task(task);
-        rbuffer->data_version = last_data_version;
         return do_binlog_produce(task, rbuffer);
     } else {
         server_binlog_free_rbuffer(rbuffer);

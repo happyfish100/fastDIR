@@ -484,7 +484,10 @@ typedef struct fdir_proto_ping_master_resp_body_part {
 
 typedef struct fdir_proto_push_binlog_req_body_header {
     char binlog_length[4];
-    char last_data_version[8];
+    struct {
+        char first[8];
+        char last[8];
+    } data_version;
 } FDIRProtoPushBinlogReqBodyHeader;
 
 typedef struct fdir_proto_push_binlog_resp_body_header {

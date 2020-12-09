@@ -225,14 +225,14 @@ static inline int push_and_set_next_recv_buffer(
 
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
-        const uint64_t last_data_version)
+        const SFVersionRange *data_version)
 {
     ServerBinlogRecordBuffer *rb = NULL;
     static int max_waiting_count = 0;
     int result;
     int waiting_count;
 
-    ctx->recv_rbuffer->data_version = last_data_version;
+    ctx->recv_rbuffer->data_version = *data_version;
     if ((result=fast_buffer_check(&ctx->recv_rbuffer->buffer,
                     length)) != 0)
     {

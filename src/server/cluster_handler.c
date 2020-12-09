@@ -340,7 +340,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {
     int result;
     int binlog_length;
-    uint64_t last_data_version;
+    SFVersionRange data_version;
     FDIRProtoPushBinlogReqBodyHeader *body_header;
 
     if ((result=server_check_min_body_length(task,
@@ -357,7 +357,8 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
     body_header = (FDIRProtoPushBinlogReqBodyHeader *)(task->data +
             sizeof(FDIRProtoHeader));
     binlog_length = buff2int(body_header->binlog_length);
-    last_data_version = buff2long(body_header->last_data_version);
+    data_version.first = buff2long(body_header->data_version.first);
+    data_version.last = buff2long(body_header->data_version.last);
     if (sizeof(FDIRProtoPushBinlogReqBodyHeader) + binlog_length !=
             REQUEST.header.body_len)
     {
@@ -370,7 +371,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
     }
 
     return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
-            (body_header + 1), binlog_length, last_data_version);
+            (body_header + 1), binlog_length, &data_version);
 }
 
 static inline int check_replication_master_task(struct fast_task_info *task)
@@ -445,11 +446,9 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
         if ((result=binlog_replications_check_response_data_version(
                         CLUSTER_REPLICA, data_version)) != 0)
         {
-            RESPONSE.error.length = sprintf(
-                    RESPONSE.error.message,
-                    "push_result_ring_remove fail, "
-                    "data_version: %"PRId64", result: %d",
-                    data_version, result);
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "push_result_ring_remove fail, data_version: "
+                    "%"PRId64", result: %d", data_version, result);
             break;
         }
     }

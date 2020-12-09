@@ -58,7 +58,7 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
 
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
-        const uint64_t last_data_version);
+        const SFVersionRange *data_version);
 
 int deal_replica_push_task(ReplicaConsumerThreadContext *ctx);
 

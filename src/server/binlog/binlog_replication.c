@@ -348,7 +348,8 @@ static void discard_queue(FDIRSlaveReplication *replication,
         rb = head;
         head = head->nexts[replication->index];
 
-        replication->context.last_data_versions.by_queue = rb->data_version;
+        replication->context.last_data_versions.by_queue =
+            rb->data_version.last;
         decrease_task_waiting_rpc_count(rb);
         rb->release_func(rb);
     }
@@ -384,7 +385,7 @@ static void replication_queue_discard_synced(FDIRSlaveReplication *replication)
         }
 
         tail = head;
-        while ((tail != NULL) && (tail->data_version <=
+        while ((tail != NULL) && (tail->data_version.first <=
                     replication->context.last_data_versions.by_disk.current))
         {
             tail = tail->nexts[replication->index];
@@ -530,7 +531,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *tail;
     struct fast_task_info *waiting_task;
     FDIRProtoPushBinlogReqBodyHeader *body_header;
-    uint64_t last_data_version;
+    SFVersionRange data_version;
     int body_len;
     int result;
 
@@ -546,7 +547,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         return 0;
     }
 
-    last_data_version = 0;
+    data_version.first = head->data_version.first;
     replication->task->length = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogReqBodyHeader);
     while (head != NULL) {
@@ -559,14 +560,15 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
             break;
         }
 
-        last_data_version = rb->data_version;
-        replication->context.last_data_versions.by_queue = rb->data_version;
+        data_version.last = rb->data_version.last;
+        replication->context.last_data_versions.by_queue =
+            rb->data_version.last;
         memcpy(replication->task->data + replication->task->length,
                 rb->buffer.data, rb->buffer.length);
         replication->task->length += rb->buffer.length;
 
         if ((result=push_result_ring_add(&replication->context.
-                        push_result_ctx, rb->data_version,
+                        push_result_ctx, &rb->data_version,
                         waiting_task)) != 0)
         {
             sf_terminate_myself();
@@ -582,7 +584,8 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     body_len = replication->task->length - sizeof(FDIRProtoHeader);
     int2buff(body_len - sizeof(FDIRProtoPushBinlogReqBodyHeader),
             body_header->binlog_length);
-    long2buff(last_data_version, body_header->last_data_version);
+    long2buff(data_version.first, body_header->data_version.first);
+    long2buff(data_version.last, body_header->data_version.last);
 
     SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
@@ -650,7 +653,8 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
 
     int2buff(r->buffer.length, body_header->binlog_length);
-    long2buff(r->last_data_version, body_header->last_data_version);
+    long2buff(r->data_version.first, body_header->data_version.first);
+    long2buff(r->data_version.last, body_header->data_version.last);
     memcpy(replication->task->data + sizeof(FDIRProtoHeader) +
             sizeof(FDIRProtoPushBinlogReqBodyHeader),
             r->buffer.buff, r->buffer.length);
@@ -672,19 +676,23 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
     /*
     logInfo("r: %p, buffer length: %d, result: %d, last_data_version: %"PRId64
             ", task offset: %d, length: %d", r, r->buffer.length,
-            r->err_no, r->last_data_version, replication->task->offset,
+            r->err_no, r->data_version.last, replication->task->offset,
             replication->task->length);
             */
 
     if (r->err_no == 0) {
-        if (r->last_data_version > replication->context.
+        if (r->data_version.last > replication->context.
                 last_data_versions.by_disk.current)
         {
             replication->context.last_data_versions.by_disk.previous =
                 replication->context.last_data_versions.by_disk.current;
             replication->context.last_data_versions.by_disk.current =
-                r->last_data_version;
+                r->data_version.last;
         }
+
+        logInfo("first data_version: %"PRId64", last data_version: %"PRId64
+                ", buffer length: %d", r->data_version.first,
+                r->data_version.last, r->buffer.length);
 
         replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
         sync_binlog_to_slave(replication, r);
