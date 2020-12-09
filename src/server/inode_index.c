@@ -342,6 +342,9 @@ static void update_dentry(FDIRServerDentry *dentry,
     if (record->options.size) {
         dentry->stat.size = record->stat.size;
     }
+    if (record->options.space_end) {
+        dentry->stat.space_end = record->stat.space_end;
+    }
     if (record->options.inc_alloc) {
         dentry->stat.alloc += record->stat.alloc;
     }
