@@ -1578,18 +1578,19 @@ static int service_deal_readlink_by_inode(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP);
 }
 
-static int service_deal_lookup_inode(struct fast_task_info *task)
+static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
 {
     int result;
     FDIRDEntryFullName fullname;
     FDIRServerDentry *dentry;
     FDIRProtoLookupInodeResp *resp;
 
+
     if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
         return result;
     }
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP;
     if ((result=dentry_find(&fullname, &dentry)) != 0) {
         return result;
     }
@@ -1620,15 +1621,14 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
     return 0;
 }
 
-static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
+static int get_dentry_by_pname(struct fast_task_info *task,
+        FDIRServerDentry **dentry)
 {
     FDIRProtoStatDEntryByPNameReq *req;
-    FDIRServerDentry *dentry;
     int64_t parent_inode;
     string_t name;
     int result;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
     if ((result=server_check_body_length(task, sizeof(
                         FDIRProtoStatDEntryByPNameReq) + 1,
                     sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
@@ -1650,12 +1650,41 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
     parent_inode = buff2long(req->parent_inode);
     name.str = req->name_str;
     name.len = req->name_len;
-    if ((dentry=inode_index_get_dentry_by_pname(parent_inode, &name)) == NULL) {
+    if ((*dentry=inode_index_get_dentry_by_pname(
+                    parent_inode, &name)) == NULL)
+    {
         return ENOENT;
     }
 
-    dentry_stat_output(task, &dentry);
     return 0;
+}
+
+static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
+{
+    int result;
+    FDIRServerDentry *dentry;
+
+    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
+        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
+        dentry_stat_output(task, &dentry);
+    }
+    return result;
+}
+
+static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
+{
+    int result;
+    FDIRServerDentry *dentry;
+    FDIRProtoLookupInodeResp *resp;
+
+    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
+        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
+        resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
+        long2buff(dentry->inode, resp->inode);
+        RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
+        TASK_ARG->context.response_done = true;
+    }
+    return result;
 }
 
 static inline int binlog_produce_directly(struct fast_task_info *task)
@@ -2712,9 +2741,14 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                         service_deal_modify_dentry_stat,
                         FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP);
                 break;
-            case FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ:
+            case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
                 if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_lookup_inode(task);
+                    result = service_deal_lookup_inode_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_deal_lookup_inode_by_pname(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

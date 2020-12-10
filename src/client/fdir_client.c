@@ -176,12 +176,21 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
             offset, length, owner_id, pid);
 }
 
-int fdir_client_lookup_inode_ex(FDIRClientContext *client_ctx,
+int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const int enoent_log_level,
         int64_t *inode)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
-            NULL, fdir_client_proto_lookup_inode, fullname,
+            NULL, fdir_client_proto_lookup_inode_by_path, fullname,
+            enoent_log_level, inode);
+}
+
+int fdir_client_lookup_inode_by_pname_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, const int enoent_log_level,
+        int64_t *inode)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, GET_READABLE_CONNECTION,
+            NULL, fdir_client_proto_lookup_inode_by_pname, pname,
             enoent_log_level, inode);
 }
 

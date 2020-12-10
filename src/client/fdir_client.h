@@ -126,8 +126,11 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         int64_t *length, int64_t *owner_id, pid_t *pid);
 
 
-#define fdir_client_lookup_inode(client_ctx, fullname, inode) \
-    fdir_client_lookup_inode_ex(client_ctx, fullname, LOG_ERR, inode)
+#define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
+    fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)
+
+#define fdir_client_lookup_inode_by_pname(client_ctx, pname, inode) \
+    fdir_client_lookup_inode_by_pname_ex(client_ctx, pname, LOG_ERR, inode)
 
 #define fdir_client_stat_dentry_by_path(client_ctx, fullname, dentry) \
     fdir_client_stat_dentry_by_path_ex(client_ctx, fullname, LOG_ERR, dentry)
@@ -135,8 +138,12 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
 #define fdir_client_stat_dentry_by_pname(client_ctx, pname, dentry) \
     fdir_client_stat_dentry_by_pname_ex(client_ctx, pname, LOG_ERR, dentry)
 
-int fdir_client_lookup_inode_ex(FDIRClientContext *client_ctx,
+int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const int enoent_log_level,
+        int64_t *inode);
+
+int fdir_client_lookup_inode_by_pname_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryPName *pname, const int enoent_log_level,
         int64_t *inode);
 
 int fdir_client_stat_dentry_by_path_ex(FDIRClientContext *client_ctx,

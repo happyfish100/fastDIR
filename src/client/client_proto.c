@@ -541,7 +541,7 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
+int fdir_client_proto_lookup_inode_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const int enoent_log_level, int64_t *inode)
 {
@@ -549,14 +549,50 @@ int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
     int result;
 
     if ((result=query_by_dentry_fullname(client_ctx, conn, fullname,
-                    FDIR_SERVICE_PROTO_LOOKUP_INODE_REQ,
-                    FDIR_SERVICE_PROTO_LOOKUP_INODE_RESP,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP,
                     (char *)&proto_resp, sizeof(proto_resp),
                     enoent_log_level)) == 0)
     {
         *inode = buff2long(proto_resp.inode);
     } else {
         *inode = -1;
+    }
+
+    return result;
+}
+
+int fdir_client_proto_lookup_inode_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const FDIRDEntryPName *pname,
+        const int enoent_log_level, int64_t *inode)
+{
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoStatDEntryByPNameReq) + NAME_MAX];
+    int out_bytes;
+    int result;
+    SFResponseInfo response;
+    FDIRProtoLookupInodeResp proto_resp;
+    int log_level;
+
+    if ((result=setup_req_by_dentry_pname(pname,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ,
+                    out_buff, &out_bytes)) != 0)
+    {
+        *inode = -1;
+        return result;
+    }
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->network_timeout,
+                    FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP,
+                    (char *)&proto_resp, sizeof(proto_resp))) == 0)
+    {
+        *inode = buff2long(proto_resp.inode);
+    } else {
+        *inode = -1;
+        log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
+        sf_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;

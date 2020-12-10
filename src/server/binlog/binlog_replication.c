@@ -548,6 +548,7 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
     }
 
     data_version.first = head->data_version.first;
+    data_version.last = head->data_version.last;
     replication->task->length = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogReqBodyHeader);
     while (head != NULL) {

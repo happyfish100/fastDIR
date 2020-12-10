@@ -144,8 +144,12 @@ int fdir_client_proto_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         const string_t *dest_ns, const FDIRDEntryPName *dest_pname,
         const int flags, FDIRDEntryInfo **dentry);
 
-int fdir_client_proto_lookup_inode(FDIRClientContext *client_ctx,
+int fdir_client_proto_lookup_inode_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        const int enoent_log_level, int64_t *inode);
+
+int fdir_client_proto_lookup_inode_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const FDIRDEntryPName *pname,
         const int enoent_log_level, int64_t *inode);
 
 int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
