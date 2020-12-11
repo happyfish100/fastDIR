@@ -165,7 +165,8 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
     return 0;
 }
 
-void fdir_client_log_config(FDIRClientContext *client_ctx)
+void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
+        const char *extra_config)
 {
     char net_retry_output[256];
 
@@ -176,15 +177,16 @@ void fdir_client_log_config(FDIRClientContext *client_ctx)
             "connect_timeout=%d, "
             "network_timeout=%d, "
             "read_rule: %s, %s, "
-            "dir_server_count=%d",
+            "dir_server_count=%d%s%s",
             g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_client_vars.base_path,
             client_ctx->connect_timeout,
             client_ctx->network_timeout,
             sf_get_read_rule_caption(client_ctx->read_rule),
-            net_retry_output,
-            client_ctx->server_group.count);
+            net_retry_output, client_ctx->server_group.count,
+            extra_config != NULL ? ", " : "",
+            extra_config != NULL ? extra_config : "");
 }
 
 int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,

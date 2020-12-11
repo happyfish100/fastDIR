@@ -46,6 +46,8 @@ extern "C" {
 #define fdir_client_destroy() \
     fdir_client_destroy_ex((&g_fdir_client_vars.client_ctx))
 
+#define fdir_client_log_config(client_ctx) \
+    fdir_client_log_config_ex(client_ctx, NULL)
 
 int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx);
@@ -126,7 +128,8 @@ void fdir_client_destroy_ex(FDIRClientContext *client_ctx);
 int fdir_alloc_group_servers(FDIRServerGroup *server_group,
         const int alloc_size);
 
-void fdir_client_log_config(FDIRClientContext *client_ctx);
+void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
+        const char *extra_config);
 
 #ifdef __cplusplus
 }
