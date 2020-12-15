@@ -292,7 +292,7 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
     return entry;
 }
 
-static const FDIRServerDentry *dentry_find_ex(FDIRNamespaceEntry *ns_entry,
+static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
         const string_t *paths, const int count)
 {
     const string_t *p;
@@ -373,7 +373,7 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
     if (path_info.count == 1) {
         *parent = ns_entry->dentry_root;
     } else {
-        *parent = (FDIRServerDentry *)dentry_find_ex(ns_entry,
+        *parent = (FDIRServerDentry *)do_find_ex(ns_entry,
                 path_info.paths, path_info.count - 1);
         if (*parent == NULL) {
             return ENOENT;
@@ -429,7 +429,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     if (path_info->count == 1) {
         *parent = (*ns_entry)->dentry_root;
     } else {
-        *parent = (FDIRServerDentry *)dentry_find_ex(*ns_entry,
+        *parent = (FDIRServerDentry *)do_find_ex(*ns_entry,
                 path_info->paths, path_info->count - 1);
         if (*parent == NULL) {
             *me = NULL;
@@ -1057,7 +1057,8 @@ int dentry_rename(FDIRDataThreadContext *db_context,
     }
 }
 
-int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
+int dentry_find_ex(const FDIRDEntryFullName *fullname,
+        FDIRServerDentry **dentry, const bool hdlink_follow)
 {
     FDIRPathInfo path_info;
     FDIRNamespaceEntry *ns_entry;
@@ -1075,7 +1076,9 @@ int dentry_find(const FDIRDEntryFullName *fullname, FDIRServerDentry **dentry)
         return ENOENT;
     }
 
-    SET_HARD_LINK_DENTRY(*dentry);
+    if (hdlink_follow) {
+        SET_HARD_LINK_DENTRY(*dentry);
+    }
     return 0;
 }
 

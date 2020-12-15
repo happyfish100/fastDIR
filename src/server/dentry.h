@@ -47,8 +47,15 @@ extern "C" {
     int dentry_find_parent(const FDIRDEntryFullName *fullname,
             FDIRServerDentry **parent, string_t *my_name);
 
-    int dentry_find(const FDIRDEntryFullName *fullname,
-            FDIRServerDentry **dentry);
+    int dentry_find_ex(const FDIRDEntryFullName *fullname,
+            FDIRServerDentry **dentry, const bool hdlink_follow);
+
+    static inline int dentry_find(const FDIRDEntryFullName *fullname,
+            FDIRServerDentry **dentry)
+    {
+        const bool hdlink_follow = true;
+        return  dentry_find_ex(fullname, dentry, hdlink_follow);
+    }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,
             const string_t *name, FDIRServerDentry **dentry);
@@ -61,11 +68,12 @@ extern "C" {
     static inline int dentry_list_by_path(const FDIRDEntryFullName *fullname,
             FDIRServerDentryArray *array)
     {
-        FDIRServerDentry *dentry;
+        const bool hdlink_follow = false;
         int result;
+        FDIRServerDentry *dentry;
 
         array->count = 0;
-        if ((result=dentry_find(fullname, &dentry)) != 0) {
+        if ((result=dentry_find_ex(fullname, &dentry, hdlink_follow)) != 0) {
             return result;
         }
 
