@@ -20,6 +20,10 @@
 #include "server_types.h"
 #include "data_thread.h"
 
+#define FDIR_GET_REAL_DENTRY(dentry)  \
+    FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
+    (dentry)->src_dentry : dentry
+
 #ifdef __cplusplus
 extern "C" {
 #endif

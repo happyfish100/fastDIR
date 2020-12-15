@@ -2507,6 +2507,7 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 static int server_list_dentry_output(struct fast_task_info *task)
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
+    FDIRServerDentry *src_dentry;
     FDIRServerDentry **dentry;
     FDIRServerDentry **start;
     FDIRServerDentry **end;
@@ -2525,15 +2526,16 @@ static int server_list_dentry_output(struct fast_task_info *task)
         DENTRY_LIST_CACHE.offset;
     end = start + remain_count;
     for (dentry=start; dentry<end; dentry++) {
+        src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
         if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
                 (*dentry)->name.len)
         {
             break;
         }
         body_part = (FDIRProtoListDEntryRespBodyPart *)p;
-        long2buff((*dentry)->inode, body_part->inode);
+        long2buff(src_dentry->inode, body_part->inode);
 
-        fdir_proto_pack_dentry_stat_ex(&(*dentry)->stat,
+        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
                 &body_part->stat, true);
         body_part->name_len = (*dentry)->name.len;
         memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);

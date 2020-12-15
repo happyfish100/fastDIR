@@ -378,9 +378,9 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     /*
     logInfo("file: "__FILE__", line: %d, record: %p, "
             "operation: %d, hash code: %u, inode: %"PRId64
-             ", data_version: %"PRId64", result: %d", __LINE__,
-             record, record->operation, record->hash_code,
-             record->inode, record->data_version, result);
+             ", data_version: %"PRId64", result: %d, is_error: %d",
+             __LINE__, record, record->operation, record->hash_code,
+             record->inode, record->data_version, result, is_error);
              */
 
     return result;

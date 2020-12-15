@@ -69,11 +69,6 @@ static FDIRManager fdir_manager;
     } while (0)
 
 
-#define GET_REAL_DENTRY(dentry)  \
-    FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
-    (dentry)->src_dentry : dentry
-
-
 int dentry_init()
 {
     int result;
@@ -1158,12 +1153,12 @@ int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
     }
 
     if (!S_ISDIR(dentry->stat.mode)) {
-        array->entries[array->count++] = GET_REAL_DENTRY(dentry);
+        array->entries[array->count++] = dentry;
     } else {
         pp = array->entries;
         uniq_skiplist_iterator(dentry->children, &iterator);
         while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
-           *pp++ = GET_REAL_DENTRY(current);
+            *pp++ = current;
         }
         array->count = pp - array->entries;
     }
