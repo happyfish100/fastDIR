@@ -173,7 +173,7 @@ static inline int do_update_dentry(FDIRClientContext *client_ctx,
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        sf_log_network_error(&response, conn, result);
+        sf_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -385,7 +385,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
             *dentry = NULL;
         }
     } else {
-        sf_log_network_error(&response, conn, result);
+        sf_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -951,7 +951,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
                     out_bytes, &response, client_ctx->network_timeout,
                     FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        sf_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
