@@ -72,6 +72,8 @@ typedef struct server_global_vars {
         int thread_count;
     } data;
 
+    SFSlowLogContext slow_log;
+
 } FDIRServerGlobalVars;
 
 #define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
@@ -105,6 +107,9 @@ typedef struct server_global_vars {
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
+
+#define SLOW_LOG_CFG            g_server_global_vars.slow_log.cfg
+#define SLOW_LOG_CTX            g_server_global_vars.slow_log.ctx
 
 #define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX) - 1)
 

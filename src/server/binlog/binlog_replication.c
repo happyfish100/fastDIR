@@ -691,9 +691,11 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
                 r->data_version.last;
         }
 
+        /*
         logInfo("first data_version: %"PRId64", last data_version: %"PRId64
                 ", buffer length: %d", r->data_version.first,
                 r->data_version.last, r->buffer.length);
+                */
 
         replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
         sync_binlog_to_slave(replication, r);

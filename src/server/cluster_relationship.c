@@ -605,8 +605,7 @@ static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 		if ((result=cluster_commit_next_master(server,
 				server_status, &bConnectFail)) != 0)
 		{
-			if (!bConnectFail)
-			{
+			if (!bConnectFail) {
 				return result;
 			}
 		} else {

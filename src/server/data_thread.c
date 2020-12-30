@@ -315,6 +315,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
 {
     int result;
     int ignore_errno;
+    bool set_data_verson;
     bool is_error;
 
     switch (record->operation) {
@@ -357,18 +358,24 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         if (record->data_version == 0) {
             record->data_version = __sync_add_and_fetch(
                     &DATA_CURRENT_VERSION, 1);
+            set_data_verson = false;
         } else {
-            int64_t old_version;
-            old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
-            if (record->data_version > old_version) {
-                __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
-                        old_version, record->data_version);
-            }
+            set_data_verson = true;
         }
         is_error = false;
     } else {
+        set_data_verson = record->data_version > 0;
         is_error = !((result == ignore_errno) &&
-            (g_data_thread_vars.error_mode == FDIR_DATA_ERROR_MODE_LOOSE));
+                (g_data_thread_vars.error_mode == FDIR_DATA_ERROR_MODE_LOOSE));
+    }
+
+    if (set_data_verson && !is_error) {
+        int64_t old_version;
+        old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
+        if (record->data_version > old_version) {
+            __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
+                    old_version, record->data_version);
+        }
     }
 
     if (record->notify.func != NULL) {
