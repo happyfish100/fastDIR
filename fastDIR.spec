@@ -73,6 +73,8 @@ DESTDIR=$RPM_BUILD_ROOT ./make.sh install
 %clean
 rm -rf %{buildroot}
 
+%files
+
 %files -n %{FastDIRServer}
 /usr/bin/fdir_serverd
 
@@ -92,4 +94,5 @@ rm -rf %{buildroot}
 /usr/include/fastdir/client/*
 
 %changelog
+* Fri Jan 1 2021 YuQing <384681@qq.com>
 - first RPM release (1.0)
