@@ -1,7 +1,8 @@
 %define FastDIRServer fastDIR-server
 %define FastDIRClient fastDIR-client
-%define FastDIRDevel fastDIR-devel
+%define FastDIRDevel  fastDIR-devel
 %define FastDIRDebuginfo fastDIR-debuginfo
+%define FastDIRConfig fastDIR-config
 %define CommitVersion %(echo $COMMIT_VERSION)
 
 Name: fastDIR
@@ -41,6 +42,9 @@ Summary: FastDIR client library and tools
 Requires: %{FastDIRClient} = %{version}-%{release}
 Summary: header files of FastDIR client library
 
+%package -n %{FastDIRConfig}
+Summary: FastDIR config files for sample
+
 %description -n %{FastDIRServer}
 FastDIR server
 commit version: %{CommitVersion}
@@ -53,6 +57,9 @@ commit version: %{CommitVersion}
 This package provides the header files of libfdirclient
 commit version: %{CommitVersion}
 
+%description -n %{FastDIRConfig}
+FastDIR config files for sample including server and client
+commit version: %{CommitVersion}
 
 %prep
 %setup -q
@@ -63,6 +70,12 @@ commit version: %{CommitVersion}
 %install
 rm -rf %{buildroot}
 DESTDIR=$RPM_BUILD_ROOT ./make.sh install
+CONFDIR=%{buildroot}/etc/fastcfs/fdir/
+SYSTEMDIR=%{buildroot}/usr/lib/systemd/system/
+mkdir -p $CONFDIR
+mkdir -p $SYSTEMDIR
+cp conf/*.conf $CONFDIR
+cp systemd/fastdir.service $SYSTEMDIR
 
 %post
 
@@ -77,6 +90,7 @@ rm -rf %{buildroot}
 
 %files -n %{FastDIRServer}
 /usr/bin/fdir_serverd
+/usr/lib/systemd/system/fastdir.service
 
 %files -n %{FastDIRClient}
 %defattr(-,root,root,-)
@@ -92,6 +106,10 @@ rm -rf %{buildroot}
 %files -n %{FastDIRDevel}
 %defattr(-,root,root,-)
 /usr/include/fastdir/client/*
+
+%files -n %{FastDIRConfig}
+%defattr(-,root,root,-)
+%config(noreplace) /etc/fastcfs/fdir/*.conf
 
 %changelog
 * Fri Jan 1 2021 YuQing <384681@qq.com>
