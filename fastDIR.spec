@@ -1,7 +1,7 @@
 %define FastDIRServer fastDIR-server
 %define FastDIRClient fastDIR-client
-%define FastDIRClientDevel fastDIR-client-devel
-%define FastDIRClientDebuginfo fastDIR-client-debuginfo
+%define FastDIRDevel fastDIR-devel
+%define FastDIRDebuginfo fastDIR-debuginfo
 %define CommitVersion %(echo $COMMIT_VERSION)
 
 Name: fastDIR
@@ -37,9 +37,9 @@ Requires: libfastcommon >= 1.0.46
 Requires: libserverframe >= 1.1.2
 Summary: FastDIR client library and tools
 
-%package -n %{FastDIRClientDevel}
+%package -n %{FastDIRDevel}
 Requires: %{FastDIRClient} = %{version}-%{release}
-Summary: Development header file of FastDIR client library
+Summary: header files of FastDIR client library
 
 %description -n %{FastDIRServer}
 FastDIR server
@@ -49,7 +49,7 @@ commit version: %{CommitVersion}
 FastDIR client library and tools
 commit version: %{CommitVersion}
 
-%description -n %{FastDIRClientDevel}
+%description -n %{FastDIRDevel}
 This package provides the header files of libfdirclient
 commit version: %{CommitVersion}
 
@@ -89,7 +89,7 @@ rm -rf %{buildroot}
 /usr/bin/fdir_service_stat
 /usr/bin/fdir_stat
 
-%files -n %{FastDIRClientDevel}
+%files -n %{FastDIRDevel}
 %defattr(-,root,root,-)
 /usr/include/fastdir/client/*
 
