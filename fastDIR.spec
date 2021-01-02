@@ -31,13 +31,13 @@ commit version: %{CommitVersion}
 %package -n %{FastDIRServer}
 Requires: libfastcommon >= 1.0.46
 Requires: libserverframe >= 1.1.2
-Requires: %{FastDIRConfig} = %{version}-%{release}
+Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR server
 
 %package -n %{FastDIRClient}
 Requires: libfastcommon >= 1.0.46
 Requires: libserverframe >= 1.1.2
-Requires: %{FastDIRConfig} = %{version}-%{release}
+Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR client library and tools
 
 %package -n %{FastDIRDevel}
