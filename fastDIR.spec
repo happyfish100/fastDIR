@@ -80,6 +80,7 @@ cp conf/*.conf $CONFDIR
 cp systemd/fastdir.service $SYSTEMDIR
 
 %post
+mkdir -p /opt/fastcfs/fdir
 
 %preun
 
