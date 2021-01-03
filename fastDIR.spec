@@ -80,7 +80,6 @@ cp conf/*.conf $CONFDIR
 cp systemd/fastdir.service $SYSTEMDIR
 
 %post
-mkdir -p /opt/fastcfs/fdir
 
 %preun
 
@@ -91,9 +90,15 @@ rm -rf %{buildroot}
 
 %files
 
+%post -n %{FastDIRServer}
+mkdir -p /opt/fastcfs/fdir
+
 %files -n %{FastDIRServer}
 /usr/bin/fdir_serverd
 /usr/lib/systemd/system/fastdir.service
+
+%post -n %{FastDIRClient}
+mkdir -p /opt/fastcfs/fdir
 
 %files -n %{FastDIRClient}
 %defattr(-,root,root,-)
