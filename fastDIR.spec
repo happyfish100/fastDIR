@@ -95,7 +95,7 @@ mkdir -p /opt/fastcfs/fdir
 
 %files -n %{FastDIRServer}
 /usr/bin/fdir_serverd
-/usr/lib/systemd/system/fastdir.service
+%config(noreplace) /usr/lib/systemd/system/fastdir.service
 
 %post -n %{FastDIRClient}
 mkdir -p /opt/fastcfs/fdir
