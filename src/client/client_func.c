@@ -172,7 +172,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
 
     sf_net_retry_config_to_string(&client_ctx->net_retry_cfg,
             net_retry_output, sizeof(net_retry_output));
-    logInfo("FastDIR v%d.%02d, "
+    logInfo("FastDIR v%d.%d.%d, "
             "base_path=%s, "
             "connect_timeout=%d, "
             "network_timeout=%d, "
@@ -180,6 +180,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
             "dir_server_count=%d%s%s",
             g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
+            g_fdir_global_vars.version.patch,
             g_fdir_client_vars.base_path,
             client_ctx->connect_timeout,
             client_ctx->network_timeout,

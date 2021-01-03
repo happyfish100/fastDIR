@@ -6,11 +6,12 @@ LIB_PATH = $(LIBS) -lfastcommon -lserverframe
 TARGET_PATH = $(TARGET_PREFIX)/bin
 CONFIG_PATH = $(TARGET_CONF_PATH)
 
-ALL_OBJS = ../common/fdir_proto.o server_func.o common_handler.o \
-           service_handler.o cluster_handler.o server_global.o   \
-           dentry.o flock.o inode_index.o cluster_relationship.o \
-           data_thread.o data_loader.o inode_generator.o server_binlog.o \
-           cluster_info.o binlog/binlog_producer.o binlog/binlog_local_consumer.o \
+ALL_OBJS = ../common/fdir_proto.o ../common/fdir_global.o server_func.o \
+           common_handler.o service_handler.o cluster_handler.o \
+           server_global.o dentry.o flock.o inode_index.o \
+           cluster_relationship.o data_thread.o data_loader.o \
+           inode_generator.o server_binlog.o cluster_info.o \
+           binlog/binlog_producer.o binlog/binlog_local_consumer.o \
            binlog/binlog_write.o binlog/binlog_read_thread.o     \
            binlog/binlog_replication.o binlog/replica_consumer_thread.o \
            binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o \

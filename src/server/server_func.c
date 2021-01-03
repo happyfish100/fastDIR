@@ -128,12 +128,15 @@ static int calc_cluster_config_sign()
     fc_server_to_config_string(&CLUSTER_CONFIG_CTX, &buffer);
     my_md5_buffer(buffer.data, buffer.length, CLUSTER_CONFIG_SIGN_BUF);
 
+    /*
     {
     char hex_buff[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
     logInfo("cluster config length: %d, sign: %s", buffer.length,
             bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
                 CLUSTER_CONFIG_SIGN_LEN, hex_buff));
     }
+    */
+
     fast_buffer_destroy(&buffer);
     return 0;
 }
@@ -361,7 +364,9 @@ static void server_log_configs()
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
 
-    logInfo("%s, %s, service: {%s}, cluster: {%s}, %s",
+    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s",
+            g_fdir_global_vars.version.major, g_fdir_global_vars.version.minor,
+            g_fdir_global_vars.version.patch,
             sz_global_config, sz_slowlog_config, sz_service_config,
             sz_cluster_config, sz_server_config);
     log_local_host_ip_addrs();

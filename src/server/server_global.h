@@ -20,6 +20,7 @@
 #include "fastcommon/common_define.h"
 #include "fastcommon/server_id_func.h"
 #include "sf/sf_global.h"
+#include "common/fdir_global.h"
 #include "server_types.h"
 
 typedef struct server_global_vars {
