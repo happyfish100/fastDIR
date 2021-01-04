@@ -26,7 +26,7 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename = /etc/fdir/client.conf] "
+    fprintf(stderr, "Usage: %s [-c config_filename = /etc/fastcfs/fdir/client.conf] "
             "[-N non-block] [-S do NOT output dentry stat] "
             "[-s sleep milliseconds = 0] [-t thread count = 8] "
             "<-n namespace> <path>\n", argv[0]);
@@ -34,7 +34,7 @@ static void usage(char *argv[])
 
 static int64_t inode;
 
-static char *config_filename = "/etc/fdir/client.conf";
+static char *config_filename = "/etc/fastcfs/fdir/client.conf";
 static int flock_flags = 0;
 static int msleep_time = 0;
 static int threads = 8;

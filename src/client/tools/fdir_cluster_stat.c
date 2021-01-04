@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
 {
 #define CLUSTER_MAX_SERVER_COUNT  16
 	int ch;
-    const char *config_filename = "/etc/fdir/client.conf";
+    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     int count;
     FDIRClientClusterStatEntry stats[CLUSTER_MAX_SERVER_COUNT];
 	int result;

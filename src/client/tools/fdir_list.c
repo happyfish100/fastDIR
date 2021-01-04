@@ -45,7 +45,7 @@ static void output_dentry_array(FDIRClientDentryArray *array)
 int main(int argc, char *argv[])
 {
 	int ch;
-    const char *config_filename = "/etc/fdir/client.conf";
+    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     char *ns;
     char *path;
     FDIRDEntryFullName entry_info;

@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
 {
 	int ch;
     char time_buff[32];
-    const char *config_filename = "/etc/fdir/client.conf";
+    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     int64_t start_time; 
     int64_t time_used;
 	int result;

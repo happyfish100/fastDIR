@@ -73,7 +73,7 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
 int main(int argc, char *argv[])
 {
 	int ch;
-    const char *config_filename = "/etc/fdir/client.conf";
+    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     char *ns;
     char *path;
     FDIRDEntryFullName fullname;

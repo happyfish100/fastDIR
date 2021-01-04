@@ -58,7 +58,7 @@ static void output(FDIRClientServiceStat *stat)
 int main(int argc, char *argv[])
 {
 	int ch;
-    const char *config_filename = "/etc/fdir/client.conf";
+    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     char *host;
     ConnectionInfo conn;
     FDIRClientServiceStat stat;
