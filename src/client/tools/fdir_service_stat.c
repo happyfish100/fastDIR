@@ -34,7 +34,7 @@ static void output(FDIRClientServiceStat *stat)
 {
     printf( "\tserver_id: %d\n"
             "\tstatus: %d (%s)\n"
-            "\tis_master: %d\n"
+            "\tis_master: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
             "\tdentry : {current_data_version: %"PRId64", "
             "current_inode_sn: %"PRId64", "
@@ -43,7 +43,7 @@ static void output(FDIRClientServiceStat *stat)
             "file_count: %"PRId64"}\n\n",
             stat->server_id, stat->status,
             fdir_get_server_status_caption(stat->status),
-            stat->is_master,
+            stat->is_master ? "true" : "false",
             stat->connection.current_count,
             stat->connection.max_count,
             stat->dentry.current_data_version,
