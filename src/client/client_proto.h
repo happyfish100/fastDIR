@@ -244,7 +244,7 @@ int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
-        const char *ip_addr, const int port, FDIRClientServiceStat *stat);
+        const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat);
 
 int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count);

@@ -1509,19 +1509,17 @@ int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
-        const char *ip_addr, const int port, FDIRClientServiceStat *stat)
+        const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat)
 {
     FDIRProtoHeader *header;
     ConnectionInfo *conn;
-    ConnectionInfo target_conn;
     char out_buff[sizeof(FDIRProtoHeader)];
     SFResponseInfo response;
     FDIRProtoServiceStatResp stat_resp;
     int result;
 
-    conn_pool_set_server_info(&target_conn, ip_addr, port);
     if ((conn=client_ctx->conn_manager.get_spec_connection(
-                    client_ctx, &target_conn, &result)) == NULL)
+                    client_ctx, spec_conn, &result)) == NULL)
     {
         return result;
     }

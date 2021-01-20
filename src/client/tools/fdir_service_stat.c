@@ -30,7 +30,6 @@ static void usage(char *argv[])
             "host[:port]\n", argv[0]);
 }
 
-
 static void output(FDIRClientServiceStat *stat)
 {
     printf( "\tserver_id: %d\n"
@@ -57,8 +56,8 @@ static void output(FDIRClientServiceStat *stat)
 
 int main(int argc, char *argv[])
 {
-	int ch;
     const char *config_filename = "/etc/fastcfs/fdir/client.conf";
+	int ch;
     char *host;
     ConnectionInfo conn;
     FDIRClientServiceStat stat;
@@ -83,6 +82,7 @@ int main(int argc, char *argv[])
         }
     }
 
+
     if (optind >= argc) {
         usage(argv);
         return 1;
@@ -92,18 +92,19 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     host = argv[optind];
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
-        return result;
-    }
-
     if ((result=conn_pool_parse_server_info(host, &conn,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
     {
         return result;
     }
 
-    if ((result=fdir_client_service_stat(&g_fdir_client_vars.client_ctx,
-                    conn.ip_addr, conn.port, &stat)) != 0) {
+    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+        return result;
+    }
+
+    if ((result=fdir_client_service_stat(&g_fdir_client_vars.
+                    client_ctx, &conn, &stat)) != 0)
+    {
         return result;
     }
 
