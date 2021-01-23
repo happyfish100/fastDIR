@@ -362,12 +362,11 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
     if (sizeof(FDIRProtoPushBinlogReqBodyHeader) + binlog_length !=
             REQUEST.header.body_len)
     {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d != expect: %d", REQUEST.header.body_len,
                 (int)(sizeof(FDIRProtoPushBinlogReqBodyHeader) +
                     binlog_length));
-        return -EINVAL;
+        return EINVAL;
     }
 
     return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
@@ -421,8 +420,7 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
     expect_body_len = sizeof(FDIRProtoPushBinlogRespBodyHeader) +
         sizeof(FDIRProtoPushBinlogRespBodyPart) * count;
     if (REQUEST.header.body_len != expect_body_len) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d != expected: %d, results count: %d",
                 REQUEST.header.body_len, expect_body_len, count);
         return EINVAL;
@@ -785,11 +783,19 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 result = cluster_deal_join_slave_resp(task);
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
-                result = cluster_deal_push_binlog_req(task);
+                if ((result=cluster_deal_push_binlog_req(task)) != 0) {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                }
                 TASK_ARG->context.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
-                result = cluster_deal_push_binlog_resp(task);
+                if ((result=cluster_deal_push_binlog_resp(task)) != 0) {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                }
                 TASK_ARG->context.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
