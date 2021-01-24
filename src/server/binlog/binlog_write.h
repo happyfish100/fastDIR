@@ -33,7 +33,7 @@ int binlog_write_init();
 static inline int binlog_write_set_order_by(const short order_by)
 {
     return sf_binlog_writer_change_order_by(
-            &g_binlog_writer_ctx.thread, order_by);
+            &g_binlog_writer_ctx.writer, order_by);
 }
 
 static inline int binlog_write_set_next_version()

@@ -222,28 +222,28 @@ static int proto_ping_master(ConnectionInfo *conn)
 
 static int cluster_cmp_server_status(const void *p1, const void *p2)
 {
-	FDIRClusterServerStatus *status1;
-	FDIRClusterServerStatus *status2;
-	int sub;
+    FDIRClusterServerStatus *status1;
+    FDIRClusterServerStatus *status2;
+    int sub;
 
-	status1 = (FDIRClusterServerStatus *)p1;
-	status2 = (FDIRClusterServerStatus *)p2;
-	if (status1->data_version < status2->data_version) {
+    status1 = (FDIRClusterServerStatus *)p1;
+    status2 = (FDIRClusterServerStatus *)p2;
+    if (status1->data_version < status2->data_version) {
         return -1;
     } else if (status1->data_version > status2->data_version) {
         return 1;
-	}
+    }
 
-	sub = status1->is_master - status2->is_master;
-	if (sub != 0) {
-		return sub;
-	}
-
-	sub = status1->status - status2->status;
+    sub = (int)status1->is_master - (int)status2->is_master;
     if (sub != 0) {
         return sub;
     }
-	return status1->server_id - status2->server_id;
+
+    sub = (int)status1->status - (int)status2->status;
+    if (sub != 0) {
+        return sub;
+    }
+    return (int)status1->server_id - (int)status2->server_id;
 }
 
 static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
@@ -684,20 +684,18 @@ static int cluster_select_master()
 			__LINE__, next_master->server->id,
             CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
             CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
-	} else {
+    } else {
         if (server_status.is_master) {
             cluster_relationship_set_master(next_master);
+        } else if (CLUSTER_MASTER_ATOM_PTR == NULL) {
+            logInfo("file: "__FILE__", line: %d, "
+                    "waiting for the candidate master server id: %d, "
+                    "ip %s:%u notify ...", __LINE__, next_master->server->id,
+                    CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+                    CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
+            return ENOENT;
         }
-        else
-		{
-			logInfo("file: "__FILE__", line: %d, "
-				"waiting for the candidate master server id: %d, "
-                "ip %s:%u notify ...", __LINE__, next_master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
-			return ENOENT;
-		}
-	}
+    }
 
 	return 0;
 }

@@ -25,6 +25,7 @@
 #include "fastcommon/uniq_skiplist.h"
 #include "fastcommon/server_id_func.h"
 #include "fastcommon/fc_list.h"
+#include "fastcommon/fc_atomic.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
 #include "common/fdir_types.h"
