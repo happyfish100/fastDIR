@@ -998,13 +998,17 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         if (result != 0) {
             if (result == EEXIST) { //found
                 result = request->output.result;
-                if ((result == 0) && (request->output.flags &
-                            TASK_UPDATE_FLAG_OUTPUT_DENTRY))
-                {
-                    FDIRDEntryInfo *dentry;
-                    dentry = (FDIRDEntryInfo *)request->output.response;
-                    dstat_output(task, dentry->inode, &dentry->stat);
-                    RESPONSE.header.cmd = resp_cmd;
+                if (result == 0) {
+                    if ((request->output.flags &
+                                TASK_UPDATE_FLAG_OUTPUT_DENTRY))
+                    {
+                        FDIRDEntryInfo *dentry;
+                        dentry = (FDIRDEntryInfo *)request->output.response;
+                        dstat_output(task, dentry->inode, &dentry->stat);
+                        RESPONSE.header.cmd = resp_cmd;
+                    }
+                } else {
+                    TASK_ARG->context.log_level = LOG_WARNING;
                 }
             }
 
