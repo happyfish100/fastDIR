@@ -33,6 +33,7 @@ static char true_base_path[PATH_MAX];
 static bool ignore_exist_error = false;
 static int total_count = 0;
 static int ignore_count = 0;
+static FDIRClientOwnerModePair omp;
 
 static void usage(char *argv[])
 {
@@ -44,12 +45,11 @@ static void usage(char *argv[])
 static int create_dentry(FDIRDEntryFullName *fullname)
 {
 	int result;
-    mode_t mode = 0755 | S_IFDIR;
     FDIRDEntryInfo dentry;
 
     ++total_count;
     if ((result=fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
-                    fullname, mode, &dentry)) != 0)
+                    fullname, &omp, &dentry)) != 0)
     {
         if (ignore_exist_error && result == EEXIST) {
             ++ignore_count;
@@ -181,6 +181,9 @@ int main(int argc, char *argv[])
         return result;
     }
 
+    omp.mode = 0755 | S_IFDIR;
+    omp.uid = geteuid();
+    omp.gid = getegid();
     start_time = get_current_time_ms();
     result = test_case();
     time_used = get_current_time_ms() - start_time;

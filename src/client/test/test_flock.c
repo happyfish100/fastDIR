@@ -227,8 +227,8 @@ int main(int argc, char *argv[])
     FC_SET_STRING(fullname.ns, ns);
     FC_SET_STRING(fullname.path, path);
 
-    if ((result=fdir_client_lookup_inode(&g_fdir_client_vars.client_ctx,
-                    &fullname, &inode)) != 0)
+    if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
+                    client_ctx, &fullname, &inode)) != 0)
     {
         return result;
     }
