@@ -62,7 +62,7 @@ static BinlogProducerContext proceduer_ctx = {
 };
 
 static uint64_t next_data_version = 0;
-static bool running = false;
+static volatile char running = 0;
 
 static void *producer_thread_func(void *arg);
 
@@ -155,7 +155,10 @@ void binlog_producer_destroy()
 
     pthread_cond_signal(&proceduer_ctx.queue.cond);
     count = 0;
-    while (running && count++ < 100) {
+    while (FC_ATOMIC_GET(running) && count++ < 300) {
+        if (count % 10 == 0) {
+            pthread_cond_signal(&proceduer_ctx.queue.cond);
+        }
         fc_sleep_ms(1);
     }
 
@@ -173,6 +176,7 @@ void binlog_producer_destroy()
 ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
 {
     ServerBinlogRecordBuffer *rbuffer;
+    int old_value;
 
     rbuffer = (ServerBinlogRecordBuffer *)fast_mblock_alloc_object(
             &proceduer_ctx.rb_allocator);
@@ -180,7 +184,8 @@ ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
         return NULL;
     }
 
-    rbuffer->reffer_count = 1;
+    old_value = 0;  //for hint
+    FC_ATOMIC_CAS(rbuffer->reffer_count, old_value, 1);
     return rbuffer;
 }
 
@@ -276,7 +281,6 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
 {
     int64_t distance;
     int version_count;
-    int next_index;
     bool expand;
     ServerBinlogRecordBuffer **current;
 
@@ -303,17 +307,15 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
         version_count = GET_RBUFFER_VERSION_COUNT(rb);
         PUSH_TO_CONSUMER_QUEQUES(rb, version_count);
 
-        next_index = (proceduer_ctx.ring.start -
-                proceduer_ctx.ring.entries) + version_count;
         if (proceduer_ctx.ring.start == proceduer_ctx.ring.end) {
             proceduer_ctx.ring.start = proceduer_ctx.ring.end =
-                proceduer_ctx.ring.entries + next_index %
+                proceduer_ctx.ring.entries + next_data_version %
                 proceduer_ctx.ring.size;
             return;
         }
 
         proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
-            next_index % proceduer_ctx.ring.size;
+            next_data_version % proceduer_ctx.ring.size;
         while (proceduer_ctx.ring.start != proceduer_ctx.ring.end &&
                 *(proceduer_ctx.ring.start) != NULL)
         {
@@ -322,9 +324,8 @@ static void deal_record(ServerBinlogRecordBuffer *rb)
             PUSH_TO_CONSUMER_QUEQUES(*current, version_count);
             *current = NULL;
 
-            next_index += version_count;
             proceduer_ctx.ring.start = proceduer_ctx.ring.entries +
-                next_index % proceduer_ctx.ring.size;
+                next_data_version % proceduer_ctx.ring.size;
             proceduer_ctx.ring.count--;
         }
         return;
@@ -400,7 +401,7 @@ static void *producer_thread_func(void *arg)
     logDebug("file: "__FILE__", line: %d, "
             "producer_thread_func start", __LINE__);
 
-    running = true;
+    FC_ATOMIC_SET(running, 1);
 
     next_data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0) + 1;
     proceduer_ctx.ring.start = proceduer_ctx.ring.end =
@@ -410,7 +411,7 @@ static void *producer_thread_func(void *arg)
     while (SF_G_CONTINUE_FLAG && CLUSTER_MYSELF_PTR == CLUSTER_MASTER_PTR) {
         deal_queue();
     }
-    running = false;
+    FC_ATOMIC_SET(running, 0);
 
     logDebug("file: "__FILE__", line: %d, "
             "producer_thread_func exit", __LINE__);

@@ -632,8 +632,8 @@ static inline int alloc_record_object(struct fast_task_info *task)
 
 static inline void free_record_object(struct fast_task_info *task)
 {
-    fast_mblock_free_object(&((FDIRServerContext *)task->thread_data->arg)->
-            service.record_allocator, RECORD);
+    fast_mblock_free_object(&((FDIRServerContext *)task->
+                thread_data->arg)->service.record_allocator, RECORD);
     RECORD = NULL;
 }
 
@@ -662,6 +662,9 @@ static int handle_replica_done(struct fast_task_info *task)
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
     } else {
+        logError("file: "__FILE__", line: %d, "
+                "rbuffer is NULL, some mistake happen?",
+                __LINE__);
         result = 0;
     }
 
@@ -813,11 +816,11 @@ static int handle_record_deal_done(struct fast_task_info *task)
 
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
 {
+    sf_hold_task(task);
+
+    task->continue_callback = handle_record_deal_done;
     RECORD->notify.func = record_deal_done_notify; //call by data thread
     RECORD->notify.args = task;
-
-    sf_hold_task(task);
-    task->continue_callback = handle_record_deal_done;
     push_to_data_thread_queue(RECORD);
     return TASK_STATUS_CONTINUE;
 }
@@ -1868,10 +1871,8 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     }
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
-        free_record_object(task);
         return ENOMEM;
     }
-
     memset(records, 0, sizeof(FDIRBinlogRecord *) * count);
     record = records;
 

@@ -102,8 +102,7 @@ void binlog_read_thread_terminate(BinlogReadThreadContext *ctx)
                 "wait thread exit timeout", __LINE__);
     }
     for (i=0; i<BINLOG_READ_THREAD_BUFFER_COUNT; i++) {
-        free(ctx->results[i].buffer.buff);
-        ctx->results[i].buffer.buff = NULL;
+        fc_free_buffer(&ctx->results[i].buffer);
     }
 
     common_blocked_queue_destroy(&ctx->queues.waiting);
