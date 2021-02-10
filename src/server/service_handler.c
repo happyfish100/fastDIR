@@ -707,9 +707,6 @@ static int server_binlog_produce(struct fast_task_info *task)
         return ENOMEM;
     }
 
-    ((FDIRServerTaskArg *)task->arg)->context.service.
-        data_version = RECORD->data_version;
-
     rbuffer->data_version.first = RECORD->data_version;
     rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
@@ -1026,20 +1023,6 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                     }
                 }
             } else {
-                if (request->task != NULL) {
-                    RESPONSE.error.length += snprintf(RESPONSE.error.message
-                            + RESPONSE.error.length,
-                            sizeof(RESPONSE.error.message) -
-                            RESPONSE.error.length,
-                            "data version: %"PRId64", "
-                            "waiting_rpc_count: %d, "
-                            "task reffer count: %d",
-                            ((FDIRServerTaskArg *)request->task->arg)->
-                                context.service.data_version,
-                            FC_ATOMIC_GET(((FDIRServerTaskArg *)request->task->arg)->
-                                context.service.waiting_rpc_count),
-                            FC_ATOMIC_GET(request->task->reffer_count));
-                }
                 TASK_ARG->context.log_level = LOG_WARNING;
             }
 
@@ -1051,7 +1034,6 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         REQUEST.body += sizeof(SFProtoIdempotencyAdditionalHeader);
         REQUEST.header.body_len -= sizeof(SFProtoIdempotencyAdditionalHeader);
         request->output.flags = 0;
-        request->task = task; //for debug
         IDEMPOTENCY_REQUEST = request;
     }
 
