@@ -36,22 +36,33 @@ static void output(FDIRClientServiceStat *stat)
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
-            "\tdentry : {current_data_version: %"PRId64", "
-            "current_inode_sn: %"PRId64", "
-            "ns_count: %"PRId64", "
-            "dir_count: %"PRId64", "
-            "file_count: %"PRId64"}\n\n",
+            "\tbinlog : {current_version: %"PRId64,
             stat->server_id, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->connection.current_count,
             stat->connection.max_count,
-            stat->dentry.current_data_version,
+            stat->binlog.current_version);
+
+    if (stat->is_master) {
+        printf( ", writer: {next_version: %"PRId64", "
+                "total_count: %"PRId64", "
+                "waiting_count: %d, max_waitings: %d}",
+                stat->binlog.writer.next_version,
+                stat->binlog.writer.total_count,
+                stat->binlog.writer.waiting_count,
+                stat->binlog.writer.max_waitings);
+    }
+
+    printf( "}\n"
+            "\tdentry : {current_inode_sn: %"PRId64", "
+            "ns_count: %"PRId64", "
+            "dir_count: %"PRId64", "
+            "file_count: %"PRId64"}\n\n",
             stat->dentry.current_inode_sn,
             stat->dentry.counters.ns,
             stat->dentry.counters.dir,
-            stat->dentry.counters.file
-          );
+            stat->dentry.counters.file);
 }
 
 int main(int argc, char *argv[])

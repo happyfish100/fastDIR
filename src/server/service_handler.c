@@ -205,7 +205,18 @@ static int service_deal_service_stat(struct fast_task_info *task)
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);
-    long2buff(DATA_CURRENT_VERSION, stat_resp->dentry.current_data_version);
+
+    long2buff(FC_ATOMIC_GET(DATA_CURRENT_VERSION),
+            stat_resp->binlog.current_version);
+    long2buff(g_binlog_writer_ctx.writer.total_count,
+            stat_resp->binlog.writer.total_count);
+    long2buff(g_binlog_writer_ctx.writer.version_ctx.next,
+            stat_resp->binlog.writer.next_version);
+    int2buff(g_binlog_writer_ctx.writer.version_ctx.ring.waiting_count,
+            stat_resp->binlog.writer.waiting_count);
+    int2buff(g_binlog_writer_ctx.writer.version_ctx.ring.max_waitings,
+            stat_resp->binlog.writer.max_waitings);
+
     long2buff(CURRENT_INODE_SN, stat_resp->dentry.current_inode_sn);
     long2buff(counters.ns, stat_resp->dentry.counters.ns);
     long2buff(counters.dir, stat_resp->dentry.counters.dir);
@@ -696,6 +707,9 @@ static int server_binlog_produce(struct fast_task_info *task)
         return ENOMEM;
     }
 
+    ((FDIRServerTaskArg *)task->arg)->context.service.
+        data_version = RECORD->data_version;
+
     rbuffer->data_version.first = RECORD->data_version;
     rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
@@ -1010,9 +1024,23 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                         dstat_output(task, dentry->inode, &dentry->stat);
                         RESPONSE.header.cmd = resp_cmd;
                     }
-                } else {
-                    TASK_ARG->context.log_level = LOG_WARNING;
                 }
+            } else {
+                if (request->task != NULL) {
+                    RESPONSE.error.length += snprintf(RESPONSE.error.message
+                            + RESPONSE.error.length,
+                            sizeof(RESPONSE.error.message) -
+                            RESPONSE.error.length,
+                            "data version: %"PRId64", "
+                            "waiting_rpc_count: %d, "
+                            "task reffer count: %d",
+                            ((FDIRServerTaskArg *)request->task->arg)->
+                                context.service.data_version,
+                            FC_ATOMIC_GET(((FDIRServerTaskArg *)request->task->arg)->
+                                context.service.waiting_rpc_count),
+                            FC_ATOMIC_GET(request->task->reffer_count));
+                }
+                TASK_ARG->context.log_level = LOG_WARNING;
             }
 
             fast_mblock_free_object(request->allocator, request);
@@ -1023,6 +1051,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         REQUEST.body += sizeof(SFProtoIdempotencyAdditionalHeader);
         REQUEST.header.body_len -= sizeof(SFProtoIdempotencyAdditionalHeader);
         request->output.flags = 0;
+        request->task = task; //for debug
         IDEMPOTENCY_REQUEST = request;
     }
 

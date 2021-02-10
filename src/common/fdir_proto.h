@@ -375,7 +375,16 @@ typedef struct fdir_proto_service_stat_resp {
     } connection;
 
     struct {
-        char current_data_version[8];
+        char current_version[8];
+        struct {
+            char total_count[8];
+            char next_version[8];
+            char waiting_count[4];
+            char max_waitings[4];
+        } writer;
+    } binlog;
+
+    struct {
         char current_inode_sn[8];
         struct {
             char ns[8];

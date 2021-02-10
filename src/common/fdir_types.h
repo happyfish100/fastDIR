@@ -139,5 +139,6 @@ typedef struct fdir_set_dentry_size_info {
 } FDIRSetDEntrySizeInfo;
 
 typedef SFSpaceStat FDIRInodeStat;
+typedef SFBinlogWriterStat FDIRBinlogWriterStat;
 
 #endif

@@ -1548,8 +1548,17 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
             stat_resp.connection.current_count);
     stat->connection.max_count = buff2int(stat_resp.connection.max_count);
 
-    stat->dentry.current_data_version = buff2long(
-            stat_resp.dentry.current_data_version);
+    stat->binlog.current_version = buff2long(
+            stat_resp.binlog.current_version);
+    stat->binlog.writer.total_count = buff2long(
+            stat_resp.binlog.writer.total_count);
+    stat->binlog.writer.next_version = buff2long(
+            stat_resp.binlog.writer.next_version);
+    stat->binlog.writer.waiting_count = buff2int(
+            stat_resp.binlog.writer.waiting_count);
+    stat->binlog.writer.max_waitings = buff2int(
+            stat_resp.binlog.writer.max_waitings);
+
     stat->dentry.current_inode_sn = buff2long(
             stat_resp.dentry.current_inode_sn);
     stat->dentry.counters.ns = buff2long(stat_resp.dentry.counters.ns);

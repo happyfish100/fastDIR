@@ -258,6 +258,7 @@ typedef struct server_task_arg {
             struct idempotency_request *idempotency_request;
             struct fdir_binlog_record *record;
             struct server_binlog_record_buffer *rbuffer;
+            int64_t data_version;  //for debug
             volatile int waiting_rpc_count;
         } service;
 

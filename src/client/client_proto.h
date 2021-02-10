@@ -61,7 +61,11 @@ typedef struct fdir_client_service_stat {
     } connection;
 
     struct {
-        int64_t current_data_version;
+        int64_t current_version;
+        FDIRBinlogWriterStat writer;
+    } binlog;
+
+    struct {
         int64_t current_inode_sn;
         struct {
             int64_t ns;
