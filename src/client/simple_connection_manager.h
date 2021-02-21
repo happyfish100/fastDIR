@@ -22,9 +22,10 @@
 extern "C" {
 #endif
 
-int fdir_simple_connection_manager_init(FDIRConnectionManager *conn_manager);
+int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
+        SFConnectionManager *cm);
 
-void fdir_simple_connection_manager_destroy(FDIRConnectionManager *conn_manager);
+void fdir_simple_connection_manager_destroy(SFConnectionManager *cm);
 
 #ifdef __cplusplus
 }

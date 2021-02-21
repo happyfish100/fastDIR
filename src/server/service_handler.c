@@ -345,7 +345,6 @@ static int service_deal_get_master(struct fast_task_info *task)
     short2buff(addr->conn.port, resp->port);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;
     TASK_ARG->context.response_done = true;
 
     return 0;
@@ -2844,7 +2843,14 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                 result = service_deal_namespace_stat(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
-                result = service_deal_get_master(task);
+                if ((result=service_deal_get_master(task)) == 0) {
+                    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;
+                }
+                break;
+            case SF_SERVICE_PROTO_GET_LEADER_REQ:
+                if ((result=service_deal_get_master(task)) == 0) {
+                    RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_LEADER_RESP;
+                }
                 break;
             case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
                 result = service_deal_get_slaves(task);

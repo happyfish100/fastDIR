@@ -15,6 +15,7 @@
 
 
 #include <sys/stat.h>
+#include <limits.h>
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
@@ -22,39 +23,6 @@
 #include "simple_connection_manager.h"
 #include "pooled_connection_manager.h"
 #include "client_func.h"
-
-static int copy_dir_servers(FDIRServerGroup *server_group,
-        const char *filename, IniItem *dir_servers, const int count)
-{
-    IniItem *item;
-    IniItem *end;
-    ConnectionInfo *server;
-    int result;
-
-    server = server_group->servers;
-    end = dir_servers + count;
-    for (item=dir_servers; item<end; item++,server++) {
-        if ((result=conn_pool_parse_server_info(item->value,
-                        server, FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
-        {
-            return result;
-        }
-    }
-    server_group->count = count;
-
-    /*
-    {
-        printf("dir_server count: %d\n", server_group->count);
-        for (server=server_group->servers; server<server_group->servers+
-                server_group->count; server++)
-        {
-            printf("dir_server=%s:%u\n", server->ip_addr, server->port);
-        }
-    }
-    */
-
-    return 0;
-}
 
 int fdir_alloc_group_servers(FDIRServerGroup *server_group,
         const int alloc_size)
@@ -73,33 +41,51 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
     return 0;
 }
 
-int fdir_load_server_group_ex(FDIRServerGroup *server_group,
+static int fdir_load_server_config(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx)
 {
     int result;
-    IniItem *dir_servers;
-    int count;
+    char *cluster_servers_filename;
+    char full_servers_filename[PATH_MAX];
+    const int min_hosts_each_group = 1;
+    const bool share_between_groups = true;
 
-    dir_servers = iniGetValuesEx(ini_ctx->section_name,
-            "dir_server", ini_ctx->context, &count);
-    if (count == 0) {
+    cluster_servers_filename = iniGetStrValue(ini_ctx->section_name,
+            "cluster_servers_filename", ini_ctx->context);
+    if (cluster_servers_filename == NULL ||
+            *cluster_servers_filename == '\0')
+    {
         logError("file: "__FILE__", line: %d, "
-            "conf file \"%s\", item \"dir_server\" not exist",
-            __LINE__, ini_ctx->filename);
+                "config file: %s, item \"cluster_servers_filename\" "
+                "not exist or empty", __LINE__, ini_ctx->filename);
         return ENOENT;
     }
 
-    if ((result=fdir_alloc_group_servers(server_group, count)) != 0) {
+    resolve_path(ini_ctx->filename, cluster_servers_filename,
+            full_servers_filename, sizeof(full_servers_filename));
+    if ((result=fc_server_load_from_file_ex(&client_ctx->server_cfg,
+                    full_servers_filename, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
+                    min_hosts_each_group, share_between_groups)) != 0)
+    {
         return result;
     }
 
-    if ((result=copy_dir_servers(server_group, ini_ctx->filename,
-            dir_servers, count)) != 0)
-    {
-        server_group->count = 0;
-        free(server_group->servers);
-        server_group->servers = NULL;
-        return result;
+    client_ctx->cluster_group_index = fc_server_get_group_index(
+            &client_ctx->server_cfg, "cluster");
+    if (client_ctx->cluster_group_index < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "servers config file: %s, cluster group not configurated",
+                __LINE__, full_servers_filename);
+        return ENOENT;
+    }
+
+    client_ctx->service_group_index = fc_server_get_group_index(
+            &client_ctx->server_cfg, "service");
+    if (client_ctx->service_group_index < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "servers config file: %s, service group not configurated",
+                __LINE__, full_servers_filename);
+        return ENOENT;
     }
 
     return 0;
@@ -134,30 +120,28 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         }
     }
 
-    client_ctx->connect_timeout = iniGetIntValueEx(
+    client_ctx->common_cfg.connect_timeout = iniGetIntValueEx(
             ini_ctx->section_name, "connect_timeout",
             ini_ctx->context, DEFAULT_CONNECT_TIMEOUT, true);
-    if (client_ctx->connect_timeout <= 0) {
-        client_ctx->connect_timeout = DEFAULT_CONNECT_TIMEOUT;
+    if (client_ctx->common_cfg.connect_timeout <= 0) {
+        client_ctx->common_cfg.connect_timeout = DEFAULT_CONNECT_TIMEOUT;
     }
 
-    client_ctx->network_timeout = iniGetIntValueEx(
+    client_ctx->common_cfg.network_timeout = iniGetIntValueEx(
             ini_ctx->section_name, "network_timeout",
             ini_ctx->context, DEFAULT_NETWORK_TIMEOUT, true);
-    if (client_ctx->network_timeout <= 0) {
-        client_ctx->network_timeout = DEFAULT_NETWORK_TIMEOUT;
+    if (client_ctx->common_cfg.network_timeout <= 0) {
+        client_ctx->common_cfg.network_timeout = DEFAULT_NETWORK_TIMEOUT;
     }
 
-    sf_load_read_rule_config(&client_ctx->read_rule, ini_ctx);
+    sf_load_read_rule_config(&client_ctx->common_cfg.read_rule, ini_ctx);
 
-    if ((result=fdir_load_server_group_ex(&client_ctx->
-                    server_group, ini_ctx)) != 0)
-    {
+    if ((result=fdir_load_server_config(client_ctx, ini_ctx)) != 0) {
         return result;
     }
 
     if ((result=sf_load_net_retry_config(&client_ctx->
-                    net_retry_cfg, ini_ctx)) != 0)
+                    common_cfg.net_retry_cfg, ini_ctx)) != 0)
     {
         return result;
     }
@@ -170,7 +154,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
 {
     char net_retry_output[256];
 
-    sf_net_retry_config_to_string(&client_ctx->net_retry_cfg,
+    sf_net_retry_config_to_string(&client_ctx->common_cfg.net_retry_cfg,
             net_retry_output, sizeof(net_retry_output));
     logInfo("FastDIR v%d.%d.%d, "
             "base_path=%s, "
@@ -182,10 +166,10 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
             g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch,
             g_fdir_client_vars.base_path,
-            client_ctx->connect_timeout,
-            client_ctx->network_timeout,
-            sf_get_read_rule_caption(client_ctx->read_rule),
-            net_retry_output, client_ctx->server_group.count,
+            client_ctx->common_cfg.connect_timeout,
+            client_ctx->common_cfg.network_timeout,
+            sf_get_read_rule_caption(client_ctx->common_cfg.read_rule),
+            net_retry_output, FC_SID_SERVER_COUNT(client_ctx->server_cfg),
             extra_config != NULL ? ", " : "",
             extra_config != NULL ? extra_config : "");
 }
@@ -225,7 +209,7 @@ static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const FDIRConnectionManager *conn_manager)
+        IniFullContext *ini_ctx, const SFConnectionManager *conn_manager)
 {
     int result;
     FDIRClientConnManagerType conn_manager_type;
@@ -237,13 +221,13 @@ int fdir_client_init_ex1(FDIRClientContext *client_ctx,
 
     if (conn_manager == NULL) {
         if ((result=fdir_simple_connection_manager_init(
-                        &client_ctx->conn_manager)) != 0)
+                        client_ctx, &client_ctx->cm)) != 0)
         {
             return result;
         }
         conn_manager_type = conn_manager_type_simple;
-    } else if (conn_manager != &client_ctx->conn_manager) {
-        client_ctx->conn_manager = *conn_manager;
+    } else if (conn_manager != &client_ctx->cm) {
+        client_ctx->cm = *conn_manager;
         conn_manager_type = conn_manager_type_other;
     } else {
         conn_manager_type = conn_manager_type_other;
@@ -263,7 +247,7 @@ int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
     }
 
     if ((result=fdir_simple_connection_manager_init(
-                    &client_ctx->conn_manager)) != 0)
+                    client_ctx, &client_ctx->cm)) != 0)
     {
         return result;
     }
@@ -284,7 +268,7 @@ int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
     }
 
     if ((result=fdir_pooled_connection_manager_init(client_ctx,
-                    &client_ctx->conn_manager, max_count_per_entry,
+                    &client_ctx->cm, max_count_per_entry,
                     max_idle_time)) != 0)
     {
         return result;
@@ -299,15 +283,13 @@ void fdir_client_destroy_ex(FDIRClientContext *client_ctx)
     if (client_ctx->cloned) {
         return;
     }
-    if (client_ctx->server_group.servers == NULL) {
-        return;
-    }
 
-    free(client_ctx->server_group.servers);
+    fc_server_destroy(&client_ctx->server_cfg);
+
     if (client_ctx->conn_manager_type == conn_manager_type_simple) {
-        fdir_simple_connection_manager_destroy(&client_ctx->conn_manager);
+        fdir_simple_connection_manager_destroy(&client_ctx->cm);
     } else if (client_ctx->conn_manager_type == conn_manager_type_pooled) {
-        fdir_pooled_connection_manager_destroy(&client_ctx->conn_manager);
+        fdir_pooled_connection_manager_destroy(&client_ctx->cm);
     }
     memset(client_ctx, 0, sizeof(FDIRClientContext));
 }

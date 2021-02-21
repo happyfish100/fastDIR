@@ -70,11 +70,11 @@ static inline int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const FDIRConnectionManager *conn_manager);
+        IniFullContext *ini_ctx, const SFConnectionManager *conn_manager);
 
 static inline int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *config_filename, const char *section_name,
-        const FDIRConnectionManager *conn_manager)
+        const SFConnectionManager *conn_manager)
 {
     IniFullContext ini_ctx;
 

@@ -94,7 +94,7 @@ void fdir_client_close_session(FDIRClientSession *session,
         const bool force_close);
 
 int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, FDIRConnectionParameters *conn_params);
+        ConnectionInfo *conn, SFConnectionParameters *conn_params);
 
 int fdir_client_proto_create_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
