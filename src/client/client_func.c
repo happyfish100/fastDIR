@@ -209,7 +209,7 @@ static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const SFConnectionManager *conn_manager)
+        IniFullContext *ini_ctx, const SFConnectionManager *cm)
 {
     int result;
     FDIRClientConnManagerType conn_manager_type;
@@ -219,15 +219,15 @@ int fdir_client_init_ex1(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if (conn_manager == NULL) {
+    if (cm == NULL) {
         if ((result=fdir_simple_connection_manager_init(
                         client_ctx, &client_ctx->cm)) != 0)
         {
             return result;
         }
         conn_manager_type = conn_manager_type_simple;
-    } else if (conn_manager != &client_ctx->cm) {
-        client_ctx->cm = *conn_manager;
+    } else if (cm != &client_ctx->cm) {
+        client_ctx->cm = *cm;
         conn_manager_type = conn_manager_type_other;
     } else {
         conn_manager_type = conn_manager_type_other;
@@ -258,7 +258,7 @@ int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
 
 int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx, const int max_count_per_entry,
-        const int max_idle_time)
+        const int max_idle_time, const bool bg_thread_enabled)
 {
     int result;
 
@@ -269,7 +269,7 @@ int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
 
     if ((result=fdir_pooled_connection_manager_init(client_ctx,
                     &client_ctx->cm, max_count_per_entry,
-                    max_idle_time)) != 0)
+                    max_idle_time, bg_thread_enabled)) != 0)
     {
         return result;
     }

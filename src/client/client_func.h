@@ -28,9 +28,9 @@ extern "C" {
     fdir_client_load_from_file_ex((&g_fdir_client_vars.client_ctx), \
             filename, NULL)
 
-#define fdir_client_init(filename, conn_manager)  \
+#define fdir_client_init(filename, cm)  \
     fdir_client_init_ex((&g_fdir_client_vars.client_ctx),  \
-            filename, NULL, conn_manager)
+            filename, NULL, cm)
 
 #define fdir_client_simple_init(filename) \
     fdir_client_simple_init_ex((&g_fdir_client_vars.client_ctx), \
@@ -70,16 +70,16 @@ static inline int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const SFConnectionManager *conn_manager);
+        IniFullContext *ini_ctx, const SFConnectionManager *cm);
 
 static inline int fdir_client_init_ex(FDIRClientContext *client_ctx,
         const char *config_filename, const char *section_name,
-        const SFConnectionManager *conn_manager)
+        const SFConnectionManager *cm)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
-    return fdir_client_init_ex1(client_ctx, &ini_ctx, conn_manager);
+    return fdir_client_init_ex1(client_ctx, &ini_ctx, cm);
 }
 
 int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
@@ -96,17 +96,18 @@ static inline int fdir_client_simple_init_ex(FDIRClientContext *client_ctx,
 
 int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx, const int max_count_per_entry,
-        const int max_idle_time);
+        const int max_idle_time, const bool bg_thread_enabled);
 
 static inline int fdir_client_pooled_init_ex(FDIRClientContext *client_ctx,
         const char *config_filename, const char *section_name,
-        const int max_count_per_entry, const int max_idle_time)
+        const int max_count_per_entry, const int max_idle_time,
+        const bool bg_thread_enabled)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
     return fdir_client_pooled_init_ex1(client_ctx, &ini_ctx,
-            max_count_per_entry, max_idle_time);
+            max_count_per_entry, max_idle_time, bg_thread_enabled);
 }
 
 static inline void fdir_client_clone_ex(FDIRClientContext *dest_ctx,
