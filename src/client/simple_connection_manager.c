@@ -104,12 +104,10 @@ static ConnectionInfo *get_connection(SFConnectionManager *cm,
 {
     int index;
     int i;
-    FDIRClientContext *client_ctx;
     FDIRServerGroup *cluster_sarray;
     ConnectionInfo *conn;
     ConnectionInfo *server;
 
-    client_ctx = cm->extra->args[ARGS_INDEX_CLIENT_CTX];
     cluster_sarray = (FDIRServerGroup *)cm->extra->
         args[ARGS_INDEX_CLUSTER_SARRAY];
     index = rand() % cluster_sarray->count;
