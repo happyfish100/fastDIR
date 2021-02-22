@@ -23,10 +23,10 @@ extern "C" {
 #endif
 
 int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
-        SFConnectionManager *conn_manager, const int max_count_per_entry,
+        SFConnectionManager *cm, const int max_count_per_entry,
         const int max_idle_time, const bool bg_thread_enabled);
 
-void fdir_pooled_connection_manager_destroy(SFConnectionManager *conn_manager);
+void fdir_pooled_connection_manager_destroy(SFConnectionManager *cm);
 
 #ifdef __cplusplus
 }

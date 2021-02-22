@@ -114,7 +114,7 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
         return result;
     }
 
-    return sf_connection_manager_start(cm);
+    return sf_connection_manager_prepare(cm);
 }
 
 void fdir_pooled_connection_manager_destroy(SFConnectionManager *cm)
