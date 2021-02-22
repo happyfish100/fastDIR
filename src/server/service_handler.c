@@ -350,6 +350,47 @@ static int service_deal_get_master(struct fast_task_info *task)
     return 0;
 }
 
+int service_deal_get_group_servers(struct fast_task_info *task)
+{
+    int result;
+    int group_id;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *send;
+    SFProtoGetGroupServersReq *req;
+    SFProtoGetGroupServersRespBodyHeader *body_header;
+    SFProtoGetGroupServersRespBodyPart *body_part;
+
+    if ((result=server_expect_body_length(task,
+                    sizeof(SFProtoGetGroupServersReq))) != 0)
+    {
+        return result;
+    }
+
+    req = (SFProtoGetGroupServersReq *)REQUEST.body;
+    group_id = buff2int(req->group_id);
+    if (group_id != 1) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "invalid group_id: %d != 1", group_id);
+        return EINVAL;
+    }
+
+    body_header = (SFProtoGetGroupServersRespBodyHeader *)REQUEST.body;
+    body_part = (SFProtoGetGroupServersRespBodyPart *)(body_header + 1);
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
+        int2buff(cs->server->id, body_part->server_id);
+        body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR);
+        body_part->is_active = (FC_ATOMIC_GET(cs->status) ==
+                FDIR_SERVER_STATUS_ACTIVE) ? 1 : 0;
+    }
+    int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
+
+    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_GROUP_SERVERS_RESP;
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
 static int service_deal_get_slaves(struct fast_task_info *task)
 {
     int result;
@@ -2851,6 +2892,9 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                 if ((result=service_deal_get_master(task)) == 0) {
                     RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_LEADER_RESP;
                 }
+                break;
+            case SF_SERVICE_PROTO_GET_GROUP_SERVERS_REQ:
+                result = service_deal_get_group_servers(task);
                 break;
             case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
                 result = service_deal_get_slaves(task);
