@@ -16,5 +16,5 @@
 #include "fdir_global.h"
 
 FDIRGlobalVars g_fdir_global_vars = {
-    {1, 2, 1}
+    {1, 3, 0}
 };
