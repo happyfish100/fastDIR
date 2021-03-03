@@ -377,6 +377,20 @@ typedef struct fdir_proto_list_dentry_resp_body_part {
     char name_str[0];
 } FDIRProtoListDEntryRespBodyPart;
 
+typedef struct fdir_proto_set_xattr_fields {
+    unsigned char name_len;
+    char value_len[2];
+    char flags[2];
+    char padding[3];
+    char name_str[0];
+    //char value_str[0];
+} FDIRProtoSetXAttrFields;
+
+typedef struct fdir_proto_set_xattr_req {
+    FDIRProtoSetXAttrFields fields;
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoSetXAttrReq;
+
 typedef struct fdir_proto_service_stat_resp {
     char server_id[4];
     char is_master;

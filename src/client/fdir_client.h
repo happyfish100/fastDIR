@@ -125,6 +125,9 @@ int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const int64_t inode, int *operation, int64_t *offset,
         int64_t *length, int64_t *owner_id, pid_t *pid);
 
+int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
+        const int flags);
 
 #define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
     fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)

@@ -743,6 +743,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     int result;
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        free_record_object(task);
         sf_release_task(task);
         return ENOMEM;
     }
@@ -860,6 +861,7 @@ static int handle_record_deal_done(struct fast_task_info *task)
     }
 
     if (need_release) {
+        free_record_object(task);
         sf_release_task(task);
     }
     return result;
@@ -1517,24 +1519,64 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
 static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 {
     int result;
+    int min_body_len;
+    int fields_part_len;;
+    FDIRProtoSetXAttrFields *fields;
+    key_value_pair_t xattr;
 
-    if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront), false)) != 0)
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoSetXAttrReq) + 3)) != 0)
     {
         return result;
     }
 
-    if ((result=alloc_record_object(task)) != 0) {
+    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
+    xattr.key.len = fields->name_len;
+    xattr.key.str = fields->name_str;
+    xattr.value.len = buff2short(fields->value_len);
+    xattr.value.str = fields->name_str + xattr.key.len;
+    if (xattr.key.len <= 0) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid xattr name, length: %d <= 0",
+                __LINE__, xattr.key.len);
+        return EINVAL;
+    }
+    if (xattr.value.len < 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "value length: %d is invalid", xattr.value.len);
+        return EINVAL;
+    }
+
+    min_body_len = sizeof(FDIRProtoSetXAttrReq) +
+            xattr.key.len + xattr.value.len + 2;
+    if (REQUEST.header.body_len < min_body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d is too small which < %d",
+                REQUEST.header.body_len, min_body_len);
+        return EINVAL;
+    }
+
+    fields_part_len = sizeof(FDIRProtoSetXAttrFields) +
+        xattr.key.len + xattr.value.len;
+    if ((result=server_parse_dentry_for_update(task,
+                    fields_part_len, false)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find_by_pname(RECORD->me.parent, &RECORD->
+                    me.pname.name, &RECORD->me.dentry)) != 0)
+    {
+        free_record_object(task);
         return result;
     }
 
     RECORD->options.flags = 0;
-    //RECORD->hash_code = simple_hash(ns_str, ns_len);
+    RECORD->inode = RECORD->me.dentry->inode;
+    RECORD->flags = buff2short(fields->flags);
+    RECORD->xattr = xattr;
     RECORD->operation = BINLOG_OP_SET_XATTR_INT;
-
-    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode));
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP;
     return push_record_to_data_thread_queue(task);
 }
 

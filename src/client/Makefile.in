@@ -5,17 +5,20 @@ INC_PATH = -I../common
 LIB_PATH = $(LIBS) -lfastcommon -lserverframe
 TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
 
-FAST_SHARED_OBJS = ../common/fdir_global.lo ../common/fdir_proto.lo client_func.lo \
+FAST_SHARED_OBJS = ../common/fdir_global.lo ../common/fdir_proto.lo \
+                   ../common/fdir_func.lo client_func.lo \
                    client_global.lo client_proto.lo fdir_client.lo  \
                    simple_connection_manager.lo pooled_connection_manager.lo
 
-FAST_STATIC_OBJS = ../common/fdir_global.o ../common/fdir_proto.o client_func.o \
+FAST_STATIC_OBJS = ../common/fdir_global.o ../common/fdir_proto.o \
+                   ../common/fdir_func.o client_func.o \
                    client_global.o client_proto.o fdir_client.o  \
                    simple_connection_manager.o pooled_connection_manager.o
 
 HEADER_FILES = ../common/fdir_types.h ../common/fdir_global.h \
-               ../common/fdir_proto.h fdir_client.h client_types.h \
-               client_func.h client_global.h client_proto.h \
+               ../common/fdir_proto.h ../common/fdir_func.h \
+               fdir_client.h client_types.h client_func.h \
+               client_global.h client_proto.h \
                simple_connection_manager.h pooled_connection_manager.h
 
 ALL_OBJS = $(FAST_STATIC_OBJS) $(FAST_SHARED_OBJS)

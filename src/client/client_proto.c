@@ -21,6 +21,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/connection_pool.h"
 #include "fdir_proto.h"
+#include "fdir_func.h"
 #include "client_global.h"
 #include "client_proto.h"
 
@@ -1196,6 +1197,62 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
                     NULL, 0)) != 0)
     {
         sf_log_network_error(&response, session->mconn, result);
+    }
+
+    return result;
+}
+
+static inline void pack_set_xattr_fields(const key_value_pair_t *xattr,
+        const int flags, FDIRProtoSetXAttrFields *fields)
+{
+    fields->name_len = xattr->key.len;
+    short2buff(xattr->value.len, fields->value_len);
+    short2buff(flags, fields->flags);
+    memcpy(fields->name_str, xattr->key.str, xattr->key.len);
+    memcpy(fields->name_str + xattr->key.len,
+            xattr->value.str, xattr->value.len);
+}
+
+int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const
+        FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
+        const int flags)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoSetXAttrReq *req;
+    FDIRProtoSetXAttrFields *fields;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(SFProtoIdempotencyAdditionalHeader) +
+        sizeof(FDIRProtoSetXAttrReq) + FDIR_XATTR_MAX_VALUE_SIZE +
+        2 * NAME_MAX + PATH_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    if ((result=fdir_validate_xattr(xattr)) != 0) {
+        return result;
+    }
+
+    CLIENT_PROTO_SET_REQ(out_buff, header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_dentry(fullname,
+                    &req->dentry)) != 0)
+    {
+        return result;
+    }
+
+    fields = &req->fields;
+    pack_set_xattr_fields(xattr, flags, fields);
+    out_bytes += xattr->key.len + xattr->value.len +
+        fullname->ns.len + fullname->path.len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP)) != 0)
+    {
+        sf_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
