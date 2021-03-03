@@ -21,6 +21,7 @@
 #include "binlog/binlog_types.h"
 #include "server_types.h"
 #include "flock.h"
+#include "data_thread.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +45,10 @@ extern "C" {
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);
+
+    FDIRServerDentry *inode_index_set_xattr(
+            FDIRDataThreadContext *db_context,
+            const FDIRBinlogRecord *record, int *err_no);
 
     FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
             const int64_t offset, const int64_t length, const bool block,

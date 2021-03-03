@@ -56,6 +56,7 @@
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
 #define FDIR_BINLOG_SUBDIR_NAME      "binlog"
+#define FDIR_DELAY_FREE_SECONDS      300
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define REQUEST           TASK_ARG->context.request
@@ -108,6 +109,7 @@ typedef struct fdir_server_dentry {
         struct fdir_server_dentry *src_dentry;  //for hard link
     };
 
+    SFKeyValueArray *kv_array;   //for x-attributes
     struct fdir_dentry_context *context;
     UniqSkiplist *children;
     struct fdir_server_dentry *parent;

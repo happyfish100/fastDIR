@@ -343,7 +343,8 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 }
 
 static int do_notify_master_changed(FDIRClusterServerInfo *cs,
-		FDIRClusterServerInfo *master, const char cmd, bool *bConnectFail)
+		FDIRClusterServerInfo *master, const unsigned char cmd,
+        bool *bConnectFail)
 {
     char out_buff[sizeof(FDIRProtoHeader) + 4];
     ConnectionInfo conn;

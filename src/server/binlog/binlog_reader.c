@@ -788,9 +788,7 @@ static inline int compare_rename_operation(
             return sub;
         }
 
-        if ((sub=fc_compare_int64(r1->rename.flags,
-                        r2->rename.flags)) != 0)
-        {
+        if ((sub=fc_compare_int64(r1->flags, r2->flags)) != 0) {
             return sub;
         }
     }

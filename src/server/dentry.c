@@ -50,16 +50,7 @@ typedef struct {
 } StringHolderPtrPair;
 
 const int max_level_count = 20;
-//const int delay_free_seconds = 3600;
-const int delay_free_seconds = 60;
 static FDIRManager fdir_manager;
-
-#define dentry_strdup_ex(context, dest, src, len) \
-    fast_allocator_alloc_string_ex(&(context)->name_acontext, dest, src, len)
-
-#define dentry_strdup(context, dest, src) \
-    fast_allocator_alloc_string(&(context)->name_acontext, dest, src)
-
 
 #define SET_HARD_LINK_DENTRY(dentry)  \
     do { \
@@ -169,31 +160,11 @@ int dentry_init_obj(void *element, void *init_args)
     return 0;
 }
 
-int dentry_init_context(FDIRDataThreadContext *db_context)
+static int init_name_allocators(struct fast_allocator_context *name_acontext)
 {
 #define NAME_REGION_COUNT 4
-
-    FDIRDentryContext *context;
     struct fast_region_info regions[NAME_REGION_COUNT];
     int count;
-    int result;
-
-    context = &db_context->dentry_context;
-    context->db_context = db_context;
-    if ((result=uniq_skiplist_init_ex(&context->factory,
-                    max_level_count, dentry_compare, dentry_free_func,
-                    16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
-                    delay_free_seconds)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
-                    "dentry", sizeof(FDIRServerDentry), 8 * 1024,
-                    0, dentry_init_obj, context, false)) != 0)
-    {
-        return result;
-    }
 
     FAST_ALLOCATOR_INIT_REGION(regions[0], 0, 64, 8, 8 * 1024);
     if (DENTRY_MAX_DATA_SIZE <= NAME_MAX + 1) {
@@ -213,8 +184,103 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
         }
     }
 
-    if ((result=fast_allocator_init_ex(&context->name_acontext,
-                    "name", regions, count, 0, 0.00, 0, false)) != 0)
+    return fast_allocator_init_ex(name_acontext, "name",
+            regions, count, 0, 0.00, 0, false);
+}
+
+static int kvarray_alloc_init(SFKeyValueArray *kv_array,
+        struct fast_mblock_man *allocator)
+{
+    kv_array->elts = (key_value_pair_t *)(kv_array + 1);
+    kv_array->alloc = (allocator->info.element_size -
+            sizeof(SFKeyValueArray)) / sizeof(key_value_pair_t);
+    return 0;
+}
+
+static int init_kvarray_allocators(struct fast_mblock_man
+        *kvarray_allocators, const int count)
+{
+    struct fast_mblock_man *mblock;
+    struct fast_mblock_man *end;
+    char name[64];
+    int n;
+    int alloc_count;
+    int alloc_elements_once;
+    int element_size;
+    int result;
+
+    alloc_elements_once = 8 * 1024;
+    alloc_count = 1;
+    end = kvarray_allocators + count;
+    for (mblock=kvarray_allocators, n=1; mblock<end; mblock++, n++) {
+        alloc_count *= 2;
+        sprintf(name, "kvarray-%d-elts", alloc_count);
+        element_size = sizeof(SFKeyValueArray) +
+            sizeof(key_value_pair_t) * alloc_count;
+        if ((result=fast_mblock_init_ex1(mblock, name, element_size,
+                        alloc_elements_once, 0, (fast_mblock_alloc_init_func)
+                        kvarray_alloc_init, mblock, false)) != 0)
+        {
+            return result;
+        }
+
+        if (n % 2 == 0) {
+            alloc_elements_once /= 2;
+        }
+    }
+
+    return 0;
+}
+
+struct fast_mblock_man *dentry_next_kvarray_allocator(
+        FDIRDentryContext *context, const int alloc_elts)
+{
+    switch (alloc_elts) {
+        case 2:
+            return context->kvarray_allocators + 0;
+        case 4:
+            return context->kvarray_allocators + 1;
+        case 8:
+            return context->kvarray_allocators + 2;
+        case 16:
+            return context->kvarray_allocators + 3;
+        case 32:
+            return context->kvarray_allocators + 4;
+        case 64:
+            return context->kvarray_allocators + 5;
+        default:
+            return NULL;
+    }
+}
+
+int dentry_init_context(FDIRDataThreadContext *db_context)
+{
+    FDIRDentryContext *context;
+    int result;
+
+    context = &db_context->dentry_context;
+    context->db_context = db_context;
+    if ((result=uniq_skiplist_init_ex(&context->factory,
+                    max_level_count, dentry_compare, dentry_free_func,
+                    16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
+                    FDIR_DELAY_FREE_SECONDS)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
+                    "dentry", sizeof(FDIRServerDentry), 8 * 1024,
+                    0, dentry_init_obj, context, false)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=init_name_allocators(&context->name_acontext)) != 0) {
+        return result;
+    }
+
+    if ((result=init_kvarray_allocators(context->kvarray_allocators,
+                    FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT)) != 0)
     {
         return result;
     }
@@ -623,7 +689,7 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
         return result;
     }
 
-    dentry_free_func(dentry, delay_free_seconds);
+    dentry_free_func(dentry, FDIR_DELAY_FREE_SECONDS);
     db_context->dentry_context.counters.file--;
     __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
     return 0;
@@ -758,7 +824,7 @@ static int rename_check(FDIRDataThreadContext *db_context,
     if ((record->rename.dest.dentry=(FDIRServerDentry *)uniq_skiplist_find(
                     record->rename.dest.parent->children, &target)) == NULL)
     {
-        if ((record->rename.flags & RENAME_EXCHANGE)) {
+        if ((record->flags & RENAME_EXCHANGE)) {
             return ENOENT;
         }
 
@@ -767,14 +833,14 @@ static int rename_check(FDIRDataThreadContext *db_context,
 
     /*
     logInfo("file: "__FILE__", line: %d, "
-            "record->rename.flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
-            __LINE__, record->rename.flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
+            "record->flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
+            __LINE__, record->flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
             */
 
-    if ((record->rename.flags & RENAME_NOREPLACE)) {
+    if ((record->flags & RENAME_NOREPLACE)) {
         return EEXIST;
     }
-    if ((record->rename.flags & RENAME_EXCHANGE)) {
+    if ((record->flags & RENAME_EXCHANGE)) {
         return 0;
     }
 
@@ -793,9 +859,9 @@ static int rename_check(FDIRDataThreadContext *db_context,
     return 0;
 }
 
-static void free_dentry_name(void *ctx, void *ptr)
+static inline void free_dname(FDIRServerDentry *dentry, string_t *old_name)
 {
-    fast_allocator_free((struct fast_allocator_context *)ctx, ptr);
+    server_delay_free_str(dentry->context, old_name->str);
 }
 
 static inline void restore_dentry_name(FDIRServerDentry *dentry,
@@ -805,17 +871,7 @@ static inline void restore_dentry_name(FDIRServerDentry *dentry,
 
     name_to_free = dentry->name.str;
     dentry->name = *old_name;
-
-    server_add_to_delay_free_queue_ex(&dentry->context->db_context->
-            delay_free_context, name_to_free, &dentry->context->
-            name_acontext, free_dentry_name, delay_free_seconds);
-}
-
-static inline void free_dname(FDIRServerDentry *dentry, string_t *old_name)
-{
-    server_add_to_delay_free_queue_ex(&dentry->context->db_context->
-            delay_free_context, old_name->str, &dentry->context->
-            name_acontext, free_dentry_name, delay_free_seconds);
+    server_delay_free_str(dentry->context, name_to_free);
 }
 
 static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
@@ -1014,8 +1070,8 @@ int dentry_rename(FDIRDataThreadContext *db_context,
 
     /*
     logInfo("file: "__FILE__", line: %d, "
-            "record->rename.flags: %d, dest.dentry: %p, src.dentry: %p",
-            __LINE__, record->rename.flags, record->rename.dest.dentry,
+            "record->flags: %d, dest.dentry: %p, src.dentry: %p",
+            __LINE__, record->flags, record->rename.dest.dentry,
             record->rename.src.dentry);
             */
 
@@ -1046,10 +1102,10 @@ int dentry_rename(FDIRDataThreadContext *db_context,
             record->rename.src.dentry->name.len, record->rename.src.dentry->name.str,
             record->rename.src.dentry->name.len,
             record->rename.dest.pname.name.len, record->rename.dest.pname.name.str,
-            record->rename.dest.pname.name.len, (record->rename.flags & RENAME_EXCHANGE));
+            record->rename.dest.pname.name.len, (record->flags & RENAME_EXCHANGE));
             */
 
-    if ((record->rename.flags & RENAME_EXCHANGE)) {
+    if ((record->flags & RENAME_EXCHANGE)) {
         return exchange_dentry(db_context, record, name_changed);
     } else {
         //dentry_children_print(record->rename.src.parent);

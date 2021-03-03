@@ -66,12 +66,9 @@ static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
     node->expires = g_current_time + delay_seconds;
     node->ptr = ptr;
     node->next = NULL;
-    if (pContext->queue.head == NULL)
-    {
+    if (pContext->queue.head == NULL) {
         pContext->queue.head = node;
-    }
-    else
-    {
+    } else {
         pContext->queue.tail->next = node;
     }
     pContext->queue.tail = node;
@@ -346,6 +343,11 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         case BINLOG_OP_UPDATE_DENTRY_INT:
             record->me.dentry = inode_index_update_dentry(record);
             result = (record->me.dentry != NULL) ? 0 : ENOENT;
+            ignore_errno = 0;
+            break;
+        case BINLOG_OP_SET_XATTR_INT:
+            record->me.dentry = inode_index_set_xattr(
+                    thread_ctx, record, &result);
             ignore_errno = 0;
             break;
         default:

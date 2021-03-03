@@ -89,6 +89,9 @@ extern "C" {
         }
     }
 
+    struct fast_mblock_man *dentry_next_kvarray_allocator(
+            FDIRDentryContext *context, const int alloc_elts);
+
 #ifdef __cplusplus
 }
 #endif

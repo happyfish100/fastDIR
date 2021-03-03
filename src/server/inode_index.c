@@ -15,6 +15,7 @@
 
 #include <limits.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include "fastcommon/shared_func.h"
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/logger.h"
@@ -364,6 +365,159 @@ FDIRServerDentry *inode_index_update_dentry(
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return dentry;
+}
+
+static key_value_pair_t *get_xattr(FDIRServerDentry *dentry,
+        const string_t *name)
+{
+    key_value_pair_t *kv;
+    key_value_pair_t *end;
+
+    if (dentry->kv_array == NULL) {
+        return NULL;
+    }
+
+    end = dentry->kv_array->elts + dentry->kv_array->count;
+    for (kv=dentry->kv_array->elts; kv<end; kv++) {
+        if (fc_string_equal(name, &kv->key)) {
+            return kv;
+        }
+    }
+
+    return NULL;
+}
+
+static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
+        *context, FDIRServerDentry *dentry, int *err_no)
+{
+    struct fast_mblock_man *allocator;
+    SFKeyValueArray *new_array;
+
+    if (dentry->kv_array == NULL) {
+        allocator = context->kvarray_allocators + 0;
+    } else if (dentry->kv_array->count == dentry->kv_array->alloc) {
+        if ((allocator=dentry_next_kvarray_allocator(context,
+                        dentry->kv_array->alloc * 2)) == NULL)
+        {
+            *err_no = EOVERFLOW;
+            return NULL;
+        }
+    } else {
+        allocator = NULL;
+    }
+
+    if (allocator != NULL) {
+        new_array = (SFKeyValueArray *)fast_mblock_alloc_object(allocator);
+        if (new_array == NULL) {
+            *err_no = ENOMEM;
+            return NULL;
+        }
+
+        if (dentry->kv_array == NULL) {
+            new_array->count = 0;
+        } else {
+            memcpy(new_array->elts, dentry->kv_array->elts,
+                    sizeof(key_value_pair_t) * dentry->kv_array->count);
+            new_array->count = dentry->kv_array->count;
+            fast_mblock_free_object(allocator - 1, dentry->kv_array);
+        }
+
+        dentry->kv_array = new_array;
+    }
+
+    return dentry->kv_array->elts + dentry->kv_array->count;
+}
+
+static int set_xattr(FDIRDataThreadContext *db_context,
+        FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
+{
+    int result;
+    bool new_create;
+    key_value_pair_t *kv;
+    string_t value;
+
+    if ((kv=get_xattr(dentry, &record->xattr.key)) != NULL) {
+        if (record->flags == XATTR_CREATE) {
+            return EEXIST;
+        }
+        new_create = false;
+    } else {
+        if (record->flags == XATTR_REPLACE) {
+            return ENOATTR;
+        }
+
+        if ((kv=check_alloc_kvpair(&db_context->dentry_context,
+                        dentry, &result)) == NULL)
+        {
+            return result;
+        }
+        if ((result=dentry_strdup(&db_context->dentry_context,
+                        &kv->key, &record->xattr.key)) != 0)
+        {
+            return result;
+        }
+
+        new_create = true;
+    }
+
+    if ((result=dentry_strdup(&db_context->dentry_context,
+                    &value, &record->xattr.value)) != 0)
+    {
+        if (new_create) {
+            dentry_strfree(&db_context->dentry_context, &kv->key);
+        }
+        return result;
+    }
+
+    if (new_create) {
+        dentry->kv_array->count++;
+    } else {
+        server_delay_free_str(dentry->context, kv->value.str);
+    }
+    kv->value = value;
+
+    return 0;
+}
+
+FDIRServerDentry *inode_index_set_xattr(
+        FDIRDataThreadContext *db_context,
+        const FDIRBinlogRecord *record, int *err_no)
+{
+    FDIRServerDentry *dentry;
+
+    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    dentry = find_inode_entry(bucket, record->inode);
+    if (dentry != NULL) {
+        if ((*err_no=set_xattr(db_context, dentry, record)) != 0) {
+            dentry = NULL;
+        }
+    } else {
+        *err_no = ENOENT;
+    }
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+
+    return dentry;
+}
+
+int inode_index_get_xattr(FDIRServerDentry *dentry,
+        const string_t *name, string_t *value)
+{
+    int result;
+    key_value_pair_t *kv;
+
+    SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    if ((kv=get_xattr(dentry, name)) != NULL) {
+        *value = kv->value;
+        result = 0;
+    } else {
+        result = ENOENT;
+    }
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+
+
+    return result;
 }
 
 FLockTask *inode_index_flock_apply(const int64_t inode, const short type,

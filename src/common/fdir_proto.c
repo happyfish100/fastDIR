@@ -104,6 +104,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "RENAME_BY_PNAME_REQ";
         case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP:
             return "RENAME_BY_PNAME_RESP";
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
+            return "SET_XATTR_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP:
+            return "SET_XATTR_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ:
+            return "SET_XATTR_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP:
+            return "SET_XATTR_BY_INODE_RESP";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
             return "LOOKUP_INODE_BY_PATH_REQ";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP:
@@ -184,6 +192,22 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "GET_READABLE_SERVER_REQ";
         case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP:
             return "GET_READABLE_SERVER_RESP";
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
+            return "GET_XATTR_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP:
+            return "GET_XATTR_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
+            return "GET_XATTR_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP:
+            return "GET_XATTR_BY_INODE_RESP";
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ:
+            return "LIST_XATTR_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP:
+            return "LIST_XATTR_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ:
+            return "LIST_XATTR_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP:
+            return "LIST_XATTR_BY_INODE_RESP";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
             return "GET_SERVER_STATUS_REQ";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP:

@@ -68,6 +68,8 @@
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
 #define BINLOG_RECORD_FIELD_NAME_INC_ALLOC     "ia"
 #define BINLOG_RECORD_FIELD_NAME_SRC_INODE     "si"
+#define BINLOG_RECORD_FIELD_NAME_XATTR_NAME    "xn"
+#define BINLOG_RECORD_FIELD_NAME_XATTR_VALUE   "xv"
 
 #define BINLOG_RECORD_FIELD_NAME_DEST_PARENT   BINLOG_RECORD_FIELD_NAME_PARENT
 #define BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME  BINLOG_RECORD_FIELD_NAME_SUBNAME
@@ -95,6 +97,8 @@
 #define BINLOG_RECORD_FIELD_INDEX_HASH_CODE     ('h' * 256 + 'c')
 #define BINLOG_RECORD_FIELD_INDEX_INC_ALLOC     ('i' * 256 + 'a')
 #define BINLOG_RECORD_FIELD_INDEX_SRC_INODE     ('s' * 256 + 'i')
+#define BINLOG_RECORD_FIELD_INDEX_XATTR_NAME    ('x' * 256 + 'n')
+#define BINLOG_RECORD_FIELD_INDEX_XATTR_VALUE   ('x' * 256 + 'v')
 
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
@@ -147,6 +151,8 @@ static inline const char *get_operation_label(const int operation)
             return BINLOG_OP_RENAME_DENTRY_STR;
         case BINLOG_OP_UPDATE_DENTRY_INT:
             return BINLOG_OP_UPDATE_DENTRY_STR;
+        case BINLOG_OP_SET_XATTR_INT:
+            return BINLOG_OP_SET_XATTR_STR;
         default:
             return BINLOG_OP_NONE_STR;
     }
@@ -170,6 +176,10 @@ static inline int get_operation_integer(const string_t *operation)
                 BINLOG_OP_RENAME_DENTRY_LEN))
     {
         return BINLOG_OP_RENAME_DENTRY_INT;
+    } else if (fc_string_equal2(operation, BINLOG_OP_SET_XATTR_STR,
+                BINLOG_OP_SET_XATTR_LEN))
+    {
+        return BINLOG_OP_SET_XATTR_INT;
     } else {
         return BINLOG_OP_NONE_INT;
     }
@@ -347,7 +357,12 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
                 record->rename.src.pname.name);
 
         fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_FLAGS, record->rename.flags);
+                BINLOG_RECORD_FIELD_NAME_FLAGS, record->flags);
+    } else if (record->operation == BINLOG_OP_SET_XATTR_INT) {
+        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
+                record->xattr.key);
+        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_VALUE,
+                record->xattr.value);
     }
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
@@ -489,7 +504,7 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_FLAGS:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
-                record->rename.flags = pcontext->fv.value.n;
+                record->flags = pcontext->fv.value.n;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_DATA_VERSION:
@@ -614,6 +629,19 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->hdlink.src_inode = pcontext->fv.value.n;
                 record->options.src_inode = 1;
+            }
+            break;
+
+        case BINLOG_RECORD_FIELD_INDEX_XATTR_NAME:
+            expect_type = BINLOG_FIELD_TYPE_STRING;
+            if (pcontext->fv.type == expect_type) {
+                record->xattr.key = pcontext->fv.value.s;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_XATTR_VALUE:
+            expect_type = BINLOG_FIELD_TYPE_STRING;
+            if (pcontext->fv.type == expect_type) {
+                record->xattr.value = pcontext->fv.value.s;
             }
             break;
         default:

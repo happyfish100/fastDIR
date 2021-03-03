@@ -31,17 +31,20 @@
 #define BINLOG_OP_REMOVE_DENTRY_INT  2
 #define BINLOG_OP_RENAME_DENTRY_INT  3
 #define BINLOG_OP_UPDATE_DENTRY_INT  4
+#define BINLOG_OP_SET_XATTR_INT      5
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
 #define BINLOG_OP_REMOVE_DENTRY_STR  "rm"
 #define BINLOG_OP_RENAME_DENTRY_STR  "rn"
 #define BINLOG_OP_UPDATE_DENTRY_STR  "up"
+#define BINLOG_OP_SET_XATTR_STR      "sx"
 
 #define BINLOG_OP_CREATE_DENTRY_LEN  (sizeof(BINLOG_OP_CREATE_DENTRY_STR) - 1)
 #define BINLOG_OP_REMOVE_DENTRY_LEN  (sizeof(BINLOG_OP_REMOVE_DENTRY_STR) - 1)
 #define BINLOG_OP_RENAME_DENTRY_LEN  (sizeof(BINLOG_OP_RENAME_DENTRY_STR) - 1)
 #define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
+#define BINLOG_OP_SET_XATTR_LEN      (sizeof(BINLOG_OP_SET_XATTR_STR) - 1)
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
@@ -69,6 +72,7 @@ typedef struct fdir_binlog_record {
     unsigned int hash_code;
     int operation;
     int timestamp;
+    int flags;
     FDIRStatModifyFlags options;
     string_t ns;   //namespace
 
@@ -77,7 +81,6 @@ typedef struct fdir_binlog_record {
             FDIRRecordDEntry dest;  //must be the first
             FDIRRecordDEntry src;
             FDIRServerDentry *overwritten;
-            int flags;
         } rename;
 
         struct {
@@ -90,7 +93,11 @@ typedef struct fdir_binlog_record {
     };
 
     FDIRDEntryStatus stat;
-    string_t link;
+
+    union {
+        string_t link;
+        key_value_pair_t xattr;
+    };
 
     //must be the last to avoid being overwritten by memset
     struct {
@@ -126,6 +133,8 @@ static inline const char *get_operation_caption(const int operation)
             return "RENAME";
         case BINLOG_OP_UPDATE_DENTRY_INT:
             return "UPDATE";
+        case BINLOG_OP_SET_XATTR_INT:
+            return "SET_XATTR";
         default:
             return "UNKOWN";
     }

@@ -36,6 +36,7 @@ struct fdir_data_thread_context;
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
+    struct fast_mblock_man kvarray_allocators[FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT];
     struct fast_allocator_context name_acontext;
     struct fdir_data_thread_context *db_context;
     FDIRDentryCounters counters;
@@ -78,6 +79,12 @@ typedef struct fdir_data_thread_variables {
     int error_mode;
 } FDIRDataThreadVariables;
 
+#define dentry_strdup(context, dest, src) \
+    fast_allocator_alloc_string(&(context)->name_acontext, dest, src)
+
+#define dentry_strfree(context, s) \
+    fast_allocator_free(&(context)->name_acontext, (s)->str)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -97,6 +104,14 @@ extern "C" {
             void *ctx, void *ptr, server_free_func_ex free_func_ex,
             const int delay_seconds);
 
+    static inline void server_delay_free_str(FDIRDentryContext
+            *context, char *str)
+    {
+        server_add_to_delay_free_queue_ex(&context->db_context->
+                delay_free_context, &context->name_acontext, str,
+                (server_free_func_ex)fast_allocator_free,
+                FDIR_DELAY_FREE_SECONDS);
+    }
 
     static inline void push_to_data_thread_queue(FDIRBinlogRecord *record)
     {
