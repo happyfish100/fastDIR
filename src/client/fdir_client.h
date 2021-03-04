@@ -129,6 +129,10 @@ int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
         const int flags);
 
+int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const key_value_pair_t
+        *xattr, const int flags);
+
 #define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
     fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)
 

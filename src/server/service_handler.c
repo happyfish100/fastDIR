@@ -664,6 +664,30 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
     return 0;
 }
 
+static int check_and_parse_inode_info(struct fast_task_info *task,
+        const int front_part_size, string_t *ns, FDIRServerDentry **dentry)
+{
+    FDIRProtoInodeInfo *req;
+    int64_t inode;
+    int result;
+
+    req = (FDIRProtoInodeInfo *)(REQUEST.body + front_part_size);
+    if ((result=check_name_length(task, req->ns_len, "namespace")) != 0) {
+        return result;
+    }
+
+    ns->len = req->ns_len;
+    ns->str = req->ns_str;
+    inode = buff2long(req->inode);
+    if ((*dentry=inode_index_get_dentry(inode)) == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "inode: %"PRId64" not exist", inode);
+        return ENOENT;
+    }
+
+    return 0;
+}
+
 static inline int alloc_record_object(struct fast_task_info *task)
 {
     RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
@@ -1029,6 +1053,39 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
 
     return service_set_record_pname_info(task,
             sizeof(FDIRProtoStatDEntryResp));
+}
+
+static int server_parse_inode_for_update(struct fast_task_info *task,
+        const int front_part_size)
+{
+    int result;
+    int body_len;
+    FDIRServerDentry *dentry;
+    string_t ns;
+
+    if ((result=check_and_parse_inode_info(task,
+                    front_part_size, &ns, &dentry)) != 0)
+    {
+        return result;
+    }
+
+    body_len = front_part_size + sizeof(FDIRProtoInodeInfo) + ns.len;
+    if (REQUEST.header.body_len != body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, body_len);
+        return EINVAL;
+    }
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    RECORD->inode = dentry->inode;
+    RECORD->ns = ns;
+    RECORD->hash_code = simple_hash(ns.str, ns.len);
+    RECORD->me.dentry = dentry;
+    return 0;
 }
 
 static int service_update_prepare_and_check(struct fast_task_info *task,
@@ -1516,6 +1573,41 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
+static int parse_xattr_fields(struct fast_task_info *task,
+        FDIRProtoSetXAttrFields *fields, key_value_pair_t *xattr)
+{
+    xattr->key.len = fields->name_len;
+    xattr->key.str = fields->name_str;
+    xattr->value.len = buff2short(fields->value_len);
+    xattr->value.str = fields->name_str + xattr->key.len;
+    if (xattr->key.len <= 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "invalid xattr name, length: %d <= 0",
+                xattr->key.len);
+        return EINVAL;
+    }
+    if (xattr->key.len > NAME_MAX) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "xattr name length: %d is too long, exceeds %d",
+                xattr->key.len, NAME_MAX);
+        return ENAMETOOLONG;
+    }
+
+    if (xattr->value.len < 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "value length: %d is invalid", xattr->value.len);
+        return EINVAL;
+    }
+    if (xattr->value.len > FDIR_XATTR_MAX_VALUE_SIZE) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "value length: %d is too large, exceeds %d",
+                xattr->value.len, FDIR_XATTR_MAX_VALUE_SIZE);
+        return ENAMETOOLONG;
+    }
+
+    return 0;
+}
+
 static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 {
     int result;
@@ -1525,29 +1617,17 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
     key_value_pair_t xattr;
 
     if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoSetXAttrReq) + 3)) != 0)
+                    sizeof(FDIRProtoSetXAttrByPathReq) + 3)) != 0)
     {
         return result;
     }
 
     fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
-    xattr.key.len = fields->name_len;
-    xattr.key.str = fields->name_str;
-    xattr.value.len = buff2short(fields->value_len);
-    xattr.value.str = fields->name_str + xattr.key.len;
-    if (xattr.key.len <= 0) {
-        logError("file: "__FILE__", line: %d, "
-                "invalid xattr name, length: %d <= 0",
-                __LINE__, xattr.key.len);
-        return EINVAL;
-    }
-    if (xattr.value.len < 0) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "value length: %d is invalid", xattr.value.len);
-        return EINVAL;
+    if ((result=parse_xattr_fields(task, fields, &xattr)) != 0) {
+        return result;
     }
 
-    min_body_len = sizeof(FDIRProtoSetXAttrReq) +
+    min_body_len = sizeof(FDIRProtoSetXAttrByPathReq) +
             xattr.key.len + xattr.value.len + 2;
     if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -1582,50 +1662,48 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 
 static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
 {
-    FDIRProtoSetDentrySizeReq *req;
-    FDIRServerDentry *dentry;
-    FDIRSetDEntrySizeInfo dsize;
+    FDIRProtoSetXAttrFields *fields;
+    key_value_pair_t xattr;
+    int min_body_len;
+    int front_part_size;
     int result;
 
-    //TODO
     if ((result=server_check_body_length(task,
-                    sizeof(FDIRProtoSetDentrySizeReq) + 1,
-                    sizeof(FDIRProtoSetDentrySizeReq) + NAME_MAX)) != 0)
+                    sizeof(FDIRProtoSetXAttrByInodeReq) + 2,
+                    sizeof(FDIRProtoSetXAttrByInodeReq) + 1 +
+                    NAME_MAX + FDIR_XATTR_MAX_VALUE_SIZE)) != 0)
     {
         return result;
     }
 
-    /*
-    req = (FDIRProtoSetDentrySizeReq *)REQUEST.body;
-    if (req->ns_len <= 0) {
+    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
+    if ((result=parse_xattr_fields(task, fields, &xattr)) != 0) {
+        return result;
+    }
+
+    min_body_len = sizeof(FDIRProtoSetXAttrByInodeReq) +
+            xattr.key.len + xattr.value.len + 1;
+    if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "namespace length: %d is invalid which <= 0",
-                req->ns_len);
+                "body length: %d is too small which < %d",
+                REQUEST.header.body_len, min_body_len);
         return EINVAL;
     }
-    if (sizeof(FDIRProtoSetDentrySizeReq) + req->ns_len !=
-            REQUEST.header.body_len)
+
+    front_part_size = sizeof(FDIRProtoSetXAttrFields) +
+        xattr.key.len + xattr.value.len;
+    if ((result=server_parse_inode_for_update(
+                    task, front_part_size)) != 0)
     {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoSetDentrySizeReq) + req->ns_len);
-        return EINVAL;
+        return result;
     }
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
-    SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req);
-
-    dentry = set_dentry_size(task, req->ns_str, req->ns_len,
-            &dsize, true, &result);
-    if (result == 0 || result == TASK_STATUS_CONTINUE) {
-        if (dentry != NULL) {
-            set_update_result_and_output(task, dentry);
-        }
-    }
-    */
-
-    return result;
+    RECORD->options.flags = 0;
+    RECORD->flags = buff2short(fields->flags);
+    RECORD->xattr = xattr;
+    RECORD->operation = BINLOG_OP_SET_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP;
+    return push_record_to_data_thread_queue(task);
 }
 
 static int service_deal_stat_dentry_by_path(struct fast_task_info *task)

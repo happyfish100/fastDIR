@@ -240,6 +240,11 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
         FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
         const int flags);
 
+int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const int64_t inode, const key_value_pair_t *xattr,
+        const int flags);
+
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         FDIRClientDentryArray *array);

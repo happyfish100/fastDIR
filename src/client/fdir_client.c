@@ -181,6 +181,17 @@ int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,
             fullname, xattr, flags);
 }
 
+int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const key_value_pair_t
+        *xattr, const int flags)
+{
+    const SFConnectionParameters *connection_params;
+
+    SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_MASTER_CONNECTION, 0, fdir_client_proto_set_xattr_by_inode,
+            ns, inode, xattr, flags);
+}
+
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const int64_t inode, int *operation, int64_t *offset,
         int64_t *length, int64_t *owner_id, pid_t *pid)

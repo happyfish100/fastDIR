@@ -109,6 +109,22 @@ static int client_check_set_proto_pname(const string_t *ns,
     return 0;
 }
 
+static int client_check_set_proto_inode_info(const string_t *ns,
+        const int64_t inode, FDIRProtoInodeInfo *ino_proto)
+{
+    if (ns->len <= 0 || ns->len > NAME_MAX) {
+        logError("file: "__FILE__", line: %d, "
+                "invalid namespace length: %d, which <= 0 or > %d",
+                __LINE__, ns->len, NAME_MAX);
+        return EINVAL;
+    }
+
+    long2buff(inode, ino_proto->inode);
+    ino_proto->ns_len = ns->len;
+    memcpy(ino_proto->ns_str, ns->str, ns->len);
+    return 0;
+}
+
 int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, SFConnectionParameters *conn_params)
 {
@@ -1219,11 +1235,11 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
         const int flags)
 {
     FDIRProtoHeader *header;
-    FDIRProtoSetXAttrReq *req;
+    FDIRProtoSetXAttrByPathReq *req;
     FDIRProtoSetXAttrFields *fields;
     char out_buff[sizeof(FDIRProtoHeader) +
         sizeof(SFProtoIdempotencyAdditionalHeader) +
-        sizeof(FDIRProtoSetXAttrReq) + FDIR_XATTR_MAX_VALUE_SIZE +
+        sizeof(FDIRProtoSetXAttrByPathReq) + FDIR_XATTR_MAX_VALUE_SIZE +
         2 * NAME_MAX + PATH_MAX];
     SFResponseInfo response;
     int out_bytes;
@@ -1251,6 +1267,50 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff, out_bytes,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP)) != 0)
+    {
+        sf_log_network_error_for_update(&response, conn, result);
+    }
+
+    return result;
+}
+
+int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const int64_t inode, const key_value_pair_t *xattr,
+        const int flags)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoSetXAttrByInodeReq *req;
+    FDIRProtoSetXAttrFields *fields;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(SFProtoIdempotencyAdditionalHeader) +
+        sizeof(FDIRProtoSetXAttrByInodeReq) +
+        FDIR_XATTR_MAX_VALUE_SIZE + 2 * NAME_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    if ((result=fdir_validate_xattr(xattr)) != 0) {
+        return result;
+    }
+
+    CLIENT_PROTO_SET_REQ(out_buff, header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_inode_info(
+                    ns, inode, &req->ino)) != 0)
+    {
+        return result;
+    }
+
+    fields = &req->fields;
+    pack_set_xattr_fields(xattr, flags, fields);
+    out_bytes += xattr->key.len + xattr->value.len + ns->len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP)) != 0)
     {
         sf_log_network_error_for_update(&response, conn, result);
     }

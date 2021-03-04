@@ -93,7 +93,7 @@ int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
 }
 
 int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
-        void *ptr, void *ctx, server_free_func_ex free_func_ex,
+        void *ctx, void *ptr, server_free_func_ex free_func_ex,
         const int delay_seconds)
 {
     ServerDelayFreeNode *node;
