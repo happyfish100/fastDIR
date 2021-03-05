@@ -2995,15 +2995,14 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
 }
 
 static int service_do_listxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const string_t *name,
-        const int resp_cmd)
+        FDIRServerDentry *dentry, const int resp_cmd)
 {
     FDIRXAttrIterator it;
     const key_value_pair_t *kv;
     char *p;
 
     p = REQUEST.body;
-    inode_index_list_xattr(dentry, name, &it);
+    inode_index_list_xattr(dentry, &it);
     while ((kv=xattr_iterator_next(&it)) != NULL) {
         memcpy(p, kv->key.str, kv->key.len);
         p += kv->key.len;
@@ -3019,21 +3018,11 @@ static int service_do_listxattr(struct fast_task_info *task,
 static int service_list_xattr_by_path(struct fast_task_info *task)
 {
     int result;
-    int fixed_size;
-    string_t name;
     FDIRDEntryFullName fullname;
     FDIRServerDentry *dentry;
 
-    fixed_size = sizeof(FDIRProtoListXAttrByPathReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    false, &name)) != 0)
-    {
-        return result;
-    }
-
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoNameInfo) + name.len,
-                    &fullname)) != 0)
+                    0, &fullname)) != 0)
     {
         return result;
     }
@@ -3042,31 +3031,30 @@ static int service_list_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    return service_do_listxattr(task, dentry, &name,
+    return service_do_listxattr(task, dentry,
             FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP);
 }
 
 static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
-    int fixed_size;
     int64_t inode;
-    string_t name;
+    FDIRProtoListXAttrByInodeReq *req;
     FDIRServerDentry *dentry;
 
-    fixed_size = sizeof(FDIRProtoListXAttrByInodeReq);
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    true, &name)) != 0)
+    if ((result=server_expect_body_length(task,
+                    sizeof(FDIRProtoListXAttrByInodeReq))) != 0)
     {
         return result;
     }
 
-    inode = buff2long(REQUEST.body + sizeof(FDIRProtoNameInfo) + name.len);
+    req = (FDIRProtoListXAttrByInodeReq *)REQUEST.body;
+    inode = buff2long(req->inode);
     if ((dentry=inode_index_get_dentry(inode)) == NULL) {
         return ENOENT;
     }
 
-    return service_do_listxattr(task, dentry, &name,
+    return service_do_listxattr(task, dentry,
             FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
 }
 

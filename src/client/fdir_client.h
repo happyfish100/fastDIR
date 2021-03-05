@@ -142,12 +142,11 @@ int fdir_client_get_xattr_by_inode(FDIRClientContext *client_ctx,
         string_t *value, const int size);
 
 int fdir_client_list_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *name,
+        const FDIRDEntryFullName *fullname,
         string_t *list, const int size);
 
 int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
-        const int64_t inode, const string_t *name,
-        string_t *list, const int size);
+        const int64_t inode, string_t *list, const int size);
 
 #define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
     fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)

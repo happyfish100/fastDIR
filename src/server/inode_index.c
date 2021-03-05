@@ -522,7 +522,7 @@ int inode_index_get_xattr(FDIRServerDentry *dentry,
 }
 
 void inode_index_list_xattr(FDIRServerDentry *dentry,
-        const string_t *name, FDIRXAttrIterator *it)
+        FDIRXAttrIterator *it)
 {
     SET_INODE_HASHTABLE_CTX(dentry->inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);

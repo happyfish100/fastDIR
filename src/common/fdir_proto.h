@@ -417,8 +417,13 @@ typedef struct fdir_proto_get_xattr_by_node_req {
     char inode[8];
 } FDIRProtoGetXAttrByInodeReq;
 
-typedef FDIRProtoGetXAttrByPathReq FDIRProtoListXAttrByPathReq;
-typedef FDIRProtoGetXAttrByInodeReq FDIRProtoListXAttrByInodeReq;
+typedef struct fdir_proto_list_xattr_by_path_req {
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoListXAttrByPathReq;
+
+typedef struct fdir_proto_list_xattr_by_node_req {
+    char inode[8];
+} FDIRProtoListXAttrByInodeReq;
 
 typedef FDIRProtoGetXAttrByPathReq FDIRProtoRemoveXAttrByPathReq;
 typedef struct fdir_proto_remove_xattr_by_node_req {

@@ -59,7 +59,7 @@ extern "C" {
             const string_t *name, string_t *value);
 
     void inode_index_list_xattr(FDIRServerDentry *dentry,
-            const string_t *name, FDIRXAttrIterator *it);
+            FDIRXAttrIterator *it);
 
     static inline const key_value_pair_t *xattr_iterator_next(
             FDIRXAttrIterator *it)
