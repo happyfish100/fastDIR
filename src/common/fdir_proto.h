@@ -417,6 +417,15 @@ typedef struct fdir_proto_get_xattr_by_node_req {
     char inode[8];
 } FDIRProtoGetXAttrByInodeReq;
 
+typedef FDIRProtoGetXAttrByPathReq FDIRProtoListXAttrByPathReq;
+typedef FDIRProtoGetXAttrByInodeReq FDIRProtoListXAttrByInodeReq;
+
+typedef FDIRProtoGetXAttrByPathReq FDIRProtoRemoveXAttrByPathReq;
+typedef struct fdir_proto_remove_xattr_by_node_req {
+    FDIRProtoNameInfo name;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoRemoveXAttrByInodeReq;
+
 typedef struct fdir_proto_service_stat_resp {
     char server_id[4];
     char is_master;

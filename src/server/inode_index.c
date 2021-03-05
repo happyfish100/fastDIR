@@ -419,7 +419,8 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
             memcpy(new_array->elts, dentry->kv_array->elts,
                     sizeof(key_value_pair_t) * dentry->kv_array->count);
             new_array->count = dentry->kv_array->count;
-            fast_mblock_free_object(allocator - 1, dentry->kv_array);
+            fast_mblock_delay_free_object(allocator - 1,
+                    dentry->kv_array, FDIR_DELAY_FREE_SECONDS);
         }
 
         dentry->kv_array = new_array;
@@ -518,6 +519,20 @@ int inode_index_get_xattr(FDIRServerDentry *dentry,
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return result;
+}
+
+void inode_index_list_xattr(FDIRServerDentry *dentry,
+        const string_t *name, FDIRXAttrIterator *it)
+{
+    SET_INODE_HASHTABLE_CTX(dentry->inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    if (dentry->kv_array == NULL) {
+        it->kv = it->end = NULL;
+    } else {
+        it->kv = dentry->kv_array->elts;
+        it->end = dentry->kv_array->elts + dentry->kv_array->count;
+    }
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
 FLockTask *inode_index_flock_apply(const int64_t inode, const short type,

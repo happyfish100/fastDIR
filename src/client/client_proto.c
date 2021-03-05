@@ -1362,7 +1362,8 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         return result;
     }
 
-    out_bytes = sizeof(FDIRProtoGetXAttrByPathReq) + name->len +
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoGetXAttrByPathReq) + name->len +
         fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
@@ -1399,7 +1400,8 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     }
     long2buff(inode, nm_proto->str + name->len);
 
-    out_bytes = sizeof(FDIRProtoGetXAttrByInodeReq) + name->len;
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoGetXAttrByInodeReq) + name->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1408,6 +1410,88 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP, value->str,
                     size, &value->len)) != 0)
+    {
+        sf_log_network_error(&response, conn, result);
+    }
+
+    return result;
+}
+
+int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        const string_t *name, string_t *list, const int size)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoNameInfo *nm_proto;
+    FDIRProtoDEntryInfo *proto_dentry;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoListXAttrByPathReq) +
+        2 * NAME_MAX + PATH_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    nm_proto = (FDIRProtoNameInfo *)(header + 1);
+    if ((result=client_check_set_proto_name_info(name, nm_proto)) != 0) {
+        return result;
+    }
+
+    proto_dentry = (FDIRProtoDEntryInfo *)(nm_proto->str + name->len);
+    if ((result=client_check_set_proto_dentry(fullname,
+                    proto_dentry)) != 0)
+    {
+        return result;
+    }
+
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoListXAttrByPathReq) + name->len +
+        fullname->ns.len + fullname->path.len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP, list->str,
+                    size, &list->len)) != 0)
+    {
+        sf_log_network_error(&response, conn, result);
+    }
+
+    return result;
+}
+
+int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const int64_t inode, const string_t *name,
+        string_t *list, const int size)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoNameInfo *nm_proto;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoListXAttrByInodeReq) +
+        2 * NAME_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    nm_proto = (FDIRProtoNameInfo *)(header + 1);
+    if ((result=client_check_set_proto_name_info(name, nm_proto)) != 0) {
+        return result;
+    }
+    long2buff(inode, nm_proto->str + name->len);
+
+    out_bytes = sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoListXAttrByInodeReq) + name->len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP, list->str,
+                    size, &list->len)) != 0)
     {
         sf_log_network_error(&response, conn, result);
     }

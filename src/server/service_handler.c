@@ -2892,24 +2892,6 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
-static int service_do_getxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const string_t *name,
-        const int resp_cmd)
-{
-    int result;
-    string_t value;
-
-    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
-        return result;
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = value.len;
-    memcpy(REQUEST.body, value.str, value.len);
-    TASK_ARG->context.response_done = true;
-    return 0;
-}
-
 static int parse_xattr_name_info(struct fast_task_info *task,
         const int fixed_size, const bool check_whole_body_len,
         string_t *name)
@@ -2937,6 +2919,24 @@ static int parse_xattr_name_info(struct fast_task_info *task,
         }
     }
 
+    return 0;
+}
+
+static int service_do_getxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const string_t *name,
+        const int resp_cmd)
+{
+    int result;
+    string_t value;
+
+    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
+        return result;
+    }
+
+    RESPONSE.header.cmd = resp_cmd;
+    RESPONSE.header.body_len = value.len;
+    memcpy(REQUEST.body, value.str, value.len);
+    TASK_ARG->context.response_done = true;
     return 0;
 }
 
@@ -2978,7 +2978,7 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
     string_t name;
     FDIRServerDentry *dentry;
 
-    fixed_size = 8;
+    fixed_size = sizeof(FDIRProtoGetXAttrByInodeReq);
     if ((result=parse_xattr_name_info(task, fixed_size,
                     true, &name)) != 0)
     {
@@ -2992,6 +2992,82 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
 
     return service_do_getxattr(task, dentry, &name,
             FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP);
+}
+
+static int service_do_listxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const string_t *name,
+        const int resp_cmd)
+{
+    FDIRXAttrIterator it;
+    const key_value_pair_t *kv;
+    char *p;
+
+    p = REQUEST.body;
+    inode_index_list_xattr(dentry, name, &it);
+    while ((kv=xattr_iterator_next(&it)) != NULL) {
+        memcpy(p, kv->key.str, kv->key.len);
+        p += kv->key.len;
+        *p++ = '\0';
+    }
+
+    RESPONSE.header.cmd = resp_cmd;
+    RESPONSE.header.body_len = p - REQUEST.body;
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
+static int service_list_xattr_by_path(struct fast_task_info *task)
+{
+    int result;
+    int fixed_size;
+    string_t name;
+    FDIRDEntryFullName fullname;
+    FDIRServerDentry *dentry;
+
+    fixed_size = sizeof(FDIRProtoListXAttrByPathReq) + 1;
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    false, &name)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoNameInfo) + name.len,
+                    &fullname)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    return service_do_listxattr(task, dentry, &name,
+            FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP);
+}
+
+static int service_list_xattr_by_inode(struct fast_task_info *task)
+{
+    int result;
+    int fixed_size;
+    int64_t inode;
+    string_t name;
+    FDIRServerDentry *dentry;
+
+    fixed_size = sizeof(FDIRProtoListXAttrByInodeReq);
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    true, &name)) != 0)
+    {
+        return result;
+    }
+
+    inode = buff2long(REQUEST.body + sizeof(FDIRProtoNameInfo) + name.len);
+    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    return service_do_listxattr(task, dentry, &name,
+            FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
 }
 
 int service_deal_task(struct fast_task_info *task, const int stage)
@@ -3187,6 +3263,16 @@ int service_deal_task(struct fast_task_info *task, const int stage)
             case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
                 if ((result=service_check_readable(task)) == 0) {
                     result = service_get_xattr_by_inode(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_list_xattr_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_list_xattr_by_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
