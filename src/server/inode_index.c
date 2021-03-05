@@ -425,6 +425,7 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
         dentry->kv_array = new_array;
     }
 
+    *err_no = 0;
     return dentry->kv_array->elts + dentry->kv_array->count;
 }
 
@@ -443,7 +444,7 @@ static int set_xattr(FDIRDataThreadContext *db_context,
         new_create = false;
     } else {
         if (record->flags == XATTR_REPLACE) {
-            return ENOATTR;
+            return ENODATA;
         }
 
         if ((kv=check_alloc_kvpair(&db_context->dentry_context,
@@ -506,16 +507,15 @@ int inode_index_get_xattr(FDIRServerDentry *dentry,
     int result;
     key_value_pair_t *kv;
 
-    SET_INODE_HT_BUCKET_AND_CTX(dentry->inode);
+    SET_INODE_HASHTABLE_CTX(dentry->inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);
     if ((kv=get_xattr(dentry, name)) != NULL) {
         *value = kv->value;
         result = 0;
     } else {
-        result = ENOENT;
+        result = ENODATA;
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
-
 
     return result;
 }

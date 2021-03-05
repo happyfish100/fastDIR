@@ -50,6 +50,9 @@ extern "C" {
             FDIRDataThreadContext *db_context,
             const FDIRBinlogRecord *record, int *err_no);
 
+    int inode_index_get_xattr(FDIRServerDentry *dentry,
+            const string_t *name, string_t *value);
+
     FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
             const int64_t offset, const int64_t length, const bool block,
             const FlockOwner *owner, struct fast_task_info *task, int *result);

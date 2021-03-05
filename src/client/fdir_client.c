@@ -292,3 +292,21 @@ int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_namespace_stat,
             ns, stat);
 }
+
+int fdir_client_get_xattr_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const string_t *name,
+        string_t *value, const int size)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_path,
+            fullname, name, value, size);
+}
+
+int fdir_client_get_xattr_by_inode(FDIRClientContext *client_ctx,
+        const int64_t inode, const string_t *name,
+        string_t *value, const int size)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_inode,
+            inode, name, value, size);
+}

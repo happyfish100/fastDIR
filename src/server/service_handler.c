@@ -1081,6 +1081,7 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->data_version = 0;
     RECORD->inode = dentry->inode;
     RECORD->ns = ns;
     RECORD->hash_code = simple_hash(ns.str, ns.len);
@@ -2891,6 +2892,108 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
+static int service_do_getxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const string_t *name,
+        const int resp_cmd)
+{
+    int result;
+    string_t value;
+
+    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
+        return result;
+    }
+
+    RESPONSE.header.cmd = resp_cmd;
+    RESPONSE.header.body_len = value.len;
+    memcpy(REQUEST.body, value.str, value.len);
+    TASK_ARG->context.response_done = true;
+    return 0;
+}
+
+static int parse_xattr_name_info(struct fast_task_info *task,
+        const int fixed_size, const bool check_whole_body_len,
+        string_t *name)
+{
+    int result;
+    int expect_blen;
+    FDIRProtoNameInfo *proto_name;
+
+    if ((result=server_check_min_body_length(task,
+                    fixed_size + 1)) != 0)
+    {
+        return result;
+    }
+
+    proto_name = (FDIRProtoNameInfo *)REQUEST.body;
+    name->len = proto_name->len;
+    name->str = proto_name->str;
+    if (check_whole_body_len) {
+        expect_blen = fixed_size + name->len;
+        if (REQUEST.header.body_len != expect_blen) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "request body length: %d != expect: %d",
+                    REQUEST.header.body_len, expect_blen);
+            return EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+static int service_get_xattr_by_path(struct fast_task_info *task)
+{
+    int result;
+    int fixed_size;
+    string_t name;
+    FDIRDEntryFullName fullname;
+    FDIRServerDentry *dentry;
+
+    fixed_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    false, &name)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoNameInfo) + name.len,
+                    &fullname)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    return service_do_getxattr(task, dentry, &name,
+            FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP);
+}
+
+static int service_get_xattr_by_inode(struct fast_task_info *task)
+{
+    int result;
+    int fixed_size;
+    int64_t inode;
+    string_t name;
+    FDIRServerDentry *dentry;
+
+    fixed_size = 8;
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    true, &name)) != 0)
+    {
+        return result;
+    }
+
+    inode = buff2long(REQUEST.body + sizeof(FDIRProtoNameInfo) + name.len);
+    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    return service_do_getxattr(task, dentry, &name,
+            FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP);
+}
+
 int service_deal_task(struct fast_task_info *task, const int stage)
 {
     int result;
@@ -3074,6 +3177,16 @@ int service_deal_task(struct fast_task_info *task, const int stage)
             case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ:
                 if ((result=service_check_master(task)) == 0) {
                     result = service_deal_sys_unlock_dentry(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_get_xattr_by_path(task);
+                }
+                break;
+            case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
+                if ((result=service_check_readable(task)) == 0) {
+                    result = service_get_xattr_by_inode(task);
                 }
                 break;
             case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:

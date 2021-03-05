@@ -160,6 +160,11 @@ typedef struct fdir_proto_inode_info {
     char ns_str[0];       //namespace for hash code
 } FDIRProtoInodeInfo;
 
+typedef struct fdir_proto_name_info {
+    unsigned char len;
+    char str[0];
+} FDIRProtoNameInfo;
+
 typedef struct fdir_proto_create_dentry_front {
     char mode[4];
     char uid[4];
@@ -401,6 +406,16 @@ typedef struct fdir_proto_set_xattr_by_inode_req {
     FDIRProtoSetXAttrFields fields;
     FDIRProtoInodeInfo ino;
 } FDIRProtoSetXAttrByInodeReq;
+
+typedef struct fdir_proto_get_xattr_by_path_req {
+    FDIRProtoNameInfo name;
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoGetXAttrByPathReq;
+
+typedef struct fdir_proto_get_xattr_by_node_req {
+    FDIRProtoNameInfo name;
+    char inode[8];
+} FDIRProtoGetXAttrByInodeReq;
 
 typedef struct fdir_proto_service_stat_resp {
     char server_id[4];
