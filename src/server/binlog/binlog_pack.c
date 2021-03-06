@@ -153,6 +153,8 @@ static inline const char *get_operation_label(const int operation)
             return BINLOG_OP_UPDATE_DENTRY_STR;
         case BINLOG_OP_SET_XATTR_INT:
             return BINLOG_OP_SET_XATTR_STR;
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            return BINLOG_OP_REMOVE_XATTR_STR;
         default:
             return BINLOG_OP_NONE_STR;
     }
@@ -180,6 +182,10 @@ static inline int get_operation_integer(const string_t *operation)
                 BINLOG_OP_SET_XATTR_LEN))
     {
         return BINLOG_OP_SET_XATTR_INT;
+    } else if (fc_string_equal2(operation, BINLOG_OP_REMOVE_XATTR_STR,
+                BINLOG_OP_REMOVE_XATTR_LEN))
+    {
+        return BINLOG_OP_REMOVE_XATTR_INT;
     } else {
         return BINLOG_OP_NONE_INT;
     }
@@ -348,21 +354,30 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
                 BINLOG_RECORD_FIELD_NAME_SRC_INODE, record->hdlink.src_inode);
     }
 
-    if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_SRC_PARENT,
-                record->rename.src.pname.parent_inode);
+    switch (record->operation) {
+        case BINLOG_OP_RENAME_DENTRY_INT:
+            fast_buffer_append(buffer, " %s=%"PRId64,
+                    BINLOG_RECORD_FIELD_NAME_SRC_PARENT,
+                    record->rename.src.pname.parent_inode);
 
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
-                record->rename.src.pname.name);
+            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
+                    record->rename.src.pname.name);
 
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_FLAGS, record->flags);
-    } else if (record->operation == BINLOG_OP_SET_XATTR_INT) {
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
-                record->xattr.key);
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_VALUE,
-                record->xattr.value);
+            fast_buffer_append(buffer, " %s=%d",
+                    BINLOG_RECORD_FIELD_NAME_FLAGS, record->flags);
+            break;
+        case BINLOG_OP_SET_XATTR_INT:
+            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
+                    record->xattr.key);
+            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_VALUE,
+                    record->xattr.value);
+            break;
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
+                    record->xattr.key);
+            break;
+        default:
+            break;
     }
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,

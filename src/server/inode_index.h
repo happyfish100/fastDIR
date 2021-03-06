@@ -52,8 +52,10 @@ extern "C" {
             const FDIRBinlogRecord *record);
 
     FDIRServerDentry *inode_index_set_xattr(
-            FDIRDataThreadContext *db_context,
             const FDIRBinlogRecord *record, int *err_no);
+
+    FDIRServerDentry *inode_index_remove_xattr(const int64_t inode,
+            const string_t *name, int *err_no);
 
     int inode_index_get_xattr(FDIRServerDentry *dentry,
             const string_t *name, string_t *value);

@@ -112,6 +112,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "SET_XATTR_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP:
             return "SET_XATTR_BY_INODE_RESP";
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
+            return "REMOVE_XATTR_BY_PATH_REQ";
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP:
+            return "REMOVE_XATTR_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ:
+            return "REMOVE_XATTR_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP:
+            return "REMOVE_XATTR_BY_INODE_RESP";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
             return "LOOKUP_INODE_BY_PATH_REQ";
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP:

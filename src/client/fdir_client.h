@@ -133,6 +133,12 @@ int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const key_value_pair_t
         *xattr, const int flags);
 
+int fdir_client_remove_xattr_by_path(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const string_t *name);
+
+int fdir_client_remove_xattr_by_inode(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, string_t *name);
+
 int fdir_client_get_xattr_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const string_t *name,
         string_t *value, const int size);

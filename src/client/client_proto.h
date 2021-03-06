@@ -245,6 +245,14 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, const key_value_pair_t *xattr,
         const int flags);
 
+int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const
+        FDIRDEntryFullName *fullname, const string_t *name);
+
+int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const int64_t inode, const string_t *name);
+
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const string_t *name, string_t *value, const int size);

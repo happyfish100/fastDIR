@@ -347,8 +347,13 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             break;
         case BINLOG_OP_SET_XATTR_INT:
             record->me.dentry = inode_index_set_xattr(
-                    thread_ctx, record, &result);
+                    record, &result);
             ignore_errno = 0;
+            break;
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            record->me.dentry = inode_index_remove_xattr(
+                    record->inode, &record->xattr.key, &result);
+            ignore_errno = ENODATA;
             break;
         default:
             ignore_errno = 0;

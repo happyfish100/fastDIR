@@ -1609,6 +1609,18 @@ static int parse_xattr_fields(struct fast_task_info *task,
     return 0;
 }
 
+static inline int service_do_setxattr(struct fast_task_info *task,
+        const key_value_pair_t *xattr, const int flags,
+        const int resp_cmd)
+{
+    RECORD->options.flags = 0;
+    RECORD->flags = flags;
+    RECORD->xattr = *xattr;
+    RECORD->operation = BINLOG_OP_SET_XATTR_INT;
+    RESPONSE.header.cmd = resp_cmd;
+    return push_record_to_data_thread_queue(task);
+}
+
 static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 {
     int result;
@@ -1629,7 +1641,7 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
     }
 
     min_body_len = sizeof(FDIRProtoSetXAttrByPathReq) +
-            xattr.key.len + xattr.value.len + 2;
+        xattr.key.len + xattr.value.len + 2;
     if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d is too small which < %d",
@@ -1652,13 +1664,9 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    RECORD->options.flags = 0;
     RECORD->inode = RECORD->me.dentry->inode;
-    RECORD->flags = buff2short(fields->flags);
-    RECORD->xattr = xattr;
-    RECORD->operation = BINLOG_OP_SET_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP;
-    return push_record_to_data_thread_queue(task);
+    return service_do_setxattr(task, &xattr, buff2short(fields->flags),
+            FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
 }
 
 static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
@@ -1683,7 +1691,7 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
     }
 
     min_body_len = sizeof(FDIRProtoSetXAttrByInodeReq) +
-            xattr.key.len + xattr.value.len + 1;
+        xattr.key.len + xattr.value.len + 1;
     if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d is too small which < %d",
@@ -1699,12 +1707,138 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
+    return service_do_setxattr(task, &xattr, buff2short(fields->flags),
+            FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
+}
+
+static int parse_xattr_name_info(struct fast_task_info *task,
+        const int fixed_size, const bool check_whole_body_len,
+        string_t *name)
+{
+    int result;
+    int expect_blen;
+    FDIRProtoNameInfo *proto_name;
+
+    if ((result=server_check_min_body_length(task,
+                    fixed_size + 1)) != 0)
+    {
+        return result;
+    }
+
+    proto_name = (FDIRProtoNameInfo *)REQUEST.body;
+    name->len = proto_name->len;
+    name->str = proto_name->str;
+    if (check_whole_body_len) {
+        expect_blen = fixed_size + name->len;
+        if (REQUEST.header.body_len != expect_blen) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "request body length: %d != expect: %d",
+                    REQUEST.header.body_len, expect_blen);
+            return EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+static inline int service_do_removexattr(struct fast_task_info *task,
+        const string_t *name, const int resp_cmd)
+{
     RECORD->options.flags = 0;
-    RECORD->flags = buff2short(fields->flags);
-    RECORD->xattr = xattr;
-    RECORD->operation = BINLOG_OP_SET_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP;
+    RECORD->xattr.key = *name;
+    RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
+    RESPONSE.header.cmd = resp_cmd;
     return push_record_to_data_thread_queue(task);
+}
+
+static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
+{
+    int result;
+    int min_body_len;
+    int fields_part_len;;
+    int fixed_size;
+    string_t name;
+
+    if ((result=server_check_min_body_length(task,
+                    sizeof(FDIRProtoRemoveXAttrByPathReq) + 3)) != 0)
+    {
+        return result;
+    }
+
+    fixed_size = sizeof(FDIRProtoRemoveXAttrByPathReq) + 1;
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    false, &name)) != 0)
+    {
+        return result;
+    }
+
+    min_body_len = sizeof(FDIRProtoRemoveXAttrByPathReq) + name.len + 2;
+    if (REQUEST.header.body_len < min_body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d is too small which < %d",
+                REQUEST.header.body_len, min_body_len);
+        return EINVAL;
+    }
+
+    fields_part_len = sizeof(FDIRProtoNameInfo) + name.len;
+    if ((result=server_parse_dentry_for_update(task,
+                    fields_part_len, false)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find_by_pname(RECORD->me.parent, &RECORD->
+                    me.pname.name, &RECORD->me.dentry)) != 0)
+    {
+        free_record_object(task);
+        return result;
+    }
+
+    RECORD->inode = RECORD->me.dentry->inode;
+    return service_do_removexattr(task, &name,
+            FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
+}
+
+static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
+{
+    string_t name;
+    int min_body_len;
+    int front_part_size;
+    int fixed_size;
+    int result;
+
+    if ((result=server_check_body_length(task,
+                    sizeof(FDIRProtoRemoveXAttrByInodeReq) + 2,
+                    sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1 +
+                    NAME_MAX)) != 0)
+    {
+        return result;
+    }
+
+    fixed_size = sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1;
+    if ((result=parse_xattr_name_info(task, fixed_size,
+                    false, &name)) != 0)
+    {
+        return result;
+    }
+
+    min_body_len = sizeof(FDIRProtoRemoveXAttrByInodeReq) + name.len + 1;
+    if (REQUEST.header.body_len < min_body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d is too small which < %d",
+                REQUEST.header.body_len, min_body_len);
+        return EINVAL;
+    }
+
+    front_part_size = sizeof(FDIRProtoNameInfo) + name.len;
+    if ((result=server_parse_inode_for_update(
+                    task, front_part_size)) != 0)
+    {
+        return result;
+    }
+
+    return service_do_removexattr(task, &name,
+            FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
 }
 
 static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
@@ -2892,36 +3026,6 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return server_list_dentry_output(task);
 }
 
-static int parse_xattr_name_info(struct fast_task_info *task,
-        const int fixed_size, const bool check_whole_body_len,
-        string_t *name)
-{
-    int result;
-    int expect_blen;
-    FDIRProtoNameInfo *proto_name;
-
-    if ((result=server_check_min_body_length(task,
-                    fixed_size + 1)) != 0)
-    {
-        return result;
-    }
-
-    proto_name = (FDIRProtoNameInfo *)REQUEST.body;
-    name->len = proto_name->len;
-    name->str = proto_name->str;
-    if (check_whole_body_len) {
-        expect_blen = fixed_size + name->len;
-        if (REQUEST.header.body_len != expect_blen) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "request body length: %d != expect: %d",
-                    REQUEST.header.body_len, expect_blen);
-            return EINVAL;
-        }
-    }
-
-    return 0;
-}
-
 static int service_do_getxattr(struct fast_task_info *task,
         FDIRServerDentry *dentry, const string_t *name,
         const int resp_cmd)
@@ -3167,6 +3271,16 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                 result = service_process_update(task,
                         service_deal_set_xattr_by_inode,
                         FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
+                break;
+            case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
+                result = service_process_update(task,
+                        service_deal_remove_xattr_by_path,
+                        FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
+                break;
+            case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ:
+                result = service_process_update(task,
+                        service_deal_remove_xattr_by_inode,
+                        FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
                 break;
             case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
                 if ((result=service_check_readable(task)) == 0) {

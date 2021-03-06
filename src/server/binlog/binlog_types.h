@@ -32,6 +32,7 @@
 #define BINLOG_OP_RENAME_DENTRY_INT  3
 #define BINLOG_OP_UPDATE_DENTRY_INT  4
 #define BINLOG_OP_SET_XATTR_INT      5
+#define BINLOG_OP_REMOVE_XATTR_INT   6
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -39,12 +40,14 @@
 #define BINLOG_OP_RENAME_DENTRY_STR  "rn"
 #define BINLOG_OP_UPDATE_DENTRY_STR  "up"
 #define BINLOG_OP_SET_XATTR_STR      "sx"
+#define BINLOG_OP_REMOVE_XATTR_STR   "rx"
 
 #define BINLOG_OP_CREATE_DENTRY_LEN  (sizeof(BINLOG_OP_CREATE_DENTRY_STR) - 1)
 #define BINLOG_OP_REMOVE_DENTRY_LEN  (sizeof(BINLOG_OP_REMOVE_DENTRY_STR) - 1)
 #define BINLOG_OP_RENAME_DENTRY_LEN  (sizeof(BINLOG_OP_RENAME_DENTRY_STR) - 1)
 #define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
 #define BINLOG_OP_SET_XATTR_LEN      (sizeof(BINLOG_OP_SET_XATTR_STR) - 1)
+#define BINLOG_OP_REMOVE_XATTR_LEN   (sizeof(BINLOG_OP_REMOVE_XATTR_STR) - 1)
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
@@ -135,6 +138,8 @@ static inline const char *get_operation_caption(const int operation)
             return "UPDATE";
         case BINLOG_OP_SET_XATTR_INT:
             return "SET_XATTR";
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            return "REMOVE_XATTR";
         default:
             return "UNKOWN";
     }

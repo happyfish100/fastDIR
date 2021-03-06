@@ -387,6 +387,36 @@ static key_value_pair_t *get_xattr(FDIRServerDentry *dentry,
     return NULL;
 }
 
+static int remove_xattr(FDIRServerDentry *dentry, const string_t *name)
+{
+    key_value_pair_t *kv;
+    key_value_pair_t *end;
+
+    if (dentry->kv_array == NULL) {
+        return ENODATA;
+    }
+
+    end = dentry->kv_array->elts + dentry->kv_array->count;
+    for (kv=dentry->kv_array->elts; kv<end; kv++) {
+        if (fc_string_equal(name, &kv->key)) {
+            break;
+        }
+    }
+
+    if (kv == end) {
+        return ENODATA;
+    }
+
+    server_delay_free_str(dentry->context, kv->key.str);
+    server_delay_free_str(dentry->context, kv->value.str);
+    for (kv=kv+1; kv<end; kv++) {
+        *(kv - 1) = *kv;
+    }
+    dentry->kv_array->count--;
+
+    return 0;
+}
+
 static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
         *context, FDIRServerDentry *dentry, int *err_no)
 {
@@ -430,8 +460,7 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
     return dentry->kv_array->elts + dentry->kv_array->count;
 }
 
-static int set_xattr(FDIRDataThreadContext *db_context,
-        FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
+static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
 {
     int result;
     bool new_create;
@@ -448,12 +477,12 @@ static int set_xattr(FDIRDataThreadContext *db_context,
             return ENODATA;
         }
 
-        if ((kv=check_alloc_kvpair(&db_context->dentry_context,
+        if ((kv=check_alloc_kvpair(dentry->context,
                         dentry, &result)) == NULL)
         {
             return result;
         }
-        if ((result=dentry_strdup(&db_context->dentry_context,
+        if ((result=dentry_strdup(dentry->context,
                         &kv->key, &record->xattr.key)) != 0)
         {
             return result;
@@ -462,11 +491,11 @@ static int set_xattr(FDIRDataThreadContext *db_context,
         new_create = true;
     }
 
-    if ((result=dentry_strdup(&db_context->dentry_context,
+    if ((result=dentry_strdup(dentry->context,
                     &value, &record->xattr.value)) != 0)
     {
         if (new_create) {
-            dentry_strfree(&db_context->dentry_context, &kv->key);
+            dentry_strfree(dentry->context, &kv->key);
         }
         return result;
     }
@@ -482,7 +511,6 @@ static int set_xattr(FDIRDataThreadContext *db_context,
 }
 
 FDIRServerDentry *inode_index_set_xattr(
-        FDIRDataThreadContext *db_context,
         const FDIRBinlogRecord *record, int *err_no)
 {
     FDIRServerDentry *dentry;
@@ -491,7 +519,27 @@ FDIRServerDentry *inode_index_set_xattr(
     PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, record->inode);
     if (dentry != NULL) {
-        if ((*err_no=set_xattr(db_context, dentry, record)) != 0) {
+        if ((*err_no=set_xattr(dentry, record)) != 0) {
+            dentry = NULL;
+        }
+    } else {
+        *err_no = ENOENT;
+    }
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+
+    return dentry;
+}
+
+FDIRServerDentry *inode_index_remove_xattr(const int64_t inode,
+        const string_t *name, int *err_no)
+{
+    FDIRServerDentry *dentry;
+
+    SET_INODE_HT_BUCKET_AND_CTX(inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    dentry = find_inode_entry(bucket, inode);
+    if (dentry != NULL) {
+        if ((*err_no=remove_xattr(dentry, name)) != 0) {
             dentry = NULL;
         }
     } else {

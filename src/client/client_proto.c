@@ -1335,6 +1335,89 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
     return result;
 }
 
+int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const
+        FDIRDEntryFullName *fullname, const string_t *name)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoRemoveXAttrByPathReq *req;
+    FDIRProtoDEntryInfo *proto_dentry;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(SFProtoIdempotencyAdditionalHeader) +
+        sizeof(FDIRProtoRemoveXAttrByPathReq) +
+        2 * NAME_MAX + PATH_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    CLIENT_PROTO_SET_REQ(out_buff, header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+        return result;
+    }
+
+    proto_dentry = (FDIRProtoDEntryInfo *)(req->name.str + name->len);
+    if ((result=client_check_set_proto_dentry(fullname,
+                    proto_dentry)) != 0)
+    {
+        return result;
+    }
+
+    out_bytes += name->len + fullname->ns.len + fullname->path.len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP)) != 0)
+    {
+        sf_log_network_error_for_update(&response, conn, result);
+    }
+
+    return result;
+}
+
+int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
+        const int64_t inode, const string_t *name)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoRemoveXAttrByInodeReq *req;
+    FDIRProtoInodeInfo *ino_proto;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(SFProtoIdempotencyAdditionalHeader) +
+        sizeof(FDIRProtoRemoveXAttrByInodeReq) + 2 * NAME_MAX];
+    SFResponseInfo response;
+    int out_bytes;
+    int result;
+
+    CLIENT_PROTO_SET_REQ(out_buff, header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+        return result;
+    }
+
+    ino_proto = (FDIRProtoInodeInfo *)(req->name.str + name->len);
+    if ((result=client_check_set_proto_inode_info(
+                    ns, inode, ino_proto)) != 0)
+    {
+        return result;
+    }
+
+    out_bytes += name->len + ns->len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn, out_buff, out_bytes,
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP)) != 0)
+    {
+        sf_log_network_error_for_update(&response, conn, result);
+    }
+
+    return result;
+}
+
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const string_t *name, string_t *value, const int size)
