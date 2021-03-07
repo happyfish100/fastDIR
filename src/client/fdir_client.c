@@ -203,7 +203,7 @@ int fdir_client_remove_xattr_by_path(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_remove_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, string_t *name)
+        const string_t *ns, const int64_t inode, const string_t *name)
 {
     const SFConnectionParameters *connection_params;
 

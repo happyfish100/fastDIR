@@ -1593,6 +1593,11 @@ static int parse_xattr_fields(struct fast_task_info *task,
                 xattr->key.len, NAME_MAX);
         return ENAMETOOLONG;
     }
+    if (memchr(xattr->key.str, '\0', xattr->key.len) != NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "invalid xattr name, including special char \\0 (0x0)");
+        return EINVAL;
+    }
 
     if (xattr->value.len < 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,

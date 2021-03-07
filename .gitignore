@@ -39,6 +39,8 @@ src/client/tools/fdir_cluster_stat
 src/client/tools/fdir_service_stat
 src/client/tools/fdir_stat
 src/client/tools/fdir_rename
+src/client/tools/fdir_setxattr
+src/client/tools/fdir_getxattr
 src/client/test/test_mkdir
 src/client/test/test_flock
 

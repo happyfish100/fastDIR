@@ -8,7 +8,7 @@ TARGET_PATH = $(TARGET_PREFIX)/bin
 STATIC_OBJS =
 
 ALL_PRGS = fdir_mkdir fdir_remove fdir_rename fdir_stat fdir_list \
-           fdir_service_stat fdir_cluster_stat
+           fdir_setxattr fdir_getxattr fdir_service_stat fdir_cluster_stat
 
 all: $(STATIC_OBJS) $(ALL_PRGS)
 

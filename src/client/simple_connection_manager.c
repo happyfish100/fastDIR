@@ -230,6 +230,7 @@ static void copy_to_server_group_array(FDIRClientContext *client_ctx,
     }
     server_group->count = server_count;
 
+    /*
     {
         printf("dir_server count: %d\n", server_group->count);
         for (conn=server_group->servers; conn<server_group->servers+
@@ -238,6 +239,7 @@ static void copy_to_server_group_array(FDIRClientContext *client_ctx,
             printf("dir_server=%s:%u\n", conn->ip_addr, conn->port);
         }
     }
+    */
 }
 
 int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
