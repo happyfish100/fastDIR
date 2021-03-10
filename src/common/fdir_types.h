@@ -20,11 +20,7 @@
 #include "fastcommon/server_id_func.h"
 #include "sf/sf_types.h"
 
-#define FDIR_ERROR_INFO_SIZE   256
 #define FDIR_REPLICA_KEY_SIZE    8
-
-#define FDIR_NETWORK_TIMEOUT_DEFAULT    30
-#define FDIR_CONNECT_TIMEOUT_DEFAULT     5
 
 #define FDIR_DEFAULT_BINLOG_BUFFER_SIZE (64 * 1024)
 

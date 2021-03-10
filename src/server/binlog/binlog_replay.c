@@ -135,7 +135,7 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     const char *rend;
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *rec_end;
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
     int result;
 
     *error_info = '\0';

@@ -49,6 +49,7 @@
 #include "data_thread.h"
 #include "data_loader.h"
 #include "cluster_info.h"
+#include "common_handler.h"
 #include "service_handler.h"
 #include "cluster_handler.h"
 
@@ -170,7 +171,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        fdir_proto_init();
+        common_handler_init();
         //sched_print_all_entries();
 
         result = sf_service_init_ex2(&CLUSTER_SF_CTX,

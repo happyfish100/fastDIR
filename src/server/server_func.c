@@ -83,26 +83,6 @@ static int server_load_admin_config(IniContext *ini_context)
     return 0;
 }
 
-static int get_bytes_item_config(IniContext *ini_context,
-        const char *filename, const char *item_name,
-        const int64_t default_value, int64_t *bytes)
-{
-    int result;
-    char *value;
-
-    value = iniGetStrValue(NULL, item_name, ini_context);
-    if (value == NULL) {
-        *bytes = default_value;
-        return 0;
-    }
-    if ((result=parse_bytes(value, 1, bytes)) != 0) {
-        logError("file: "__FILE__", line: %d, "
-                "config file: %s, item: %s, value: %s is invalid",
-                __LINE__, filename, item_name, value);
-    }
-    return result;
-}
-
 static void log_cluster_server_config()
 {
     FastBuffer buffer;
@@ -296,16 +276,11 @@ static int load_data_path_config(IniContext *ini_context, const char *filename)
 static int load_dentry_max_data_size(IniContext *ini_context,
         const char *filename)
 {
-    int64_t bytes;
-    int result;
+    IniFullContext ini_ctx;
 
-    if ((result=get_bytes_item_config(ini_context, filename,
-                    "dentry_max_data_size", 256, &bytes)) != 0)
-    {
-        return result;
-    }
-
-    DENTRY_MAX_DATA_SIZE = bytes;
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, ini_context);
+    DENTRY_MAX_DATA_SIZE = iniGetByteCorrectValue(&ini_ctx,
+            "dentry_max_data_size", 256, 0, 1024 * 1024);
     if (DENTRY_MAX_DATA_SIZE <= 0) {
         logError("file: "__FILE__", line: %d, "
                 "config file: %s , dentry_max_data_size: %d <= 0",
@@ -376,15 +351,12 @@ static void server_log_configs()
 static int load_binlog_buffer_size(IniContext *ini_context,
         const char *filename)
 {
+    IniFullContext ini_ctx;
     int64_t bytes;
-    int result;
 
-    if ((result=get_bytes_item_config(ini_context, filename,
-                    "binlog_buffer_size", FDIR_DEFAULT_BINLOG_BUFFER_SIZE,
-                    &bytes)) != 0)
-    {
-        return result;
-    }
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, ini_context);
+    bytes = iniGetByteCorrectValue(&ini_ctx, "binlog_buffer_size",
+            FDIR_DEFAULT_BINLOG_BUFFER_SIZE, 1, 256 * 1024 * 1024);
     if (bytes < 4096) {
         logWarning("file: "__FILE__", line: %d, "
                 "config file: %s , binlog_buffer_size: %d is too small, "

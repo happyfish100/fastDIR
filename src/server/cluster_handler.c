@@ -166,7 +166,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -277,7 +277,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         int2buff(0, resp_header->server_count);
     }
 
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     return 0;
@@ -588,7 +588,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int2buff(binlog_count, resp->binlog_count);
     int2buff(binlog_length, resp->binlog_length);
 
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
     RESPONSE.header.body_len = sizeof(FDIRProtoJoinSlaveResp) + binlog_length;
     return 0;
@@ -606,7 +606,7 @@ static void cluster_notify_slave_quit(struct fast_task_info *task,
     int2buff(binlog_count, req->binlog_count);
     long2buff(first_unmatched_dv, req->first_unmatched_dv);
     RESPONSE.header.cmd = FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 }
 
 static int cluster_check_binlog_consistency(
@@ -628,7 +628,7 @@ static int cluster_check_binlog_consistency(
 
             cluster_notify_slave_quit(task, new_binlog_count,
                     first_unmatched_dv);
-            TASK_ARG->context.need_response = true;
+            TASK_CTX.common.need_response = true;
         } else {
             sprintf(prompt, "some mistake happen, "
                     "error code is %d", result);
@@ -755,7 +755,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
             }
         }
     } else {
-        handler_init_task_context(task);
+        sf_proto_init_task_context(task, &TASK_CTX.common);
 
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
@@ -779,7 +779,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 result = cluster_deal_join_slave_req(task);
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
-                TASK_ARG->context.need_response = false;
+                TASK_CTX.common.need_response = false;
                 result = cluster_deal_join_slave_resp(task);
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
@@ -788,7 +788,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                         result *= -1;  //force close connection
                     }
                 }
-                TASK_ARG->context.need_response = false;
+                TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
                 if ((result=cluster_deal_push_binlog_resp(task)) != 0) {
@@ -796,15 +796,15 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                         result *= -1;  //force close connection
                     }
                 }
-                TASK_ARG->context.need_response = false;
+                TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
                 result = cluster_deal_notify_slave_quit(task);
-                TASK_ARG->context.need_response = false;
+                TASK_CTX.common.need_response = false;
                 break;
             case SF_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
-                TASK_ARG->context.need_response = false;
+                TASK_CTX.common.need_response = false;
                 break;
             default:
                 RESPONSE.error.length = sprintf(
@@ -819,7 +819,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
         return 0;
     } else {
         RESPONSE_STATUS = result;
-        return handler_deal_task_done(task);
+        return sf_proto_deal_task_done(task, &TASK_CTX.common);
     }
 }
 

@@ -1420,7 +1420,8 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        const string_t *name, string_t *value, const int size)
+        const string_t *name, const int enoattr_log_level,
+        string_t *value, const int size)
 {
     FDIRProtoHeader *header;
     FDIRProtoNameInfo *nm_proto;
@@ -1430,6 +1431,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         2 * NAME_MAX + PATH_MAX];
     SFResponseInfo response;
     int out_bytes;
+    int log_level;
     int result;
 
     header = (FDIRProtoHeader *)out_buff;
@@ -1457,7 +1459,9 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP, value->str,
                     size, &value->len)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        log_level = (result == ENOENT || result == ENODATA) ?
+            enoattr_log_level : LOG_ERR;
+        sf_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -1465,7 +1469,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const int64_t inode, const string_t *name,
-        string_t *value, const int size)
+        const int enoattr_log_level, string_t *value, const int size)
 {
     FDIRProtoHeader *header;
     FDIRProtoNameInfo *nm_proto;
@@ -1475,6 +1479,7 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     SFResponseInfo response;
     int out_bytes;
     int result;
+    int log_level;
 
     header = (FDIRProtoHeader *)out_buff;
     nm_proto = (FDIRProtoNameInfo *)(header + 1);
@@ -1494,7 +1499,9 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP, value->str,
                     size, &value->len)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        log_level = (result == ENOENT || result == ENODATA) ?
+            enoattr_log_level : LOG_ERR;
+        sf_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;

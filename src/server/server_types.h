@@ -59,23 +59,24 @@
 #define FDIR_DELAY_FREE_SECONDS      300
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
-#define REQUEST           TASK_ARG->context.request
-#define RESPONSE          TASK_ARG->context.response
+#define TASK_CTX          TASK_ARG->context
+#define REQUEST           TASK_CTX.common.request
+#define RESPONSE          TASK_CTX.common.response
 #define RESPONSE_STATUS   RESPONSE.header.status
 #define REQUEST_STATUS    REQUEST.header.status
-#define RECORD            TASK_ARG->context.service.record
-#define RBUFFER           TASK_ARG->context.service.rbuffer
-#define FTASK_HEAD_PTR    &TASK_ARG->context.service.ftasks
-#define SYS_LOCK_TASK     TASK_ARG->context.service.sys_lock_task
-#define WAITING_RPC_COUNT TASK_ARG->context.service.waiting_rpc_count
-#define DENTRY_LIST_CACHE TASK_ARG->context.service.dentry_list_cache
+#define RECORD            TASK_CTX.service.record
+#define RBUFFER           TASK_CTX.service.rbuffer
+#define FTASK_HEAD_PTR    &TASK_CTX.service.ftasks
+#define SYS_LOCK_TASK     TASK_CTX.service.sys_lock_task
+#define WAITING_RPC_COUNT TASK_CTX.service.waiting_rpc_count
+#define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
-#define SERVER_TASK_TYPE  TASK_ARG->context.task_type
-#define CLUSTER_PEER      TASK_ARG->context.shared.cluster.peer
-#define CLUSTER_REPLICA   TASK_ARG->context.shared.cluster.replica
-#define CLUSTER_CONSUMER_CTX  TASK_ARG->context.shared.cluster.consumer_ctx
-#define IDEMPOTENCY_CHANNEL   TASK_ARG->context.shared.service.idempotency_channel
-#define IDEMPOTENCY_REQUEST   TASK_ARG->context.service.idempotency_request
+#define SERVER_TASK_TYPE  TASK_CTX.task_type
+#define CLUSTER_PEER      TASK_CTX.shared.cluster.peer
+#define CLUSTER_REPLICA   TASK_CTX.shared.cluster.replica
+#define CLUSTER_CONSUMER_CTX  TASK_CTX.shared.cluster.consumer_ctx
+#define IDEMPOTENCY_CHANNEL   TASK_CTX.shared.service.idempotency_channel
+#define IDEMPOTENCY_REQUEST   TASK_CTX.service.idempotency_request
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
@@ -224,14 +225,8 @@ struct flock_task;
 struct sys_lock_task;
 
 typedef struct server_task_arg {
-    int64_t req_start_time;
-
     struct {
-        SFRequestInfo request;
-        SFResponseInfo response;
-        bool response_done;
-        char log_level;   //level for error log
-        bool need_response;
+        SFCommonTaskContext common;
         int task_type;
 
         union {

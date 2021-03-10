@@ -181,7 +181,7 @@ static int service_deal_client_join(struct fast_task_info *task)
             join_resp->buffer_size);
     RESPONSE.header.body_len = sizeof(FDIRProtoClientJoinResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -224,7 +224,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoServiceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SERVICE_STAT_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 
     return 0;
 }
@@ -261,7 +261,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
 
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -312,7 +312,7 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -345,7 +345,7 @@ static int service_deal_get_master(struct fast_task_info *task)
     short2buff(addr->conn.port, resp->port);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 
     return 0;
 }
@@ -387,7 +387,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
 
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_GROUP_SERVERS_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -430,7 +430,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
 
     RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_SLAVES_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 
     return 0;
 }
@@ -492,7 +492,7 @@ static int service_deal_get_readable_server(struct fast_task_info *task)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 
     return 0;
 }
@@ -797,7 +797,7 @@ static inline void dstat_output(struct fast_task_info *task,
     long2buff(inode, resp->inode);
     fdir_proto_pack_dentry_stat_ex(stat, &resp->stat, true);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 }
 
 static inline void dentry_stat_output(struct fast_task_info *task,
@@ -1104,7 +1104,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         if (request == NULL) {
             *deal_done = true;
             if (result == SF_RETRIABLE_ERROR_CHANNEL_INVALID) {
-                TASK_ARG->context.log_level = LOG_DEBUG;
+                TASK_CTX.common.log_level = LOG_DEBUG;
             }
             return result;
         }
@@ -1123,7 +1123,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                     }
                 }
             } else {
-                TASK_ARG->context.log_level = LOG_WARNING;
+                TASK_CTX.common.log_level = LOG_WARNING;
             }
 
             fast_mblock_free_object(request->allocator, request);
@@ -1878,7 +1878,7 @@ static int readlink_output(struct fast_task_info *task,
     RESPONSE.header.cmd = resp_cmd;
     RESPONSE.header.body_len = dentry->link.len;
     memcpy(REQUEST.body, dentry->link.str, dentry->link.len);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -1988,7 +1988,7 @@ static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
     resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
     long2buff(dentry->inode, resp->inode);
     RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -2072,7 +2072,7 @@ static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
         resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
         long2buff(dentry->inode, resp->inode);
         RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
-        TASK_ARG->context.response_done = true;
+        TASK_CTX.common.response_done = true;
     }
     return result;
 }
@@ -2662,7 +2662,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
         }
 
         RESPONSE.header.body_len = sizeof(FDIRProtoGetlkDEntryResp);
-        TASK_ARG->context.response_done = true;
+        TASK_CTX.common.response_done = true;
     }
 
     return result;
@@ -2677,7 +2677,7 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
     long2buff(dentry->stat.size, resp->size);
     long2buff(dentry->stat.space_end, resp->space_end);
     RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
 }
 
 static int handle_sys_lock_done(struct fast_task_info *task)
@@ -2947,7 +2947,7 @@ static int server_list_dentry_output(struct fast_task_info *task)
         long2buff(0, body_header->token);
     }
 
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -3039,13 +3039,18 @@ static int service_do_getxattr(struct fast_task_info *task,
     string_t value;
 
     if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
+        /*
+           RESPONSE.error.length = sprintf(RESPONSE.error.message,
+           "inode: %"PRId64", get xattr %.*s fail, %s",
+           dentry->inode, name->len, name->str, STRERROR(result));
+         */
         return result;
     }
 
     RESPONSE.header.cmd = resp_cmd;
     RESPONSE.header.body_len = value.len;
     memcpy(REQUEST.body, value.str, value.len);
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -3120,7 +3125,7 @@ static int service_do_listxattr(struct fast_task_info *task,
 
     RESPONSE.header.cmd = resp_cmd;
     RESPONSE.header.body_len = p - REQUEST.body;
-    TASK_ARG->context.response_done = true;
+    TASK_CTX.common.response_done = true;
     return 0;
 }
 
@@ -3192,7 +3197,7 @@ int service_deal_task(struct fast_task_info *task, const int stage)
             }
         }
     } else {
-        handler_init_task_context(task);
+        sf_proto_init_task_context(task, &TASK_CTX.common);
 
         switch (REQUEST.header.cmd) {
             case SF_PROTO_ACTIVE_TEST_REQ:
@@ -3415,7 +3420,7 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                                 &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL,
                                 &RESPONSE)) == 0)
                 {
-                    TASK_ARG->context.response_done = true;
+                    TASK_CTX.common.response_done = true;
                 }
                 break;
             case SF_SERVICE_PROTO_CLOSE_CHANNEL_REQ:
@@ -3443,7 +3448,7 @@ int service_deal_task(struct fast_task_info *task, const int stage)
         return 0;
     } else {
         RESPONSE_STATUS = result;
-        return handler_deal_task_done(task);
+        return sf_proto_deal_task_done(task, &TASK_CTX.common);
     }
 }
 

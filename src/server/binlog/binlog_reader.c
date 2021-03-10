@@ -197,7 +197,7 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     int result;
     int remain_len;
     char *rec_end;
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
 
     if ((result=binlog_read_to_buffer(reader, buff, size,
                     read_bytes)) != 0)
@@ -271,7 +271,7 @@ int binlog_reader_next_record(ServerBinlogReader *reader,
     int result;
     int len;
     char *rec_end;
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
 
     len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
     if (len < BINLOG_RECORD_MIN_SIZE &&
@@ -320,7 +320,7 @@ static int find_data_version(ServerBinlogReader *reader,
     bool found;
     int64_t data_version;
     char *rec_end;
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
 
     reader->position.offset = 0;
     if ((result=open_readable_binlog(reader)) != 0) {
@@ -477,7 +477,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
     int rend_offset;
     int64_t data_version;
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
     char *p;
 
     if ((result=open_readable_binlog(reader)) != 0) {
@@ -584,7 +584,7 @@ int binlog_get_first_record_version(const int file_index,
 
     char filename[PATH_MAX];
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
     char *p;
     char *rec_end;
     int result;
@@ -643,7 +643,7 @@ int binlog_get_last_record_version(const int file_index,
 {
     char filename[PATH_MAX];
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
     int result;
     int offset;
     int64_t file_size = 0;
@@ -723,7 +723,7 @@ int binlog_unpack_records(const string_t *buffer,
     char *p;
     char *end;
     char *rec_end;
-    char error_info[FDIR_ERROR_INFO_SIZE];
+    char error_info[SF_ERROR_INFO_SIZE];
     FDIRBinlogRecord *record;
 
     *count = 0;
