@@ -24,10 +24,6 @@
 #include "server_types.h"
 
 typedef struct server_global_vars {
-    struct {
-        string_t username;
-        string_t secret_key;
-    } admin;
 
     int namespace_hashtable_capacity;
 

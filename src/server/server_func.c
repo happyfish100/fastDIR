@@ -30,59 +30,6 @@
 #include "cluster_info.h"
 #include "server_func.h"
 
-static int server_load_admin_config(IniContext *ini_context)
-{
-#define ADMIN_SECTION_NAME "admin"
-
-    char *username;
-    char *secret_key;
-    char *buff;
-    char *p;
-    struct {
-        int username;
-        int secret_key;
-    } lengths;
-    int bytes;
-
-    //TODO
-    return 0;
-
-    if ((username=iniGetRequiredStrValue(ADMIN_SECTION_NAME, "username",
-                    ini_context)) == NULL)
-    {
-        return ENOENT;
-    }
-
-    if ((secret_key=iniGetRequiredStrValue(ADMIN_SECTION_NAME, "secret_key",
-                    ini_context)) == NULL)
-    {
-        return ENOENT;
-    }
-
-    g_server_global_vars.admin.username.len = strlen(username);
-    g_server_global_vars.admin.secret_key.len = strlen(secret_key);
-
-    lengths.username = g_server_global_vars.admin.username.len + 1;
-    lengths.secret_key = g_server_global_vars.admin.secret_key.len + 1;
-
-    bytes = lengths.username + lengths.secret_key;
-    buff = (char *)fc_malloc(bytes);
-    if (buff == NULL) {
-        return ENOMEM;
-    }
-
-    p = buff;
-    g_server_global_vars.admin.username.str = p;
-    p += lengths.username;
-
-    g_server_global_vars.admin.secret_key.str = p;
-    p += lengths.secret_key;
-
-    memcpy(g_server_global_vars.admin.username.str, username, lengths.username);
-    memcpy(g_server_global_vars.admin.secret_key.str, secret_key, lengths.secret_key);
-    return 0;
-}
-
 static void log_cluster_server_config()
 {
     FastBuffer buffer;
@@ -320,7 +267,6 @@ static void server_log_configs()
             "data_threads = %d, dentry_max_data_size = %d, "
             "binlog_buffer_size = %d KB, "
             "slave_binlog_check_last_rows = %d, "
-            "admin config {username: %s, secret_key: %s}, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
@@ -331,8 +277,6 @@ static void server_log_configs()
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
             SLAVE_BINLOG_CHECK_LAST_ROWS,
-            g_server_global_vars.admin.username.str,
-            g_server_global_vars.admin.secret_key.str,
             g_server_global_vars.reload_interval_ms,
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity,
@@ -411,10 +355,6 @@ int server_load_config(const char *filename)
             &ini_context, FDIR_DEFAULT_DATA_THREAD_COUNT);
     if (DATA_THREAD_COUNT <= 0) {
         DATA_THREAD_COUNT = FDIR_DEFAULT_DATA_THREAD_COUNT;
-    }
-
-    if ((result=server_load_admin_config(&ini_context)) != 0) {
-        return result;
     }
 
     if ((result=load_binlog_buffer_size(&ini_context, filename)) != 0) {
