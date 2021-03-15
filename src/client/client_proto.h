@@ -44,9 +44,13 @@ typedef struct fdir_client_dentry_array {
     FDIRClientDentry *entries;
     FDIRClientBuffer buffer;
     struct {
-        struct fast_mpool_man mpool;
+        struct {
+            struct fast_mpool_man holder;
+            struct fast_mpool_man *ptr;
+        } mpool;
         bool inited;
         bool used;
+        bool cloned;
     } name_allocator;
 } FDIRClientDentryArray;
 
@@ -278,7 +282,11 @@ int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const int64_t inode,
         FDIRClientDentryArray *array);
 
-int fdir_client_dentry_array_init(FDIRClientDentryArray *array);
+int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
+        struct fast_mpool_man *mpool);
+
+#define fdir_client_dentry_array_init(array) \
+    fdir_client_dentry_array_init_ex(array, NULL)
 
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
 

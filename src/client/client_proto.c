@@ -31,12 +31,25 @@ static inline void init_client_buffer(FDIRClientBuffer *buffer)
     buffer->size = sizeof(buffer->fixed);
 }
 
-int fdir_client_dentry_array_init(FDIRClientDentryArray *array)
+int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
+        struct fast_mpool_man *mpool)
 {
     array->alloc = array->count = 0;
     array->entries = NULL;
     init_client_buffer(&array->buffer);
-    array->name_allocator.used = array->name_allocator.inited = false;
+
+    if (mpool != NULL) {
+        array->name_allocator.mpool.ptr = mpool;
+        array->name_allocator.inited = true;
+        array->name_allocator.used = true;
+        array->name_allocator.cloned = true;
+    } else {
+        array->name_allocator.mpool.ptr =
+            &array->name_allocator.mpool.holder;
+        array->name_allocator.inited = false;
+        array->name_allocator.used = false;
+        array->name_allocator.cloned = false;
+    }
     return 0;
 }
 
@@ -53,9 +66,9 @@ void fdir_client_dentry_array_free(FDIRClientDentryArray *array)
         array->alloc = array->count = 0;
     }
 
-    if (array->name_allocator.inited) {
+    if (array->name_allocator.inited && !array->name_allocator.cloned) {
         array->name_allocator.inited = false;
-        fast_mpool_destroy(&array->name_allocator.mpool);
+        fast_mpool_destroy(array->name_allocator.mpool.ptr);
     }
 }
 
@@ -1681,8 +1694,8 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
         next_token->len = sizeof(body_header->token);
 
         if (!array->name_allocator.inited) {
-            if ((result=fast_mpool_init(&array->name_allocator.mpool,
-                            64 * 1024, 8)) != 0)
+            if ((result=fast_mpool_init(array->name_allocator.
+                            mpool.ptr, 64 * 1024, 8)) != 0)
             {
                 response->error.length = sprintf(response->error.message,
                         "fast_mpool_init fail");
@@ -1713,10 +1726,11 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
 
         cd->dentry.inode = buff2long(part->inode);
         fdir_proto_unpack_dentry_stat(&part->stat, &cd->dentry.stat);
-        if (body_header->is_last) {
+        if (body_header->is_last && !array->name_allocator.cloned) {
             FC_SET_STRING_EX(cd->name, part->name_str, part->name_len);
-        } else if ((result=fast_mpool_alloc_string_ex(&array->name_allocator.mpool,
-                        &cd->name, part->name_str, part->name_len)) != 0)
+        } else if ((result=fast_mpool_alloc_string_ex(array->
+                        name_allocator.mpool.ptr, &cd->name,
+                        part->name_str, part->name_len)) != 0)
         {
             response->error.length = sprintf(response->error.message,
                     "strdup %d bytes fail", part->name_len);
@@ -1826,8 +1840,8 @@ static int list_dentry(FDIRClientContext *client_ctx, ConnectionInfo *conn,
     int result;
 
     array->count = 0;
-    if (array->name_allocator.used) {
-        fast_mpool_reset(&array->name_allocator.mpool);  //buffer recycle
+    if (array->name_allocator.used && !array->name_allocator.cloned) {
+        fast_mpool_reset(array->name_allocator.mpool.ptr);  //buffer recycle
         array->name_allocator.used = false;
     }
     response.error.length = 0;
