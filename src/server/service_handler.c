@@ -146,8 +146,8 @@ static int service_deal_client_join(struct fast_task_info *task)
     FDIRProtoClientJoinReq *req;
     FDIRProtoClientJoinResp *join_resp;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoClientJoinReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoClientJoinReq))) != 0)
     {
         return result;
     }
@@ -191,7 +191,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     FDIRDentryCounters counters;
     FDIRProtoServiceStatResp *stat_resp;
 
-    if ((result=server_expect_body_length(task, 0)) != 0) {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -237,7 +237,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *send;
 
-    if ((result=server_expect_body_length(task, 0)) != 0) {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -276,8 +276,8 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
     FDIRProtoNamespaceStatReq *req;
     FDIRProtoNamespaceStatResp *resp;
 
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoNamespaceStatReq) + 1)) != 0)
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoNamespaceStatReq) + 1)) != 0)
     {
         return result;
     }
@@ -323,7 +323,7 @@ static int service_deal_get_master(struct fast_task_info *task)
     FDIRClusterServerInfo *master;
     const FCAddressInfo *addr;
 
-    if ((result=server_expect_body_length(task, 0)) != 0) {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -360,8 +360,8 @@ int service_deal_get_group_servers(struct fast_task_info *task)
     SFProtoGetGroupServersRespBodyHeader *body_header;
     SFProtoGetGroupServersRespBodyPart *body_part;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(SFProtoGetGroupServersReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        SFProtoGetGroupServersReq))) != 0)
     {
         return result;
     }
@@ -401,7 +401,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
     FDIRClusterServerInfo *send;
     const FCAddressInfo *addr;
 
-    if ((result=server_expect_body_length(task, 0)) != 0) {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -558,9 +558,8 @@ static int server_check_and_parse_dentry(struct fast_task_info *task,
     int req_body_len;
 
     fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryInfo);
-    if ((result=server_check_body_length(task,
-                    fixed_part_size + 2, fixed_part_size +
-                    NAME_MAX + PATH_MAX)) != 0)
+    if ((result=server_check_body_length(fixed_part_size + 2,
+                    fixed_part_size + NAME_MAX + PATH_MAX)) != 0)
     {
         return result;
     }
@@ -642,7 +641,7 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
     int result;
 
     fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryByPName);
-    if ((result=server_check_body_length(task, fixed_part_size + 2,
+    if ((result=server_check_body_length(fixed_part_size + 2,
                     fixed_part_size + 2 * NAME_MAX)) != 0)
     {
         return result;
@@ -1298,7 +1297,7 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     int mode;
     int result;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoHDLinkDEntry) + 4,
                     sizeof(FDIRProtoHDLinkDEntry) + 2 *
                     (NAME_MAX + PATH_MAX))) != 0)
@@ -1467,7 +1466,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     FDIRDEntryFullName src_fullname;
     int result;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntry) + 4,
                     sizeof(FDIRProtoRenameDEntry) + 2 *
                     (NAME_MAX + PATH_MAX))) != 0)
@@ -1534,7 +1533,7 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     string_t src_name;
     FDIRServerDentry *src_parent;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntryByPName) + 4,
                     sizeof(FDIRProtoRenameDEntryByPName) + 2 *
                     (NAME_MAX + PATH_MAX))) != 0)
@@ -1634,8 +1633,8 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
     FDIRProtoSetXAttrFields *fields;
     key_value_pair_t xattr;
 
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoSetXAttrByPathReq) + 3)) != 0)
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoSetXAttrByPathReq) + 3)) != 0)
     {
         return result;
     }
@@ -1682,7 +1681,7 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
     int front_part_size;
     int result;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoSetXAttrByInodeReq) + 2,
                     sizeof(FDIRProtoSetXAttrByInodeReq) + 1 +
                     NAME_MAX + FDIR_XATTR_MAX_VALUE_SIZE)) != 0)
@@ -1724,9 +1723,7 @@ static int parse_xattr_name_info(struct fast_task_info *task,
     int expect_blen;
     FDIRProtoNameInfo *proto_name;
 
-    if ((result=server_check_min_body_length(task,
-                    fixed_size + 1)) != 0)
-    {
+    if ((result=server_check_min_body_length( fixed_size + 1)) != 0) {
         return result;
     }
 
@@ -1764,8 +1761,8 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
     int fixed_size;
     string_t name;
 
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoRemoveXAttrByPathReq) + 3)) != 0)
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoRemoveXAttrByPathReq) + 3)) != 0)
     {
         return result;
     }
@@ -1812,7 +1809,7 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
     int fixed_size;
     int result;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoRemoveXAttrByInodeReq) + 2,
                     sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1 +
                     NAME_MAX)) != 0)
@@ -1908,7 +1905,7 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
     string_t name;
     int result;
 
-    if ((result=server_check_body_length(task, sizeof(
+    if ((result=server_check_body_length(sizeof(
                         FDIRProtoReadlinkByPNameReq) + 1,
                     sizeof(FDIRProtoReadlinkByPNameReq) + NAME_MAX)) != 0)
     {
@@ -1942,7 +1939,7 @@ static inline int server_check_and_parse_inode(
 {
     int result;
 
-    if ((result=server_expect_body_length(task, 8)) != 0) {
+    if ((result=server_expect_body_length(8)) != 0) {
         return result;
     }
 
@@ -2019,7 +2016,7 @@ static int get_dentry_by_pname(struct fast_task_info *task,
     string_t name;
     int result;
 
-    if ((result=server_check_body_length(task, sizeof(
+    if ((result=server_check_body_length(sizeof(
                         FDIRProtoStatDEntryByPNameReq) + 1,
                     sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
     {
@@ -2166,7 +2163,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     FDIRSetDEntrySizeInfo dsize;
     int result;
 
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoSetDentrySizeReq) + 1,
                     sizeof(FDIRProtoSetDentrySizeReq) + NAME_MAX)) != 0)
     {
@@ -2222,7 +2219,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     int expect_blen;
     int modified_flags;
 
-    if ((result=server_check_min_body_length(task,
+    if ((result=server_check_min_body_length(
                     sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + 1 +
                     sizeof(FDIRProtoBatchSetDentrySizeReqBody))) != 0)
     {
@@ -2364,7 +2361,7 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     int result;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP;
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoModifyDentryStatReq) + 1,
                     sizeof(FDIRProtoModifyDentryStatReq) + NAME_MAX)) != 0)
     {
@@ -2530,8 +2527,8 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     short operation;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoFlockDEntryReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoFlockDEntryReq))) != 0)
     {
         return result;
     }
@@ -2607,8 +2604,8 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     FLockRegion region;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoGetlkDEntryReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoGetlkDEntryReq))) != 0)
     {
         return result;
     }
@@ -2719,8 +2716,8 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     int64_t inode;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP;
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoSysLockDEntryReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoSysLockDEntryReq))) != 0)
     {
         return result;
     }
@@ -2800,7 +2797,7 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     sys_lock_release_callback callback;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP;
-    if ((result=server_check_body_length(task,
+    if ((result=server_check_body_length(
                     sizeof(FDIRProtoSysUnlockDEntryReq),
                     sizeof(FDIRProtoSysUnlockDEntryReq) + NAME_MAX)) != 0)
     {
@@ -2999,8 +2996,8 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     int offset;
     int64_t token;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoListDEntryNextBody))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoListDEntryNextBody))) != 0)
     {
         return result;
     }
@@ -3156,8 +3153,8 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
     FDIRProtoListXAttrByInodeReq *req;
     FDIRServerDentry *dentry;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoListXAttrByInodeReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoListXAttrByInodeReq))) != 0)
     {
         return result;
     }

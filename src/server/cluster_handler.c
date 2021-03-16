@@ -143,8 +143,8 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     FDIRProtoGetServerStatusReq *req;
     FDIRProtoGetServerStatusResp *resp;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoGetServerStatusReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoGetServerStatusReq))) != 0)
     {
         return result;
     }
@@ -178,8 +178,8 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     FDIRProtoJoinMasterReq *req;
     FDIRClusterServerInfo *peer;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoJoinMasterReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoJoinMasterReq))) != 0)
     {
         return result;
     }
@@ -239,7 +239,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *end;
 
-    if ((result=server_expect_body_length(task, 0)) != 0) {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -289,7 +289,7 @@ static int cluster_deal_next_master(struct fast_task_info *task)
     int master_id;
     FDIRClusterServerInfo *master;
 
-    if ((result=server_expect_body_length(task, 4)) != 0) {
+    if ((result=server_expect_body_length(4)) != 0) {
         return result;
     }
 
@@ -343,8 +343,8 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
     SFVersionRange data_version;
     FDIRProtoPushBinlogReqBodyHeader *body_header;
 
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoPushBinlogReqBodyHeader) +
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoPushBinlogReqBodyHeader) +
                     BINLOG_RECORD_MIN_SIZE)) != 0)
     {
         return result;
@@ -407,7 +407,7 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=server_check_min_body_length(task,
+    if ((result=server_check_min_body_length(
                     sizeof(FDIRProtoPushBinlogRespBodyHeader) +
                     sizeof(FDIRProtoPushBinlogRespBodyPart))) != 0)
     {
@@ -490,8 +490,8 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     FDIRClusterServerInfo *next_master;
     FDIRProtoJoinSlaveResp *resp;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoJoinSlaveReq))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoJoinSlaveReq))) != 0)
     {
         return result;
     }
@@ -654,8 +654,8 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=server_check_min_body_length(task,
-                    sizeof(FDIRProtoJoinSlaveResp))) != 0)
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoJoinSlaveResp))) != 0)
     {
         return result;
     }
@@ -696,8 +696,8 @@ static int cluster_deal_notify_slave_quit(struct fast_task_info *task)
     int binlog_count;
     int64_t first_unmatched_dv;
 
-    if ((result=server_expect_body_length(task,
-                    sizeof(FDIRProtoNotifySlaveQuit))) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoNotifySlaveQuit))) != 0)
     {
         return result;
     }
