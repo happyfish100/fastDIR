@@ -701,21 +701,18 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
     int result;
 
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
-        if (dentry->src_dentry->stat.nlink == 1) {
-
+        if (--(dentry->src_dentry->stat.nlink) == 0) {
             /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "remove hard link src dentry: %"PRId64, __LINE__,
-                    dentry->src_dentry->inode);
-                    */
+               logInfo("file: "__FILE__", line: %d, "
+               "remove hard link src dentry: %"PRId64, __LINE__,
+               dentry->src_dentry->inode);
+             */
 
             if ((result=remove_src_dentry(db_context,
                             dentry->src_dentry)) != 0)
             {
                 return result;
             }
-        } else {
-            dentry->src_dentry->stat.nlink--;
         }
         *free_dentry = true;
     } else {
