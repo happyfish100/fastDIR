@@ -426,7 +426,7 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
     if (dentry->kv_array == NULL) {
         allocator = context->kvarray_allocators + 0;
     } else if (dentry->kv_array->count == dentry->kv_array->alloc) {
-        if ((allocator=dentry_next_kvarray_allocator(context,
+        if ((allocator=dentry_get_kvarray_allocator_by_capacity(context,
                         dentry->kv_array->alloc * 2)) == NULL)
         {
             *err_no = EOVERFLOW;

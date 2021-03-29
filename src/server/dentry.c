@@ -119,6 +119,32 @@ static int dentry_compare(const void *p1, const void *p2)
             &((FDIRServerDentry *)p2)->name);
 }
 
+static void dentry_free_xattrs(FDIRServerDentry *dentry)
+{
+    key_value_pair_t *kv;
+    key_value_pair_t *end;
+    struct fast_mblock_man *allocator;
+
+    if (dentry->kv_array == NULL) {
+        return;
+    }
+
+    end = dentry->kv_array->elts + dentry->kv_array->count;
+    for (kv=dentry->kv_array->elts; kv<end; kv++) {
+        fast_allocator_free(&dentry->context->name_acontext, kv->key.str);
+        fast_allocator_free(&dentry->context->name_acontext, kv->value.str);
+    }
+
+    if ((allocator=dentry_get_kvarray_allocator_by_capacity(
+                    dentry->context, dentry->kv_array->alloc)) != NULL)
+    {
+        fast_mblock_free_object(allocator, dentry->kv_array);
+    }
+
+    dentry->kv_array = NULL;
+    dentry->kv_array->count = 0;
+}
+
 static void dentry_do_free(void *ptr)
 {
     FDIRServerDentry *dentry;
@@ -135,8 +161,8 @@ static void dentry_do_free(void *ptr)
         fast_allocator_free(&dentry->context->name_acontext,
                 dentry->link.str);
     }
-    fast_mblock_free_object(&dentry->context->dentry_allocator,
-            (void *)dentry);
+    dentry_free_xattrs(dentry);
+    fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
 static void dentry_free_func(void *ptr, const int delay_seconds)
@@ -232,7 +258,7 @@ static int init_kvarray_allocators(struct fast_mblock_man
     return 0;
 }
 
-struct fast_mblock_man *dentry_next_kvarray_allocator(
+struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
         FDIRDentryContext *context, const int alloc_elts)
 {
     switch (alloc_elts) {

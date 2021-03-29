@@ -89,7 +89,7 @@ extern "C" {
         }
     }
 
-    struct fast_mblock_man *dentry_next_kvarray_allocator(
+    struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
             FDIRDentryContext *context, const int alloc_elts);
 
 #ifdef __cplusplus
