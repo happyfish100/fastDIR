@@ -19,6 +19,7 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
+#include "fdir_func.h"
 #include "client_global.h"
 #include "simple_connection_manager.h"
 #include "pooled_connection_manager.h"
@@ -38,56 +39,6 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
 
     server_group->alloc_size = alloc_size;
     server_group->count = 0;
-    return 0;
-}
-
-static int fdir_load_server_config(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx)
-{
-    int result;
-    char *cluster_servers_filename;
-    char full_servers_filename[PATH_MAX];
-    const int min_hosts_each_group = 1;
-    const bool share_between_groups = true;
-
-    cluster_servers_filename = iniGetStrValue(ini_ctx->section_name,
-            "cluster_servers_filename", ini_ctx->context);
-    if (cluster_servers_filename == NULL ||
-            *cluster_servers_filename == '\0')
-    {
-        logError("file: "__FILE__", line: %d, "
-                "config file: %s, item \"cluster_servers_filename\" "
-                "not exist or empty", __LINE__, ini_ctx->filename);
-        return ENOENT;
-    }
-
-    resolve_path(ini_ctx->filename, cluster_servers_filename,
-            full_servers_filename, sizeof(full_servers_filename));
-    if ((result=fc_server_load_from_file_ex(&client_ctx->server_cfg,
-                    full_servers_filename, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    min_hosts_each_group, share_between_groups)) != 0)
-    {
-        return result;
-    }
-
-    client_ctx->cluster_group_index = fc_server_get_group_index(
-            &client_ctx->server_cfg, "cluster");
-    if (client_ctx->cluster_group_index < 0) {
-        logError("file: "__FILE__", line: %d, "
-                "servers config file: %s, cluster group not configurated",
-                __LINE__, full_servers_filename);
-        return ENOENT;
-    }
-
-    client_ctx->service_group_index = fc_server_get_group_index(
-            &client_ctx->server_cfg, "service");
-    if (client_ctx->service_group_index < 0) {
-        logError("file: "__FILE__", line: %d, "
-                "servers config file: %s, service group not configurated",
-                __LINE__, full_servers_filename);
-        return ENOENT;
-    }
-
     return 0;
 }
 
@@ -136,7 +87,7 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 
     sf_load_read_rule_config(&client_ctx->common_cfg.read_rule, ini_ctx);
 
-    if ((result=fdir_load_server_config(client_ctx, ini_ctx)) != 0) {
+    if ((result=fdir_load_cluster_config(&client_ctx->cluster, ini_ctx)) != 0) {
         return result;
     }
 
@@ -169,7 +120,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
             client_ctx->common_cfg.connect_timeout,
             client_ctx->common_cfg.network_timeout,
             sf_get_read_rule_caption(client_ctx->common_cfg.read_rule),
-            net_retry_output, FC_SID_SERVER_COUNT(client_ctx->server_cfg),
+            net_retry_output, FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg),
             extra_config != NULL ? ", " : "",
             extra_config != NULL ? extra_config : "");
 }
@@ -284,7 +235,7 @@ void fdir_client_destroy_ex(FDIRClientContext *client_ctx)
         return;
     }
 
-    fc_server_destroy(&client_ctx->server_cfg);
+    fc_server_destroy(&client_ctx->cluster.server_cfg);
 
     if (client_ctx->conn_manager_type == conn_manager_type_simple) {
         fdir_simple_connection_manager_destroy(&client_ctx->cm);

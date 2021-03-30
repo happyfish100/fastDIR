@@ -65,7 +65,7 @@ static int pooled_connection_manager_add(FDIRClientContext *client_ctx,
     FCServerInfo *server;
     FCServerInfo *end;
 
-    server_count = FC_SID_SERVER_COUNT(client_ctx->server_cfg);
+    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
     if (server_count <= FIXED_SERVER_COUNT) {
         servers = fixed_servers;
     } else {
@@ -76,8 +76,8 @@ static int pooled_connection_manager_add(FDIRClientContext *client_ctx,
         }
     }
 
-    end = FC_SID_SERVERS(client_ctx->server_cfg) + server_count;
-    for (server=FC_SID_SERVERS(client_ctx->server_cfg), pp=servers;
+    end = FC_SID_SERVERS(client_ctx->cluster.server_cfg) + server_count;
+    for (server=FC_SID_SERVERS(client_ctx->cluster.server_cfg), pp=servers;
             server<end; server++, pp++)
     {
         *pp = server;
@@ -99,11 +99,11 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
     int server_count;
     int result;
 
-    server_count = FC_SID_SERVER_COUNT(client_ctx->server_cfg);
+    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
     if ((result=sf_connection_manager_init_ex(cm, "FastDIR",
                     &client_ctx->common_cfg, group_count,
-                    client_ctx->service_group_index, server_count,
-                    max_count_per_entry, max_idle_time,
+                    client_ctx->cluster.service_group_index,
+                    server_count, max_count_per_entry, max_idle_time,
                     connect_done_callback, client_ctx,
                     bg_thread_enabled)) != 0)
     {

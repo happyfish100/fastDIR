@@ -26,6 +26,7 @@
 #include "sf/sf_service.h"
 #include "sf/sf_binlog_writer.h"
 #include "common/fdir_proto.h"
+#include "common/fdir_func.h"
 #include "server_global.h"
 #include "cluster_info.h"
 #include "server_func.h"
@@ -42,53 +43,6 @@ static void log_cluster_server_config()
     fast_buffer_destroy(&buffer);
 
     fc_server_to_log(&CLUSTER_CONFIG_CTX);
-}
-
-static int calc_cluster_config_sign()
-{
-    FastBuffer buffer;
-    int result;
-
-    if ((result=fast_buffer_init_ex(&buffer, 1024)) != 0) {
-        return result;
-    }
-    fc_server_to_config_string(&CLUSTER_CONFIG_CTX, &buffer);
-    my_md5_buffer(buffer.data, buffer.length, CLUSTER_CONFIG_SIGN_BUF);
-
-    /*
-    {
-    char hex_buff[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-    logInfo("cluster config length: %d, sign: %s", buffer.length,
-            bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN, hex_buff));
-    }
-    */
-
-    fast_buffer_destroy(&buffer);
-    return 0;
-}
-
-static int find_group_indexes_in_cluster_config(const char *filename)
-{
-    CLUSTER_GROUP_INDEX = fc_server_get_group_index(&CLUSTER_CONFIG_CTX,
-            "cluster");
-    if (CLUSTER_GROUP_INDEX < 0) {
-        logError("file: "__FILE__", line: %d, "
-                "cluster config file: %s, cluster group not configurated",
-                __LINE__, filename);
-        return ENOENT;
-    }
-
-    SERVICE_GROUP_INDEX = fc_server_get_group_index(&CLUSTER_CONFIG_CTX,
-            "service");
-    if (SERVICE_GROUP_INDEX < 0) {
-        logError("file: "__FILE__", line: %d, "
-                "cluster config file: %s, service group not configurated",
-                __LINE__, filename);
-        return ENOENT;
-    }
-
-    return 0;
 }
 
 static int server_load_cluster_id(IniContext *ini_context, const char *filename)
@@ -127,40 +81,21 @@ static int server_load_cluster_id(IniContext *ini_context, const char *filename)
 static int load_cluster_config(IniContext *ini_context, const char *filename)
 {
     int result;
-    char *cluster_config_filename;
-    char full_cluster_filename[PATH_MAX];
-    const int min_hosts_each_group = 1;
-    const bool share_between_groups = true;
+    IniFullContext ini_ctx;
+    char full_server_filename[PATH_MAX];
 
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, ini_context);
     if ((result=server_load_cluster_id(ini_context, filename)) != 0) {
         return result;
     }
 
-    cluster_config_filename = iniGetStrValue(NULL,
-            "cluster_config_filename", ini_context);
-    if (cluster_config_filename == NULL || *cluster_config_filename == '\0') {
-        logError("file: "__FILE__", line: %d, "
-                "item \"cluster_config_filename\" not exist or empty",
-                __LINE__);
-        return ENOENT;
-    }
-
-    resolve_path(filename, cluster_config_filename,
-            full_cluster_filename, sizeof(full_cluster_filename));
-    if ((result=fc_server_load_from_file_ex(&CLUSTER_CONFIG_CTX,
-                    full_cluster_filename, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    min_hosts_each_group, share_between_groups)) != 0)
+    if ((result=fdir_load_cluster_config_ex(&CLUSTER_CONFIG, &ini_ctx,
+                    full_server_filename, sizeof(full_server_filename))) != 0)
     {
         return result;
     }
 
-    if ((result=cluster_info_init(cluster_config_filename)) != 0) {
-        return result;
-    }
-    if ((result=find_group_indexes_in_cluster_config(filename)) != 0) {
-        return result;
-    }
-    if ((result=calc_cluster_config_sign()) != 0) {
+    if ((result=cluster_info_init(full_server_filename)) != 0) {
         return result;
     }
 

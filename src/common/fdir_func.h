@@ -25,6 +25,18 @@ extern "C" {
 
 int fdir_validate_xattr(const key_value_pair_t *xattr);
 
+int fdir_load_cluster_config_ex(FDIRClusterConfig *cluster,
+        IniFullContext *ini_ctx, char *full_server_filename,
+        const int size);
+
+static inline int fdir_load_cluster_config(FDIRClusterConfig *cluster,
+        IniFullContext *ini_ctx)
+{
+    char full_server_filename[PATH_MAX];
+    return fdir_load_cluster_config_ex(cluster, ini_ctx,
+            full_server_filename, sizeof(full_server_filename));
+}
+
 #ifdef __cplusplus
 }
 #endif

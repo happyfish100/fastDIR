@@ -34,16 +34,11 @@ typedef struct server_global_vars {
     int check_alive_interval;
 
     struct {
+        bool auth_enabled;
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
-        struct {
-            FCServerConfig ctx;
-            unsigned char md5_digest[16];
-            int cluster_group_index;
-            int service_group_index;
-        } config;
-
+        FDIRClusterConfig config;
         FDIRClusterServerArray server_array;
 
         SFContext sf_context;  //for cluster communication
@@ -73,7 +68,9 @@ typedef struct server_global_vars {
 
 } FDIRServerGlobalVars;
 
-#define CLUSTER_CONFIG_CTX      g_server_global_vars.cluster.config.ctx
+#define CLUSTER_CONFIG          g_server_global_vars.cluster.config
+#define CLUSTER_CONFIG_CTX      CLUSTER_CONFIG.server_cfg
+#define AUTH_ENABLED            g_server_global_vars.cluster.auth_enabled
 
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
 #define MYSELF_IS_MASTER        __sync_add_and_fetch( \

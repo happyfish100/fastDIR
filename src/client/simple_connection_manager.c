@@ -228,13 +228,13 @@ static void copy_to_server_group_array(FDIRClientContext *client_ctx,
     ConnectionInfo *conn;
     int server_count;
 
-    server_count = FC_SID_SERVER_COUNT(client_ctx->server_cfg);
+    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
     conn = server_group->servers;
-    end = FC_SID_SERVERS(client_ctx->server_cfg) + server_count;
-    for (server=FC_SID_SERVERS(client_ctx->server_cfg); server<end;
+    end = FC_SID_SERVERS(client_ctx->cluster.server_cfg) + server_count;
+    for (server=FC_SID_SERVERS(client_ctx->cluster.server_cfg); server<end;
             server++, conn++)
     {
-        *conn = server->group_addrs[client_ctx->service_group_index].
+        *conn = server->group_addrs[client_ctx->cluster.service_group_index].
             address_array.addrs[0]->conn;
     }
     server_group->count = server_count;
@@ -264,7 +264,7 @@ int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
         return ENOMEM;
     }
 
-    server_count = FC_SID_SERVER_COUNT(client_ctx->server_cfg);
+    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
     if ((result=fdir_alloc_group_servers(cluster_sarray, server_count)) != 0) {
         return result;
     }

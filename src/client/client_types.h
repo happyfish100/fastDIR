@@ -49,13 +49,12 @@ typedef enum {
 } FDIRClientConnManagerType;
 
 typedef struct fdir_client_context {
-    FCServerConfig server_cfg;
-    int cluster_group_index;
-    int service_group_index;
+    FDIRClusterConfig cluster;
     SFConnectionManager cm;
     FDIRClientConnManagerType conn_manager_type;
     bool cloned;
     bool idempotency_enabled;
+    bool auth_enabled;
     SFClientCommonConfig common_cfg;
 } FDIRClientContext;
 
