@@ -77,13 +77,6 @@
         (pname)->name = *nm_ptr;       \
     } while (0)
 
-typedef struct fdir_cluster_config {
-    FCServerConfig server_cfg;
-    unsigned char md5_digest[16];
-    int cluster_group_index;
-    int service_group_index;
-} FDIRClusterConfig;
-
 typedef struct fdir_dentry_full_name {
     string_t ns;    //namespace
     string_t path;  //full path

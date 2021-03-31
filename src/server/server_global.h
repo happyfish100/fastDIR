@@ -20,6 +20,7 @@
 #include "fastcommon/common_define.h"
 #include "fastcommon/server_id_func.h"
 #include "sf/sf_global.h"
+#include "sf/sf_cluster_cfg.h"
 #include "common/fdir_global.h"
 #include "server_types.h"
 
@@ -38,7 +39,7 @@ typedef struct server_global_vars {
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
-        FDIRClusterConfig config;
+        SFClusterConfig config;
         FDIRClusterServerArray server_array;
 
         SFContext sf_context;  //for cluster communication

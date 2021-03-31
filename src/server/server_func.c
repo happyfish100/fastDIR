@@ -89,7 +89,8 @@ static int load_cluster_config(IniContext *ini_context, const char *filename)
         return result;
     }
 
-    if ((result=fdir_load_cluster_config_ex(&CLUSTER_CONFIG, &ini_ctx,
+    if ((result=sf_load_cluster_config_ex(&CLUSTER_CONFIG, &ini_ctx,
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT,
                     full_server_filename, sizeof(full_server_filename))) != 0)
     {
         return result;

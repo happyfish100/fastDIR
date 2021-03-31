@@ -49,7 +49,7 @@ typedef enum {
 } FDIRClientConnManagerType;
 
 typedef struct fdir_client_context {
-    FDIRClusterConfig cluster;
+    SFClusterConfig cluster;
     SFConnectionManager cm;
     FDIRClientConnManagerType conn_manager_type;
     bool cloned;

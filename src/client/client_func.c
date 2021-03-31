@@ -19,6 +19,7 @@
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
+#include "sf/sf_cluster_cfg.h"
 #include "fdir_func.h"
 #include "client_global.h"
 #include "simple_connection_manager.h"
@@ -87,7 +88,9 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 
     sf_load_read_rule_config(&client_ctx->common_cfg.read_rule, ini_ctx);
 
-    if ((result=fdir_load_cluster_config(&client_ctx->cluster, ini_ctx)) != 0) {
+    if ((result=sf_load_cluster_config(&client_ctx->cluster, ini_ctx,
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
+    {
         return result;
     }
 
