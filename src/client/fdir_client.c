@@ -161,7 +161,7 @@ int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry)
+        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
@@ -306,7 +306,7 @@ int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
-        const string_t *ns, FDIRInodeStat *stat)
+        const string_t *ns, FDIRClientNamespaceStat *stat)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_namespace_stat,

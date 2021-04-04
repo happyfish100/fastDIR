@@ -95,7 +95,7 @@ typedef struct fdir_binlog_record {
         FDIRRecordDEntry me;  //for create and remove
     };
 
-    FDIRDEntryStatus stat;
+    FDIRDEntryStat stat;
 
     union {
         string_t link;

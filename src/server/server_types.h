@@ -96,14 +96,18 @@ typedef struct fdir_namespace_entry {
     string_t name;
     struct fdir_server_dentry *dentry_root;
     volatile int64_t dentry_count;
-    struct fdir_namespace_entry *next;  //for hashtable
+    volatile int64_t used_bytes;
+    struct {
+        struct fdir_namespace_entry *htable; //for hashtable
+        struct fdir_namespace_entry *list;   //for chain list
+    } nexts;
 } FDIRNamespaceEntry;
 
 typedef struct fdir_server_dentry {
     int64_t inode;
     unsigned int hash_code;   //data thread dispach & mutex lock
     string_t name;
-    FDIRDEntryStatus stat;
+    FDIRDEntryStat stat;
 
     union {
         string_t link;    //for symlink

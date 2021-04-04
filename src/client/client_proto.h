@@ -79,6 +79,13 @@ typedef struct fdir_client_service_stat {
     } dentry;
 } FDIRClientServiceStat;
 
+typedef struct fdir_client_namespace_stat {
+    SFSpaceStat inode;
+    struct {
+        int64_t used;
+    } space;
+} FDIRClientNamespaceStat;
+
 typedef struct fdir_client_cluster_stat_entry {
     int server_id;
     bool is_master;
@@ -195,7 +202,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
 int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry);
+        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry);
 
 int fdir_client_flock_dentry_ex2(FDIRClientSession *session,
         const int64_t inode, const int operation, const int64_t offset,
@@ -297,7 +304,8 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count);
 
 int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, FDIRInodeStat *stat);
+        ConnectionInfo *conn, const string_t *ns,
+        FDIRClientNamespaceStat *stat);
 
 int fdir_client_get_master(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *master);

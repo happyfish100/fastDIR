@@ -200,6 +200,7 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "GET_READABLE_SERVER_REQ";
         case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP:
             return "GET_READABLE_SERVER_RESP";
+
         case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
             return "GET_XATTR_BY_PATH_REQ";
         case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP:
@@ -216,6 +217,16 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "LIST_XATTR_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP:
             return "LIST_XATTR_BY_INODE_RESP";
+
+        case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
+            return "NSS_SUBSCRIBE_REQ";
+        case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP:
+            return "NSS_SUBSCRIBE_RESP";
+        case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
+            return "NSS_FETCH_REQ";
+        case FDIR_SERVICE_PROTO_NSS_FETCH_RESP:
+            return "NSS_FETCH_RESP";
+
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
             return "GET_SERVER_STATUS_REQ";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP:
@@ -230,6 +241,7 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "PRE_SET_NEXT_MASTER";
         case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
             return "COMMIT_NEXT_MASTER";
+
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
             return "JOIN_SLAVE_REQ";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:

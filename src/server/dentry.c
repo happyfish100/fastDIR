@@ -36,12 +36,18 @@
 typedef struct fdir_namespace_hashtable {
     int count;
     FDIRNamespaceEntry **buckets;
-    struct fast_mblock_man allocator;
-    pthread_mutex_t lock;  //for create namespace
 } FDIRNamespaceHashtable;
 
 typedef struct fdir_manager {
+    struct {
+        FDIRNamespaceEntry *head;
+        FDIRNamespaceEntry *tail;
+    } chain;
+
     FDIRNamespaceHashtable hashtable;
+
+    struct fast_mblock_man ns_allocator;  //element: FDIRNamespaceEntry
+    pthread_mutex_t lock;  //for create namespace
 } FDIRManager;
 
 typedef struct {
@@ -50,7 +56,7 @@ typedef struct {
 } StringHolderPtrPair;
 
 const int max_level_count = 20;
-static FDIRManager fdir_manager;
+static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
 
 #define SET_HARD_LINK_DENTRY(dentry)  \
     do { \
@@ -66,7 +72,7 @@ int dentry_init()
     int bytes;
 
     memset(&fdir_manager, 0, sizeof(fdir_manager));
-    if ((result=fast_mblock_init_ex1(&fdir_manager.hashtable.allocator,
+    if ((result=fast_mblock_init_ex1(&fdir_manager.ns_allocator,
                     "ns_htable", sizeof(FDIRNamespaceEntry), 4096,
                     0, NULL, NULL, true)) != 0)
     {
@@ -82,7 +88,7 @@ int dentry_init()
     }
     memset(fdir_manager.hashtable.buckets, 0, bytes);
 
-    if ((result=init_pthread_lock(&fdir_manager.hashtable.lock)) != 0) {
+    if ((result=init_pthread_lock(&fdir_manager.lock)) != 0) {
         return result;
     }
 
@@ -320,7 +326,7 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     FDIRNamespaceEntry *entry;
 
     entry = (FDIRNamespaceEntry *)fast_mblock_alloc_object(
-            &fdir_manager.hashtable.allocator);
+            &fdir_manager.ns_allocator);
     if (entry == NULL) {
         *err_no = ENOMEM;
         return NULL;
@@ -335,12 +341,22 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
             entry->name.len, entry->name.str);
             */
 
+    entry->dentry_count = 0;
+    entry->used_bytes = 0;
     entry->dentry_root = NULL;
-    entry->next = *bucket;
+    entry->nexts.htable = *bucket;
     *bucket = entry;
-    *err_no = 0;
+
+    entry->nexts.list = NULL;
+    if (fdir_manager.chain.head == NULL) {
+        fdir_manager.chain.head = entry;
+    } else {
+        fdir_manager.chain.tail->nexts.list = entry;
+    }
+    fdir_manager.chain.tail = entry;
 
     context->counters.ns++;
+    *err_no = 0;
     return entry;
 }
 
@@ -357,7 +373,7 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
 
     entry = *bucket;
     while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
-        entry = entry->next;
+        entry = entry->nexts.htable;
     }
 
     if (entry != NULL) {
@@ -368,10 +384,10 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
-    PTHREAD_MUTEX_LOCK(&fdir_manager.hashtable.lock);
+    PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
     entry = *bucket;
     while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
-        entry = entry->next;
+        entry = entry->nexts.htable;
     }
 
     if (entry == NULL) {
@@ -379,7 +395,7 @@ static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
     } else {
         *err_no = 0;
     }
-    PTHREAD_MUTEX_UNLOCK(&fdir_manager.hashtable.lock);
+    PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
 
     return entry;
 }
@@ -410,15 +426,26 @@ static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
     return current;
 }
 
-int64_t dentry_get_namespace_inode_count(const string_t *ns)
+int dentry_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat)
 {
     int result;
     FDIRNamespaceEntry *ns_entry;
 
     if ((ns_entry=get_namespace(NULL, ns, false, &result)) == NULL) {
-        return 0;
+        return ENOENT;
     }
-    return __sync_add_and_fetch(&ns_entry->dentry_count, 0);
+    stat->used_inodes = __sync_add_and_fetch(&ns_entry->dentry_count, 0);
+    stat->used_bytes = __sync_add_and_fetch(&ns_entry->used_bytes, 0);
+    return 0;
+}
+
+int dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
+        const int64_t inc_alloc)
+{
+    dentry->stat.alloc += inc_alloc;
+    __sync_add_and_fetch(&dentry->ns_entry->used_bytes, inc_alloc);
+    //TODO
+    return 0;
 }
 
 int dentry_find_parent(const FDIRDEntryFullName *fullname,

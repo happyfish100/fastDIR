@@ -1007,7 +1007,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
 int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry)
+        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoModifyDentryStatReq *req;
@@ -2226,7 +2226,8 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, FDIRInodeStat *stat)
+        ConnectionInfo *conn, const string_t *ns,
+        FDIRClientNamespaceStat *stat)
 {
     FDIRProtoHeader *header;
     FDIRProtoNamespaceStatReq *req;
@@ -2259,9 +2260,10 @@ int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP, (char *)&resp,
                     sizeof(FDIRProtoNamespaceStatResp))) == 0)
     {
-        stat->total = buff2long(resp.inode_counters.total);
-        stat->used = buff2long(resp.inode_counters.used);
-        stat->avail = buff2long(resp.inode_counters.avail);
+        stat->inode.total = buff2long(resp.inode_counters.total);
+        stat->inode.used = buff2long(resp.inode_counters.used);
+        stat->inode.avail = buff2long(resp.inode_counters.avail);
+        stat->space.used = buff2long(resp.used_bytes);
     } else {
         sf_log_network_error(&response, conn, result);
     }

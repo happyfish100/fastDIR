@@ -301,7 +301,7 @@ FDIRServerDentry *inode_index_check_set_dentry_size(
         }
 
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-            dentry->stat.alloc += dsize->inc_alloc;
+            dentry_set_inc_alloc_bytes(dentry, dsize->inc_alloc);
             *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
         }
 
@@ -347,7 +347,7 @@ static void update_dentry(FDIRServerDentry *dentry,
         dentry->stat.space_end = record->stat.space_end;
     }
     if (record->options.inc_alloc) {
-        dentry->stat.alloc += record->stat.alloc;
+        dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
     }
 }
 

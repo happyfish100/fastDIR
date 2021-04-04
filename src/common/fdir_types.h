@@ -87,7 +87,12 @@ typedef struct fdir_dentry_pname {
     string_t name;
 } FDIRDEntryPName;
 
-typedef struct fdir_dentry_status {
+typedef struct fdir_namespace_stat {
+    int64_t used_inodes;
+    int64_t used_bytes;
+} FDIRNamespaceStat;
+
+typedef struct fdir_dentry_stat {
     int mode;
     uid_t uid;
     gid_t gid;
@@ -99,11 +104,11 @@ typedef struct fdir_dentry_status {
     int64_t size;   /* file size in bytes */
     int64_t alloc;  /* alloc space in bytes */
     int64_t space_end;   /* for remove disk space when deallocate */
-} FDIRDEntryStatus;
+} FDIRDEntryStat;
 
 typedef struct fdir_dentry_info {
     int64_t inode;
-    FDIRDEntryStatus stat;
+    FDIRDEntryStat stat;
 } FDIRDEntryInfo;
 
 typedef union {
@@ -140,7 +145,6 @@ typedef struct fdir_set_dentry_size_info {
     int flags;
 } FDIRSetDEntrySizeInfo;
 
-typedef SFSpaceStat FDIRInodeStat;
 typedef SFBinlogWriterStat FDIRBinlogWriterStat;
 
 #endif

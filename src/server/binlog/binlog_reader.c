@@ -848,7 +848,7 @@ static int compare_record(const FDIRBinlogRecord *r1,
         return sub;
     }
 
-    return memcmp(&r1->stat, &r2->stat, sizeof(FDIRDEntryStatus));
+    return memcmp(&r1->stat, &r2->stat, sizeof(FDIRDEntryStat));
 }
 
 static int check_records_consistency(FDIRBinlogRecord *slave_records,

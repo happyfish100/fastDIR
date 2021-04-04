@@ -119,6 +119,12 @@
 #define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ  91
 #define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP 92
 
+//for namespace stat sync
+#define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ        101
+#define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP       102
+#define FDIR_SERVICE_PROTO_NSS_FETCH_REQ            103
+#define FDIR_SERVICE_PROTO_NSS_FETCH_RESP           104
+
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ    201
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP   202
@@ -488,6 +494,8 @@ typedef struct fdir_proto_namespace_stat_resp {
         char used[8];
         char avail[8];
     } inode_counters;
+
+    char used_bytes[8];
 } FDIRProtoNamespaceStatResp;
 
 /* for FDIR_SERVICE_PROTO_GET_MASTER_RESP and
@@ -588,7 +596,7 @@ extern "C" {
 
 void fdir_proto_init();
 
-static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStatus *stat,
+static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStat *stat,
         FDIRProtoDEntryStat *proto, const bool server_side)
 {
     if (server_side) {
@@ -612,7 +620,7 @@ static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStatus *stat,
     fdir_proto_pack_dentry_stat_ex(stat, proto, false)
 
 static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
-        proto, FDIRDEntryStatus *stat)
+        proto, FDIRDEntryStat *stat)
 {
     stat->mode = buff2int(proto->mode);
     stat->uid = buff2int(proto->uid);

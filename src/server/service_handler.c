@@ -270,7 +270,7 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
     int result;
     int expect_blen;
     static int64_t mem_size = 0;
-    int64_t inode_used;
+    FDIRNamespaceStat stat;
     int64_t inode_total;
     string_t ns;
     FDIRProtoNamespaceStatReq *req;
@@ -303,15 +303,57 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
             */
 
     inode_total = mem_size / 300;
-    inode_used = dentry_get_namespace_inode_count(&ns);
+    if ((result=dentry_namespace_stat(&ns, &stat)) != 0) {
+        return result;
+    }
 
     resp = (FDIRProtoNamespaceStatResp *)REQUEST.body;
     long2buff(inode_total, resp->inode_counters.total);
-    long2buff(inode_used, resp->inode_counters.used);
-    long2buff(inode_total - inode_used, resp->inode_counters.avail);
+    long2buff(stat.used_inodes, resp->inode_counters.used);
+    long2buff(inode_total - stat.used_inodes, resp->inode_counters.avail);
+    long2buff(stat.used_bytes, resp->used_bytes);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static int service_deal_nss_subscribe(struct fast_task_info *task)
+{
+    int result;
+    int expect_blen;
+    string_t ns;
+    FDIRProtoNamespaceStatReq *req;
+
+    //TODO
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoNamespaceStatReq) + 1)) != 0)
+    {
+        return result;
+    }
+
+    req = (FDIRProtoNamespaceStatReq *)REQUEST.body;
+    ns.len = req->ns_len;
+    ns.str = req->ns_str;
+    expect_blen = sizeof(FDIRProtoNamespaceStatReq) + ns.len;
+    if (expect_blen != REQUEST.header.body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "request body length: %d != expect: %d",
+                REQUEST.header.body_len, expect_blen);
+        return EINVAL;
+    }
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static int service_deal_nss_fetch(struct fast_task_info *task)
+{
+    //TODO
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_FETCH_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -788,7 +830,7 @@ static int server_binlog_produce(struct fast_task_info *task)
 }
 
 static inline void dstat_output(struct fast_task_info *task,
-            const int64_t inode, const FDIRDEntryStatus *stat)
+            const int64_t inode, const FDIRDEntryStat *stat)
 {
     FDIRProtoStatDEntryResp *resp;
 
@@ -2325,7 +2367,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
 
 static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
         const char *ns_str, const int ns_len, const int64_t inode,
-        const int64_t flags, const FDIRDEntryStatus *stat, int *result)
+        const int64_t flags, const FDIRDEntryStat *stat, int *result)
 {
     FDIRServerDentry *dentry;
 
@@ -2354,7 +2396,7 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
 {
     FDIRProtoModifyDentryStatReq *req;
     FDIRServerDentry *dentry;
-    FDIRDEntryStatus stat;
+    FDIRDEntryStat stat;
     int64_t inode;
     int64_t flags;
     int64_t masked_flags;
@@ -3411,6 +3453,12 @@ int service_deal_task(struct fast_task_info *task, const int stage)
                 break;
             case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
                 result = service_deal_get_readable_server(task);
+                break;
+            case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
+                result = service_deal_nss_subscribe(task);
+                break;
+            case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
+                result = service_deal_nss_fetch(task);
                 break;
             case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
                 if ((result=sf_server_deal_setup_channel(task,

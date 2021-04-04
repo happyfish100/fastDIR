@@ -119,7 +119,7 @@ int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
 
 int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStatus *stat, FDIRDEntryInfo *dentry);
+        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry);
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const int64_t inode, int *operation, int64_t *offset,
@@ -209,7 +209,7 @@ int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
         const int64_t inode, FDIRClientDentryArray *array);
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
-        const string_t *ns, FDIRInodeStat *stat);
+        const string_t *ns, FDIRClientNamespaceStat *stat);
 
 #ifdef __cplusplus
 }
