@@ -29,26 +29,10 @@
 #include "service_handler.h"
 #include "inode_generator.h"
 #include "inode_index.h"
+#include "ns_manager.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2
-
-typedef struct fdir_namespace_hashtable {
-    int count;
-    FDIRNamespaceEntry **buckets;
-} FDIRNamespaceHashtable;
-
-typedef struct fdir_manager {
-    struct {
-        FDIRNamespaceEntry *head;
-        FDIRNamespaceEntry *tail;
-    } chain;
-
-    FDIRNamespaceHashtable hashtable;
-
-    struct fast_mblock_man ns_allocator;  //element: FDIRNamespaceEntry
-    pthread_mutex_t lock;  //for create namespace
-} FDIRManager;
 
 typedef struct {
     string_t holder;
@@ -56,7 +40,6 @@ typedef struct {
 } StringHolderPtrPair;
 
 const int max_level_count = 20;
-static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
 
 #define SET_HARD_LINK_DENTRY(dentry)  \
     do { \
@@ -69,34 +52,16 @@ static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
 int dentry_init()
 {
     int result;
-    int bytes;
 
-    memset(&fdir_manager, 0, sizeof(fdir_manager));
-    if ((result=fast_mblock_init_ex1(&fdir_manager.ns_allocator,
-                    "ns_htable", sizeof(FDIRNamespaceEntry), 4096,
-                    0, NULL, NULL, true)) != 0)
-    {
+    if ((result=ns_manager_init()) != 0) {
         return result;
     }
-
-    fdir_manager.hashtable.count = 0;
-    bytes = sizeof(FDIRNamespaceEntry *) * g_server_global_vars.
-        namespace_hashtable_capacity;
-    fdir_manager.hashtable.buckets = (FDIRNamespaceEntry **)fc_malloc(bytes);
-    if (fdir_manager.hashtable.buckets == NULL) {
-        return ENOMEM;
-    }
-    memset(fdir_manager.hashtable.buckets, 0, bytes);
-
-    if ((result=init_pthread_lock(&fdir_manager.lock)) != 0) {
-        return result;
-    }
-
     return inode_index_init();
 }
 
 void dentry_destroy()
 {
+    ns_manager_destroy();
 }
 
 /*
@@ -320,86 +285,6 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     return 0;
 }
 
-static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
-        FDIRNamespaceEntry **bucket, const string_t *ns, int *err_no)
-{
-    FDIRNamespaceEntry *entry;
-
-    entry = (FDIRNamespaceEntry *)fast_mblock_alloc_object(
-            &fdir_manager.ns_allocator);
-    if (entry == NULL) {
-        *err_no = ENOMEM;
-        return NULL;
-    }
-
-    if ((*err_no=dentry_strdup(context, &entry->name, ns)) != 0) {
-        return NULL;
-    }
-
-    /*
-    logInfo("ns: %.*s, create_namespace: %.*s", ns->len, ns->str,
-            entry->name.len, entry->name.str);
-            */
-
-    entry->dentry_count = 0;
-    entry->used_bytes = 0;
-    entry->dentry_root = NULL;
-    entry->nexts.htable = *bucket;
-    *bucket = entry;
-
-    entry->nexts.list = NULL;
-    if (fdir_manager.chain.head == NULL) {
-        fdir_manager.chain.head = entry;
-    } else {
-        fdir_manager.chain.tail->nexts.list = entry;
-    }
-    fdir_manager.chain.tail = entry;
-
-    context->counters.ns++;
-    *err_no = 0;
-    return entry;
-}
-
-static FDIRNamespaceEntry *get_namespace(FDIRDentryContext *context,
-        const string_t *ns, const bool create_ns, int *err_no)
-{
-    FDIRNamespaceEntry *entry;
-    FDIRNamespaceEntry **bucket;
-    int hash_code;
-
-    hash_code = simple_hash(ns->str, ns->len);
-    bucket = fdir_manager.hashtable.buckets + ((unsigned int)hash_code) %
-        g_server_global_vars.namespace_hashtable_capacity;
-
-    entry = *bucket;
-    while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
-        entry = entry->nexts.htable;
-    }
-
-    if (entry != NULL) {
-        return entry;
-    }
-    if (!create_ns) {
-        *err_no = ENOENT;
-        return NULL;
-    }
-
-    PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
-    entry = *bucket;
-    while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
-        entry = entry->nexts.htable;
-    }
-
-    if (entry == NULL) {
-        entry = create_namespace(context, bucket, ns, err_no);
-    } else {
-        *err_no = 0;
-    }
-    PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
-
-    return entry;
-}
-
 static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
         const string_t *paths, const int count)
 {
@@ -426,26 +311,11 @@ static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
     return current;
 }
 
-int dentry_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat)
-{
-    int result;
-    FDIRNamespaceEntry *ns_entry;
-
-    if ((ns_entry=get_namespace(NULL, ns, false, &result)) == NULL) {
-        return ENOENT;
-    }
-    stat->used_inodes = __sync_add_and_fetch(&ns_entry->dentry_count, 0);
-    stat->used_bytes = __sync_add_and_fetch(&ns_entry->used_bytes, 0);
-    return 0;
-}
-
 int dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
         const int64_t inc_alloc)
 {
     dentry->stat.alloc += inc_alloc;
-    __sync_add_and_fetch(&dentry->ns_entry->used_bytes, inc_alloc);
-    //TODO
-    return 0;
+    return fdir_namespace_inc_alloc_bytes(dentry->ns_entry, inc_alloc);
 }
 
 int dentry_find_parent(const FDIRDEntryFullName *fullname,
@@ -460,7 +330,7 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
         return EINVAL;
     }
 
-    ns_entry = get_namespace(NULL, &fullname->ns, false, &result);
+    ns_entry = fdir_namespace_get(NULL, &fullname->ns, false, &result);
     if (ns_entry == NULL) {
         my_name->len = 0;
         if (fullname->path.len == 1) {
@@ -522,7 +392,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         return EINVAL;
     }
 
-    *ns_entry = get_namespace(context, &fullname->ns,
+    *ns_entry = fdir_namespace_get(context, &fullname->ns,
             create_ns, &result);
     if (*ns_entry == NULL) {
         *parent = *me = NULL;
@@ -575,7 +445,7 @@ static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
     int result;
 
     if (rec_entry->parent == NULL) {
-        *ns_entry = get_namespace(context, ns, create_ns, &result);
+        *ns_entry = fdir_namespace_get(context, ns, create_ns, &result);
         if (*ns_entry == NULL) {
             return result;
         }

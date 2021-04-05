@@ -21,6 +21,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/connection_pool.h"
 #include "fastcommon/ini_file_reader.h"
+#include "fastcfs/auth/auth_types.h"
 #include "sf/sf_proto.h"
 #include "fdir_types.h"
 
@@ -589,6 +590,10 @@ typedef struct fdir_proto_push_binlog_resp_body_part {
     char data_version[8];
     char err_no[2];
 } FDIRProtoPushBinlogRespBodyPart;
+
+typedef struct fdir_proto_nss_subscribe_req {
+    char key[FCFS_AUTH_SESSION_ID_LEN];
+} FDIRProtoNSSSubscribeReq;
 
 #ifdef __cplusplus
 extern "C" {

@@ -50,6 +50,7 @@
 #include "inode_index.h"
 #include "cluster_relationship.h"
 #include "common_handler.h"
+#include "ns_manager.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -303,7 +304,7 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
             */
 
     inode_total = mem_size / 300;
-    if ((result=dentry_namespace_stat(&ns, &stat)) != 0) {
+    if ((result=fdir_namespace_stat(&ns, &stat)) != 0) {
         return result;
     }
 
@@ -322,36 +323,44 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
 static int service_deal_nss_subscribe(struct fast_task_info *task)
 {
     int result;
-    int expect_blen;
-    string_t ns;
-    FDIRProtoNamespaceStatReq *req;
+    FDIRProtoNSSSubscribeReq *req;
 
-    //TODO
-    if ((result=server_check_min_body_length(sizeof(
-                        FDIRProtoNamespaceStatReq) + 1)) != 0)
+    if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoNSSSubscribeReq))) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoNamespaceStatReq *)REQUEST.body;
-    ns.len = req->ns_len;
-    ns.str = req->ns_str;
-    expect_blen = sizeof(FDIRProtoNamespaceStatReq) + ns.len;
-    if (expect_blen != REQUEST.header.body_len) {
+    if (SERVER_TASK_TYPE != SF_SERVER_TASK_TYPE_NONE) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "request body length: %d != expect: %d",
-                REQUEST.header.body_len, expect_blen);
+                "unexpect server type: %d != expect: %d",
+                SERVER_TASK_TYPE, SF_SERVER_TASK_TYPE_NONE);
         return EINVAL;
     }
 
-    RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
+    req = (FDIRProtoNSSSubscribeReq *)REQUEST.body;
+    //TODO check session
+
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP;
-    TASK_CTX.common.response_done = true;
     return 0;
 }
 
 static int service_deal_nss_fetch(struct fast_task_info *task)
 {
+    int result;
+
+    if ((result=server_expect_body_length(0)) != 0) {
+        return result;
+    }
+
+    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "unexpect server type: %d != expect: %d",
+                SERVER_TASK_TYPE, FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE);
+        return EPERM;
+    }
+
     //TODO
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_FETCH_RESP;
     TASK_CTX.common.response_done = true;

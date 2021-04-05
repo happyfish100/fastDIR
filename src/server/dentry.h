@@ -31,8 +31,6 @@ extern "C" {
     int dentry_init();
     void dentry_destroy();
 
-    int dentry_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat);
-
     int dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
             const int64_t inc_alloc);
 

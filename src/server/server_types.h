@@ -25,6 +25,7 @@
 #include "fastcommon/uniq_skiplist.h"
 #include "fastcommon/server_id_func.h"
 #include "fastcommon/fc_list.h"
+#include "fastcommon/fc_queue.h"
 #include "fastcommon/fc_atomic.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
@@ -45,6 +46,7 @@
 #define FDIR_SERVER_TASK_TYPE_RELATIONSHIP       1   //slave  -> master
 #define FDIR_SERVER_TASK_TYPE_REPLICA_MASTER     2   //[Master] -> slave
 #define FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE      3   //master -> [Slave]
+#define FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE      4   //auth server -> master
 
 #define FDIR_REPLICATION_STAGE_NONE               0
 #define FDIR_REPLICATION_STAGE_CONNECTING         1
@@ -245,22 +247,31 @@ typedef struct server_task_arg {
             } cluster;
         } shared;
 
-        struct {
+        union {
             struct {
-                FDIRServerDentryArray array;
-                int64_t token;
-                int offset;
-                time_t expires;  //expire time
-            } dentry_list_cache; //for dentry_list
+                struct {
+                    FDIRServerDentryArray array;
+                    int64_t token;
+                    int offset;
+                    time_t expires;  //expire time
+                } dentry_list_cache; //for dentry_list
 
-            struct fc_list_head ftasks;  //for flock
-            struct sys_lock_task *sys_lock_task; //for append and ftruncate
+                struct fc_list_head ftasks;  //for flock
+                struct sys_lock_task *sys_lock_task; //for append and ftruncate
 
-            struct idempotency_request *idempotency_request;
-            struct fdir_binlog_record *record;
-            struct server_binlog_record_buffer *rbuffer;
-            volatile int waiting_rpc_count;
-        } service;
+                struct idempotency_request *idempotency_request;
+                struct fdir_binlog_record *record;
+                struct server_binlog_record_buffer *rbuffer;
+                volatile int waiting_rpc_count;
+            } service;
+
+            struct {
+                struct {
+                    struct fc_queue holding;
+                    struct fc_queue sending;
+                } queues;
+            } subscribe;
+        };
 
     } context;
 
