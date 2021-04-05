@@ -109,6 +109,18 @@ void service_task_finish_cleanup(struct fast_task_info *task)
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
+        case FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE:
+            if (NS_SUBSCRIBER != NULL) {
+                ns_subscribe_unregister(NS_SUBSCRIBER);
+                NS_SUBSCRIBER = NULL;
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
+                        "NS_SUBSCRIBER is NULL", __LINE__, task,
+                        SERVER_TASK_TYPE);
+            }
+            SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
+            break;
         default:
             break;
     }
@@ -340,6 +352,13 @@ static int service_deal_nss_subscribe(struct fast_task_info *task)
 
     req = (FDIRProtoNSSSubscribeReq *)REQUEST.body;
     //TODO check session
+
+    if ((NS_SUBSCRIBER=ns_subscribe_register()) == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "namespace subscribe fail, exceed max subscribers: %d",
+                FDIR_MAX_NS_SUBSCRIBERS);
+        return EOVERFLOW;
+    }
 
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP;

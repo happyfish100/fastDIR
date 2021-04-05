@@ -78,12 +78,13 @@
 #define WAITING_RPC_COUNT TASK_CTX.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
-#define SERVER_TASK_TYPE  TASK_CTX.task_type
-#define CLUSTER_PEER      TASK_CTX.shared.cluster.peer
-#define CLUSTER_REPLICA   TASK_CTX.shared.cluster.replica
-#define CLUSTER_CONSUMER_CTX  TASK_CTX.shared.cluster.consumer_ctx
-#define IDEMPOTENCY_CHANNEL   TASK_CTX.shared.service.idempotency_channel
-#define IDEMPOTENCY_REQUEST   TASK_CTX.service.idempotency_request
+#define SERVER_TASK_TYPE     TASK_CTX.task_type
+#define CLUSTER_PEER         TASK_CTX.shared.cluster.peer
+#define CLUSTER_REPLICA      TASK_CTX.shared.cluster.replica
+#define CLUSTER_CONSUMER_CTX TASK_CTX.shared.cluster.consumer_ctx
+#define IDEMPOTENCY_CHANNEL  TASK_CTX.shared.service.idempotency_channel
+#define IDEMPOTENCY_REQUEST  TASK_CTX.service.idempotency_request
+#define NS_SUBSCRIBER        TASK_CTX.subscriber
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
@@ -225,6 +226,13 @@ struct fdir_binlog_record;
 struct flock_task;
 struct sys_lock_task;
 
+typedef struct fdir_ns_subscriber {
+    int index;  //for allocating FDIRNSSubscribeEntry
+    struct fc_queue queues[2];  //element: FDIRNSSubscribeEntry
+    struct fc_list_head dlink;  //for subscriber's chain
+    struct fdir_ns_subscriber *next;  //for freelist
+} FDIRNSSubscriber;
+
 typedef struct server_task_arg {
     struct {
         SFCommonTaskContext common;
@@ -260,9 +268,7 @@ typedef struct server_task_arg {
                 volatile int waiting_rpc_count;
             } service;
 
-            struct {
-                struct fc_queue queues[2];
-            } subscribe;
+            FDIRNSSubscriber *subscriber;
         };
 
     } context;

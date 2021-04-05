@@ -39,6 +39,10 @@ extern "C" {
     int ns_subscribe_init();
     void ns_subscribe_destroy();
 
+    FDIRNSSubscriber *ns_subscribe_register();
+
+    void ns_subscribe_unregister(FDIRNSSubscriber *subscriber);
+
 #ifdef __cplusplus
 }
 #endif
