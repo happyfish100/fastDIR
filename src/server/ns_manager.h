@@ -18,6 +18,20 @@
 #define _FDIR_NS_MANAGER_H
 
 #include "server_types.h"
+#include "ns_subscribe.h"
+
+typedef struct fdir_namespace_entry {
+    string_t name;
+    struct fdir_server_dentry *dentry_root;
+    volatile int64_t dentry_count;
+    volatile int64_t used_bytes;
+    struct {
+        struct fdir_namespace_entry *htable; //for hashtable
+        struct fdir_namespace_entry *list;   //for chain list
+    } nexts;
+
+    FDIRNSSubscribeEntry subs_entries[0];
+} FDIRNamespaceEntry;
 
 #ifdef __cplusplus
 extern "C" {

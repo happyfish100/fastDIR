@@ -31,6 +31,11 @@
 #include "sf/idempotency/server/server_types.h"
 #include "common/fdir_types.h"
 
+#define FDIR_MAX_NS_SUBSCRIBERS                4
+
+#define FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING  0
+#define FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING  1
+
 #define FDIR_CLUSTER_ID_BITS                 10
 #define FDIR_CLUSTER_ID_MAX                  ((1 << FDIR_CLUSTER_ID_BITS) - 1)
 
@@ -90,20 +95,10 @@ typedef struct fdir_path_info {
     int count;
 } FDIRPathInfo;
 
+struct fdir_namespace_entry;
 struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
-
-typedef struct fdir_namespace_entry {
-    string_t name;
-    struct fdir_server_dentry *dentry_root;
-    volatile int64_t dentry_count;
-    volatile int64_t used_bytes;
-    struct {
-        struct fdir_namespace_entry *htable; //for hashtable
-        struct fdir_namespace_entry *list;   //for chain list
-    } nexts;
-} FDIRNamespaceEntry;
 
 typedef struct fdir_server_dentry {
     int64_t inode;
@@ -266,10 +261,7 @@ typedef struct server_task_arg {
             } service;
 
             struct {
-                struct {
-                    struct fc_queue holding;
-                    struct fc_queue sending;
-                } queues;
+                struct fc_queue queues[2];
             } subscribe;
         };
 

@@ -48,15 +48,31 @@ typedef struct fdir_manager {
 
 static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
 
+static int ns_alloc_init_func(FDIRNamespaceEntry *ns_entry, void *args)
+{
+    FDIRNSSubscribeEntry *subs;
+    FDIRNSSubscribeEntry *end;
+
+    end = ns_entry->subs_entries + FDIR_MAX_NS_SUBSCRIBERS;
+    for (subs=ns_entry->subs_entries; subs<end; subs++) {
+        subs->ns = ns_entry;
+    }
+    return 0;
+}
+
 int ns_manager_init()
 {
     int result;
+    int element_size;
     int bytes;
 
     memset(&fdir_manager, 0, sizeof(fdir_manager));
+    element_size = sizeof(FDIRNamespaceEntry) +
+        sizeof(FDIRNSSubscribeEntry) * FDIR_MAX_NS_SUBSCRIBERS;
     if ((result=fast_mblock_init_ex1(&fdir_manager.ns_allocator,
-                    "ns_htable", sizeof(FDIRNamespaceEntry), 4096,
-                    0, NULL, NULL, true)) != 0)
+                    "ns_htable", element_size, 4096, 0,
+                    (fast_mblock_alloc_init_func)ns_alloc_init_func,
+                    NULL, false)) != 0)
     {
         return result;
     }
