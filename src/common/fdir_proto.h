@@ -595,6 +595,17 @@ typedef struct fdir_proto_nss_subscribe_req {
     char key[FCFS_AUTH_SESSION_ID_LEN];
 } FDIRProtoNSSSubscribeReq;
 
+typedef struct fdir_proto_nss_fetch_resp_body_header {
+    char count[4];
+    char is_last;
+    char padding[3];
+} FDIRProtoNSSFetchRespBodyHeader;
+
+typedef struct fdir_proto_nss_fetch_resp_body_part {
+    char used_bytes[8];
+    FDIRProtoNameInfo ns_name;
+} FDIRProtoNSSFetchRespBodyPart;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

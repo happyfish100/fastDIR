@@ -311,11 +311,11 @@ static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
     return current;
 }
 
-int dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
+void dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
         const int64_t inc_alloc)
 {
     dentry->stat.alloc += inc_alloc;
-    return fdir_namespace_inc_alloc_bytes(dentry->ns_entry, inc_alloc);
+    fdir_namespace_inc_alloc_bytes(dentry->ns_entry, inc_alloc);
 }
 
 int dentry_find_parent(const FDIRDEntryFullName *fullname,

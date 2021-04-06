@@ -24,7 +24,8 @@ struct fdir_namespace_entry;
 
 typedef struct fdir_ns_subscribe_for_queue {
     volatile int in_queue;
-    struct fdir_ns_subscribe_entry *next;
+    int padding;
+    struct fdir_ns_subscribe_entry *next;  //for fc_queue
 } FDIRNSSubscribeForQueue;
 
 typedef struct fdir_ns_subscribe_entry {
@@ -42,6 +43,10 @@ extern "C" {
     FDIRNSSubscriber *ns_subscribe_register();
 
     void ns_subscribe_unregister(FDIRNSSubscriber *subscriber);
+
+    void ns_subscribe_notify_all(struct fdir_namespace_entry *ns_entry);
+
+    void ns_subscribe_holding_to_sending_queue(FDIRNSSubscriber *subscriber);
 
 #ifdef __cplusplus
 }

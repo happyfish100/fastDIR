@@ -31,7 +31,7 @@ extern "C" {
     int dentry_init();
     void dentry_destroy();
 
-    int dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
+    void dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
             const int64_t inc_alloc);
 
     int dentry_init_context(FDIRDataThreadContext *db_context);

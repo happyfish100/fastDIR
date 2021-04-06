@@ -19,6 +19,7 @@
 
 #include "server_types.h"
 #include "ns_subscribe.h"
+#include "data_thread.h"
 
 typedef struct fdir_namespace_entry {
     string_t name;
@@ -45,8 +46,11 @@ extern "C" {
 
     int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat);
 
-    int fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
+    void fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
             const int64_t inc_alloc);
+
+    void fdir_namespace_push_all_to_holding_queue(
+            FDIRNSSubscriber *subscriber);
 
 #ifdef __cplusplus
 }

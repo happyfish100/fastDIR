@@ -359,6 +359,7 @@ static int service_deal_nss_subscribe(struct fast_task_info *task)
                 FDIR_MAX_NS_SUBSCRIBERS);
         return EOVERFLOW;
     }
+    fdir_namespace_push_all_to_holding_queue(NS_SUBSCRIBER);
 
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP;
@@ -368,6 +369,14 @@ static int service_deal_nss_subscribe(struct fast_task_info *task)
 static int service_deal_nss_fetch(struct fast_task_info *task)
 {
     int result;
+    struct fc_queue_info qinfo;
+    FDIRProtoNSSFetchRespBodyHeader *body_header;
+    FDIRProtoNSSFetchRespBodyPart *body_part;
+    FDIRNSSubscribeEntry *entry;
+    FDIRNSSubscribeEntry *current;
+    char *p;
+    char *end;
+    int count;
 
     if ((result=server_expect_body_length(0)) != 0) {
         return result;
@@ -379,8 +388,61 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
                 SERVER_TASK_TYPE, FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE);
         return EPERM;
     }
+    if (NS_SUBSCRIBER == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "internal error: subscriber ptr is NULL");
+        return EBUSY;
+    }
 
-    //TODO
+    if (fc_queue_empty(NS_SUBSCRIBER->queues +
+                FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING))
+    {
+        ns_subscribe_holding_to_sending_queue(NS_SUBSCRIBER);
+    }
+
+    body_header = (FDIRProtoNSSFetchRespBodyHeader *)REQUEST.body;
+    p = (char *)(body_header + 1);
+    end = task->data + task->size;
+    count = 0;
+
+    fc_queue_pop_to_queue(NS_SUBSCRIBER->queues +
+            FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING, &qinfo);
+    entry = (FDIRNSSubscribeEntry *)qinfo.head;
+    while (entry != NULL) {
+        current = entry;
+
+        body_part = (FDIRProtoNSSFetchRespBodyPart *)p;
+        p += sizeof(FDIRProtoNSSFetchRespBodyPart) + current->ns->name.len;
+        if (p > end) {
+            p -= sizeof(FDIRProtoNSSFetchRespBodyPart) +
+                current->ns->name.len;
+            break;
+        }
+
+        long2buff(__sync_add_and_fetch(&current->ns->used_bytes, 0),
+                body_part->used_bytes);
+        body_part->ns_name.len = current->ns->name.len;
+        memcpy(body_part->ns_name.str, current->ns->name.str,
+                current->ns->name.len);
+
+        entry = entry->entries[FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING].next;
+        __sync_bool_compare_and_swap(&current->entries[
+                FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING].
+                in_queue, 1, 0);
+        ++count;
+    }
+
+    if (entry == NULL) {
+        body_header->is_last = 1;
+    } else {
+        body_header->is_last = 0;
+        qinfo.head = entry;
+        fc_queue_push_queue_to_head_silence(NS_SUBSCRIBER->queues +
+                FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING, &qinfo);
+    }
+
+    int2buff(count, body_header->count);
+    RESPONSE.header.body_len = p - REQUEST.body;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_FETCH_RESP;
     TASK_CTX.common.response_done = true;
     return 0;

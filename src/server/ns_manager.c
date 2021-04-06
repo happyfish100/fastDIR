@@ -70,7 +70,7 @@ int ns_manager_init()
     element_size = sizeof(FDIRNamespaceEntry) +
         sizeof(FDIRNSSubscribeEntry) * FDIR_MAX_NS_SUBSCRIBERS;
     if ((result=fast_mblock_init_ex1(&fdir_manager.ns_allocator,
-                    "ns_htable", element_size, 4096, 0,
+                    "ns_entry", element_size, 4096, 0,
                     (fast_mblock_alloc_init_func)ns_alloc_init_func,
                     NULL, false)) != 0)
     {
@@ -110,12 +110,11 @@ int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat)
     return 0;
 }
 
-int fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
+void fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
         const int64_t inc_alloc)
 {
     __sync_add_and_fetch(&ns_entry->used_bytes, inc_alloc);
-    //TODO
-    return 0;
+    ns_subscribe_notify_all(ns_entry);
 }
 
 static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
@@ -196,4 +195,44 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
     PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
 
     return entry;
+}
+
+void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
+{
+    FDIRNamespaceEntry *ns_entry;
+    FDIRNSSubscribeEntry *entry;
+    FDIRNSSubscribeEntry *head;
+    FDIRNSSubscribeEntry *tail;
+
+    head = tail = NULL;
+    PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
+    ns_entry = fdir_manager.chain.head;
+    while (ns_entry != NULL) {
+        entry = ns_entry->subs_entries + subscriber->index;
+        if (__sync_bool_compare_and_swap(&entry->entries[
+                    FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING].
+                    in_queue, 0, 1))
+        {
+            if (head == NULL) {
+                head = entry;
+            } else {
+                tail->entries[FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING].
+                    next = entry;
+            }
+            tail = entry;
+        }
+
+        ns_entry = ns_entry->nexts.list;
+    }
+    PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
+
+    if (head != NULL) {
+        struct fc_queue_info qinfo;
+
+        tail->entries[FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING].next = NULL;
+        qinfo.head = head;
+        qinfo.tail = tail;
+        fc_queue_push_queue_to_tail_silence(subscriber->queues +
+                FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING, &qinfo);
+    }
 }
