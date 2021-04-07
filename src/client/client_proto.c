@@ -72,6 +72,30 @@ void fdir_client_dentry_array_free(FDIRClientDentryArray *array)
     }
 }
 
+int fdir_client_namespace_stat_array_init(FDIRClientNamespaceStatArray *array)
+{
+    int result;
+
+    if ((result=sf_init_recv_buffer(&array->buffer, 0)) != 0) {
+        return result;
+    }
+
+    array->alloc = array->count = 0;
+    array->entries = NULL;
+    return 0;
+}
+
+void fdir_client_namespace_stat_array_free(FDIRClientNamespaceStatArray *array)
+{
+    if (array->entries != NULL) {
+        free(array->entries);
+        array->entries = NULL;
+        array->alloc = array->count = 0;
+    }
+
+    sf_free_recv_buffer(&array->buffer);
+}
+
 static int client_check_set_proto_dentry(const FDIRDEntryFullName *fullname,
         FDIRProtoDEntryInfo *entry_proto)
 {
@@ -2269,4 +2293,148 @@ int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
     }
 
     return result;
+}
+
+int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const int64_t session_id)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoNSSSubscribeReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoNSSSubscribeReq)];
+    SFResponseInfo response;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoNSSSubscribeReq *)(header + 1);
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ,
+            sizeof(FDIRProtoNSSSubscribeReq));
+    long2buff(session_id, req->session_id);
+
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(conn,
+                    out_buff, sizeof(out_buff), &response,
+                    client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP)) != 0)
+    {
+        sf_log_network_error(&response, conn, result);
+    }
+
+    return result;
+}
+
+static int check_realloc_namespace_stat_array(SFResponseInfo *response,
+        FDIRClientNamespaceStatArray *array, const int target_count)
+{
+    FDIRClientNamespaceStatEntry *new_entries;
+    int new_alloc;
+    int bytes;
+
+    if (target_count <= array->alloc) {
+        return 0;
+    }
+
+    if (array->alloc == 0) {
+        new_alloc = 1024;
+    } else {
+        new_alloc = 2 * array->alloc;
+    }
+    while (new_alloc < target_count) {
+        new_alloc *= 2;
+    }
+
+    bytes = sizeof(FDIRClientNamespaceStatEntry) * new_alloc;
+    new_entries = (FDIRClientNamespaceStatEntry *)fc_malloc(bytes);
+    if (new_entries == NULL) {
+        response->error.length = sprintf(response->error.message,
+                "malloc %d bytes fail", bytes);
+        return ENOMEM;
+    }
+
+    if (array->entries != NULL) {
+        free(array->entries);
+    }
+    array->entries = new_entries;
+    array->alloc = new_alloc;
+    return 0;
+}
+
+static int parse_nss_fetch_response_body(ConnectionInfo *conn,
+        SFResponseInfo *response, FDIRClientNamespaceStatArray *array,
+        bool *is_last)
+{
+    FDIRProtoNSSFetchRespBodyHeader *body_header;
+    FDIRProtoNSSFetchRespBodyPart *part;
+    FDIRClientNamespaceStatEntry *current;
+    FDIRClientNamespaceStatEntry *end;
+    char *p;
+    int result;
+    int entry_len;
+    int count;
+
+    body_header = (FDIRProtoNSSFetchRespBodyHeader *)array->buffer.buff;
+    count = buff2int(body_header->count);
+    *is_last = body_header->is_last;
+    if ((result=check_realloc_namespace_stat_array(
+                    response, array, count)) != 0)
+    {
+        return result;
+    }
+
+    p = (char *)(body_header + 1);
+    end = array->entries + count;
+    for (current=array->entries; current<end; current++) {
+        part = (FDIRProtoNSSFetchRespBodyPart *)p;
+        entry_len = sizeof(FDIRProtoNSSFetchRespBodyPart) + part->ns_name.len;
+        if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
+            response->error.length = snprintf(response->error.message,
+                    sizeof(response->error.message),
+                    "server %s:%u response body length exceeds header's %d",
+                    conn->ip_addr, conn->port, response->header.body_len);
+            return EINVAL;
+        }
+
+        current->used_bytes = buff2long(part->used_bytes);
+        FC_SET_STRING_EX(current->ns_name, part->ns_name.str,
+                part->ns_name.len);
+
+        p += entry_len;
+    }
+
+    if ((int)(p - array->buffer.buff) != response->header.body_len) {
+        response->error.length = snprintf(response->error.message,
+                sizeof(response->error.message),
+                "server %s:%u response body length: %d != header's %d",
+                conn->ip_addr, conn->port, (int)(p - array->buffer.buff),
+                response->header.body_len);
+        return EINVAL;
+    }
+
+    array->count = count;
+    return 0;
+}
+
+int fdir_client_proto_nss_fetch(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, FDIRClientNamespaceStatArray *array,
+        bool *is_last)
+{
+    FDIRProtoHeader *header;
+    char out_buff[sizeof(FDIRProtoHeader)];
+    SFResponseInfo response;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_NSS_FETCH_REQ, 0);
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_vary_response(conn,
+                    out_buff, sizeof(out_buff), &response,
+                    client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_NSS_FETCH_RESP, &array->buffer,
+                    sizeof(FDIRProtoNSSFetchRespBodyHeader))) != 0)
+    {
+        sf_log_network_error(&response, conn, result);
+        return result;
+    }
+
+    return parse_nss_fetch_response_body(conn, &response, array, is_last);
 }

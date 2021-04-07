@@ -592,7 +592,7 @@ typedef struct fdir_proto_push_binlog_resp_body_part {
 } FDIRProtoPushBinlogRespBodyPart;
 
 typedef struct fdir_proto_nss_subscribe_req {
-    char key[FCFS_AUTH_SESSION_ID_LEN];
+    char session_id[FCFS_AUTH_SESSION_ID_LEN];
 } FDIRProtoNSSSubscribeReq;
 
 typedef struct fdir_proto_nss_fetch_resp_body_header {

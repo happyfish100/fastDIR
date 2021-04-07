@@ -18,6 +18,7 @@
 #define _FDIR_CLIENT_PROTO_H
 
 #include "fastcommon/fast_mpool.h"
+#include "sf/sf_proto.h"
 #include "fdir_types.h"
 #include "client_types.h"
 
@@ -93,6 +94,18 @@ typedef struct fdir_client_cluster_stat_entry {
     char ip_addr[IP_ADDRESS_SIZE];
     uint16_t port;
 } FDIRClientClusterStatEntry;
+
+typedef struct fdir_client_namespace_stat_entry {
+    string_t ns_name;
+    int64_t used_bytes;
+} FDIRClientNamespaceStatEntry;
+
+typedef struct fdir_client_namespace_stat_array {
+    int alloc;
+    int count;
+    FDIRClientNamespaceStatEntry *entries;
+    SFProtoRecvBuffer buffer;
+} FDIRClientNamespaceStatArray;
 
 #ifdef __cplusplus
 extern "C" {
@@ -296,6 +309,16 @@ int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
     fdir_client_dentry_array_init_ex(array, NULL)
 
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
+
+int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const int64_t session_id);
+
+int fdir_client_proto_nss_fetch(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, FDIRClientNamespaceStatArray *array,
+        bool *is_last);
+
+int fdir_client_namespace_stat_array_init(FDIRClientNamespaceStatArray *array);
+void fdir_client_namespace_stat_array_free(FDIRClientNamespaceStatArray *array);
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
         const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat);

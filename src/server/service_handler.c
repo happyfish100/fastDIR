@@ -150,6 +150,18 @@ void service_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
+static inline int service_check_master(struct fast_task_info *task)
+{
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return SF_RETRIABLE_ERROR_NOT_MASTER;
+    }
+
+    return 0;
+}
+
 static int service_deal_client_join(struct fast_task_info *task)
 {
     int result;
@@ -335,7 +347,12 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
 static int service_deal_nss_subscribe(struct fast_task_info *task)
 {
     int result;
+    int64_t session_id;
     FDIRProtoNSSSubscribeReq *req;
+
+    if ((result=service_check_master(task)) != 0) {
+        return result;
+    }
 
     if ((result=server_expect_body_length(sizeof(
                         FDIRProtoNSSSubscribeReq))) != 0)
@@ -351,6 +368,7 @@ static int service_deal_nss_subscribe(struct fast_task_info *task)
     }
 
     req = (FDIRProtoNSSSubscribeReq *)REQUEST.body;
+    session_id = buff2long(req->session_id);
     //TODO check session
 
     if ((NS_SUBSCRIBER=ns_subscribe_register()) == NULL) {
@@ -377,6 +395,10 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
     char *p;
     char *end;
     int count;
+
+    if ((result=service_check_master(task)) != 0) {
+        return result;
+    }
 
     if ((result=server_expect_body_length(0)) != 0) {
         return result;
@@ -2544,18 +2566,6 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     }
 
     return result;
-}
-
-static inline int service_check_master(struct fast_task_info *task)
-{
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not master");
-        return SF_RETRIABLE_ERROR_NOT_MASTER;
-    }
-
-    return 0;
 }
 
 static inline int service_check_readable(struct fast_task_info *task)
