@@ -25,6 +25,7 @@
 #include "sf/sf_global.h"
 #include "sf/sf_service.h"
 #include "sf/sf_binlog_writer.h"
+#include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
 #include "server_global.h"
@@ -45,16 +46,17 @@ static void log_cluster_server_config()
     fc_server_to_log(&CLUSTER_CONFIG_CTX);
 }
 
-static int server_load_cluster_id(IniContext *ini_context, const char *filename)
+static int server_load_cluster_id(IniFullContext *ini_ctx)
 {
     char *cluster_id;
     char *endptr = NULL;
 
-    cluster_id = iniGetStrValue(NULL, "cluster_id", ini_context);
+    cluster_id = iniGetStrValue(ini_ctx->section_name,
+            "cluster_id", ini_ctx->context);
     if (cluster_id == NULL || *cluster_id == '\0') {
         logError("file: "__FILE__", line: %d, "
                 "config file: %s, item \"cluster_id\" not exist or empty",
-                __LINE__, filename);
+                __LINE__, ini_ctx->filename);
         return ENOENT;
     }
 
@@ -63,14 +65,14 @@ static int server_load_cluster_id(IniContext *ini_context, const char *filename)
         logError("file: "__FILE__", line: %d, "
                 "config file: %s, cluster_id: %s is invalid, "
                 "it must be a natural number!", __LINE__,
-                filename, cluster_id);
+                ini_ctx->filename, cluster_id);
         return EINVAL;
     }
 
     if (CLUSTER_ID > FDIR_CLUSTER_ID_MAX) {
         logError("file: "__FILE__", line: %d, "
                 "config file: %s, cluster_id: %s is too large, "
-                "exceeds %d", __LINE__, filename,
+                "exceeds %d", __LINE__, ini_ctx->filename,
                 cluster_id, FDIR_CLUSTER_ID_MAX);
         return EINVAL;
     }
@@ -78,20 +80,20 @@ static int server_load_cluster_id(IniContext *ini_context, const char *filename)
     return 0;
 }
 
-static int load_cluster_config(IniContext *ini_context, const char *filename)
+static int load_cluster_config(IniFullContext *ini_ctx,
+        char *full_cluster_filename)
 {
     int result;
-    IniFullContext ini_ctx;
     char full_server_filename[PATH_MAX];
 
-    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, ini_context);
-    if ((result=server_load_cluster_id(ini_context, filename)) != 0) {
+    if ((result=server_load_cluster_id(ini_ctx)) != 0) {
         return result;
     }
 
-    if ((result=sf_load_cluster_config_ex(&CLUSTER_CONFIG, &ini_ctx,
-                    FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    full_server_filename, sizeof(full_server_filename))) != 0)
+    if ((result=sf_load_cluster_config_ex(&CLUSTER_CONFIG,
+                    ini_ctx, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
+                    full_cluster_filename, full_server_filename,
+                    PATH_MAX)) != 0)
     {
         return result;
     }
@@ -188,6 +190,7 @@ static void server_log_configs()
     char sz_slowlog_config[256];
     char sz_service_config[128];
     char sz_cluster_config[128];
+    char sz_auth_config[1024];
 
     sf_global_config_to_string(sz_global_config, sizeof(sz_global_config));
     sf_slow_log_config_to_string(&SLOW_LOG_CFG, "slow_log",
@@ -197,6 +200,9 @@ static void server_log_configs()
             sz_service_config, sizeof(sz_service_config));
     sf_context_config_to_string(&CLUSTER_SF_CTX,
             sz_cluster_config, sizeof(sz_cluster_config));
+
+    fcfs_auth_for_server_cfg_to_string(AUTH_ENABLED,
+            sz_auth_config, sizeof(sz_auth_config));
 
     snprintf(sz_server_config, sizeof(sz_server_config),
             "cluster_id = %d, my server id = %d, data_path = %s, "
@@ -219,11 +225,11 @@ static void server_log_configs()
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
 
-    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s",
+    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s, %s",
             g_fdir_global_vars.version.major, g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch,
             sz_global_config, sz_slowlog_config, sz_service_config,
-            sz_cluster_config, sz_server_config);
+            sz_cluster_config, sz_server_config, sz_auth_config);
     log_local_host_ip_addrs();
     log_cluster_server_config();
 }
@@ -253,7 +259,9 @@ static int load_binlog_buffer_size(IniContext *ini_context,
 int server_load_config(const char *filename)
 {
     const int task_buffer_extra_size = 0;
+    IniFullContext ini_ctx;
     IniContext ini_context;
+    char full_cluster_filename[PATH_MAX];
     int result;
 
     if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
@@ -347,12 +355,21 @@ int server_load_config(const char *filename)
         INODE_SHARED_LOCKS_COUNT = FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT;
     }
 
-    if ((result=load_cluster_config(&ini_context, filename)) != 0) {
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, &ini_context);
+    if ((result=load_cluster_config(&ini_ctx,
+                    full_cluster_filename)) != 0)
+    {
         return result;
     }
 
     if ((result=sf_load_slow_log_config(filename, &ini_context,
                     &SLOW_LOG_CTX, &SLOW_LOG_CFG)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fcfs_auth_for_server_init(&ini_ctx,
+                    full_cluster_filename, &AUTH_ENABLED)) != 0)
     {
         return result;
     }

@@ -38,6 +38,7 @@
 #include "sf/sf_nio.h"
 #include "sf/sf_service.h"
 #include "sf/sf_util.h"
+#include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_types.h"
 #include "server_types.h"
@@ -173,6 +174,10 @@ int main(int argc, char *argv[])
         }
 
         if ((result=server_load_data()) != 0) {
+            break;
+        }
+
+        if ((result=fcfs_auth_for_server_start(AUTH_ENABLED)) != 0) {
             break;
         }
 
