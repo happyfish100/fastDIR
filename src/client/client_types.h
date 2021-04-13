@@ -21,7 +21,10 @@
 #include "sf/sf_configs.h"
 #include "sf/sf_connection_manager.h"
 #include "sf/idempotency/client/client_types.h"
+#include "fastcfs/auth/client_types.h"
 #include "fdir_types.h"
+
+#define FDIR_CLIENT_DEFAULT_CONFIG_FILENAME "/etc/fastcfs/fdir/client.conf"
 
 struct fdir_client_context;
 
@@ -54,8 +57,8 @@ typedef struct fdir_client_context {
     FDIRClientConnManagerType conn_manager_type;
     bool cloned;
     bool idempotency_enabled;
-    bool auth_enabled;
     SFClientCommonConfig common_cfg;
+    FCFSAuthClientFullContext auth;
 } FDIRClientContext;
 
 #endif

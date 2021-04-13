@@ -177,7 +177,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        if ((result=fcfs_auth_for_server_start(AUTH_ENABLED)) != 0) {
+        if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
             break;
         }
 

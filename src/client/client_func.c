@@ -20,6 +20,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "sf/sf_cluster_cfg.h"
+#include "fastcfs/auth/fcfs_auth_client.h"
 #include "fdir_func.h"
 #include "client_global.h"
 #include "simple_connection_manager.h"
@@ -47,6 +48,8 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         IniFullContext *ini_ctx)
 {
     char *pBasePath;
+    char full_cluster_filename[PATH_MAX];
+    char full_server_filename[PATH_MAX];
     int result;
 
     pBasePath = iniGetStrValue(NULL, "base_path", ini_ctx->context);
@@ -88,14 +91,21 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 
     sf_load_read_rule_config(&client_ctx->common_cfg.read_rule, ini_ctx);
 
-    if ((result=sf_load_cluster_config(&client_ctx->cluster, ini_ctx,
-                    FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
+    if ((result=sf_load_cluster_config_ex(&client_ctx->cluster, ini_ctx,
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT, full_cluster_filename,
+                    full_server_filename, PATH_MAX)) != 0)
     {
         return result;
     }
 
     if ((result=sf_load_net_retry_config(&client_ctx->
                     common_cfg.net_retry_cfg, ini_ctx)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fcfs_auth_load_config(&client_ctx->auth,
+                    full_cluster_filename)) != 0)
     {
         return result;
     }
@@ -168,7 +178,6 @@ int fdir_client_init_ex1(FDIRClientContext *client_ctx,
     int result;
     FDIRClientConnManagerType conn_manager_type;
 
-    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
@@ -195,7 +204,6 @@ int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
 {
     int result;
 
-    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }
@@ -216,7 +224,6 @@ int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
 {
     int result;
 
-    memset(client_ctx, 0, sizeof(FDIRClientContext));
     if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
         return result;
     }

@@ -26,8 +26,8 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] "
-            "host[:port]\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
+            "host[:port]\n", argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static void output(FDIRClientServiceStat *stat)
@@ -67,7 +67,7 @@ static void output(FDIRClientServiceStat *stat)
 
 int main(int argc, char *argv[])
 {
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *host;
     ConnectionInfo conn;
@@ -110,6 +110,10 @@ int main(int argc, char *argv[])
     }
 
     if ((result=fdir_client_simple_init(config_filename)) != 0) {
+        return result;
+    }
+
+    if ((result=fdir_client_auth_session_create()) != 0) {
         return result;
     }
 

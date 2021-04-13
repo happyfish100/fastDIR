@@ -21,6 +21,7 @@
 #include "fastcommon/server_id_func.h"
 #include "sf/sf_global.h"
 #include "sf/sf_cluster_cfg.h"
+#include "fastcfs/auth/client_types.h"
 #include "common/fdir_global.h"
 #include "server_types.h"
 
@@ -35,7 +36,7 @@ typedef struct server_global_vars {
     int check_alive_interval;
 
     struct {
-        bool auth_enabled;
+        FCFSAuthClientFullContext auth;
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
@@ -71,7 +72,8 @@ typedef struct server_global_vars {
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
 #define CLUSTER_CONFIG_CTX      CLUSTER_CONFIG.server_cfg
-#define AUTH_ENABLED            g_server_global_vars.cluster.auth_enabled
+#define AUTH_CTX                g_server_global_vars.cluster.auth
+#define AUTH_ENABLED            AUTH_CTX.enabled
 
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
 #define MYSELF_IS_MASTER        __sync_add_and_fetch( \

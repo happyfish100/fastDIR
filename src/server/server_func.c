@@ -201,7 +201,7 @@ static void server_log_configs()
     sf_context_config_to_string(&CLUSTER_SF_CTX,
             sz_cluster_config, sizeof(sz_cluster_config));
 
-    fcfs_auth_for_server_cfg_to_string(AUTH_ENABLED,
+    fcfs_auth_for_server_cfg_to_string(&AUTH_CTX,
             sz_auth_config, sizeof(sz_auth_config));
 
     snprintf(sz_server_config, sizeof(sz_server_config),
@@ -368,8 +368,9 @@ int server_load_config(const char *filename)
         return result;
     }
 
-    if ((result=fcfs_auth_for_server_init(&ini_ctx,
-                    full_cluster_filename, &AUTH_ENABLED)) != 0)
+    fcfs_auth_client_init_full_ctx(&AUTH_CTX);
+    if ((result=fcfs_auth_for_server_init(&AUTH_CTX, &ini_ctx,
+                    full_cluster_filename)) != 0)
     {
         return result;
     }

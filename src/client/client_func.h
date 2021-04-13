@@ -17,28 +17,12 @@
 #ifndef _FDIR_CLIENT_FUNC_H
 #define _FDIR_CLIENT_FUNC_H
 
-#include "fdir_global.h"
-#include "client_types.h"
+#include "client_global.h"
+#include "fastcfs/auth/fcfs_auth_client.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define fdir_client_load_from_file(filename) \
-    fdir_client_load_from_file_ex((&g_fdir_client_vars.client_ctx), \
-            filename, NULL)
-
-#define fdir_client_init(filename, cm)  \
-    fdir_client_init_ex((&g_fdir_client_vars.client_ctx),  \
-            filename, NULL, cm)
-
-#define fdir_client_simple_init(filename) \
-    fdir_client_simple_init_ex((&g_fdir_client_vars.client_ctx), \
-            filename, NULL)
-
-#define fdir_client_pooled_init(filename, max_count_per_entry, max_idle_time) \
-    fdir_client_pooled_init_ex(&g_fdir_client_vars.client_ctx, filename,  \
-            NULL, max_count_per_entry, max_idle_time)
 
 #define fdir_client_clone(client_ctx) \
     fdir_client_clone_ex(client_ctx, &g_fdir_client_vars.client_ctx)
@@ -110,6 +94,46 @@ static inline int fdir_client_pooled_init_ex(FDIRClientContext *client_ctx,
             max_count_per_entry, max_idle_time, bg_thread_enabled);
 }
 
+static inline int fdir_client_load_from_file(const char *config_filename)
+{
+    const char *section_name = NULL;
+
+    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
+    return fdir_client_load_from_file_ex(&g_fdir_client_vars.
+            client_ctx, config_filename, section_name);
+}
+
+static inline int fdir_client_init(const char *config_filename,
+        const SFConnectionManager *cm)
+{
+    const char *section_name = NULL;
+
+    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
+    return fdir_client_init_ex(&g_fdir_client_vars.client_ctx,
+            config_filename, section_name, cm);
+}
+
+static inline int fdir_client_simple_init(const char *config_filename)
+{
+    const char *section_name = NULL;
+
+    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
+    return fdir_client_simple_init_ex(&g_fdir_client_vars.client_ctx,
+            config_filename, section_name);
+}
+
+static inline int fdir_client_pooled_init(const char *config_filename,
+        const int max_count_per_entry, const int max_idle_time)
+{
+    const char *section_name = NULL;
+    const bool bg_thread_enabled = true;
+
+    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
+    return fdir_client_pooled_init_ex(&g_fdir_client_vars.client_ctx,
+            config_filename, section_name, max_count_per_entry,
+            max_idle_time, bg_thread_enabled);
+}
+
 static inline void fdir_client_clone_ex(FDIRClientContext *dest_ctx,
         const FDIRClientContext *src_ctx)
 {
@@ -131,6 +155,19 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
 
 void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
         const char *extra_config);
+
+#define fdir_client_auth_session_create1_ex(client_ctx, poolname) \
+    fcfs_auth_client_session_create_ex(&(client_ctx)->auth, poolname)
+
+#define fdir_client_auth_session_create1(poolname) \
+    fdir_client_auth_session_create1_ex(&g_fdir_client_vars. \
+            client_ctx, poolname)
+
+#define fdir_client_auth_session_create_ex(client_ctx) \
+    fcfs_auth_client_session_create(&(client_ctx)->auth)
+
+#define fdir_client_auth_session_create() \
+    fdir_client_auth_session_create_ex(&g_fdir_client_vars.client_ctx)
 
 #ifdef __cplusplus
 }
