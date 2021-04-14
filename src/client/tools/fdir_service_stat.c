@@ -67,6 +67,7 @@ static void output(FDIRClientServiceStat *stat)
 
 int main(int argc, char *argv[])
 {
+    const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *host;
@@ -113,7 +114,7 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    if ((result=fdir_client_auth_session_create()) != 0) {
+    if ((result=fdir_client_auth_session_create(publish)) != 0) {
         return result;
     }
 

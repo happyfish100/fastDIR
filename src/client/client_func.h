@@ -156,18 +156,19 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
 void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
         const char *extra_config);
 
-#define fdir_client_auth_session_create1_ex(client_ctx, poolname) \
-    fcfs_auth_client_session_create_ex(&(client_ctx)->auth, poolname)
+#define fdir_client_auth_session_create1_ex(client_ctx, poolname, publish) \
+    fcfs_auth_client_session_create_ex(&(client_ctx)->auth, poolname, publish)
 
-#define fdir_client_auth_session_create1(poolname) \
+#define fdir_client_auth_session_create1(poolname, publish)  \
     fdir_client_auth_session_create1_ex(&g_fdir_client_vars. \
-            client_ctx, poolname)
+            client_ctx, poolname, publish)
 
-#define fdir_client_auth_session_create_ex(client_ctx) \
-    fcfs_auth_client_session_create(&(client_ctx)->auth)
+#define fdir_client_auth_session_create_ex(client_ctx, publish) \
+    fcfs_auth_client_session_create(&(client_ctx)->auth, publish)
 
-#define fdir_client_auth_session_create() \
-    fdir_client_auth_session_create_ex(&g_fdir_client_vars.client_ctx)
+#define fdir_client_auth_session_create(publish) \
+    fdir_client_auth_session_create_ex(  \
+            &g_fdir_client_vars.client_ctx, publish)
 
 #ifdef __cplusplus
 }
