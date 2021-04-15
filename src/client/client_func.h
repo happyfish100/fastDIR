@@ -170,6 +170,14 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
     fdir_client_auth_session_create_ex(  \
             &g_fdir_client_vars.client_ctx, publish)
 
+#define fdir_client_auth_session_set_ex(client_ctx, session_id) \
+    memcpy((client_ctx)->auth.ctx->session_id, \
+            session_id, FCFS_AUTH_SESSION_ID_LEN)
+
+#define fdir_client_auth_session_set(session_id) \
+    fdir_client_auth_session_set_ex(  \
+            &g_fdir_client_vars.client_ctx, session_id)
+
 #ifdef __cplusplus
 }
 #endif

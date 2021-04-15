@@ -304,6 +304,10 @@ typedef struct fdir_proto_modify_dentry_stat_req {
     char ns_str[0];       //namespace for hash code
 } FDIRProtoModifyDentryStatReq;
 
+typedef struct fdir_proto_lookup_by_inode_req {
+    char inode[8];
+} FDIRProtoLookupByInodeReq;
+
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
 } FDIRProtoLookupInodeResp;

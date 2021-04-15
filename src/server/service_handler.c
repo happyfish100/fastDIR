@@ -40,6 +40,8 @@
 #include "sf/sf_global.h"
 #include "sf/idempotency/server/server_channel.h"
 #include "sf/idempotency/server/server_handler.h"
+#include "fastcfs/auth/server_session.h"
+#include "fastcfs/auth/fcfs_auth_client.h"
 #include "common/fdir_proto.h"
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
@@ -3311,6 +3313,351 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
 }
 
+static int service_check_priv(struct fast_task_info *task)
+{
+    int result;
+    bool validate;
+    FCFSAuthValidatePriviledgeType priv_type;
+    int64_t the_priv;
+    ServerSessionIdInfo session;
+    string_t session_id;
+
+    switch (REQUEST.header.cmd) {
+        case SF_PROTO_ACTIVE_TEST_REQ:
+        case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
+        case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
+        case SF_SERVICE_PROTO_GET_LEADER_REQ:
+        case SF_SERVICE_PROTO_GET_GROUP_SERVERS_REQ:
+        case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
+        case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
+        case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
+        case SF_SERVICE_PROTO_CLOSE_CHANNEL_REQ:
+        case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
+        case SF_SERVICE_PROTO_REBIND_CHANNEL_REQ:
+        case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
+            return 0;
+
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
+        case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
+        case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:
+        case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ:
+            priv_type = fcfs_auth_validate_priv_type_pool_fdir;
+            the_priv = FCFS_AUTH_POOL_ACCESS_WRITE;
+            break;
+
+        case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_READLINK_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
+            priv_type = fcfs_auth_validate_priv_type_pool_fdir;
+            the_priv = FCFS_AUTH_POOL_ACCESS_READ;
+            break;
+
+        case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
+        case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
+            priv_type = fcfs_auth_validate_priv_type_user;
+            the_priv = FCFS_AUTH_USER_PRIV_MONITOR_CLUSTER;
+            break;
+
+        case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
+            priv_type = fcfs_auth_validate_priv_type_user;
+            the_priv = FCFS_AUTH_USER_PRIV_SUBSCRIBE_SESSION;
+            break;
+    }
+
+    if ((result=server_check_min_body_length(
+                    FCFS_AUTH_SESSION_ID_LEN)) != 0)
+    {
+        return result;
+    }
+    session.id = buff2long(REQUEST.body);
+
+    if (session.fields.publish) {
+        if (priv_type == fcfs_auth_validate_priv_type_user) {
+            result = server_session_user_priv_granted(session.id, the_priv);
+        } else {
+            result = server_session_fdir_priv_granted(session.id, the_priv);
+        }
+
+        //TODO
+        if (result == ENOENT) {
+            validate = true;
+        } else {
+            validate = false;
+        }
+    } else {
+        validate = true;
+    }
+
+    if (validate) {
+        const int64_t pool_id = 0;  //TODO
+        FC_SET_STRING_EX(session_id, REQUEST.body, FCFS_AUTH_SESSION_ID_LEN);
+        result = fcfs_auth_client_session_validate(AUTH_CLIENT_CTX,
+                &session_id, &g_server_session_cfg.validate_key,
+                priv_type, pool_id, the_priv);
+    }
+
+    if (result != 0) {
+        return result;
+    }
+
+    REQUEST.body += FCFS_AUTH_SESSION_ID_LEN;
+    REQUEST.header.body_len -= FCFS_AUTH_SESSION_ID_LEN;
+    return 0;
+}
+
+static int service_process(struct fast_task_info *task)
+{
+    int result;
+    switch (REQUEST.header.cmd) {
+        case SF_PROTO_ACTIVE_TEST_REQ:
+            RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
+            return sf_proto_deal_active_test(task, &REQUEST, &RESPONSE);
+        case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
+            return service_deal_client_join(task);
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
+            return service_process_update(task,
+                    service_deal_create_dentry,
+                    FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP);
+        case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
+            return service_process_update(task,
+                    service_deal_create_by_pname,
+                    FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP);
+        case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
+            return service_process_update(task,
+                    service_deal_symlink_dentry,
+                    FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP);
+        case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
+            return service_process_update(task,
+                    service_deal_symlink_by_pname,
+                    FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP);
+        case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
+            return service_process_update(task,
+                    service_deal_hdlink_dentry,
+                    FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
+        case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
+            return service_process_update(task,
+                    service_deal_hdlink_by_pname,
+                    FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
+            return service_process_update(task,
+                    service_deal_remove_dentry,
+                    FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP);
+        case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
+            return service_process_update(task,
+                    service_deal_remove_by_pname,
+                    FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP);
+        case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
+            return service_process_update(task,
+                    service_deal_rename_dentry,
+                    FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP);
+        case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
+            return service_process_update(task,
+                    service_deal_rename_by_pname,
+                    FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP);
+        case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
+            return service_process_update(task,
+                    service_deal_set_dentry_size,
+                    FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP);
+        case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
+            return service_process_update(task,
+                    service_deal_batch_set_dentry_size,
+                    FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP);
+        case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
+            return service_process_update(task,
+                    service_deal_modify_dentry_stat,
+                    FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP);
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
+            return service_process_update(task,
+                    service_deal_set_xattr_by_path,
+                    FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
+        case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ:
+            return service_process_update(task,
+                    service_deal_set_xattr_by_inode,
+                    FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
+            return service_process_update(task,
+                    service_deal_remove_xattr_by_path,
+                    FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
+        case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ:
+            return service_process_update(task,
+                    service_deal_remove_xattr_by_inode,
+                    FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
+        case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_lookup_inode_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_lookup_inode_by_pname(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_stat_dentry_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_stat_dentry_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_stat_dentry_by_pname(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_READLINK_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_readlink_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_readlink_by_pname(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_readlink_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_list_dentry_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_list_dentry_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_list_dentry_next(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
+            if ((result=service_check_master(task)) == 0) {
+                return service_deal_flock_dentry(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ:
+            if ((result=service_check_master(task)) == 0) {
+                return service_deal_getlk_dentry(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:
+            if ((result=service_check_master(task)) == 0) {
+                return service_deal_sys_lock_dentry(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ:
+            if ((result=service_check_master(task)) == 0) {
+                return service_deal_sys_unlock_dentry(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_get_xattr_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_get_xattr_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_list_xattr_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_list_xattr_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
+            return service_deal_service_stat(task);
+        case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
+            return service_deal_cluster_stat(task);
+        case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
+            return service_deal_namespace_stat(task);
+        case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
+            if ((result=service_deal_get_master(task)) == 0) {
+                RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;
+            }
+            return result;
+        case SF_SERVICE_PROTO_GET_LEADER_REQ:
+            if ((result=service_deal_get_master(task)) == 0) {
+                RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_LEADER_RESP;
+            }
+            return result;
+        case SF_SERVICE_PROTO_GET_GROUP_SERVERS_REQ:
+            return service_deal_get_group_servers(task);
+        case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
+            return service_deal_get_slaves(task);
+        case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
+            return service_deal_get_readable_server(task);
+        case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
+            return service_deal_nss_subscribe(task);
+        case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
+            return service_deal_nss_fetch(task);
+        case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
+            if ((result=sf_server_deal_setup_channel(task,
+                            &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL,
+                            &RESPONSE)) == 0)
+            {
+                TASK_CTX.common.response_done = true;
+            }
+            return result;
+        case SF_SERVICE_PROTO_CLOSE_CHANNEL_REQ:
+            return sf_server_deal_close_channel(task,
+                    &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
+        case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
+            return sf_server_deal_report_req_receipt(task,
+                    SERVER_TASK_TYPE, IDEMPOTENCY_CHANNEL, &RESPONSE);
+        case SF_SERVICE_PROTO_REBIND_CHANNEL_REQ:
+            return sf_server_deal_rebind_channel(task,
+                    &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
+        default:
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "unkown cmd: %d", REQUEST.header.cmd);
+            return -EINVAL;
+    }
+}
+
 int service_deal_task(struct fast_task_info *task, const int stage)
 {
     int result;
@@ -3337,255 +3684,12 @@ int service_deal_task(struct fast_task_info *task, const int stage)
         }
     } else {
         sf_proto_init_task_context(task, &TASK_CTX.common);
-
-        switch (REQUEST.header.cmd) {
-            case SF_PROTO_ACTIVE_TEST_REQ:
-                RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
-                result = sf_proto_deal_active_test(task, &REQUEST, &RESPONSE);
-                break;
-            case FDIR_SERVICE_PROTO_CLIENT_JOIN_REQ:
-                result = service_deal_client_join(task);
-                break;
-            case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
-                result = service_process_update(task,
-                        service_deal_create_dentry,
-                        FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_REQ:
-                result = service_process_update(task,
-                        service_deal_create_by_pname,
-                        FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_REQ:
-                result = service_process_update(task,
-                        service_deal_symlink_dentry,
-                        FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_REQ:
-                result = service_process_update(task,
-                        service_deal_symlink_by_pname,
-                        FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ:
-                result = service_process_update(task,
-                        service_deal_hdlink_dentry,
-                        FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ:
-                result = service_process_update(task,
-                        service_deal_hdlink_by_pname,
-                        FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ:
-                result = service_process_update(task,
-                        service_deal_remove_dentry,
-                        FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ:
-                result = service_process_update(task,
-                        service_deal_remove_by_pname,
-                        FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_RENAME_DENTRY_REQ:
-                result = service_process_update(task,
-                        service_deal_rename_dentry,
-                        FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
-                result = service_process_update(task,
-                        service_deal_rename_by_pname,
-                        FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
-                result = service_process_update(task,
-                        service_deal_set_dentry_size,
-                        FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
-                result = service_process_update(task,
-                        service_deal_batch_set_dentry_size,
-                        FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
-                result = service_process_update(task,
-                        service_deal_modify_dentry_stat,
-                        FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
-                result = service_process_update(task,
-                        service_deal_set_xattr_by_path,
-                        FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ:
-                result = service_process_update(task,
-                        service_deal_set_xattr_by_inode,
-                        FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
-                result = service_process_update(task,
-                        service_deal_remove_xattr_by_path,
-                        FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ:
-                result = service_process_update(task,
-                        service_deal_remove_xattr_by_inode,
-                        FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
-                break;
-            case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_lookup_inode_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_lookup_inode_by_pname(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_stat_dentry_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_stat_dentry_by_inode(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_stat_dentry_by_pname(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_READLINK_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_readlink_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_READLINK_BY_PNAME_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_readlink_by_pname(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_READLINK_BY_INODE_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_readlink_by_inode(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_list_dentry_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_list_dentry_by_inode(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_deal_list_dentry_next(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_flock_dentry(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_getlk_dentry(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_sys_lock_dentry(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ:
-                if ((result=service_check_master(task)) == 0) {
-                    result = service_deal_sys_unlock_dentry(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_get_xattr_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_get_xattr_by_inode(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_list_xattr_by_path(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ:
-                if ((result=service_check_readable(task)) == 0) {
-                    result = service_list_xattr_by_inode(task);
-                }
-                break;
-            case FDIR_SERVICE_PROTO_SERVICE_STAT_REQ:
-                result = service_deal_service_stat(task);
-                break;
-            case FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ:
-                result = service_deal_cluster_stat(task);
-                break;
-            case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
-                result = service_deal_namespace_stat(task);
-                break;
-            case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
-                if ((result=service_deal_get_master(task)) == 0) {
-                    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;
-                }
-                break;
-            case SF_SERVICE_PROTO_GET_LEADER_REQ:
-                if ((result=service_deal_get_master(task)) == 0) {
-                    RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_LEADER_RESP;
-                }
-                break;
-            case SF_SERVICE_PROTO_GET_GROUP_SERVERS_REQ:
-                result = service_deal_get_group_servers(task);
-                break;
-            case FDIR_SERVICE_PROTO_GET_SLAVES_REQ:
-                result = service_deal_get_slaves(task);
-                break;
-            case FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ:
-                result = service_deal_get_readable_server(task);
-                break;
-            case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
-                result = service_deal_nss_subscribe(task);
-                break;
-            case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
-                result = service_deal_nss_fetch(task);
-                break;
-            case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
-                if ((result=sf_server_deal_setup_channel(task,
-                                &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL,
-                                &RESPONSE)) == 0)
-                {
-                    TASK_CTX.common.response_done = true;
-                }
-                break;
-            case SF_SERVICE_PROTO_CLOSE_CHANNEL_REQ:
-                result = sf_server_deal_close_channel(task,
-                        &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
-                break;
-            case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
-                result = sf_server_deal_report_req_receipt(task,
-                        SERVER_TASK_TYPE, IDEMPOTENCY_CHANNEL, &RESPONSE);
-                break;
-            case SF_SERVICE_PROTO_REBIND_CHANNEL_REQ:
-                result = sf_server_deal_rebind_channel(task,
-                        &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
-                break;
-            default:
-                RESPONSE.error.length = sprintf(
-                        RESPONSE.error.message,
-                        "unkown cmd: %d", REQUEST.header.cmd);
-                result = -EINVAL;
-                break;
+        if (AUTH_ENABLED) {
+            if ((result=service_check_priv(task)) == 0) {
+                result = service_process(task);
+            }
+        } else {
+            result = service_process(task);
         }
     }
 

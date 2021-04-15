@@ -73,6 +73,7 @@ typedef struct server_global_vars {
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
 #define CLUSTER_CONFIG_CTX      CLUSTER_CONFIG.server_cfg
 #define AUTH_CTX                g_server_global_vars.cluster.auth
+#define AUTH_CLIENT_CTX         AUTH_CTX.ctx
 #define AUTH_ENABLED            AUTH_CTX.enabled
 
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
