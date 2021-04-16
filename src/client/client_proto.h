@@ -311,7 +311,7 @@ int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
 
 int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const int64_t session_id);
+        ConnectionInfo *conn);
 
 int fdir_client_proto_nss_fetch(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, FDIRClientNamespaceStatArray *array,

@@ -177,9 +177,12 @@ int main(int argc, char *argv[])
             break;
         }
 
+        /*
+           //TODO
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
             break;
         }
+        */
 
         common_handler_init();
         //sched_print_all_entries();

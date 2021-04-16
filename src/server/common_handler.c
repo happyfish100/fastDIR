@@ -39,7 +39,7 @@
 #include "server_global.h"
 #include "common_handler.h"
 
-#define LOG_LEVEL_FOR_DEBUG  LOG_DEBUG
+#define LOG_LEVEL_FOR_DEBUG  LOG_INFO
 
 static int fdir_get_cmd_log_level(const int cmd)
 {

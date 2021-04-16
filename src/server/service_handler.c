@@ -203,7 +203,7 @@ static int service_deal_client_join(struct fast_task_info *task)
         SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_CHANNEL_USER;
     }
 
-    join_resp = (FDIRProtoClientJoinResp *)REQUEST.body;
+    join_resp = (FDIRProtoClientJoinResp *)SF_PROTO_RESP_BODY(task);
     int2buff(g_sf_global_vars.min_buff_size - 128,
             join_resp->buffer_size);
     RESPONSE.header.body_len = sizeof(FDIRProtoClientJoinResp);
@@ -223,7 +223,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     }
 
     data_thread_sum_counters(&counters);
-    stat_resp = (FDIRProtoServiceStatResp *)REQUEST.body;
+    stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_RESP_BODY(task);
 
     stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
         CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
@@ -268,10 +268,9 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
         return result;
     }
 
-    body_header = (FDIRProtoClusterStatRespBodyHeader *)REQUEST.body;
-    body_part = (FDIRProtoClusterStatRespBodyPart *)(REQUEST.body +
-            sizeof(FDIRProtoClusterStatRespBodyHeader));
-
+    body_header = (FDIRProtoClusterStatRespBodyHeader *)
+        SF_PROTO_RESP_BODY(task);
+    body_part = (FDIRProtoClusterStatRespBodyPart *)(body_header + 1);
     int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
 
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
@@ -286,7 +285,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
                 body_part->port);
     }
 
-    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -334,7 +333,7 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoNamespaceStatResp *)REQUEST.body;
+    resp = (FDIRProtoNamespaceStatResp *)SF_PROTO_RESP_BODY(task);
     long2buff(inode_total, resp->inode_counters.total);
     long2buff(stat.used_inodes, resp->inode_counters.used);
     long2buff(inode_total - stat.used_inodes, resp->inode_counters.avail);
@@ -349,16 +348,12 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
 static int service_deal_nss_subscribe(struct fast_task_info *task)
 {
     int result;
-    int64_t session_id;
-    FDIRProtoNSSSubscribeReq *req;
 
     if ((result=service_check_master(task)) != 0) {
         return result;
     }
 
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoNSSSubscribeReq))) != 0)
-    {
+    if ((result=server_expect_body_length(0)) != 0) {
         return result;
     }
 
@@ -368,10 +363,6 @@ static int service_deal_nss_subscribe(struct fast_task_info *task)
                 SERVER_TASK_TYPE, SF_SERVER_TASK_TYPE_NONE);
         return EINVAL;
     }
-
-    req = (FDIRProtoNSSSubscribeReq *)REQUEST.body;
-    session_id = buff2long(req->session_id);
-    //TODO check session
 
     if ((NS_SUBSCRIBER=ns_subscribe_register()) == NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -424,7 +415,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
         ns_subscribe_holding_to_sending_queue(NS_SUBSCRIBER);
     }
 
-    body_header = (FDIRProtoNSSFetchRespBodyHeader *)REQUEST.body;
+    body_header = (FDIRProtoNSSFetchRespBodyHeader *)SF_PROTO_RESP_BODY(task);
     p = (char *)(body_header + 1);
     end = task->data + task->size;
     count = 0;
@@ -466,7 +457,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
     }
 
     int2buff(count, body_header->count);
-    RESPONSE.header.body_len = p - REQUEST.body;
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_FETCH_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -491,7 +482,7 @@ static int service_deal_get_master(struct fast_task_info *task)
         return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
-    resp = (FDIRProtoGetServerResp *)REQUEST.body;
+    resp = (FDIRProtoGetServerResp *)SF_PROTO_RESP_BODY(task);
     addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 master->server), task->client_ip);
 
@@ -530,7 +521,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
         return EINVAL;
     }
 
-    body_header = (SFProtoGetGroupServersRespBodyHeader *)REQUEST.body;
+    body_header = (SFProtoGetGroupServersRespBodyHeader *)SF_PROTO_RESP_BODY(task);
     body_part = (SFProtoGetGroupServersRespBodyPart *)(body_header + 1);
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
@@ -541,7 +532,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
     }
     int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
 
-    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_GROUP_SERVERS_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -561,9 +552,9 @@ static int service_deal_get_slaves(struct fast_task_info *task)
         return result;
     }
 
-    body_header = (FDIRProtoGetSlavesRespBodyHeader *)REQUEST.body;
-    part_start = body_part = (FDIRProtoGetSlavesRespBodyPart *)(
-            REQUEST.body + sizeof(FDIRProtoGetSlavesRespBodyHeader));
+    body_header = (FDIRProtoGetSlavesRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    part_start = (FDIRProtoGetSlavesRespBodyPart *)(body_header + 1);
+    body_part = part_start;
 
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
@@ -584,7 +575,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
     }
     int2buff(body_part - part_start, body_header->count);
 
-    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_SLAVES_RESP;
     TASK_CTX.common.response_done = true;
 
@@ -637,7 +628,7 @@ static int service_deal_get_readable_server(struct fast_task_info *task)
         return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
-    resp = (FDIRProtoGetServerResp *)REQUEST.body;
+    resp = (FDIRProtoGetServerResp *)SF_PROTO_RESP_BODY(task);
     addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 cs->server), task->client_ip);
 
@@ -2030,7 +2021,7 @@ static int readlink_output(struct fast_task_info *task,
 
     RESPONSE.header.cmd = resp_cmd;
     RESPONSE.header.body_len = dentry->link.len;
-    memcpy(REQUEST.body, dentry->link.str, dentry->link.len);
+    memcpy(SF_PROTO_RESP_BODY(task), dentry->link.str, dentry->link.len);
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -2138,7 +2129,7 @@ static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
+    resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
     long2buff(dentry->inode, resp->inode);
     RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
     TASK_CTX.common.response_done = true;
@@ -2222,7 +2213,7 @@ static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 
     if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
         RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
-        resp = (FDIRProtoLookupInodeResp *)REQUEST.body;
+        resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
         long2buff(dentry->inode, resp->inode);
         RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
         TASK_CTX.common.response_done = true;
@@ -2785,7 +2776,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     ftask.region = &region;  //for region compare
     result = inode_index_flock_getlk(inode, &ftask);
     if (result == 0 || result == ENOENT) {
-        resp = (FDIRProtoGetlkDEntryResp *)REQUEST.body;
+        resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_RESP_BODY(task);
         if (result == 0) {
             int2buff(ftask.type, resp->type);
             long2buff(ftask.region->offset, resp->offset);
@@ -2813,7 +2804,7 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
         const FDIRServerDentry *dentry)
 {
     FDIRProtoSysLockDEntryResp *resp;
-    resp = (FDIRProtoSysLockDEntryResp *)REQUEST.body;
+    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
 
     long2buff(dentry->stat.size, resp->size);
     long2buff(dentry->stat.space_end, resp->space_end);
@@ -3050,7 +3041,7 @@ static int server_list_dentry_output(struct fast_task_info *task)
         DENTRY_LIST_CACHE.offset;
 
     buf_end = task->data + task->size;
-    p = REQUEST.body + sizeof(FDIRProtoListDEntryRespBodyHeader);
+    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
     start = DENTRY_LIST_CACHE.array.entries +
         DENTRY_LIST_CACHE.offset;
     end = start + remain_count;
@@ -3071,10 +3062,10 @@ static int server_list_dentry_output(struct fast_task_info *task)
         p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
     }
     count = dentry - start;
-    RESPONSE.header.body_len = p - REQUEST.body;
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
 
-    body_header = (FDIRProtoListDEntryRespBodyHeader *)REQUEST.body;
+    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
     int2buff(count, body_header->count);
     if (count < remain_count) {
         DENTRY_LIST_CACHE.offset += count;
@@ -3190,7 +3181,7 @@ static int service_do_getxattr(struct fast_task_info *task,
 
     RESPONSE.header.cmd = resp_cmd;
     RESPONSE.header.body_len = value.len;
-    memcpy(REQUEST.body, value.str, value.len);
+    memcpy(SF_PROTO_RESP_BODY(task), value.str, value.len);
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -3256,7 +3247,7 @@ static int service_do_listxattr(struct fast_task_info *task,
     const key_value_pair_t *kv;
     char *p;
 
-    p = REQUEST.body;
+    p = SF_PROTO_RESP_BODY(task);
     inode_index_list_xattr(dentry, &it);
     while ((kv=xattr_iterator_next(&it)) != NULL) {
         memcpy(p, kv->key.str, kv->key.len);
@@ -3265,7 +3256,7 @@ static int service_do_listxattr(struct fast_task_info *task,
     }
 
     RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = p - REQUEST.body;
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -3392,6 +3383,10 @@ static int service_check_priv(struct fast_task_info *task)
             priv_type = fcfs_auth_validate_priv_type_user;
             the_priv = FCFS_AUTH_USER_PRIV_SUBSCRIBE_SESSION;
             break;
+        default:
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "unkown cmd: %d", REQUEST.header.cmd);
+            return -EINVAL;
     }
 
     if ((result=server_check_min_body_length(
@@ -3408,9 +3403,9 @@ static int service_check_priv(struct fast_task_info *task)
             result = server_session_fdir_priv_granted(session.id, the_priv);
         }
 
-        //TODO
         if (result == ENOENT) {
-            validate = true;
+            validate = (g_current_time - session.fields.ts <=
+                    g_server_session_cfg.validate_within_fresh_seconds);
         } else {
             validate = false;
         }
@@ -3419,6 +3414,7 @@ static int service_check_priv(struct fast_task_info *task)
     }
 
     if (validate) {
+        logInfo("validate session: %"PRId64, session.id);
         const int64_t pool_id = 0;  //TODO
         FC_SET_STRING_EX(session_id, REQUEST.body, FCFS_AUTH_SESSION_ID_LEN);
         result = fcfs_auth_client_session_validate(AUTH_CLIENT_CTX,
@@ -3426,6 +3422,8 @@ static int service_check_priv(struct fast_task_info *task)
                 priv_type, pool_id, the_priv);
     }
 
+    logInfo("check priv cmd: %d, session: %"PRId64", "
+            "error no: %d", REQUEST.header.cmd, session.id, result);
     if (result != 0) {
         return result;
     }

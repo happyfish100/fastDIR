@@ -2273,24 +2273,23 @@ int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const int64_t session_id)
+        ConnectionInfo *conn)
 {
     FDIRProtoHeader *header;
-    FDIRProtoNSSSubscribeReq *req;
-    char out_buff[sizeof(FDIRProtoHeader) +
+    SFProtoEmptyBodyReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + QUERY_ADDITIONAL_BODY_SIZE +
         sizeof(FDIRProtoNSSSubscribeReq)];
     SFResponseInfo response;
+    int out_bytes;
     int result;
 
-    header = (FDIRProtoHeader *)out_buff;
-    req = (FDIRProtoNSSSubscribeReq *)(header + 1);
+    CLIENT_PROTO_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ,
-            sizeof(FDIRProtoNSSSubscribeReq));
-    long2buff(session_id, req->session_id);
+            out_bytes - sizeof(FDIRProtoHeader));
 
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn,
-                    out_buff, sizeof(out_buff), &response,
+                    out_buff, out_bytes, &response,
                     client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP)) != 0)
     {
