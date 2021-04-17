@@ -177,12 +177,9 @@ int main(int argc, char *argv[])
             break;
         }
 
-        /*
-           //TODO
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
             break;
         }
-        */
 
         common_handler_init();
         //sched_print_all_entries();
@@ -191,7 +188,7 @@ int main(int argc, char *argv[])
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
                 sf_proto_set_body_length, cluster_deal_task,
-                cluster_task_finish_cleanup, NULL, 1000,
+                cluster_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
                 init_nio_task);
         if (result != 0) {
@@ -203,7 +200,7 @@ int main(int argc, char *argv[])
         result = sf_service_init_ex2(&g_sf_context,
                 service_alloc_thread_extra_data, NULL,
                 NULL, sf_proto_set_body_length, service_deal_task,
-                service_task_finish_cleanup, NULL, 1000,
+                service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
                 init_nio_task);
         if (result != 0) {

@@ -45,7 +45,7 @@ static void output_dentry_array(FDIRClientDentryArray *array)
 
 int main(int argc, char *argv[])
 {
-    const bool publish = false;
+    const bool publish = true;  //TODO
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *ns;
@@ -86,14 +86,13 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    if ((result=fdir_client_simple_init_with_auth(
-                    config_filename, publish)) != 0)
+    FC_SET_STRING(entry_info.ns, ns);
+    FC_SET_STRING(entry_info.path, path);
+    if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
+                    &entry_info.ns, publish)) != 0)
     {
         return result;
     }
-
-    FC_SET_STRING(entry_info.ns, ns);
-    FC_SET_STRING(entry_info.path, path);
 
     if ((result=fdir_client_dentry_array_init(&array)) != 0) {
         return result;

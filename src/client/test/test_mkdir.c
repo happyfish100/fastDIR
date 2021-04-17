@@ -148,6 +148,7 @@ int main(int argc, char *argv[])
     const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
+    string_t poolname;
     char time_buff[32];
     int64_t start_time; 
     int64_t time_used;
@@ -179,8 +180,9 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
-    if ((result=fdir_client_simple_init_with_auth(
-                    config_filename, publish)) != 0)
+    FC_SET_STRING(poolname, ns);
+    if ((result=fdir_client_simple_init_with_auth_ex(
+                    config_filename, &poolname, publish)) != 0)
     {
         return result;
     }

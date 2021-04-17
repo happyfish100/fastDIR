@@ -137,14 +137,14 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    if ((result=fdir_client_simple_init_with_auth(
-                    config_filename, publish)) != 0)
+    FC_SET_STRING(fullname.ns, ns);
+    FC_SET_STRING(fullname.path, path);
+    if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
+                    &fullname.ns, publish)) != 0)
     {
         return result;
     }
 
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
     value.str = v;
     if (name.len > 0) {
         return get_xattr(&name);

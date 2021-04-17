@@ -84,16 +84,17 @@ int main(int argc, char *argv[])
 
     src_path = argv[optind];
     dest_path = argv[optind + 1];
-    if ((result=fdir_client_simple_init_with_auth(
-                    config_filename, publish)) != 0)
-    {
-        return result;
-    }
-
     FC_SET_STRING(src_fullname.ns, ns);
     FC_SET_STRING(src_fullname.path, src_path);
     FC_SET_STRING(dest_fullname.ns, ns);
     FC_SET_STRING(dest_fullname.path, dest_path);
+
+    if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
+                    &src_fullname.ns, publish)) != 0)
+    {
+        return result;
+    }
+
     return fdir_client_rename_dentry(&g_fdir_client_vars.client_ctx,
                     &src_fullname, &dest_fullname, flags);
 }

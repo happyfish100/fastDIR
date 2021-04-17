@@ -40,8 +40,7 @@
 #include "sf/sf_global.h"
 #include "sf/idempotency/server/server_channel.h"
 #include "sf/idempotency/server/server_handler.h"
-#include "fastcfs/auth/server_session.h"
-#include "fastcfs/auth/fcfs_auth_client.h"
+#include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
@@ -1124,8 +1123,8 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
     string_t name;
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, front_part_size,
-                    &fullname)) != 0)
+    if ((result=server_check_and_parse_dentry(task,
+                    front_part_size, &fullname)) != 0)
     {
         return result;
     }
@@ -1772,6 +1771,35 @@ static inline int service_do_setxattr(struct fast_task_info *task,
     return push_record_to_data_thread_queue(task);
 }
 
+static int parse_dentry_for_xattr_update(struct fast_task_info *task,
+        const int front_part_size)
+{
+    FDIRServerDentry *dentry;
+    FDIRDEntryFullName fullname;
+    int result;
+
+    if ((result=server_check_and_parse_dentry(task,
+                    front_part_size, &fullname)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=dentry_find(&fullname, &dentry)) != 0) {
+        return result;
+    }
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    RECORD->me.dentry = dentry;
+    RECORD->ns = fullname.ns;
+    RECORD->inode = dentry->inode;
+    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
+    RECORD->data_version = 0;
+    return 0;
+}
+
 static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 {
     int result;
@@ -1802,20 +1830,12 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 
     fields_part_len = sizeof(FDIRProtoSetXAttrFields) +
         xattr.key.len + xattr.value.len;
-    if ((result=server_parse_dentry_for_update(task,
-                    fields_part_len, false)) != 0)
+    if ((result=parse_dentry_for_xattr_update(task,
+                    fields_part_len)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_find_by_pname(RECORD->me.parent, &RECORD->
-                    me.pname.name, &RECORD->me.dentry)) != 0)
-    {
-        free_record_object(task);
-        return result;
-    }
-
-    RECORD->inode = RECORD->me.dentry->inode;
     return service_do_setxattr(task, &xattr, buff2short(fields->flags),
             FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
 }
@@ -1930,20 +1950,12 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
     }
 
     fields_part_len = sizeof(FDIRProtoNameInfo) + name.len;
-    if ((result=server_parse_dentry_for_update(task,
-                    fields_part_len, false)) != 0)
+    if ((result=parse_dentry_for_xattr_update(task,
+                    fields_part_len)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_find_by_pname(RECORD->me.parent, &RECORD->
-                    me.pname.name, &RECORD->me.dentry)) != 0)
-    {
-        free_record_object(task);
-        return result;
-    }
-
-    RECORD->inode = RECORD->me.dentry->inode;
     return service_do_removexattr(task, &name,
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
 }
@@ -2073,7 +2085,9 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
     parent_inode = buff2long(req->parent_inode);
     name.str = req->name_str;
     name.len = req->name_len;
-    if ((dentry=inode_index_get_dentry_by_pname(parent_inode, &name)) == NULL) {
+    if ((dentry=inode_index_get_dentry_by_pname(
+                    parent_inode, &name)) == NULL)
+    {
         return ENOENT;
     }
 
@@ -3306,12 +3320,8 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
 
 static int service_check_priv(struct fast_task_info *task)
 {
-    int result;
-    bool validate;
     FCFSAuthValidatePriviledgeType priv_type;
     int64_t the_priv;
-    ServerSessionIdInfo session;
-    string_t session_id;
 
     switch (REQUEST.header.cmd) {
         case SF_PROTO_ACTIVE_TEST_REQ:
@@ -3389,48 +3399,8 @@ static int service_check_priv(struct fast_task_info *task)
             return -EINVAL;
     }
 
-    if ((result=server_check_min_body_length(
-                    FCFS_AUTH_SESSION_ID_LEN)) != 0)
-    {
-        return result;
-    }
-    session.id = buff2long(REQUEST.body);
-
-    if (session.fields.publish) {
-        if (priv_type == fcfs_auth_validate_priv_type_user) {
-            result = server_session_user_priv_granted(session.id, the_priv);
-        } else {
-            result = server_session_fdir_priv_granted(session.id, the_priv);
-        }
-
-        if (result == ENOENT) {
-            validate = (g_current_time - session.fields.ts <=
-                    g_server_session_cfg.validate_within_fresh_seconds);
-        } else {
-            validate = false;
-        }
-    } else {
-        validate = true;
-    }
-
-    if (validate) {
-        logInfo("validate session: %"PRId64, session.id);
-        const int64_t pool_id = 0;  //TODO
-        FC_SET_STRING_EX(session_id, REQUEST.body, FCFS_AUTH_SESSION_ID_LEN);
-        result = fcfs_auth_client_session_validate(AUTH_CLIENT_CTX,
-                &session_id, &g_server_session_cfg.validate_key,
-                priv_type, pool_id, the_priv);
-    }
-
-    logInfo("check priv cmd: %d, session: %"PRId64", "
-            "error no: %d", REQUEST.header.cmd, session.id, result);
-    if (result != 0) {
-        return result;
-    }
-
-    REQUEST.body += FCFS_AUTH_SESSION_ID_LEN;
-    REQUEST.header.body_len -= FCFS_AUTH_SESSION_ID_LEN;
-    return 0;
+    return fcfs_auth_for_server_check_priv(AUTH_CLIENT_CTX,
+            &REQUEST, &RESPONSE, priv_type, the_priv);
 }
 
 static int service_process(struct fast_task_info *task)
