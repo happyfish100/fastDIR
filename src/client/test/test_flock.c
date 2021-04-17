@@ -26,15 +26,16 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename = /etc/fastcfs/fdir/client.conf] "
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
             "[-N non-block] [-S do NOT output dentry stat] "
             "[-s sleep milliseconds = 0] [-t thread count = 8] "
-            "<-n namespace> <path>\n", argv[0]);
+            "<-n namespace> <path>\n", argv[0],
+            FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static int64_t inode;
 
-static char *config_filename = "/etc/fastcfs/fdir/client.conf";
+static char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 static int flock_flags = 0;
 static int msleep_time = 0;
 static int threads = 8;
@@ -80,6 +81,7 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
 
 static void *thread_func(void *args)
 {
+    const bool publish = false;
     long thread_index;
     FDIRClientContext client_ctx;
     FDIRClientSession session;
@@ -96,7 +98,12 @@ static void *thread_func(void *args)
         int64_t length;
 
         if ((result=fdir_client_pooled_init_ex(&client_ctx,
-                        config_filename, NULL, 0, 4 * 3600)) != 0)
+                        config_filename, NULL, 0, 4 * 3600, false)) != 0)
+        {
+            break;
+        }
+        if ((result=fdir_client_auth_session_create_ex(
+                        &client_ctx, publish)) != 0)
         {
             break;
         }
@@ -163,6 +170,7 @@ static void *thread_func(void *args)
 
 int main(int argc, char *argv[])
 {
+    const bool publish = false;
 	int ch;
     char *ns;
     char *path;
@@ -220,7 +228,9 @@ int main(int argc, char *argv[])
     start_time = get_current_time_ms();
 
     path = argv[optind];
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

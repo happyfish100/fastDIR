@@ -26,15 +26,16 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] [-s swap two files] "
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] [-s swap two files] "
             "[-f force overwrite] <-n namespace> <old path> <new path>\n",
-            argv[0]);
+            argv[0],FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 int main(int argc, char *argv[])
 {
+    const bool publish = false;
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     char *ns;
     char *src_path;
     char *dest_path;
@@ -83,7 +84,9 @@ int main(int argc, char *argv[])
 
     src_path = argv[optind];
     dest_path = argv[optind + 1];
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

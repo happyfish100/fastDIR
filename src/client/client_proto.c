@@ -2278,7 +2278,7 @@ int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
     FDIRProtoHeader *header;
     SFProtoEmptyBodyReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + QUERY_ADDITIONAL_BODY_SIZE +
-        sizeof(FDIRProtoNSSSubscribeReq)];
+        sizeof(SFProtoEmptyBodyReq)];
     SFResponseInfo response;
     int out_bytes;
     int result;

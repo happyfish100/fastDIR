@@ -26,7 +26,8 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename]\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-c config_filename=%s]\n",
+            argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static void output(FDIRClientClusterStatEntry *stats, const int count)
@@ -52,8 +53,9 @@ static void output(FDIRClientClusterStatEntry *stats, const int count)
 int main(int argc, char *argv[])
 {
 #define CLUSTER_MAX_SERVER_COUNT  16
+    const bool publish = false;
 	int ch;
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
     int count;
     FDIRClientClusterStatEntry stats[CLUSTER_MAX_SERVER_COUNT];
 	int result;
@@ -82,7 +84,9 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

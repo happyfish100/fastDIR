@@ -110,11 +110,9 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
-        return result;
-    }
-
-    if ((result=fdir_client_auth_session_create(publish)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

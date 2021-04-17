@@ -30,8 +30,9 @@ static string_t value;
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] [-k attribute_name]\n"
-            "\t[-d dump all attributes] <-n namespace> <path>\n\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] [-k attribute_name]\n"
+            "\t[-d dump all attributes] <-n namespace> <path>\n\n",
+            argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static int get_xattr(const string_t *name)
@@ -87,7 +88,8 @@ static int dump_xattrs()
 
 int main(int argc, char *argv[])
 {
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
+    const bool publish = false;
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     bool dump_all;
     char *ns;
@@ -135,7 +137,9 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

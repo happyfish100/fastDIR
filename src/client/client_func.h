@@ -178,6 +178,17 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
     fdir_client_auth_session_set_ex(  \
             &g_fdir_client_vars.client_ctx, session_id)
 
+static inline int fdir_client_simple_init_with_auth(
+        const char *config_filename, const bool publish)
+{
+    int result;
+    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+        return result;
+    }
+
+    return fdir_client_auth_session_create(publish);
+}
+
 #ifdef __cplusplus
 }
 #endif

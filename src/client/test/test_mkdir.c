@@ -37,9 +37,10 @@ static FDIRClientOwnerModePair omp;
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] "
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
             "[-n namespace=test] [-b base_path=/test] "
-            "[-i for ignoring exist error]\n", argv[0]);
+            "[-i for ignoring exist error]\n", argv[0],
+            FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static int create_dentry(FDIRDEntryFullName *fullname)
@@ -144,9 +145,10 @@ static int test_case()
 
 int main(int argc, char *argv[])
 {
+    const bool publish = false;
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char time_buff[32];
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     int64_t start_time; 
     int64_t time_used;
 	int result;
@@ -177,7 +179,9 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 

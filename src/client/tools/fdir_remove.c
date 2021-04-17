@@ -26,14 +26,16 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename] "
-            "<-n namespace> <path>\n", argv[0]);
+    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
+            "<-n namespace> <path>\n", argv[0],
+            FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 int main(int argc, char *argv[])
 {
+    const bool publish = false;
+    const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
-    const char *config_filename = "/etc/fastcfs/fdir/client.conf";
     char *ns;
     char *path;
     FDIRDEntryFullName fullname;
@@ -71,7 +73,9 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    if ((result=fdir_client_simple_init(config_filename)) != 0) {
+    if ((result=fdir_client_simple_init_with_auth(
+                    config_filename, publish)) != 0)
+    {
         return result;
     }
 
