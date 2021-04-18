@@ -36,6 +36,7 @@ static void usage(char *argv[])
 static int64_t inode;
 
 static char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
+static string_t poolname;
 static int flock_flags = 0;
 static int msleep_time = 0;
 static int threads = 8;
@@ -84,6 +85,7 @@ static void *thread_func(void *args)
     const bool publish = false;
     long thread_index;
     FDIRClientContext client_ctx;
+    FCFSAuthClientContext auth_ctx;
     FDIRClientSession session;
     FDIRDEntryInfo dentry;
     char buff[32];
@@ -97,13 +99,13 @@ static void *thread_func(void *args)
         int64_t offset;
         int64_t length;
 
-        if ((result=fdir_client_pooled_init_ex(&client_ctx,
+        if ((result=fdir_client_pooled_init_ex(&client_ctx, &auth_ctx,
                         config_filename, NULL, 0, 4 * 3600, false)) != 0)
         {
             break;
         }
-        if ((result=fdir_client_auth_session_create_ex(
-                        &client_ctx, publish)) != 0)
+        if ((result=fdir_client_auth_session_create1_ex(
+                        &client_ctx, &poolname, publish)) != 0)
         {
             break;
         }
@@ -228,14 +230,15 @@ int main(int argc, char *argv[])
     start_time = get_current_time_ms();
 
     path = argv[optind];
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
+    FC_SET_STRING(poolname, ns);
     if ((result=fdir_client_simple_init_with_auth_ex(
-                    config_filename, &fullname.ns, publish)) != 0)
+                    config_filename, &poolname, publish)) != 0)
     {
         return result;
     }
 
+    FC_SET_STRING(fullname.ns, ns);
+    FC_SET_STRING(fullname.path, path);
     if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
                     client_ctx, &fullname, &inode)) != 0)
     {

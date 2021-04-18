@@ -139,11 +139,12 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx)
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx)
 {
     IniContext iniContext;
     int result;
 
+    client_ctx->auth.ctx = auth_ctx;
     if (ini_ctx->context == NULL) {
         if ((result=iniLoadFromFile(ini_ctx->filename, &iniContext)) != 0) {
             logError("file: "__FILE__", line: %d, "
@@ -173,12 +174,16 @@ static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const SFConnectionManager *cm)
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx,
+        const SFConnectionManager *cm)
 {
     int result;
     FDIRClientConnManagerType conn_manager_type;
 
-    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
+    if ((result=fdir_client_load_from_file_ex1(client_ctx,
+                    auth_ctx, ini_ctx)) != 0)
+    {
         return result;
     }
 
@@ -200,11 +205,14 @@ int fdir_client_init_ex1(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx)
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx)
 {
     int result;
 
-    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
+    if ((result=fdir_client_load_from_file_ex1(client_ctx,
+                    auth_ctx, ini_ctx)) != 0)
+    {
         return result;
     }
 
@@ -219,12 +227,16 @@ int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const int max_count_per_entry,
-        const int max_idle_time, const bool bg_thread_enabled)
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx,
+        const int max_count_per_entry, const int max_idle_time,
+        const bool bg_thread_enabled)
 {
     int result;
 
-    if ((result=fdir_client_load_from_file_ex1(client_ctx, ini_ctx)) != 0) {
+    memset(client_ctx, 0, sizeof(FDIRClientContext));
+    if ((result=fdir_client_load_from_file_ex1(client_ctx,
+                    auth_ctx, ini_ctx)) != 0)
+    {
         return result;
     }
 

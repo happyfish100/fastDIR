@@ -34,7 +34,7 @@ extern "C" {
     fdir_client_log_config_ex(client_ctx, NULL)
 
 int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx);
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx);
 
 /**
 * client initial from config file
@@ -45,52 +45,56 @@ int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
 * return: 0 success, != 0 fail, return the error code
 **/
 static inline int fdir_client_load_from_file_ex(FDIRClientContext *client_ctx,
-        const char *config_filename, const char *section_name)
+        FCFSAuthClientContext *auth_ctx, const char *config_filename,
+        const char *section_name)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
-    return fdir_client_load_from_file_ex1(client_ctx, &ini_ctx);
+    return fdir_client_load_from_file_ex1(client_ctx, auth_ctx, &ini_ctx);
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const SFConnectionManager *cm);
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx,
+        const SFConnectionManager *cm);
 
 static inline int fdir_client_init_ex(FDIRClientContext *client_ctx,
-        const char *config_filename, const char *section_name,
-        const SFConnectionManager *cm)
+        FCFSAuthClientContext *auth_ctx, const char *config_filename,
+        const char *section_name, const SFConnectionManager *cm)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
-    return fdir_client_init_ex1(client_ctx, &ini_ctx, cm);
+    return fdir_client_init_ex1(client_ctx, auth_ctx, &ini_ctx, cm);
 }
 
 int fdir_client_simple_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx);
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx);
 
 static inline int fdir_client_simple_init_ex(FDIRClientContext *client_ctx,
-        const char *config_filename, const char *section_name)
+        FCFSAuthClientContext *auth_ctx, const char *config_filename,
+        const char *section_name)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
-    return fdir_client_simple_init_ex1(client_ctx, &ini_ctx);
+    return fdir_client_simple_init_ex1(client_ctx, auth_ctx, &ini_ctx);
 }
 
 int fdir_client_pooled_init_ex1(FDIRClientContext *client_ctx,
-        IniFullContext *ini_ctx, const int max_count_per_entry,
-        const int max_idle_time, const bool bg_thread_enabled);
+        FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx,
+        const int max_count_per_entry, const int max_idle_time,
+        const bool bg_thread_enabled);
 
 static inline int fdir_client_pooled_init_ex(FDIRClientContext *client_ctx,
-        const char *config_filename, const char *section_name,
-        const int max_count_per_entry, const int max_idle_time,
-        const bool bg_thread_enabled)
+        FCFSAuthClientContext *auth_ctx, const char *config_filename,
+        const char *section_name, const int max_count_per_entry,
+        const int max_idle_time, const bool bg_thread_enabled)
 {
     IniFullContext ini_ctx;
 
     FAST_INI_SET_FULL_CTX(ini_ctx, config_filename, section_name);
-    return fdir_client_pooled_init_ex1(client_ctx, &ini_ctx,
+    return fdir_client_pooled_init_ex1(client_ctx, auth_ctx, &ini_ctx,
             max_count_per_entry, max_idle_time, bg_thread_enabled);
 }
 
@@ -99,8 +103,9 @@ static inline int fdir_client_load_from_file(const char *config_filename)
     const char *section_name = NULL;
 
     fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
-    return fdir_client_load_from_file_ex(&g_fdir_client_vars.
-            client_ctx, config_filename, section_name);
+    return fdir_client_load_from_file_ex(&g_fdir_client_vars.client_ctx,
+            &g_fcfs_auth_client_vars.client_ctx, config_filename,
+            section_name);
 }
 
 static inline int fdir_client_init(const char *config_filename,
@@ -108,18 +113,18 @@ static inline int fdir_client_init(const char *config_filename,
 {
     const char *section_name = NULL;
 
-    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
     return fdir_client_init_ex(&g_fdir_client_vars.client_ctx,
-            config_filename, section_name, cm);
+            &g_fcfs_auth_client_vars.client_ctx, config_filename,
+            section_name, cm);
 }
 
 static inline int fdir_client_simple_init(const char *config_filename)
 {
     const char *section_name = NULL;
 
-    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
     return fdir_client_simple_init_ex(&g_fdir_client_vars.client_ctx,
-            config_filename, section_name);
+            &g_fcfs_auth_client_vars.client_ctx, config_filename,
+            section_name);
 }
 
 static inline int fdir_client_pooled_init(const char *config_filename,
@@ -128,10 +133,10 @@ static inline int fdir_client_pooled_init(const char *config_filename,
     const char *section_name = NULL;
     const bool bg_thread_enabled = true;
 
-    fcfs_auth_client_init_full_ctx(&g_fdir_client_vars.client_ctx.auth);
     return fdir_client_pooled_init_ex(&g_fdir_client_vars.client_ctx,
-            config_filename, section_name, max_count_per_entry,
-            max_idle_time, bg_thread_enabled);
+            &g_fcfs_auth_client_vars.client_ctx, config_filename,
+            section_name, max_count_per_entry, max_idle_time,
+            bg_thread_enabled);
 }
 
 static inline void fdir_client_clone_ex(FDIRClientContext *dest_ctx,
