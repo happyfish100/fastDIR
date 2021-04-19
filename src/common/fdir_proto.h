@@ -150,7 +150,9 @@ typedef struct fdir_proto_client_join_req {
         char channel_id[4];
         char key[4];
     } idempotency;
-    char padding[4];
+    char auth_enabled;
+    char padding[3];
+    char config_sign[SF_CLUSTER_CONFIG_SIGN_LEN];
 } FDIRProtoClientJoinReq;
 
 typedef struct fdir_proto_client_join_resp {
@@ -525,7 +527,7 @@ typedef struct fdir_proto_get_slaves_resp_body_part {
 
 typedef struct fdir_proto_get_server_status_req {
     char server_id[4];
-    char config_sign[16];
+    char config_sign[SF_CLUSTER_CONFIG_SIGN_LEN];
 } FDIRProtoGetServerStatusReq;
 
 typedef struct fdir_proto_get_server_status_resp {
@@ -538,7 +540,7 @@ typedef struct fdir_proto_get_server_status_resp {
 typedef struct fdir_proto_join_master_req {
     char cluster_id[4];    //the cluster id
     char server_id[4];     //the slave server id
-    char config_sign[16];
+    char config_sign[SF_CLUSTER_CONFIG_SIGN_LEN];
     char key[FDIR_REPLICA_KEY_SIZE];   //the slave key used on JOIN_SLAVE
 } FDIRProtoJoinMasterReq;
 

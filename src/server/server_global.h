@@ -138,7 +138,6 @@ typedef struct server_global_vars {
     SERVICE_GROUP_ADDRESS_FIRST_PTR(server)->conn.port
 
 #define CLUSTER_CONFIG_SIGN_BUF g_server_global_vars.cluster.config.md5_digest
-#define CLUSTER_CONFIG_SIGN_LEN 16
 
 #ifdef __cplusplus
 extern "C" {

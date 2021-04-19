@@ -45,7 +45,8 @@ static int connect_done_callback(ConnectionInfo *conn, void *args)
         params->channel = NULL;
     }
 
-    result = fdir_client_proto_join_server((FDIRClientContext *)args, conn, params);
+    result = fdir_client_proto_join_server(
+            (FDIRClientContext *)args, conn, params);
     if (result == SF_RETRIABLE_ERROR_NO_CHANNEL && params->channel != NULL) {
         idempotency_client_channel_check_reconnect(params->channel);
     }

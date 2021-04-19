@@ -65,7 +65,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
 
     req = (FDIRProtoGetServerStatusReq *)(out_buff + sizeof(FDIRProtoHeader));
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
-    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
+    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, SF_CLUSTER_CONFIG_SIGN_LEN);
 
     response.error.length = 0;
 	if ((result=sf_send_and_check_response_header(conn, out_buff,
@@ -133,7 +133,8 @@ static int proto_join_master(ConnectionInfo *conn)
     int2buff(CLUSTER_ID, req->cluster_id);
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
-    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, CLUSTER_CONFIG_SIGN_LEN);
+    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF,
+            SF_CLUSTER_CONFIG_SIGN_LEN);
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,

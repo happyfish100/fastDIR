@@ -169,6 +169,8 @@ static int service_deal_client_join(struct fast_task_info *task)
     uint32_t channel_id;
     int key;
     int flags;
+    int my_auth_enabled;
+    int req_auth_enabled;
     FDIRProtoClientJoinReq *req;
     FDIRProtoClientJoinResp *join_resp;
 
@@ -182,6 +184,24 @@ static int service_deal_client_join(struct fast_task_info *task)
     flags = buff2int(req->flags);
     channel_id = buff2int(req->idempotency.channel_id);
     key = buff2int(req->idempotency.key);
+
+    my_auth_enabled = (AUTH_ENABLED ? 1 : 0);
+    req_auth_enabled = (req->auth_enabled ? 1 : 0);
+    if (req_auth_enabled != my_auth_enabled) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "client auth enabled: %d != mine: %d",
+                req_auth_enabled, my_auth_enabled);
+        return EINVAL;
+    }
+
+    if (memcmp(req->config_sign, CLUSTER_CONFIG_SIGN_BUF,
+                SF_CLUSTER_CONFIG_SIGN_LEN) != 0)
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "client's servers.conf is not consistent with mine");
+        return EINVAL;
+    }
+
     if ((flags & FDIR_CLIENT_JOIN_FLAGS_IDEMPOTENCY_REQUEST) != 0) {
         if (IDEMPOTENCY_CHANNEL != NULL) {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,

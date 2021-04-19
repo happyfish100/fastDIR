@@ -116,18 +116,18 @@ static int cluster_check_config_sign(struct fast_task_info *task,
         const int server_id, const char *config_sign)
 {
     if (memcmp(config_sign, CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN) != 0)
+                SF_CLUSTER_CONFIG_SIGN_LEN) != 0)
     {
-        char peer_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
-        char my_hex[2 * CLUSTER_CONFIG_SIGN_LEN + 1];
+        char peer_hex[2 * SF_CLUSTER_CONFIG_SIGN_LEN + 1];
+        char my_hex[2 * SF_CLUSTER_CONFIG_SIGN_LEN + 1];
 
-        bin2hex(config_sign, CLUSTER_CONFIG_SIGN_LEN, peer_hex);
+        bin2hex(config_sign, SF_CLUSTER_CONFIG_SIGN_LEN, peer_hex);
         bin2hex((const char *)CLUSTER_CONFIG_SIGN_BUF,
-                CLUSTER_CONFIG_SIGN_LEN, my_hex);
+                SF_CLUSTER_CONFIG_SIGN_LEN, my_hex);
 
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
-                "server #%d 's cluster config md5: %s != my: %s",
+                "server #%d 's cluster config md5: %s != mine: %s",
                 server_id, peer_hex, my_hex);
         return EFAULT;
     }
