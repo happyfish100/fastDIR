@@ -47,6 +47,7 @@ static int fdir_get_cmd_log_level(const int cmd)
         case SF_PROTO_ACTIVE_TEST_REQ:
         case SF_PROTO_ACTIVE_TEST_RESP:
         case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
+        case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
             return LOG_NOTHING;
         case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
