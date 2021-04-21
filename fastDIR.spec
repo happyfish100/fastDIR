@@ -21,6 +21,8 @@ BuildRequires: libserverframe-devel >= 1.1.6
 Requires: %__cp %__mv %__chmod %__grep %__mkdir %__install %__id
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
+Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-config = %{version}-%{release}
 Requires: %{FastDIRServer} = %{version}-%{release}
 Requires: %{FastDIRClient} = %{version}-%{release}
 
@@ -31,12 +33,16 @@ commit version: %{CommitVersion}
 %package -n %{FastDIRServer}
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
+Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-config = %{version}-%{release}
 Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR server
 
 %package -n %{FastDIRClient}
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
+Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-config = %{version}-%{release}
 Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR client library and tools
 
@@ -109,6 +115,8 @@ mkdir -p /opt/fastcfs/fdir
 /usr/bin/fdir_mkdir
 /usr/bin/fdir_remove
 /usr/bin/fdir_rename
+/usr/bin/fdir_getxattr
+/usr/bin/fdir_setxattr
 /usr/bin/fdir_service_stat
 /usr/bin/fdir_stat
 
