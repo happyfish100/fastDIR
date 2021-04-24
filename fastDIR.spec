@@ -22,7 +22,7 @@ BuildRequires: FastCFS-auth-devel >= 2.0.0
 Requires: %__cp %__mv %__chmod %__grep %__mkdir %__install %__id
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
-Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-client >= 2.0.0
 Requires: FastCFS-auth-config >= 2.0.0
 Requires: %{FastDIRServer} = %{version}-%{release}
 Requires: %{FastDIRClient} = %{version}-%{release}
@@ -34,7 +34,7 @@ commit version: %{CommitVersion}
 %package -n %{FastDIRServer}
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
-Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-client >= 2.0.0
 Requires: FastCFS-auth-config >= 2.0.0
 Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR server
@@ -42,7 +42,7 @@ Summary: FastDIR server
 %package -n %{FastDIRClient}
 Requires: libfastcommon >= 1.0.49
 Requires: libserverframe >= 1.1.6
-Requires: FastCFS-auth-client = %{version}-%{release}
+Requires: FastCFS-auth-client >= 2.0.0
 Requires: FastCFS-auth-config >= 2.0.0
 Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR client library and tools
