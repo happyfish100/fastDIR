@@ -22,7 +22,7 @@
 #include "client_global.h"
 #include "client_func.h"
 #include "client_proto.h"
-#include "simple_connection_manager.h"
+#include "pooled_connection_manager.h"
 
 static int connect_done_callback(ConnectionInfo *conn, void *args)
 {

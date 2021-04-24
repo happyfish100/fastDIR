@@ -35,11 +35,28 @@ typedef struct fdir_cm_simple_extra {
 static inline int make_connection(SFConnectionManager *cm,
         ConnectionInfo *conn)
 {
+    int result;
+    SFConnectionParameters conn_params;
+    FDIRCMSimpleExtra *extra;
+
     if (conn->sock >= 0) {
         return 0;
     }
 
-    return conn_pool_connect_server(conn, cm->common_cfg->connect_timeout);
+    if ((result=conn_pool_connect_server(conn, cm->
+                    common_cfg->connect_timeout)) != 0)
+    {
+        return result;
+    }
+
+    extra = (FDIRCMSimpleExtra *)cm->extra;
+    if ((result=fdir_client_proto_join_server(extra->
+                    client_ctx, conn, &conn_params)) != 0)
+    {
+        conn_pool_disconnect_server(conn);
+    }
+
+    return result;
 }
 
 static int check_realloc_group_servers(FDIRServerGroup *server_group)
