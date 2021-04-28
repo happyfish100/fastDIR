@@ -49,7 +49,6 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 {
     char *pBasePath;
     char full_cluster_filename[PATH_MAX];
-    char full_server_filename[PATH_MAX];
     int result;
 
     pBasePath = iniGetStrValue(NULL, "base_path", ini_ctx->context);
@@ -93,7 +92,7 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 
     if ((result=sf_load_cluster_config_ex(&client_ctx->cluster, ini_ctx,
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT, full_cluster_filename,
-                    full_server_filename, PATH_MAX)) != 0)
+                    PATH_MAX)) != 0)
     {
         return result;
     }

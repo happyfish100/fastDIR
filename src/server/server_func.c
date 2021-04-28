@@ -84,7 +84,6 @@ static int load_cluster_config(IniFullContext *ini_ctx,
         char *full_cluster_filename)
 {
     int result;
-    char full_server_filename[PATH_MAX];
 
     if ((result=server_load_cluster_id(ini_ctx)) != 0) {
         return result;
@@ -92,13 +91,12 @@ static int load_cluster_config(IniFullContext *ini_ctx,
 
     if ((result=sf_load_cluster_config_ex(&CLUSTER_CONFIG,
                     ini_ctx, FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    full_cluster_filename, full_server_filename,
-                    PATH_MAX)) != 0)
+                    full_cluster_filename, PATH_MAX)) != 0)
     {
         return result;
     }
 
-    if ((result=cluster_info_init(full_server_filename)) != 0) {
+    if ((result=cluster_info_init(full_cluster_filename)) != 0) {
         return result;
     }
 
