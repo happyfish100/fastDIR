@@ -375,6 +375,10 @@ static void *deal_binlog_thread_func(void *arg)
     logDebug("file: "__FILE__", line: %d, "
             "deal_binlog_thread_func start", __LINE__);
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "replica-consumer");
+#endif
+
     ctx = (ReplicaConsumerThreadContext *)arg;
     ctx->running = true;
     while (ctx->continue_flag) {

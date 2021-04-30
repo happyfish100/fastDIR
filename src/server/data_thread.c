@@ -187,6 +187,7 @@ static int init_data_thread_array()
     for (context=g_data_thread_vars.thread_array.contexts;
             context<end; context++)
     {
+        context->index = context - g_data_thread_vars.thread_array.contexts;
         if ((result=init_thread_ctx(context)) != 0) {
             return result;
         }
@@ -408,6 +409,16 @@ static void *data_thread_func(void *arg)
 
     __sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     thread_ctx = (FDIRDataThreadContext *)arg;
+
+#ifdef OS_LINUX
+    {
+        char thread_name[64];
+        snprintf(thread_name, sizeof(thread_name),
+                "data[%d]", thread_ctx->index);
+        prctl(PR_SET_NAME, thread_name);
+    }
+#endif
+
     while (SF_G_CONTINUE_FLAG) {
         record = (FDIRBinlogRecord *)fc_queue_pop_all(&thread_ctx->queue);
         if (record == NULL) {

@@ -63,6 +63,7 @@ typedef struct server_delay_free_context {
 } ServerDelayFreeContext;
 
 typedef struct fdir_data_thread_context {
+    int index;
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerDelayFreeContext delay_free_context;

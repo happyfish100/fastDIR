@@ -401,6 +401,10 @@ static void *producer_thread_func(void *arg)
     logDebug("file: "__FILE__", line: %d, "
             "producer_thread_func start", __LINE__);
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "replica-producer");
+#endif
+
     FC_ATOMIC_SET(running, 1);
 
     next_data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0) + 1;

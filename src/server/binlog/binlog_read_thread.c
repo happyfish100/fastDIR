@@ -115,6 +115,10 @@ static void *binlog_read_thread_func(void *arg)
     BinlogReadThreadContext *ctx;
     BinlogReadThreadResult *r;
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "binlog-reader");
+#endif
+
     ctx = (BinlogReadThreadContext *)arg;
     FC_ATOMIC_SET(ctx->running, 1);
     while (FC_ATOMIC_GET(ctx->continue_flag)) {

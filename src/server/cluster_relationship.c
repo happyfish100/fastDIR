@@ -746,6 +746,10 @@ static void *cluster_thread_entrance(void* arg)
     FDIRClusterServerInfo *master;
     ConnectionInfo mconn;  //master connection
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "relationship");
+#endif
+
     memset(&mconn, 0, sizeof(mconn));
     mconn.sock = -1;
 
