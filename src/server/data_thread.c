@@ -412,7 +412,7 @@ static void *data_thread_func(void *arg)
 
 #ifdef OS_LINUX
     {
-        char thread_name[64];
+        char thread_name[16];
         snprintf(thread_name, sizeof(thread_name),
                 "data[%d]", thread_ctx->index);
         prctl(PR_SET_NAME, thread_name);
