@@ -60,19 +60,6 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
                 sizeof(g_fdir_client_vars.base_path),
                 "%s", pBasePath);
         chopPath(g_fdir_client_vars.base_path);
-        if (!fileExists(g_fdir_client_vars.base_path)) {
-            logError("file: "__FILE__", line: %d, "
-                "\"%s\" can't be accessed, error info: %s",
-                __LINE__, g_fdir_client_vars.base_path,
-                STRERROR(errno));
-            return errno != 0 ? errno : ENOENT;
-        }
-        if (!isDir(g_fdir_client_vars.base_path)) {
-            logError("file: "__FILE__", line: %d, "
-                "\"%s\" is not a directory!",
-                __LINE__, g_fdir_client_vars.base_path);
-            return ENOTDIR;
-        }
     }
 
     client_ctx->common_cfg.connect_timeout = iniGetIntValueEx(
