@@ -67,24 +67,42 @@ int init_nio_task(struct fast_task_info *task)
     return 0;
 }
 
+static void parse_cmd_options(int argc, char *argv[])
+{
+    string_t short_option;
+    string_t long_option;
+
+    FC_SET_STRING_EX(short_option, FDIR_FORCE_ELECTION_SHORT_OPTION_STR,
+            FDIR_FORCE_ELECTION_SHORT_OPTION_LEN);
+    FC_SET_STRING_EX(long_option, FDIR_FORCE_ELECTION_LONG_OPTION_STR,
+            FDIR_FORCE_ELECTION_LONG_OPTION_LEN);
+    sf_parse_cmd_option_bool(argc, argv, &short_option,
+            &long_option, &FORCE_MASTER_ELECTION);
+}
+
 int main(int argc, char *argv[])
 {
     const char *config_filename;
     char *action;
     char g_pid_filename[MAX_PATH_SIZE];
+    char option[128];
     pthread_t schedule_tid;
     int wait_count;
     bool stop;
     int result;
 
+    sprintf(option, "%s | %s: force master election",
+            FDIR_FORCE_ELECTION_SHORT_OPTION_STR,
+            FDIR_FORCE_ELECTION_LONG_OPTION_STR);
     stop = false;
     if (argc < 2) {
-        sf_usage(argv[0]);
+        sf_usage_ex(argv[0], option);
         return 1;
     }
 
-    config_filename = sf_parse_daemon_mode_and_action(argc, argv,
-            &g_fdir_global_vars.version, &daemon_mode, &action);
+    config_filename = sf_parse_daemon_mode_and_action_ex(
+            argc, argv, &g_fdir_global_vars.version,
+            &daemon_mode, &action, "start", option);
     if (config_filename == NULL) {
         return 0;
     }
@@ -105,7 +123,7 @@ int main(int argc, char *argv[])
     result = process_action(g_pid_filename, action, &stop);
     if (result != 0) {
         if (result == EINVAL) {
-            sf_usage(argv[0]);
+            sf_usage_ex(argv[0], option);
         }
         log_destroy();
         return result;
@@ -116,6 +134,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+    parse_cmd_options(argc, argv);
     sf_enable_exit_on_oom();
     srand(time(NULL));
     fast_mblock_manager_init();

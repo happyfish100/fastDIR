@@ -648,15 +648,23 @@ static int cluster_select_master()
         }
 
         ++i;
-        if (server_status.status < FDIR_SERVER_STATUS_OFFLINE) {
+        if ((server_status.status < FDIR_SERVER_STATUS_OFFLINE) &&
+                !FORCE_MASTER_ELECTION)
+        {
             sprintf(status_prompt, "the candidate server status: %d (%s) "
                     "does not match the selection rule. you must start "
                     "ALL servers in the first time, or remove the "
-                    "deprecated server(s) from the config file. ",
-                    server_status.status,
-                    fdir_get_server_status_caption(server_status.status));
+                    "deprecated server(s) from the config file, or execute "
+                    " fdir_serverd with option %s", server_status.status,
+                    fdir_get_server_status_caption(server_status.status),
+                    FDIR_FORCE_ELECTION_LONG_OPTION_STR);
         } else {
-            *status_prompt = '\0';
+            if (FORCE_MASTER_ELECTION) {
+                sprintf(status_prompt, "force_master_election: %d, ",
+                        FORCE_MASTER_ELECTION);
+            } else {
+                *status_prompt = '\0';
+            }
             if (i == 5) {
                 break;
             }

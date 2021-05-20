@@ -37,6 +37,7 @@ typedef struct server_global_vars {
 
     struct {
         FCFSAuthClientFullContext auth;
+        bool force_master_election;
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
@@ -69,6 +70,9 @@ typedef struct server_global_vars {
     SFSlowLogContext slow_log;
 
 } FDIRServerGlobalVars;
+
+#define FORCE_MASTER_ELECTION  g_server_global_vars.cluster. \
+    force_master_election
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
 #define CLUSTER_CONFIG_CTX      CLUSTER_CONFIG.server_cfg
