@@ -120,6 +120,7 @@ mkdir -p /opt/fastcfs/fdir
 /usr/bin/fdir_setxattr
 /usr/bin/fdir_service_stat
 /usr/bin/fdir_stat
+/usr/bin/fdir_list_servers
 
 %files -n %{FastDIRDevel}
 %defattr(-,root,root,-)
