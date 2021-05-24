@@ -65,14 +65,9 @@
 #define FDIR_BINLOG_SUBDIR_NAME      "binlog"
 #define FDIR_DELAY_FREE_SECONDS      300
 
-#define FDIR_FORCE_ELECTION_SHORT_OPTION_STR  "-f"
-#define FDIR_FORCE_ELECTION_SHORT_OPTION_LEN  (sizeof( \
-            FDIR_FORCE_ELECTION_SHORT_OPTION_STR) - 1)
-
-#define FDIR_FORCE_ELECTION_LONG_OPTION_STR  "--force-master-election"
-#define FDIR_FORCE_ELECTION_LONG_OPTION_LEN  (sizeof( \
+#define FDIR_FORCE_ELECTION_LONG_OPTION_STR  "force-master-election"
+#define FDIR_FORCE_ELECTION_LONG_OPTION_LEN  (sizeof(  \
             FDIR_FORCE_ELECTION_LONG_OPTION_STR) - 1)
-
 
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define TASK_CTX          TASK_ARG->context

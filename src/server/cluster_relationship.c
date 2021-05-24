@@ -655,7 +655,7 @@ static int cluster_select_master()
                     "does not match the selection rule. you must start "
                     "ALL servers in the first time, or remove the "
                     "deprecated server(s) from the config file, or execute "
-                    " fdir_serverd with option %s", server_status.status,
+                    " fdir_serverd with option --%s", server_status.status,
                     fdir_get_server_status_caption(server_status.status),
                     FDIR_FORCE_ELECTION_LONG_OPTION_STR);
         } else {
