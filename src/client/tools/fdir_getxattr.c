@@ -27,16 +27,19 @@
 static FDIRDEntryFullName fullname;
 static char v[FDIR_XATTR_MAX_VALUE_SIZE];
 static string_t value;
+static bool hexdump = false;
 
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename=%s] [-k attribute_name]\n"
-            "\t[-d dump all attributes] <-n namespace> <path>\n\n",
-            argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
+            "\t[-d dump all attributes] <-H hexdump for value> <-n namespace>"
+            " <path>\n\n", argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static int get_xattr(const string_t *name)
 {
+    char fixed_buff[1024];
+    char *hex_buff;
     int result;
     if ((result=fdir_client_get_xattr_by_path(&g_fdir_client_vars.client_ctx,
                     &fullname, name, &value, FDIR_XATTR_MAX_VALUE_SIZE)) != 0)
@@ -44,7 +47,26 @@ static int get_xattr(const string_t *name)
         return result;
     }
 
-    printf("%.*s=%.*s\n", name->len, name->str, value.len, value.str);
+    printf("%.*s=", name->len, name->str);
+    if (hexdump) {
+        if (value.len < sizeof(fixed_buff) / 2) {
+            hex_buff = fixed_buff;
+        } else {
+            hex_buff = (char *)fc_malloc(2 * value.len + 1);
+            if (hex_buff == NULL) {
+                return ENOMEM;
+            }
+        }
+
+        bin2hex(value.str, value.len, hex_buff);
+        printf("%s\n", hex_buff);
+        if (hex_buff != fixed_buff) {
+            free(hex_buff);
+        }
+    } else {
+        printf("%.*s\n", value.len, value.str);
+    }
+
     return 0;
 }
 
@@ -105,7 +127,7 @@ int main(int argc, char *argv[])
     memset(&name, 0, sizeof(name));
     ns = NULL;
     dump_all = false;
-    while ((ch=getopt(argc, argv, "hc:n:k:d")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:n:k:dH")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -121,6 +143,9 @@ int main(int argc, char *argv[])
                 break;
             case 'd':
                 dump_all = true;
+                break;
+            case 'H':
+                hexdump = true;
                 break;
             default:
                 usage(argv);
