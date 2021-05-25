@@ -31,7 +31,7 @@ extern "C" {
     fdir_client_destroy_ex((&g_fdir_client_vars.client_ctx))
 
 #define fdir_client_log_config(client_ctx) \
-    fdir_client_log_config_ex(client_ctx, NULL)
+    fdir_client_log_config_ex(client_ctx, NULL, true)
 
 int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
         FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx);
@@ -159,7 +159,7 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
         const int alloc_size);
 
 void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
-        const char *extra_config);
+        const char *extra_config, const bool log_base_path);
 
 #define fdir_client_auth_session_create1_ex(client_ctx, poolname, publish) \
     fcfs_auth_client_session_create_ex(&(client_ctx)->auth, poolname, publish)

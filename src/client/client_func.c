@@ -100,14 +100,21 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
 }
 
 void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
-        const char *extra_config)
+        const char *extra_config, const bool log_base_path)
 {
+    char base_path_output[PATH_MAX];
     char net_retry_output[256];
+
+    if (log_base_path) {
+        snprintf(base_path_output, sizeof(base_path_output),
+                "base_path=%s, ", g_fdir_client_vars.base_path);
+    } else {
+        *base_path_output = '\0';
+    }
 
     sf_net_retry_config_to_string(&client_ctx->common_cfg.net_retry_cfg,
             net_retry_output, sizeof(net_retry_output));
-    logInfo("FastDIR v%d.%d.%d, "
-            "base_path=%s, "
+    logInfo("FastDIR v%d.%d.%d, %s"
             "connect_timeout=%d, "
             "network_timeout=%d, "
             "read_rule: %s, %s, "
@@ -115,7 +122,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
             g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch,
-            g_fdir_client_vars.base_path,
+            base_path_output,
             client_ctx->common_cfg.connect_timeout,
             client_ctx->common_cfg.network_timeout,
             sf_get_read_rule_caption(client_ctx->common_cfg.read_rule),
