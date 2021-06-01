@@ -439,7 +439,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
     end = task->data + task->size;
     count = 0;
 
-    fc_queue_pop_to_queue(NS_SUBSCRIBER->queues +
+    fc_queue_try_pop_to_queue(NS_SUBSCRIBER->queues +
             FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING, &qinfo);
     entry = (FDIRNSSubscribeEntry *)qinfo.head;
     while (entry != NULL) {
