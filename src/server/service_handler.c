@@ -992,15 +992,22 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
         const int result, const bool is_error)
 {
     struct fast_task_info *task;
+    char xattr_name_buff[256];
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
         int log_level;
 
-        if (is_error) {
-            log_level = LOG_ERR;
+        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ ||
+                REQUEST.header.cmd == FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ)
+        {
+            log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+            snprintf(xattr_name_buff, sizeof(xattr_name_buff),
+                    ", xattr name: %.*s", record->xattr.key.len,
+                    record->xattr.key.str);
         } else {
-            log_level = LOG_WARNING;
+            log_level = is_error ? LOG_ERR : LOG_WARNING;
+            *xattr_name_buff = '\0';
         }
 
         log_it_ex(&g_log_context, log_level,
@@ -1008,12 +1015,13 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 "client ip: %s, %s dentry fail, "
                 "errno: %d, error info: %s, "
                 "parent inode: %"PRId64", current inode: %"PRId64", "
-                "namespace: %.*s, name: %.*s",
+                "namespace: %.*s, dir name: %.*s%s",
                 __LINE__, task->client_ip,
                 get_operation_caption(record->operation),
                 result, STRERROR(result), record->me.pname.parent_inode,
                 record->inode, record->ns.len, record->ns.str,
-                record->me.pname.name.len, record->me.pname.name.str);
+                record->me.pname.name.len, record->me.pname.name.str,
+                xattr_name_buff);
     } else {
         if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
                 record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
@@ -1251,6 +1259,10 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
     RECORD->ns = ns;
     RECORD->hash_code = simple_hash(ns.str, ns.len);
     RECORD->me.dentry = dentry;
+    RECORD->me.pname.name = dentry->name;
+    if (dentry->parent != NULL) {
+        RECORD->me.pname.parent_inode = dentry->parent->inode;
+    }
     return 0;
 }
 
