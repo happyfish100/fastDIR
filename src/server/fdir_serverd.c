@@ -247,7 +247,7 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, cluster_deal_task,
                 cluster_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
-                init_nio_task);
+                init_nio_task, NULL);
         if (result != 0) {
             break;
         }
@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
                 NULL, sf_proto_set_body_length, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
-                init_nio_task);
+                init_nio_task, NULL);
         if (result != 0) {
             break;
         }
