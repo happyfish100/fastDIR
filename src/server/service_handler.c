@@ -998,10 +998,14 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
     if (result != 0) {
         int log_level;
 
-        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ ||
-                REQUEST.header.cmd == FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ)
+        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ ||
+                REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ)
         {
-            log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+            if (result == ENODATA) {
+                log_level = LOG_DEBUG;
+            } else {
+                log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+            }
             snprintf(xattr_name_buff, sizeof(xattr_name_buff),
                     ", xattr name: %.*s", record->xattr.key.len,
                     record->xattr.key.str);

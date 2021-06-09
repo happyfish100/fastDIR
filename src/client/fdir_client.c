@@ -192,24 +192,26 @@ int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
             ns, inode, xattr, flags);
 }
 
-int fdir_client_remove_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *name)
+int fdir_client_remove_xattr_by_path_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const string_t *name,
+        const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_path,
-            fullname, name);
+            fullname, name, enoattr_log_level);
 }
 
-int fdir_client_remove_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const string_t *name)
+int fdir_client_remove_xattr_by_inode_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const string_t *name,
+        const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_inode,
-            ns, inode, name);
+            ns, inode, name, enoattr_log_level);
 }
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,

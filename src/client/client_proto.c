@@ -1343,7 +1343,8 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const
-        FDIRDEntryFullName *fullname, const string_t *name)
+        FDIRDEntryFullName *fullname, const string_t *name,
+        const int enoattr_log_level)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByPathReq *req;
@@ -1375,7 +1376,8 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP)) != 0)
     {
-        sf_log_network_error_for_update(&response, conn, result);
+        sf_log_network_error_for_delete(&response,
+                conn, result, enoattr_log_level);
     }
 
     return result;
@@ -1383,7 +1385,7 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
-        const int64_t inode, const string_t *name)
+        const int64_t inode, const string_t *name, const int enoattr_log_level)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByInodeReq *req;
@@ -1415,7 +1417,8 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP)) != 0)
     {
-        sf_log_network_error_for_update(&response, conn, result);
+        sf_log_network_error_for_delete(&response,
+                conn, result, enoattr_log_level);
     }
 
     return result;

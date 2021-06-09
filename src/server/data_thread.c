@@ -374,7 +374,8 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     } else {
         set_data_verson = record->data_version > 0;
         is_error = !((result == ignore_errno) &&
-                (g_data_thread_vars.error_mode == FDIR_DATA_ERROR_MODE_LOOSE));
+                (g_data_thread_vars.error_mode ==
+                 FDIR_DATA_ERROR_MODE_LOOSE));
     }
 
     if (set_data_verson && !is_error) {

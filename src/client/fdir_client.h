@@ -133,11 +133,13 @@ int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const key_value_pair_t
         *xattr, const int flags);
 
-int fdir_client_remove_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *name);
+int fdir_client_remove_xattr_by_path_ex(FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname, const string_t *name,
+        const int enoattr_log_level);
 
-int fdir_client_remove_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const string_t *name);
+int fdir_client_remove_xattr_by_inode_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode, const string_t *name,
+        const int enoattr_log_level);
 
 int fdir_client_get_xattr_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const string_t *name,
@@ -173,6 +175,12 @@ int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
 #define fdir_client_get_xattr_by_inode(client_ctx, inode, name, value, size) \
     fdir_client_get_xattr_by_inode_ex(client_ctx, \
             inode, name, LOG_ERR, value, size)
+
+#define fdir_client_remove_xattr_by_path(client_ctx, fullname, name) \
+    fdir_client_remove_xattr_by_path_ex(client_ctx, fullname, name, LOG_ERR)
+
+#define fdir_client_remove_xattr_by_inode(client_ctx, ns, inode, name) \
+    fdir_client_remove_xattr_by_inode_ex(client_ctx, ns, inode, name, LOG_ERR)
 
 int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const int enoent_log_level,
