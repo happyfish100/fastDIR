@@ -75,7 +75,7 @@ typedef struct server_global_vars {
     force_master_election
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
-#define CLUSTER_CONFIG_CTX      CLUSTER_CONFIG.server_cfg
+#define CLUSTER_SERVER_CONFIG   CLUSTER_CONFIG.server_cfg
 #define AUTH_CTX                g_server_global_vars.cluster.auth
 #define AUTH_CLIENT_CTX         AUTH_CTX.ctx
 #define AUTH_ENABLED            AUTH_CTX.enabled
@@ -114,7 +114,7 @@ typedef struct server_global_vars {
 #define SLOW_LOG_CFG            SLOW_LOG.cfg
 #define SLOW_LOG_CTX            SLOW_LOG.ctx
 
-#define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX) - 1)
+#define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG) - 1)
 
 #define REPLICA_KEY_BUFF        CLUSTER_MYSELF_PTR->key
 

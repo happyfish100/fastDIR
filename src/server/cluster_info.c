@@ -44,22 +44,22 @@ static int init_cluster_server_array()
     FCServerInfo *end;
 
     bytes = sizeof(FDIRClusterServerInfo) *
-        FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+        FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG);
     CLUSTER_SERVER_ARRAY.servers = (FDIRClusterServerInfo *)fc_malloc(bytes);
     if (CLUSTER_SERVER_ARRAY.servers == NULL) {
         return ENOMEM;
     }
     memset(CLUSTER_SERVER_ARRAY.servers, 0, bytes);
 
-    end = FC_SID_SERVERS(CLUSTER_CONFIG_CTX) +
-        FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
-    for (server=FC_SID_SERVERS(CLUSTER_CONFIG_CTX),
+    end = FC_SID_SERVERS(CLUSTER_SERVER_CONFIG) +
+        FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG);
+    for (server=FC_SID_SERVERS(CLUSTER_SERVER_CONFIG),
             cs=CLUSTER_SERVER_ARRAY.servers; server<end; server++, cs++)
     {
         cs->server = server;
     }
 
-    CLUSTER_SERVER_ARRAY.count = FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX);
+    CLUSTER_SERVER_ARRAY.count = FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG);
     return 0;
 }
 
@@ -87,11 +87,11 @@ static int find_myself_in_cluster_config(const char *filename)
     local_ip = get_first_local_ip();
     while (local_ip != NULL) {
         for (i=0; i<count; i++) {
-            server = fc_server_get_by_ip_port(&CLUSTER_CONFIG_CTX,
+            server = fc_server_get_by_ip_port(&CLUSTER_SERVER_CONFIG,
                     local_ip, ports[i]);
             if (server != NULL) {
                 myself = CLUSTER_SERVER_ARRAY.servers +
-                    (server - FC_SID_SERVERS(CLUSTER_CONFIG_CTX));
+                    (server - FC_SID_SERVERS(CLUSTER_SERVER_CONFIG));
                 if (CLUSTER_MYSELF_PTR == NULL) {
                     CLUSTER_MYSELF_PTR = myself;
                 } else if (myself != CLUSTER_MYSELF_PTR) {
@@ -126,13 +126,13 @@ static int find_myself_in_cluster_config(const char *filename)
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 {
     FCServerInfo *server;
-    server = fc_server_get_by_id(&CLUSTER_CONFIG_CTX, server_id);
+    server = fc_server_get_by_id(&CLUSTER_SERVER_CONFIG, server_id);
     if (server == NULL) {
         return NULL;
     }
 
     return CLUSTER_SERVER_ARRAY.servers + (server -
-            FC_SID_SERVERS(CLUSTER_CONFIG_CTX));
+            FC_SID_SERVERS(CLUSTER_SERVER_CONFIG));
 }
 
 static int load_servers_from_ini_ctx(IniContext *ini_context)

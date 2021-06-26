@@ -39,11 +39,11 @@ static void log_cluster_server_config()
     if (fast_buffer_init_ex(&buffer, 1024) != 0) {
         return;
     }
-    fc_server_to_config_string(&CLUSTER_CONFIG_CTX, &buffer);
+    fc_server_to_config_string(&CLUSTER_SERVER_CONFIG, &buffer);
     log_it1(LOG_INFO, buffer.data, buffer.length);
     fast_buffer_destroy(&buffer);
 
-    fc_server_to_log(&CLUSTER_CONFIG_CTX);
+    fc_server_to_log(&CLUSTER_SERVER_CONFIG);
 }
 
 static int server_load_cluster_id(IniFullContext *ini_ctx)
@@ -221,7 +221,7 @@ static void server_log_configs()
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
-            FC_SID_SERVER_COUNT(CLUSTER_CONFIG_CTX));
+            FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG));
 
     logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s, %s",
             g_fdir_global_vars.version.major, g_fdir_global_vars.version.minor,
