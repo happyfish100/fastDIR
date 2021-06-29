@@ -26,7 +26,6 @@ typedef struct fdir_cm_simple_extra {
     /* master connection cache */
     struct {
         ConnectionInfo *conn;
-        ConnectionInfo holder;
     } master_cache;
     FDIRClientContext *client_ctx;
     FDIRServerGroup *cluster_sarray;
@@ -197,6 +196,10 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
     FDIRClientServerEntry server;
 
     client_ctx = ((FDIRCMSimpleExtra *)cm->extra)->client_ctx;
+    if (cm->common_cfg->read_rule == sf_data_read_rule_master_only) {
+        return get_master_connection(cm, group_index, err_no);
+    }
+
     do {
         if ((*err_no=fdir_client_get_readable_server(
                         client_ctx, &server)) != 0)
