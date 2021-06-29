@@ -159,17 +159,26 @@ static ConnectionInfo *get_master_connection(SFConnectionManager *cm,
     FDIRCMSimpleExtra *extra;
     ConnectionInfo *conn; 
     FDIRClientServerEntry master;
+    SFNetRetryIntervalContext net_retry_ctx;
+    int i;
 
     extra = (FDIRCMSimpleExtra *)cm->extra;
     if (extra->master_cache.conn != NULL) {
         return extra->master_cache.conn;
     }
 
-    do {
+    sf_init_net_retry_interval_context(&net_retry_ctx,
+            &cm->common_cfg->net_retry_cfg.interval_mm,
+            &cm->common_cfg->net_retry_cfg.connect);
+    i = 0;
+    while (1) {
         if ((*err_no=fdir_client_get_master(extra->
                         client_ctx, &master)) != 0)
         {
-            break;
+            SF_NET_RETRY_CHECK_AND_SLEEP(net_retry_ctx,
+                    cm->common_cfg->net_retry_cfg.
+                    connect.times, ++i, *err_no);
+            continue;
         }
 
         if ((conn=get_spec_connection(cm, &master.conn,
@@ -180,7 +189,7 @@ static ConnectionInfo *get_master_connection(SFConnectionManager *cm,
 
         extra->master_cache.conn = conn;
         return conn;
-    } while (0);
+    }
 
     logError("file: "__FILE__", line: %d, "
             "get_master_connection fail, errno: %d",
@@ -194,17 +203,26 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
     FDIRClientContext *client_ctx;
     ConnectionInfo *conn; 
     FDIRClientServerEntry server;
+    SFNetRetryIntervalContext net_retry_ctx;
+    int i;
 
     client_ctx = ((FDIRCMSimpleExtra *)cm->extra)->client_ctx;
     if (cm->common_cfg->read_rule == sf_data_read_rule_master_only) {
         return get_master_connection(cm, group_index, err_no);
     }
 
-    do {
+    sf_init_net_retry_interval_context(&net_retry_ctx,
+            &cm->common_cfg->net_retry_cfg.interval_mm,
+            &cm->common_cfg->net_retry_cfg.connect);
+    i = 0;
+    while (1) {
         if ((*err_no=fdir_client_get_readable_server(
                         client_ctx, &server)) != 0)
         {
-            break;
+            SF_NET_RETRY_CHECK_AND_SLEEP(net_retry_ctx,
+                    cm->common_cfg->net_retry_cfg.
+                    connect.times, ++i, *err_no);
+            continue;
         }
 
         if ((conn=get_spec_connection(cm, &server.conn,
@@ -214,12 +232,12 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
         }
 
         return conn;
-    } while (0);
+    }
 
     logError("file: "__FILE__", line: %d, "
             "get_readable_connection fail, errno: %d",
             __LINE__, *err_no);
-        return NULL;
+    return NULL;
 }
 
 static void close_connection(SFConnectionManager *cm,
