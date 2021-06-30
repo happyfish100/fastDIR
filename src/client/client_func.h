@@ -184,7 +184,7 @@ void fdir_client_log_config_ex(FDIRClientContext *client_ctx,
             &g_fdir_client_vars.client_ctx, session_id)
 
 static inline int fdir_client_simple_init_with_auth_ex(
-        const char *config_filename, const string_t *poolname,
+        const char *config_filename, string_t *poolname,
         const bool publish)
 {
     int result;
@@ -198,9 +198,9 @@ static inline int fdir_client_simple_init_with_auth_ex(
 static inline int fdir_client_simple_init_with_auth(
         const char *config_filename, const bool publish)
 {
-    const string_t poolname = {NULL, 0};
+#define FDIR_EMPTY_POOL_NAME SF_G_EMPTY_STRING
     return fdir_client_simple_init_with_auth_ex(
-            config_filename, &poolname, publish);
+            config_filename, &FDIR_EMPTY_POOL_NAME, publish);
 }
 
 #ifdef __cplusplus

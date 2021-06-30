@@ -31,7 +31,7 @@
 #include "sf/idempotency/server/server_types.h"
 #include "common/fdir_types.h"
 
-#define FDIR_MAX_NS_SUBSCRIBERS                4
+#define FDIR_MAX_NS_SUBSCRIBERS                8
 
 #define FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING  0
 #define FDIR_NS_SUBSCRIBE_QUEUE_INDEX_SENDING  1
