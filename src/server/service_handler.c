@@ -198,7 +198,7 @@ static int service_deal_client_join(struct fast_task_info *task)
                 SF_CLUSTER_CONFIG_SIGN_LEN) != 0)
     {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "client's servers.conf is not consistent with mine");
+                "client's cluster.conf is not consistent with mine");
         return EINVAL;
     }
 
