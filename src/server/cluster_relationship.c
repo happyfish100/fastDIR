@@ -49,7 +49,7 @@ typedef struct fdir_cluster_server_status {
 } FDIRClusterServerStatus;
 
 static int proto_get_server_status(ConnectionInfo *conn,
-        FDIRClusterServerStatus *server_status)
+        FDIRClusterServerStatus *server_status, const int network_timeout)
 {
 	int result;
 	FDIRProtoHeader *header;
@@ -69,7 +69,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
 
     response.error.length = 0;
 	if ((result=sf_send_and_check_response_header(conn, out_buff,
-			sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+			sizeof(out_buff), &response, network_timeout,
             FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP)) != 0)
     {
         sf_log_network_error(&response, conn, result);
@@ -85,8 +85,8 @@ static int proto_get_server_status(ConnectionInfo *conn,
         return EINVAL;
     }
 
-    if ((result=tcprecvdata_nb(conn->sock, in_body, response.header.body_len,
-                    SF_G_NETWORK_TIMEOUT)) != 0)
+    if ((result=tcprecvdata_nb(conn->sock, in_body, response.
+                    header.body_len, network_timeout)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "recv from server %s:%u fail, "
@@ -97,7 +97,6 @@ static int proto_get_server_status(ConnectionInfo *conn,
     }
 
     resp = (FDIRProtoGetServerStatusResp *)in_body;
-
     server_status->is_master = resp->is_master;
     server_status->status = resp->status;
     server_status->server_id = buff2int(resp->server_id);
@@ -116,7 +115,7 @@ static inline void generate_replica_key()
     long2buff(n1 ^ n2, REPLICA_KEY_BUFF);
 }
 
-static int proto_join_master(ConnectionInfo *conn)
+static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
 {
 	int result;
 	FDIRProtoHeader *header;
@@ -137,7 +136,7 @@ static int proto_join_master(ConnectionInfo *conn)
             SF_CLUSTER_CONFIG_SIGN_LEN);
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
-                    sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+                    sizeof(out_buff), &response, network_timeout,
                     SF_PROTO_ACK)) != 0)
     {
         sf_log_network_error(&response, conn, result);
@@ -146,7 +145,7 @@ static int proto_join_master(ConnectionInfo *conn)
     return result;
 }
 
-static int proto_ping_master(ConnectionInfo *conn)
+static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
 {
     FDIRProtoHeader header;
     SFResponseInfo response;
@@ -164,7 +163,7 @@ static int proto_ping_master(ConnectionInfo *conn)
 
     response.error.length = 0;
     if ((result=sf_send_and_check_response_header(conn, (char *)&header,
-                    sizeof(header), &response, SF_G_NETWORK_TIMEOUT,
+                    sizeof(header), &response, network_timeout,
                     FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(in_buff)) {
@@ -174,7 +173,7 @@ static int proto_ping_master(ConnectionInfo *conn)
             result = EOVERFLOW;
         } else {
             result = tcprecvdata_nb(conn->sock, in_buff,
-                    response.header.body_len, SF_G_NETWORK_TIMEOUT);
+                    response.header.body_len, network_timeout);
         }
     }
 
@@ -249,6 +248,8 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 
 static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 {
+    const int connect_timeout = 2;
+    const int network_timeout = 2;
     ConnectionInfo conn;
     int result;
 
@@ -261,13 +262,14 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
         return 0;
     } else {
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            server_status->cs->server), &conn,
-                        SF_G_CONNECT_TIMEOUT)) != 0)
+                            server_status->cs->server),
+                        &conn, connect_timeout)) != 0)
         {
             return result;
         }
 
-        result = proto_get_server_status(&conn, server_status);
+        result = proto_get_server_status(&conn,
+                server_status, network_timeout);
         conn_pool_disconnect_server(&conn);
         return result;
     }
@@ -428,7 +430,8 @@ static void update_field_is_master(FDIRClusterServerInfo *new_master)
     }
 }
 
-static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
+static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
+        const time_t start_time)
 {
     int result;
     int old_status;
@@ -469,11 +472,20 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
             old_status = __sync_add_and_fetch(&new_master->status, 0);
         }
     } else {
+        char time_used[128];
+        if (start_time > 0) {
+            sprintf(time_used, ", election time used: %ds",
+                    (int)(g_current_time - start_time));
+        } else {
+            *time_used = '\0';
+        }
+
         logInfo("file: "__FILE__", line: %d, "
-                "the master server id: %d, ip %s:%u",
+                "the master server id: %d, ip %s:%u%s",
                 __LINE__, new_master->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server),
+                time_used);
     }
 
     do {
@@ -504,6 +516,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master)
 
 int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
 {
+    const time_t start_time = 0;
     FDIRClusterServerInfo *next_master;
     int result;
 
@@ -521,7 +534,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
         return EBUSY;
     }
 
-    result = cluster_relationship_set_master(master);
+    result = cluster_relationship_set_master(master, start_time);
     g_next_master = NULL;
     return result;
 }
@@ -627,7 +640,11 @@ static int cluster_select_master()
 	int result;
     int active_count;
     int i;
+    int max_sleep_secs;
     int sleep_secs;
+    int remain_time;
+    bool force_sleep;
+    time_t start_time;
     char status_prompt[512];
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
@@ -635,9 +652,10 @@ static int cluster_select_master()
 	logInfo("file: "__FILE__", line: %d, "
 		"selecting master...", __LINE__);
 
-    sleep_secs = 2;
+    start_time = g_current_time;
+    max_sleep_secs = 1;
     i = 0;
-    while (1) {
+    while (CLUSTER_MASTER_ATOM_PTR == NULL) {
         if ((result=cluster_get_master(&server_status, &active_count)) != 0) {
             return result;
         }
@@ -658,6 +676,7 @@ static int cluster_select_master()
                     " fdir_serverd with option --%s", server_status.status,
                     fdir_get_server_status_caption(server_status.status),
                     FDIR_FORCE_ELECTION_LONG_OPTION_STR);
+            force_sleep = true;
         } else {
             if (FORCE_MASTER_ELECTION) {
                 sprintf(status_prompt, "force_master_election: %d, ",
@@ -665,20 +684,46 @@ static int cluster_select_master()
             } else {
                 *status_prompt = '\0';
             }
-            if (i == 5) {
+
+            if (g_current_time - start_time > ELECTION_MAX_WAIT_TIME) {
                 break;
             }
+            force_sleep = false;
         }
 
+        remain_time = ELECTION_MAX_WAIT_TIME - (g_current_time - start_time);
+        if (remain_time > 0) {
+            sleep_secs = FC_MIN(remain_time, max_sleep_secs);
+            sleep(sleep_secs);
+        } else {
+            if (force_sleep) {
+                sleep_secs = max_sleep_secs;
+                sleep(sleep_secs);
+            } else {
+                sleep_secs = 0;
+            }
+        }
         logInfo("file: "__FILE__", line: %d, "
                 "round %dth select master, alive server count: %d "
                 "< server count: %d, %stry again after %d seconds.",
                 __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
                 status_prompt, sleep_secs);
-        sleep(sleep_secs);
-        if (sleep_secs < 32) {
-            sleep_secs *= 2;
+
+        if (max_sleep_secs < 32) {
+            max_sleep_secs *= 2;
         }
+    }
+
+    next_master = CLUSTER_MASTER_ATOM_PTR;
+    if (next_master != NULL) {
+        logInfo("file: "__FILE__", line: %d, "
+                "abort election because the master exists, "
+                "master id: %d, ip %s:%u, election time used: %ds",
+                __LINE__, next_master->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
+                (int)(g_current_time - start_time));
+        return 0;
     }
 
     next_master = server_status.cs;
@@ -690,17 +735,19 @@ static int cluster_select_master()
 		}
 
 		logInfo("file: "__FILE__", line: %d, "
-			"I am the new master, id: %d, ip %s:%u",
-			__LINE__, next_master->server->id,
+			"I am the new master, id: %d, ip %s:%u, election "
+            "time used: %ds", __LINE__, next_master->server->id,
             CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
-            CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
+            CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
+            (int)(g_current_time - start_time));
     } else {
         if (server_status.is_master) {
-            cluster_relationship_set_master(next_master);
+            cluster_relationship_set_master(next_master, start_time);
         } else if (CLUSTER_MASTER_ATOM_PTR == NULL) {
             logInfo("file: "__FILE__", line: %d, "
-                    "waiting for the candidate master server id: %d, "
-                    "ip %s:%u notify ...", __LINE__, next_master->server->id,
+                    "election time used: %ds, waiting for the candidate "
+                    "master server id: %d, ip %s:%u notify ...", __LINE__,
+                    (int)(g_current_time - start_time), next_master->server->id,
                     CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
                     CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
             return ENOENT;
@@ -710,9 +757,11 @@ static int cluster_select_master()
 	return 0;
 }
 
-static int cluster_ping_master(ConnectionInfo *conn)
+static int cluster_ping_master(ConnectionInfo *conn, const int timeout)
 {
     int result;
+    int connect_timeout;
+    int network_timeout;
     FDIRClusterServerInfo *master;
 
     master = CLUSTER_MASTER_ATOM_PTR;
@@ -724,21 +773,22 @@ static int cluster_ping_master(ConnectionInfo *conn)
         return ENOENT;
     }
 
+    network_timeout = FC_MIN(SF_G_NETWORK_TIMEOUT, timeout);
     if (conn->sock < 0) {
+        connect_timeout = FC_MIN(SF_G_CONNECT_TIMEOUT, timeout);
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            master->server), conn,
-                        SF_G_CONNECT_TIMEOUT)) != 0)
+                            master->server), conn, connect_timeout)) != 0)
         {
             return result;
         }
 
-        if ((result=proto_join_master(conn)) != 0) {
+        if ((result=proto_join_master(conn, network_timeout)) != 0) {
             conn_pool_disconnect_server(conn);
             return result;
         }
     }
 
-    if ((result=proto_ping_master(conn)) != 0) {
+    if ((result=proto_ping_master(conn, network_timeout)) != 0) {
         conn_pool_disconnect_server(conn);
     }
 
@@ -751,6 +801,8 @@ static void *cluster_thread_entrance(void* arg)
 
     int fail_count;
     int sleep_seconds;
+    int ping_remain_time;
+    time_t ping_start_time;
     FDIRClusterServerInfo *master;
     ConnectionInfo mconn;  //master connection
 
@@ -763,6 +815,7 @@ static void *cluster_thread_entrance(void* arg)
 
     fail_count = 0;
     sleep_seconds = 1;
+    ping_start_time = g_current_time;
     while (SF_G_CONTINUE_FLAG) {
         master = CLUSTER_MASTER_ATOM_PTR;
         if (master == NULL) {
@@ -773,11 +826,18 @@ static void *cluster_thread_entrance(void* arg)
                 if (mconn.sock >= 0) {
                     conn_pool_disconnect_server(&mconn);
                 }
+                ping_start_time = g_current_time;
                 sleep_seconds = 1;
             }
         } else {
-            if (cluster_ping_master(&mconn) == 0) {
+            ping_remain_time = ELECTION_MASTER_LOST_TIMEOUT -
+                (g_current_time - ping_start_time);
+            if (ping_remain_time < 2) {
+                ping_remain_time = 2;
+            }
+            if (cluster_ping_master(&mconn, ping_remain_time) == 0) {
                 fail_count = 0;
+                ping_start_time = g_current_time;
                 sleep_seconds = 1;
             } else {
                 ++fail_count;
@@ -787,17 +847,23 @@ static void *cluster_thread_entrance(void* arg)
                         CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
                         CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
 
-                sleep_seconds *= 2;
-                if (fail_count >= 4) {
-                    cluster_unset_master();
-
-                    fail_count = 0;
+                if (g_current_time - ping_start_time >
+                        ELECTION_MASTER_LOST_TIMEOUT)
+                {
+                    if (fail_count > 1) {
+                        cluster_unset_master();
+                        fail_count = 0;
+                    }
+                    sleep_seconds = 0;
+                } else {
                     sleep_seconds = 1;
                 }
             }
         }
 
-        sleep(sleep_seconds);
+        if (sleep_seconds > 0) {
+            sleep(sleep_seconds);
+        }
     }
 
     return NULL;

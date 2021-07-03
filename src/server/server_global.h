@@ -37,12 +37,17 @@ typedef struct server_global_vars {
 
     struct {
         FCFSAuthClientFullContext auth;
-        bool force_master_election;
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
         SFClusterConfig config;
         FDIRClusterServerArray server_array;
+
+        struct {
+            bool force;
+            int master_lost_timeout;
+            int max_wait_time;
+        } master_election;
 
         SFContext sf_context;  //for cluster communication
     } cluster;
@@ -72,7 +77,11 @@ typedef struct server_global_vars {
 } FDIRServerGlobalVars;
 
 #define FORCE_MASTER_ELECTION  g_server_global_vars.cluster. \
-    force_master_election
+    master_election.force
+#define ELECTION_MASTER_LOST_TIMEOUT g_server_global_vars.cluster. \
+    master_election.master_lost_timeout
+#define ELECTION_MAX_WAIT_TIME   g_server_global_vars.cluster. \
+    master_election.max_wait_time
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
 #define CLUSTER_SERVER_CONFIG   CLUSTER_CONFIG.server_cfg

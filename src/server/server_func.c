@@ -80,6 +80,30 @@ static int server_load_cluster_id(IniFullContext *ini_ctx)
     return 0;
 }
 
+static int load_master_election_config(const char *cluster_filename)
+{
+    IniContext ini_context;
+    IniFullContext ini_ctx;
+    int result;
+
+    if ((result=iniLoadFromFile(cluster_filename, &ini_context)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "load conf file \"%s\" fail, ret code: %d",
+                __LINE__, cluster_filename, result);
+        return result;
+    }
+
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, cluster_filename,
+            "master-election", &ini_context);
+    ELECTION_MASTER_LOST_TIMEOUT = iniGetIntCorrectValue(
+            &ini_ctx, "master_lost_timeout", 3, 1, 300);
+    ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
+            &ini_ctx, "max_wait_time", 30, 1, 3600);
+
+    iniFreeContext(&ini_context);
+    return 0;
+}
+
 static int load_cluster_config(IniFullContext *ini_ctx,
         char *full_cluster_filename)
 {
@@ -96,11 +120,11 @@ static int load_cluster_config(IniFullContext *ini_ctx,
         return result;
     }
 
-    if ((result=cluster_info_init(full_cluster_filename)) != 0) {
+    if ((result=load_master_election_config(full_cluster_filename)) != 0) {
         return result;
     }
 
-    return 0;
+    return cluster_info_init(full_cluster_filename);
 }
 
 static int load_data_path_config(IniContext *ini_context, const char *filename)
@@ -212,7 +236,9 @@ static void server_log_configs()
             "namespace_hashtable_capacity = %d, "
             "inode_hashtable_capacity = %"PRId64", "
             "inode_shared_locks_count = %d, "
-            "cluster server count = %d",
+            "cluster server count = %d, "
+            "master-election {master_lost_timeout: %ds, "
+            "max_wait_time: %ds}",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
@@ -221,13 +247,14 @@ static void server_log_configs()
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
-            FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG));
+            FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
+            ELECTION_MASTER_LOST_TIMEOUT, ELECTION_MAX_WAIT_TIME);
 
     logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s, %s",
             g_fdir_global_vars.version.major, g_fdir_global_vars.version.minor,
-            g_fdir_global_vars.version.patch,
-            sz_global_config, sz_slowlog_config, sz_service_config,
-            sz_cluster_config, sz_server_config, sz_auth_config);
+            g_fdir_global_vars.version.patch, sz_global_config,
+            sz_slowlog_config, sz_service_config, sz_cluster_config,
+            sz_server_config, sz_auth_config);
     log_local_host_ip_addrs();
     log_cluster_server_config();
 }
