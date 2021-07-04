@@ -58,6 +58,20 @@ int cluster_handler_destroy()
     return 0;
 }
 
+int cluster_recv_timeout_callback(struct fast_task_info *task)
+{
+    if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_RELATIONSHIP &&
+            CLUSTER_PEER != NULL)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "cluster client ip: %s, server id: %d, recv timeout",
+                __LINE__, task->client_ip, CLUSTER_PEER->server->id);
+        return ETIMEDOUT;
+    }
+
+    return 0;
+}
+
 void cluster_task_finish_cleanup(struct fast_task_info *task)
 {
     switch (SERVER_TASK_TYPE) {

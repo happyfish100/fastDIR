@@ -49,7 +49,8 @@ typedef struct fdir_cluster_server_status {
 } FDIRClusterServerStatus;
 
 static int proto_get_server_status(ConnectionInfo *conn,
-        FDIRClusterServerStatus *server_status, const int network_timeout)
+        const int network_timeout,
+        FDIRClusterServerStatus *server_status)
 {
 	int result;
 	FDIRProtoHeader *header;
@@ -269,7 +270,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
         }
 
         result = proto_get_server_status(&conn,
-                server_status, network_timeout);
+                network_timeout, server_status);
         conn_pool_disconnect_server(&conn);
         return result;
     }
