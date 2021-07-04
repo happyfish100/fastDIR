@@ -215,7 +215,7 @@ static void server_log_configs()
     char sz_auth_config[1024];
 
     sf_global_config_to_string(sz_global_config, sizeof(sz_global_config));
-    sf_slow_log_config_to_string(&SLOW_LOG_CFG, "slow_log",
+    sf_slow_log_config_to_string(&SLOW_LOG_CFG, "slow-log",
             sz_slowlog_config, sizeof(sz_slowlog_config));
 
     sf_context_config_to_string(&g_sf_context,
