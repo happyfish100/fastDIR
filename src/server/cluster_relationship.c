@@ -679,6 +679,10 @@ static int cluster_select_master()
                     FDIR_FORCE_ELECTION_LONG_OPTION_STR);
             force_sleep = true;
         } else {
+            if (g_current_time - start_time > ELECTION_MAX_WAIT_TIME) {
+                break;
+            }
+
             if (FORCE_MASTER_ELECTION) {
                 sprintf(status_prompt, "force_master_election: %d, ",
                         FORCE_MASTER_ELECTION);
@@ -686,20 +690,15 @@ static int cluster_select_master()
                 *status_prompt = '\0';
             }
 
-            if (g_current_time - start_time > ELECTION_MAX_WAIT_TIME) {
-                break;
-            }
             force_sleep = false;
         }
 
         remain_time = ELECTION_MAX_WAIT_TIME - (g_current_time - start_time);
         if (remain_time > 0) {
             sleep_secs = FC_MIN(remain_time, max_sleep_secs);
-            sleep(sleep_secs);
         } else {
             if (force_sleep) {
                 sleep_secs = max_sleep_secs;
-                sleep(sleep_secs);
             } else {
                 sleep_secs = 0;
             }
@@ -710,6 +709,9 @@ static int cluster_select_master()
                 __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
                 status_prompt, sleep_secs);
 
+        if (sleep_secs > 0) {
+            sleep(sleep_secs);
+        }
         if (max_sleep_secs < 32) {
             max_sleep_secs *= 2;
         }
