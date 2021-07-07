@@ -789,25 +789,25 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 result = cluster_deal_ping_master(task);
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
-                result = cluster_deal_join_slave_req(task);
+                if ((result=cluster_deal_join_slave_req(task)) > 0) {
+                    result *= -1;  //force close connection
+                }
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
                 TASK_CTX.common.need_response = false;
-                result = cluster_deal_join_slave_resp(task);
+                if ((result=cluster_deal_join_slave_resp(task)) > 0) {
+                    result *= -1;  //force close connection
+                }
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
-                if ((result=cluster_deal_push_binlog_req(task)) != 0) {
-                    if (result > 0) {
-                        result *= -1;  //force close connection
-                    }
+                if ((result=cluster_deal_push_binlog_req(task)) > 0) {
+                    result *= -1;  //force close connection
                 }
                 TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
-                if ((result=cluster_deal_push_binlog_resp(task)) != 0) {
-                    if (result > 0) {
-                        result *= -1;  //force close connection
-                    }
+                if ((result=cluster_deal_push_binlog_resp(task)) > 0) {
+                    result *= -1;  //force close connection
                 }
                 TASK_CTX.common.need_response = false;
                 break;
