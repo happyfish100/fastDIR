@@ -22,6 +22,7 @@
 #include "fastcommon/sockopt.h"
 #include "fastcommon/md5.h"
 #include "fastcommon/local_ip_func.h"
+#include "fastcommon/system_info.h"
 #include "sf/sf_global.h"
 #include "sf/sf_service.h"
 #include "sf/sf_binlog_writer.h"
@@ -402,8 +403,13 @@ int server_load_config(const char *filename)
 
     iniFreeContext(&ini_context);
 
-    g_sf_binlog_data_path = DATA_PATH_STR;
+    if ((SYSTEM_CPU_COUNT=get_sys_cpu_count()) <= 0) {
+        logCrit("file: "__FILE__", line: %d, "
+                "get CPU count fail", __LINE__);
+        return EINVAL;
+    }
 
+    g_sf_binlog_data_path = DATA_PATH_STR;
     load_local_host_ip_addrs();
     server_log_configs();
 

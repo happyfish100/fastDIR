@@ -11,12 +11,14 @@ ALL_OBJS = ../common/fdir_proto.o ../common/fdir_global.o \
            service_handler.o cluster_handler.o server_global.o \
            ns_manager.o ns_subscribe.o dentry.o flock.o inode_index.o \
            cluster_relationship.o data_thread.o data_loader.o \
-           inode_generator.o server_binlog.o cluster_info.o \
-           binlog/binlog_producer.o binlog/binlog_local_consumer.o \
-           binlog/binlog_write.o binlog/binlog_read_thread.o     \
-           binlog/binlog_replication.o binlog/replica_consumer_thread.o \
-           binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o \
-           binlog/binlog_replay.o binlog/push_result_ring.o
+           inode_generator.o shared_thread_pool.o server_binlog.o \
+           cluster_info.o binlog/binlog_producer.o \
+           binlog/binlog_local_consumer.o binlog/binlog_write.o \
+           binlog/binlog_read_thread.o binlog/binlog_replication.o \
+           binlog/replica_consumer_thread.o binlog/binlog_func.o \
+           binlog/binlog_reader.o binlog/binlog_pack.o \
+           binlog/binlog_replay.o binlog/binlog_replay_mt.o \
+           binlog/push_result_ring.o
 
 ALL_PRGS = fdir_serverd
 

@@ -19,6 +19,7 @@
 
 #include "fastcommon/common_define.h"
 #include "fastcommon/server_id_func.h"
+#include "fastcommon/thread_pool.h"
 #include "sf/sf_global.h"
 #include "sf/sf_cluster_cfg.h"
 #include "fastcfs/auth/client_types.h"
@@ -34,6 +35,10 @@ typedef struct server_global_vars {
     int reload_interval_ms;
 
     int check_alive_interval;
+
+    struct {
+        int cpu_count;
+    } system;
 
     struct {
         FCFSAuthClientFullContext auth;
@@ -74,7 +79,11 @@ typedef struct server_global_vars {
 
     SFSlowLogContext slow_log;
 
+    FCThreadPool thread_pool;
+
 } FDIRServerGlobalVars;
+
+#define SYSTEM_CPU_COUNT       g_server_global_vars.system.cpu_count
 
 #define FORCE_MASTER_ELECTION  g_server_global_vars.cluster. \
     master_election.force
@@ -122,6 +131,8 @@ typedef struct server_global_vars {
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg
 #define SLOW_LOG_CTX            SLOW_LOG.ctx
+
+#define THREAD_POOL             g_server_global_vars.thread_pool
 
 #define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG) - 1)
 

@@ -54,6 +54,7 @@
 #include "common_handler.h"
 #include "service_handler.h"
 #include "cluster_handler.h"
+#include "shared_thread_pool.h"
 
 static int setup_server_env(const char *config_filename);
 static int setup_mblock_stat_task();
@@ -215,6 +216,10 @@ int main(int argc, char *argv[])
         }
 
         if ((result=ns_subscribe_init()) != 0) {
+            break;
+        }
+
+        if ((result=shared_thread_pool_init()) != 0) {
             break;
         }
 
