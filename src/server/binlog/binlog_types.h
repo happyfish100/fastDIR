@@ -108,6 +108,11 @@ typedef struct fdir_binlog_record {
         void *args;    //for thread continue deal
     } notify;
 
+    struct {
+        short data_thread_index;
+        short arr_index;
+    } extra;   //for data loader
+
     struct fdir_binlog_record *next; //for data thread queue
 } FDIRBinlogRecord;
 

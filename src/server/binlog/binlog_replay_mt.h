@@ -22,8 +22,18 @@
 #include "binlog_types.h"
 #include "binlog_read_thread.h"
 
-typedef void (*binlog_replay_mt_notify_func)(const int result,
-        struct fdir_binlog_record *record, void *args);
+#define BINLOG_REPLAY_DOUBLE_BUFFER_COUNT   2
+
+typedef struct data_thread_counter {
+    volatile int64_t total;
+    volatile int64_t done;
+} DataThreadCounter;
+
+typedef struct binlog_record_array {
+    int size;
+    FDIRBinlogRecord *records;
+    DataThreadCounter *counters;
+} BinlogRecordArray;
 
 typedef struct binlog_record_chain {
     FDIRBinlogRecord *head;
@@ -32,13 +42,13 @@ typedef struct binlog_record_chain {
 
 typedef struct binlog_parse_thread_context {
     int64_t total_count;
+
     struct {
         bool parse_done;
         pthread_lock_cond_pair_t lcp;
     } notify;
+
     BinlogRecordChain records;  //for output
-    struct fast_mblock_man record_allocator;  //element: FDIRBinlogRecord
-    struct fast_mblock_node *freelist;  //for batch alloc
     BinlogReadThreadResult *r;
     struct binlog_replay_mt_context *replay_ctx;
 } BinlogParseThreadContext;
@@ -50,8 +60,15 @@ typedef struct binlog_parse_thread_ctx_array {
 
 typedef struct binlog_replay_mt_context {
     BinlogReadThreadContext *read_thread_ctx;
-    volatile int parse_thread_count;
-    int dealing_threads;
+
+    struct {
+        BinlogRecordArray arrays[BINLOG_REPLAY_DOUBLE_BUFFER_COUNT];
+        volatile int elt_index;
+        volatile short arr_index;
+    } record_allocator;
+
+    volatile short parse_thread_count;
+    short dealing_threads;
     volatile bool parse_continue_flag;
     BinlogParseThreadCtxArray parse_thread_array;
 
