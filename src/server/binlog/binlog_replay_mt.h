@@ -32,8 +32,9 @@ typedef struct data_thread_counter {
 typedef struct binlog_record_array {
     int size;
     FDIRBinlogRecord *records;
+    BinlogReadThreadResult **results;
     DataThreadCounter *counters;
-} BinlogRecordArray;
+} BinlogBatchContext;
 
 typedef struct binlog_record_chain {
     FDIRBinlogRecord *head;
@@ -42,6 +43,7 @@ typedef struct binlog_record_chain {
 
 typedef struct binlog_parse_thread_context {
     int64_t total_count;
+    short thread_index;
 
     struct {
         bool parse_done;
@@ -62,7 +64,7 @@ typedef struct binlog_replay_mt_context {
     BinlogReadThreadContext *read_thread_ctx;
 
     struct {
-        BinlogRecordArray arrays[BINLOG_REPLAY_DOUBLE_BUFFER_COUNT];
+        BinlogBatchContext bcontexts[BINLOG_REPLAY_DOUBLE_BUFFER_COUNT];
         volatile int elt_index;
         volatile short arr_index;
     } record_allocator;
@@ -85,7 +87,7 @@ extern "C" {
 #endif
 
 int binlog_replay_mt_init(BinlogReplayMTContext *replay_ctx,
-        BinlogReadThreadContext *read_thread_ctx);
+        BinlogReadThreadContext *read_thread_ctx, const int parse_threads);
 
 void binlog_replay_mt_destroy(BinlogReplayMTContext *replay_ctx);
 

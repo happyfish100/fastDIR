@@ -128,17 +128,6 @@ extern "C" {
         fc_queue_push(&context->queue, record);
     }
 
-    static inline void push_to_data_thread_queue_ex(FDIRBinlogRecord *record)
-    {
-        FDIRDataThreadContext *context;
-
-        record->extra.data_thread_index = record->hash_code %
-            g_data_thread_vars.thread_array.count;
-        context = g_data_thread_vars.thread_array.contexts +
-            record->extra.data_thread_index;
-        fc_queue_push(&context->queue, record);
-    }
-
 #ifdef __cplusplus
 }
 #endif

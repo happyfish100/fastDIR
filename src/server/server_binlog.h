@@ -26,6 +26,7 @@
 #include "binlog/replica_consumer_thread.h"
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_replay.h"
+#include "binlog/binlog_replay_mt.h"
 #include "binlog/push_result_ring.h"
 
 #ifdef __cplusplus
