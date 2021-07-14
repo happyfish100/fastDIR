@@ -87,21 +87,21 @@ static void data_thread_deal_done_callback(
 static int parse_buffer(BinlogParseThreadContext *thread_ctx)
 {
     int result;
-    BinlogBatchContext *arr;
+    BinlogBatchContext *bctx;
     const char *p;
     char *buff_end;
     const char *rend;
     char error_info[SF_ERROR_INFO_SIZE];
     FDIRBinlogRecord *record;
 
-    arr = thread_ctx->replay_ctx->record_allocator.bcontexts + FC_ATOMIC_GET(
+    bctx = thread_ctx->replay_ctx->record_allocator.bcontexts + FC_ATOMIC_GET(
             thread_ctx->replay_ctx->record_allocator.arr_index);
 
     result = 0;
     buff_end = thread_ctx->r->buffer.buff + thread_ctx->r->buffer.length;
     p = thread_ctx->r->buffer.buff;
     while (p < buff_end) {
-        record = arr->records + __sync_fetch_and_add(&thread_ctx->
+        record = bctx->records + __sync_fetch_and_add(&thread_ctx->
                 replay_ctx->record_allocator.elt_index, 1);
         if ((result=binlog_unpack_record(p, buff_end - p, record,
                         &rend, error_info, sizeof(error_info))) != 0)
@@ -216,29 +216,29 @@ static int init_parse_thread_ctx_array(BinlogReplayMTContext *replay_ctx,
 
 
 static inline int init_records(BinlogReplayMTContext *ctx,
-        BinlogBatchContext *arr, const int arr_index,
-        const int parse_threads)
+        BinlogBatchContext *bctx, const int arr_index,
+        const int parse_threads, const int elements_limit)
 {
     int bytes;
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *end;
 
     bytes = sizeof(DataThreadCounter) * DATA_THREAD_COUNT;
-    arr->counters = (DataThreadCounter *)fc_malloc(bytes);
-    if (arr->counters == NULL) {
+    bctx->counters = (DataThreadCounter *)fc_malloc(bytes);
+    if (bctx->counters == NULL) {
         return ENOMEM;
     }
-    memset(arr->counters, 0, bytes);
+    memset(bctx->counters, 0, bytes);
 
     bytes = sizeof(BinlogReadThreadResult *) * parse_threads;
-    arr->results = (BinlogReadThreadResult **)fc_malloc(bytes);
-    if (arr->results == NULL) {
+    bctx->results = (BinlogReadThreadResult **)fc_malloc(bytes);
+    if (bctx->results == NULL) {
         return ENOMEM;
     }
-    memset(arr->results, 0, bytes);
+    memset(bctx->results, 0, bytes);
 
-    end = arr->records + arr->size;
-    for (record=arr->records; record<end; record++) {
+    end = bctx->records + elements_limit;
+    for (record=bctx->records; record<end; record++) {
         record->notify.func = data_thread_deal_done_callback;
         record->notify.args = ctx;
         record->extra.arr_index = arr_index;
@@ -253,23 +253,22 @@ static int init_thread_ctx_array(BinlogReplayMTContext *ctx,
     int elements_limit;
     int bytes;
     int result;
-    BinlogBatchContext *arr;
+    BinlogBatchContext *bctx;
     BinlogBatchContext *end;
 
     elements_limit = (int)(((int64_t)parse_threads *
                 BINLOG_BUFFER_SIZE) / BINLOG_RECORD_MIN_SIZE);
     end = ctx->record_allocator.bcontexts + BINLOG_REPLAY_DOUBLE_BUFFER_COUNT;
-    for (arr=ctx->record_allocator.bcontexts; arr<end; arr++) {
-        arr->size = elements_limit;
-        bytes = sizeof(FDIRBinlogRecord) * arr->size;
-        arr->records = (FDIRBinlogRecord *)fc_malloc(bytes);
-        if (arr->records == NULL) {
+    for (bctx=ctx->record_allocator.bcontexts; bctx<end; bctx++) {
+        bytes = sizeof(FDIRBinlogRecord) * elements_limit;
+        bctx->records = (FDIRBinlogRecord *)fc_malloc(bytes);
+        if (bctx->records == NULL) {
             return ENOMEM;
         }
-        memset(arr->records, 0, bytes);
+        memset(bctx->records, 0, bytes);
 
-        if ((result=init_records(ctx, arr, arr - ctx->record_allocator.
-                        bcontexts, parse_threads)) != 0)
+        if ((result=init_records(ctx, bctx, bctx - ctx->record_allocator.
+                        bcontexts, parse_threads, elements_limit)) != 0)
         {
             return result;
         }
@@ -296,15 +295,14 @@ static void destroy_parse_thread_ctx_array(BinlogParseThreadCtxArray *ctx_array)
 
 void binlog_replay_mt_destroy(BinlogReplayMTContext *ctx)
 {
-    BinlogBatchContext *arr;
+    BinlogBatchContext *bctx;
     BinlogBatchContext *end;
 
     destroy_parse_thread_ctx_array(&ctx->parse_thread_array);
-
     end = ctx->record_allocator.bcontexts + BINLOG_REPLAY_DOUBLE_BUFFER_COUNT;
-    for (arr=ctx->record_allocator.bcontexts; arr<end; arr++) {
-        free(arr->records);
-        free(arr->counters);
+    for (bctx=ctx->record_allocator.bcontexts; bctx<end; bctx++) {
+        free(bctx->records);
+        free(bctx->counters);
     }
 }
 
@@ -425,7 +423,7 @@ int binlog_replay_mt_parse_buffer(BinlogReplayMTContext *replay_ctx,
         BinlogReadThreadResult *r)
 {
     BinlogParseThreadContext *thread_ctx;
-    BinlogBatchContext *arr;
+    BinlogBatchContext *bctx;
     short new_arr_index;
 
     thread_ctx = replay_ctx->parse_thread_array.contexts +
@@ -437,9 +435,9 @@ int binlog_replay_mt_parse_buffer(BinlogReplayMTContext *replay_ctx,
     pthread_cond_signal(&thread_ctx->notify.lcp.cond);
     PTHREAD_MUTEX_UNLOCK(&thread_ctx->notify.lcp.lock);
 
-    arr = replay_ctx->record_allocator.bcontexts + FC_ATOMIC_GET(
+    bctx = replay_ctx->record_allocator.bcontexts + FC_ATOMIC_GET(
             replay_ctx->record_allocator.arr_index);
-    arr->results[thread_ctx->thread_index] = r;
+    bctx->results[thread_ctx->thread_index] = r;
 
     if (++(replay_ctx->dealing_threads) ==
             replay_ctx->parse_thread_array.count)

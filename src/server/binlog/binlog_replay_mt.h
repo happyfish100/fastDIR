@@ -29,8 +29,7 @@ typedef struct data_thread_counter {
     volatile int64_t done;
 } DataThreadCounter;
 
-typedef struct binlog_record_array {
-    int size;
+typedef struct binlog_batch_context {
     FDIRBinlogRecord *records;
     BinlogReadThreadResult **results;
     DataThreadCounter *counters;
