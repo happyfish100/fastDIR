@@ -25,6 +25,9 @@ extern "C" {
 #endif
 
 int inode_segment_index_init();
+int inode_segment_index_add(const FDIRStorageInodeIndexInfo *node);
+int inode_segment_index_delete(const uint64_t inode);
+int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode);
 
 #ifdef __cplusplus
 }

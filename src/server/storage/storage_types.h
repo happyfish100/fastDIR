@@ -25,4 +25,9 @@ typedef struct fdir_storage_inode_index_info {
     int offset;
 } FDIRStorageInodeIndexInfo;
 
+typedef struct fdir_storage_inode_index_array {
+    FDIRStorageInodeIndexInfo *inodes;
+    int count;
+} FDIRStorageInodeIndexArray;
+
 #endif

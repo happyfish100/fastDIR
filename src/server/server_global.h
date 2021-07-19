@@ -75,7 +75,12 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
-    } data;
+    } data;  //for binlog
+
+    struct {
+        volatile uint32_t current_file_id; //binlog file id
+        string_t path;   //data path
+    } storage;
 
     SFSlowLogContext slow_log;
 
@@ -127,6 +132,10 @@ typedef struct server_global_vars {
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
+
+#define STORAGE_PATH            g_server_global_vars.storage.path
+#define STORAGE_PATH_STR        STORAGE_PATH.str
+#define STORAGE_PATH_LEN        STORAGE_PATH.len
 
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg

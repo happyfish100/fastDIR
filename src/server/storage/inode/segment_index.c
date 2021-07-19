@@ -35,14 +35,16 @@ typedef struct inode_segment_index_info {
     struct {
         volatile uint64_t first;
         volatile uint64_t last;
+        FDIRStorageInodeIndexArray array;
     } inodes;
     int count;
     int file_id;
+    time_t last_access_time;
     pthread_mutex_t lock;
 } InodeSegmentIndexInfo;
 
 typedef struct inode_segment_index_array {
-    InodeSegmentIndexInfo *indexes;
+    InodeSegmentIndexInfo *segments;
     int count;
     int alloc;
 } InodeSegmentIndexArray;
