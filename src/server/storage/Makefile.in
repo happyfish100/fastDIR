@@ -1,0 +1,47 @@
+.SUFFIXES: .c .o .lo
+
+COMPILE = $(CC) $(CFLAGS)
+INC_PATH = -I../..
+LIB_PATH = $(LIBS) -lfastcommon -lserverframe
+TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
+
+FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
+                   inode/binlog_fd_cache.lo
+
+FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
+                   inode/binlog_fd_cache.o
+
+HEADER_FILES =
+
+ALL_OBJS = $(FAST_STATIC_OBJS) $(FAST_SHARED_OBJS)
+
+ALL_PRGS = 
+SHARED_LIBS = libfdirstorage.so
+STATIC_LIBS = libfdirstorage.a
+ALL_LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
+
+all: $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
+libfdirstorage.so: $(FAST_SHARED_OBJS)
+	$(COMPILE) -o $@ -shared $(FAST_SHARED_OBJS) $(LIB_PATH)
+libfdirstorage.a: $(FAST_STATIC_OBJS)
+	ar rcs $@ $(FAST_STATIC_OBJS)
+.o:
+	$(COMPILE) -o $@ $<  $(FAST_STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c:
+	$(COMPILE) -o $@ $<  $(FAST_STATIC_OBJS) $(LIB_PATH) $(INC_PATH)
+.c.o:
+	$(COMPILE) -c -o $@ $<  $(INC_PATH)
+.c.lo:
+	$(COMPILE) -c -fPIC -o $@ $<  $(INC_PATH)
+install:
+	mkdir -p $(TARGET_LIB)
+	mkdir -p $(TARGET_PREFIX)/lib
+	mkdir -p $(TARGET_PREFIX)/include/fastdir/storage
+
+	install -m 755 $(SHARED_LIBS) $(TARGET_LIB)
+	install -m 644 $(HEADER_FILES) $(TARGET_PREFIX)/include/fastdir/storage
+	@BUILDROOT=$$(echo "$(TARGET_PREFIX)" | grep BUILDROOT); \
+	if [ -z "$$BUILDROOT" ] && [ ! -e $(TARGET_PREFIX)/lib/libfdirstorage.so ]; then ln -s $(TARGET_LIB)/libfdirstorage.so $(TARGET_PREFIX)/lib/libfdirstorage.so; fi
+clean:
+	rm -f $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
+

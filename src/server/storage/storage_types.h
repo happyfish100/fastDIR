@@ -19,6 +19,9 @@
 #include "fastcommon/common_define.h"
 #include "sf/sf_types.h"
 
+
+#define FDIR_STORAGE_BATCH_INODES   (64 * 1024)
+
 typedef struct fdir_storage_inode_index_info {
     uint64_t inode;
     int file_id;
@@ -29,5 +32,10 @@ typedef struct fdir_storage_inode_index_array {
     FDIRStorageInodeIndexInfo *inodes;
     int count;
 } FDIRStorageInodeIndexArray;
+
+typedef enum fdir_storage_inode_index_op_type {
+    inode_index_op_type_create = 'c',
+    inode_index_op_type_remove = 'r'
+} FDIRStorageInodeIndexOpType;
 
 #endif

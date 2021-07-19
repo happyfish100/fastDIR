@@ -18,15 +18,18 @@
 #ifndef _INODE_BINLOG_WRITER_H_
 #define _INODE_BINLOG_WRITER_H_
 
+#include "../storage_types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 int inode_binlog_writer_init();
 
-static inline void inode_binlog_writer_finish()
-{
-}
+int inode_binlog_writer_log(const FDIRStorageInodeIndexOpType op_type,
+        const FDIRStorageInodeIndexInfo *inode_index);
+
+void inode_binlog_writer_finish();
 
 #ifdef __cplusplus
 }
