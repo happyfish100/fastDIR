@@ -1,0 +1,2 @@
+/usr/bin/fdir_serverd
+conffile /usr/lib/systemd/system/fastdir.service
