@@ -1,0 +1,11 @@
+/usr/lib64/libfdirclient.so*
+/usr/bin/fdir_cluster_stat
+/usr/bin/fdir_list
+/usr/bin/fdir_mkdir
+/usr/bin/fdir_remove
+/usr/bin/fdir_rename
+/usr/bin/fdir_getxattr
+/usr/bin/fdir_setxattr
+/usr/bin/fdir_service_stat
+/usr/bin/fdir_stat
+/usr/bin/fdir_list_servers
