@@ -46,7 +46,10 @@ typedef struct binlog_writer_record {
 } BinlogWriterRecord;
 
 typedef struct {
-    int current_write;
+    struct {
+        int write_index;
+        int inode_count;
+    } current_binlog;
     int current_compress;
 
     struct fast_mblock_man mblock;
@@ -103,7 +106,8 @@ static int get_binlog_index_from_file()
             "%s/%s", STORAGE_PATH_STR, BINLOG_INDEX_FILENAME);
     if (access(full_filename, F_OK) != 0) {
         if (errno == ENOENT) {
-            return write_to_binlog_index(binlog_writer_ctx.current_write);
+            return write_to_binlog_index(binlog_writer_ctx.
+                    current_binlog.write_index);
         } else {
             return errno != 0 ? errno : EPERM;
         }
@@ -118,7 +122,7 @@ static int get_binlog_index_from_file()
         return result;
     }
 
-    binlog_writer_ctx.current_write = iniGetIntValue(NULL,
+    binlog_writer_ctx.current_binlog.write_index = iniGetIntValue(NULL,
             BINLOG_INDEX_ITEM_CURRENT_WRITE, &iniContext, 0);
     binlog_writer_ctx.current_compress = iniGetIntValue(NULL,
             BINLOG_INDEX_ITEM_CURRENT_COMPRESS, &iniContext, 0);
@@ -127,9 +131,19 @@ static int get_binlog_index_from_file()
     return 0;
 }
 
+static int deal_record(BinlogWriterRecord *record)
+{
+    if (record->op_type == inode_index_op_type_create) {
+        //FDIR_STORAGE_BATCH_INODES
+    } else {
+    }
+
+    return 0;
+}
+
 static int deal_binlog_records(BinlogWriterRecord *head)
 {
-    //int result;
+    int result;
     BinlogWriterRecord *record;
     BinlogWriterRecord *current;
 
@@ -138,7 +152,9 @@ static int deal_binlog_records(BinlogWriterRecord *head)
         current = record;
         record = record->next;
 
-        //TODO
+        if ((result=deal_record(current)) != 0) {
+            return result;
+        }
     } while (record != NULL);
 
     return 0;

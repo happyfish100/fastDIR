@@ -19,8 +19,8 @@
 #include "fastcommon/common_define.h"
 #include "sf/sf_types.h"
 
-
-#define FDIR_STORAGE_BATCH_INODES   (64 * 1024)
+#define FDIR_STORAGE_BATCH_INODES     (64 * 1024)
+#define FDIR_STORAGE_INODE_BINLOGS_PER_DIR  1024
 
 typedef struct fdir_storage_inode_index_info {
     uint64_t inode;

@@ -20,7 +20,9 @@
 #include "fastcommon/logger.h"
 #include "binlog_fd_cache.h"
 
-int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx, const int capacity)
+int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx,
+        const int open_flags, const int max_idle_time,
+        const int capacity)
 {
     int result;
     int bytes;
@@ -52,19 +54,21 @@ int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx, const int capacity)
         alloc_elements_once = 8 * 1024;
     }
     if ((result=fast_mblock_init_ex1(&cache_ctx->allocator,
-                    "binlog_fd_cache", sizeof(BinlogFDCacheEntry),
+                    "binlog-fd-cache", sizeof(BinlogFDCacheEntry),
                     alloc_elements_once, 0, NULL, NULL, false)) != 0)
     {
         return result;
     }
 
+    cache_ctx->open_flags = open_flags;
+    cache_ctx->max_idle_time = max_idle_time;
     cache_ctx->lru.count = 0;
     cache_ctx->lru.capacity = capacity;
     FC_INIT_LIST_HEAD(&cache_ctx->lru.head);
     return 0;
 }
 
-int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
+static int fd_cache_get(BinlogFDCacheContext *cache_ctx,
         const uint32_t binlog_id)
 {
     BinlogFDCacheEntry **bucket;
@@ -95,37 +99,7 @@ int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
     }
 }
 
-int binlog_fd_cache_add(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id, const int fd)
-{
-    BinlogFDCacheEntry **bucket;
-    BinlogFDCacheEntry *entry;
-
-    if (cache_ctx->lru.count >= cache_ctx->lru.capacity) {
-        entry = fc_list_entry(cache_ctx->lru.head.next,
-                BinlogFDCacheEntry, dlink);
-        binlog_fd_cache_delete(cache_ctx, entry->pair.binlog_id);
-    }
-
-    entry = (BinlogFDCacheEntry *)fast_mblock_alloc_object(
-            &cache_ctx->allocator);
-    if (entry == NULL) {
-        return ENOMEM;
-    }
-
-    entry->pair.binlog_id = binlog_id;
-    entry->pair.fd = fd;
-
-    bucket = cache_ctx->htable.buckets + binlog_id % cache_ctx->htable.size;
-    entry->next = *bucket;
-    *bucket = entry;
-
-    fc_list_add_tail(&entry->dlink, &cache_ctx->lru.head);
-    cache_ctx->lru.count++;
-    return 0;
-}
-
-int binlog_fd_cache_delete(BinlogFDCacheContext *cache_ctx,
+static int fd_cache_delete(BinlogFDCacheContext *cache_ctx,
         const uint32_t binlog_id)
 {
     BinlogFDCacheEntry **bucket;
@@ -164,4 +138,80 @@ int binlog_fd_cache_delete(BinlogFDCacheContext *cache_ctx,
     fast_mblock_free_object(&cache_ctx->allocator, entry);
     cache_ctx->lru.count--;
     return 0;
+}
+
+static int fd_cache_add(BinlogFDCacheContext *cache_ctx,
+        const uint32_t binlog_id, const int fd)
+{
+    BinlogFDCacheEntry **bucket;
+    BinlogFDCacheEntry *entry;
+
+    if (cache_ctx->lru.count >= cache_ctx->lru.capacity) {
+        entry = fc_list_entry(cache_ctx->lru.head.next,
+                BinlogFDCacheEntry, dlink);
+        fd_cache_delete(cache_ctx, entry->pair.binlog_id);
+    }
+
+    entry = (BinlogFDCacheEntry *)fast_mblock_alloc_object(
+            &cache_ctx->allocator);
+    if (entry == NULL) {
+        return ENOMEM;
+    }
+
+    entry->pair.binlog_id = binlog_id;
+    entry->pair.fd = fd;
+
+    bucket = cache_ctx->htable.buckets + binlog_id % cache_ctx->htable.size;
+    entry->next = *bucket;
+    *bucket = entry;
+
+    fc_list_add_tail(&entry->dlink, &cache_ctx->lru.head);
+    cache_ctx->lru.count++;
+    return 0;
+}
+
+static inline int open_file(BinlogFDCacheContext *cache_ctx,
+        const uint32_t binlog_id)
+{
+    int fd;
+    int result;
+    char full_filename[PATH_MAX];
+
+    if ((result=binlog_fd_cache_filename(binlog_id, full_filename,
+                    sizeof(full_filename))) != 0)
+    {
+        return -1 * result;
+    }
+
+    if ((fd=open(full_filename, cache_ctx->open_flags, 0755)) < 0) {
+        result = errno != 0 ? errno : ENOENT;
+        logError("file: "__FILE__", line: %d, "
+                "open file %s fail, errno: %d, error info: %s",
+                __LINE__, full_filename, result, strerror(result));
+        return -1 * result;
+    }
+
+    return fd;
+}
+
+int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
+        const uint32_t binlog_id)
+{
+    int fd;
+    int result;
+
+    if ((fd=fd_cache_get(cache_ctx, binlog_id)) >= 0) {
+        return fd;
+    }
+
+    if ((fd=open_file(cache_ctx, binlog_id)) < 0) {
+        return fd;
+    }
+
+    if ((result=fd_cache_add(cache_ctx, binlog_id, fd)) == 0) {
+        return fd;
+    } else {
+        close(fd);
+        return -1 * result;
+    }
 }

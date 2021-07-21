@@ -18,6 +18,9 @@
 
 #include "fastcommon/fc_list.h"
 #include "fastcommon/fast_mblock.h"
+#include "fastcommon/shared_func.h"
+#include "../../server_global.h"
+#include "inode_types.h"
 
 typedef struct binlog_id_fd_pair {
     uint32_t binlog_id;
@@ -37,6 +40,8 @@ typedef struct {
 
 typedef struct {
     BinlogFDCacheHashtable htable;
+    int open_flags;
+    int max_idle_time;
     struct {
         int capacity;
         int count;
@@ -49,17 +54,32 @@ typedef struct {
 extern "C" {
 #endif
 
-    int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx, const int capacity);
+    int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx,
+            const int open_flags, const int max_idle_time,
+            const int capacity);
 
-    //return fd, -1 for not exist
+    //return fd, < 0 for error
     int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
             const uint32_t binlog_id);
 
-    int binlog_fd_cache_add(BinlogFDCacheContext *cache_ctx,
-            const uint32_t binlog_id, const int fd);
+    static inline int binlog_fd_cache_filename(const uint32_t binlog_id,
+            char *full_filename, const int size)
+    {
+        int result;
+        int path_index;
+        int len;
 
-    int binlog_fd_cache_delete(BinlogFDCacheContext *cache_ctx,
-            const uint32_t binlog_id);
+        path_index = binlog_id / FDIR_STORAGE_INODE_BINLOGS_PER_DIR;
+        len = snprintf(full_filename, size, "%s/%03d",
+                STORAGE_PATH_STR, path_index);
+        if ((result=fc_check_mkdir(full_filename, 0755)) != 0) {
+            return result;
+        }
+
+        snprintf(full_filename + len, size - len,
+                "/binlog.%06d", binlog_id);
+        return 0;
+    }
 
 #ifdef __cplusplus
 }
