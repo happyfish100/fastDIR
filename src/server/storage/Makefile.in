@@ -6,10 +6,12 @@ LIB_PATH = $(LIBS) -lfastcommon -lserverframe
 TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
 
 FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
-                   inode/binlog_fd_cache.lo
+                   inode/binlog_fd_cache.lo inode/write_fd_cache.lo \
+                   inode/read_fd_cache.lo
 
 FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
-                   inode/binlog_fd_cache.o
+                   inode/binlog_fd_cache.o inode/write_fd_cache.o \
+                   inode/read_fd_cache.o
 
 HEADER_FILES =
 
