@@ -145,12 +145,12 @@ perl -pi -e "s#\\\$\(TARGET_PREFIX\)#$TARGET_PREFIX#g" Makefile
 cd ..
 
 if [ "$1" = "install" ]; then
-  cd ..
+  cd ../..
 
   if [ "$uname" = "Linux" ]; then
     if [ "$WITH_LINUX_SERVICE" = "1" ]; then
-      if [ ! -d /etc/fdir ]; then
-        mkdir -p /etc/fdir
+      if [ ! -d $TARGET_CONF_PATH ]; then
+        mkdir -p $TARGET_CONF_PATH
         cp -f conf/server.conf $TARGET_CONF_PATH/server.conf.sample
         cp -f conf/client.conf $TARGET_CONF_PATH/client.conf.sample
       fi
