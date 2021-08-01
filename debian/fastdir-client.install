@@ -1,4 +1,4 @@
-usr/lib64/libfdirclient.so*
+usr/lib64/libfdirclient.so* usr/lib/
 usr/bin/fdir_cluster_stat
 usr/bin/fdir_list
 usr/bin/fdir_mkdir
