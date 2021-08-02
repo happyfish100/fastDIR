@@ -1,4 +1,4 @@
-fastdir (2.3.0-1) UNRELEASED; urgency=low
+fastdir (2.3.0-1) unstable; urgency=medium
 
   * Initial release.
 
