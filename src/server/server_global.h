@@ -79,6 +79,7 @@ typedef struct server_global_vars {
 
     struct {
         volatile uint32_t current_file_id; //binlog file id
+        int inode_binlog_subdirs;
         string_t path;   //data path
     } storage;
 
@@ -136,6 +137,8 @@ typedef struct server_global_vars {
 #define STORAGE_PATH            g_server_global_vars.storage.path
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
+
+#define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.inode_binlog_subdirs
 
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg

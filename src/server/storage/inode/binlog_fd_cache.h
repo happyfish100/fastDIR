@@ -65,19 +65,21 @@ extern "C" {
     static inline int binlog_fd_cache_filename(const uint32_t binlog_id,
             char *full_filename, const int size)
     {
-        int result;
         int path_index;
-        int len;
 
-        path_index = binlog_id / FDIR_STORAGE_INODE_BINLOGS_PER_DIR;
-        len = snprintf(full_filename, size, "%s/%03d",
+        path_index = binlog_id % INODE_BINLOG_SUBDIRS;
+
+        /*
+        //TODO: check and mkdirs on init
+        len = snprintf(full_filename, size, "%s/%02X/%02X",
                 STORAGE_PATH_STR, path_index);
         if ((result=fc_check_mkdir(full_filename, 0755)) != 0) {
             return result;
         }
+        */
 
-        snprintf(full_filename + len, size - len,
-                "/binlog.%06d", binlog_id);
+        snprintf(full_filename, size, "%s/%02X/%02X/binlog.%08X",
+                STORAGE_PATH_STR, path_index, path_index, binlog_id);
         return 0;
     }
 

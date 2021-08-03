@@ -38,4 +38,17 @@ typedef enum fdir_storage_inode_index_op_type {
     inode_index_op_type_remove = 'r'
 } FDIRStorageInodeIndexOpType;
 
+typedef struct fdir_storage_inode_segment_info {
+    int binlog_id;
+    struct {
+        volatile uint64_t first;
+        volatile uint64_t last;
+    } inodes;
+} FDIRStorageInodeSegmentInfo;
+
+typedef struct fdir_storage_inode_segment_array {
+    FDIRStorageInodeSegmentInfo *segments;
+    int count;
+} FDIRStorageInodeSegmentArray;
+
 #endif
