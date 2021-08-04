@@ -208,10 +208,85 @@ int binlog_index_load(FDIRInodeBinlogIndexContext *ctx)
     }
 }
 
+static int save(FDIRInodeBinlogIndexContext *ctx, const char *filename)
+{
+    char buff[16 * 1024];
+    char *bend;
+    FDIRInodeBinlogIndexInfo *index;
+    FDIRInodeBinlogIndexInfo *end;
+    char *p;
+    int fd;
+    int len;
+    int result;
+
+    fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) {
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "open file %s fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+        return result;
+    }
+
+    p = buff;
+    bend = buff + sizeof(buff);
+    p += sprintf(p, "%d %"PRId64"\n", ctx->index_array.count,
+            ctx->last_version);
+
+    end = ctx->index_array.indexes + ctx->index_array.count;
+    for (index=ctx->index_array.indexes; index<end; index++) {
+        if (bend - p < BINLOG_INDEX_RECORD_MAX_SIZE) {
+            len = p - buff;
+            if (fc_safe_write(fd, buff, len) != len) {
+                result = errno != 0 ? errno : EIO;
+                logError("file: "__FILE__", line: %d, "
+                        "write file %s fail, errno: %d, error info: %s",
+                        __LINE__, filename, result, STRERROR(result));
+                return result;
+            }
+            p = buff;
+        }
+
+        p += sprintf(p, "%"PRId64" %"PRId64" %"PRId64"\n",
+                index->binlog_id, index->inodes.first,
+                index->inodes.last);
+    }
+
+    len = p - buff;
+    if (len > 0 && fc_safe_write(fd, buff, len) != len) {
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "write file %s fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+        return result;
+    }
+
+    close(fd);
+    return 0;
+}
+
 int binlog_index_save(FDIRInodeBinlogIndexContext *ctx)
 {
+    int result;
     char filename[PATH_MAX];
+    char tmp_filename[PATH_MAX];
+
     binlog_index_get_filename(filename, sizeof(filename));
+    snprintf(tmp_filename, sizeof(tmp_filename),
+            "%s.tmp", filename);
+    if ((result=save(ctx, tmp_filename)) != 0) {
+        return result;
+    }
+
+    if (rename(tmp_filename, filename) != 0) {
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "rename file \"%s\" to \"%s\" fail, "
+                "errno: %d, error info: %s",
+                __LINE__, tmp_filename, filename,
+                result, STRERROR(result));
+        return result;
+    }
 
     return 0;
 }
