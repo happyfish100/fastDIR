@@ -38,17 +38,15 @@ typedef enum fdir_storage_inode_index_op_type {
     inode_index_op_type_remove = 'r'
 } FDIRStorageInodeIndexOpType;
 
-typedef struct fdir_storage_inode_segment_info {
-    int binlog_id;
-    struct {
-        volatile uint64_t first;
-        volatile uint64_t last;
-    } inodes;
-} FDIRStorageInodeSegmentInfo;
+#define FDIR_BINLOG_PARSE_INT_SILENCE(var, caption, index, endchr, min_val) \
+    do {   \
+        var = strtol(cols[index].str, &endptr, 10);  \
+        if (*endptr != endchr || var < min_val) {    \
+            sprintf(error_info, "invalid %s: %.*s",  \
+                    caption, cols[index].len, cols[index].str); \
+            return EINVAL;  \
+        }  \
+    } while (0)
 
-typedef struct fdir_storage_inode_segment_array {
-    FDIRStorageInodeSegmentInfo *segments;
-    int count;
-} FDIRStorageInodeSegmentArray;
 
 #endif

@@ -20,12 +20,32 @@
 
 #include "inode_types.h"
 
+typedef struct fdir_inode_binlog_index_info {
+    int64_t binlog_id;
+    struct {
+        volatile uint64_t first;
+        volatile uint64_t last;
+    } inodes;
+} FDIRInodeBinlogIndexInfo;
+
+typedef struct fdir_inode_binlog_index_array {
+    FDIRInodeBinlogIndexInfo *indexes;
+    int alloc;
+    int count;
+} FDIRInodeBinlogIndexArray;
+
+typedef struct fdir_inode_binlog_index_context {
+    FDIRInodeBinlogIndexArray index_array;
+    int64_t last_version;
+} FDIRInodeBinlogIndexContext;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int binlog_index_load(const int binlog_index,
-        FDIRStorageInodeIndexArray *index_array);
+int binlog_index_load(FDIRInodeBinlogIndexContext *ctx);
+
+int binlog_index_save(FDIRInodeBinlogIndexContext *ctx);
 
 #ifdef __cplusplus
 }

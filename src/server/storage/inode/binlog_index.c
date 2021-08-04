@@ -32,65 +32,186 @@
 #include "../../server_global.h"
 #include "binlog_index.h"
 
-#define BINLOG_MIN_FIELD_COUNT   2
-#define BINLOG_MAX_FIELD_COUNT   4
+#define BINLOG_INDEX_FILENAME   "ib_index.dat"
 
-#define BINLOG_FIELD_INDEX_INODE    0
-#define BINLOG_FIELD_INDEX_OP_TYPE  1
-#define BINLOG_FIELD_INDEX_FILE_ID  2
-#define BINLOG_FIELD_INDEX_OFFSET   3
+#define BINLOG_HEADER_FIELD_COUNT   2
+#define BINLOG_HEADER_FIELD_INDEX_RECORD_COUNT 0
+#define BINLOG_HEADER_FIELD_INDEX_LAST_VERSION 1
 
-#define BINLOG_RECORD_MAX_SIZE     64
+#define BINLOG_RECORD_FIELD_COUNT   3
+#define BINLOG_RECORD_FIELD_INDEX_ID           0
+#define BINLOG_RECORD_FIELD_INDEX_FIRST_INODE  1
+#define BINLOG_RECORD_FIELD_INDEX_LAST_INODE   2
 
-static int binlog_parse(const string_t *line,
-        FDIRStorageInodeIndexOpType *op_type,
-        FDIRStorageInodeIndexInfo *inode_index, char *error_info)
+#define BINLOG_INDEX_RECORD_MAX_SIZE   64
+
+static int parse_header(const string_t *line, int *record_count,
+        int64_t *last_version, char *error_info)
 {
     int count;
     char *endptr;
-    string_t cols[BINLOG_MAX_FIELD_COUNT];
+    string_t cols[BINLOG_HEADER_FIELD_COUNT];
 
     count = split_string_ex(line, ' ', cols,
-            BINLOG_MAX_FIELD_COUNT, false);
-    if (count < BINLOG_MIN_FIELD_COUNT) {
-        sprintf(error_info, "field count: %d < %d",
-                count, BINLOG_MIN_FIELD_COUNT);
+            BINLOG_HEADER_FIELD_COUNT, false);
+    if (count != BINLOG_HEADER_FIELD_COUNT) {
+        sprintf(error_info, "field count: %d != %d",
+                count, BINLOG_HEADER_FIELD_COUNT);
         return EINVAL;
     }
 
-    BINLOG_PARSE_INT_SILENCE(inode_index->inode, "inode",
-            BINLOG_FIELD_INDEX_INODE, ' ', 0);
-    *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
-    if (*op_type == inode_index_op_type_create) {
-        if (count != BINLOG_MAX_FIELD_COUNT) {
-            sprintf(error_info, "field count: %d != %d",
-                    count, BINLOG_MAX_FIELD_COUNT);
-            return EINVAL;
-        }
-        BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
-                BINLOG_FIELD_INDEX_FILE_ID, ' ', 0);
-        BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
-                BINLOG_FIELD_INDEX_OFFSET, '\n', 0);
-    } else if (*op_type == inode_index_op_type_remove) {
-        if (count != BINLOG_MIN_FIELD_COUNT) {
-            sprintf(error_info, "field count: %d != %d",
-                    count, BINLOG_MIN_FIELD_COUNT);
-            return EINVAL;
-        }
-    } else {
-        sprintf(error_info, "unkown op type: %d (0x%02x)",
-                *op_type, (unsigned char)*op_type);
-        return EINVAL;
-    }
-
+    FDIR_BINLOG_PARSE_INT_SILENCE(*record_count, "record count",
+            BINLOG_HEADER_FIELD_INDEX_RECORD_COUNT, ' ', 0);
+    FDIR_BINLOG_PARSE_INT_SILENCE(*last_version, "last version",
+            BINLOG_HEADER_FIELD_INDEX_LAST_VERSION, '\n', 0);
     return 0;
 }
 
-int binlog_index_load(const int binlog_index,
-        FDIRStorageInodeIndexArray *index_array)
+static int parse_record(const string_t *line,
+        FDIRInodeBinlogIndexInfo *index, char *error_info)
+{
+    int count;
+    char *endptr;
+    string_t cols[BINLOG_RECORD_FIELD_COUNT];
+
+    count = split_string_ex(line, ' ', cols,
+            BINLOG_RECORD_FIELD_COUNT, false);
+    if (count != BINLOG_RECORD_FIELD_COUNT) {
+        sprintf(error_info, "field count: %d != %d",
+                count, BINLOG_RECORD_FIELD_COUNT);
+        return EINVAL;
+    }
+
+    FDIR_BINLOG_PARSE_INT_SILENCE(index->binlog_id, "binlog id",
+            BINLOG_RECORD_FIELD_INDEX_ID, ' ', 0);
+    FDIR_BINLOG_PARSE_INT_SILENCE(index->inodes.first, "first inode",
+            BINLOG_RECORD_FIELD_INDEX_FIRST_INODE, ' ', 1);
+    FDIR_BINLOG_PARSE_INT_SILENCE(index->inodes.last, "last inode",
+            BINLOG_RECORD_FIELD_INDEX_LAST_INODE, '\n', 1);
+    return 0;
+}
+
+static inline void binlog_index_get_filename(
+        char *full_filename, const int size)
+{
+    snprintf(full_filename, size, "%s/%s", STORAGE_PATH_STR,
+            BINLOG_INDEX_FILENAME);
+}
+
+static int parse(FDIRInodeBinlogIndexContext *ctx,
+        const string_t *lines, const int row_count)
+{
+    int result;
+    int record_count;
+    char error_info[256];
+    char filename[PATH_MAX];
+    const string_t *line;
+    const string_t *end;
+    FDIRInodeBinlogIndexInfo *bindex;
+
+    if (row_count < 1) {
+        return EINVAL;
+    }
+
+    if ((result=parse_header(lines, &record_count, &ctx->
+                    last_version, error_info)) != 0)
+    {
+        binlog_index_get_filename(filename, sizeof(filename));
+        logError("file: "__FILE__", line: %d, "
+                "inode binlog index file: %s, parse header fail, "
+                "error info: %s", __LINE__, filename, error_info);
+        return result;
+    }
+
+    if (row_count != record_count + 1) {
+        binlog_index_get_filename(filename, sizeof(filename));
+        logError("file: "__FILE__", line: %d, "
+                "inode binlog index file: %s, line count: %d != "
+                "record count: %d + 1", __LINE__, filename,
+                row_count, record_count + 1);
+        return EINVAL;
+    }
+
+    ctx->index_array.alloc = 64;
+    while (ctx->index_array.alloc < record_count) {
+        ctx->index_array.alloc *= 2;
+    }
+    ctx->index_array.indexes = (FDIRInodeBinlogIndexInfo *)fc_malloc(
+            sizeof(FDIRInodeBinlogIndexInfo) * ctx->index_array.alloc);
+    if (ctx->index_array.indexes == NULL) {
+        return ENOMEM;
+    }
+
+    bindex = ctx->index_array.indexes;
+    end = lines + row_count;
+    for (line=lines+1; line<end; line++) {
+        if ((result=parse_record(line, bindex, error_info)) != 0) {
+            binlog_index_get_filename(filename, sizeof(filename));
+            logError("file: "__FILE__", line: %d, "
+                    "inode binlog index file: %s, parse line #%d fail, "
+                    "error info: %s", __LINE__, filename,
+                    (int)(line - lines) + 1, error_info);
+            return result;
+        }
+        bindex++;
+    }
+
+    ctx->index_array.count = bindex - ctx->index_array.indexes;
+    return 0;
+}
+
+static int load(FDIRInodeBinlogIndexContext *ctx, const char *filename)
+{
+    int result;
+    int row_count;
+    int64_t file_size;
+    string_t context;
+    string_t *lines;
+
+    if ((result=getFileContent(filename, &context.str, &file_size)) != 0) {
+        return result;
+    }
+
+    context.len = file_size;
+    row_count = getOccurCount(context.str, '\n');
+    lines = (string_t *)fc_malloc(sizeof(string_t) * row_count);
+    if (lines == NULL) {
+        free(context.str);
+        return ENOMEM;
+    }
+
+    row_count = split_string_ex(&context, '\n', lines, row_count, true);
+    result = parse(ctx, lines, row_count);
+    free(lines);
+    free(context.str);
+    return result;
+}
+
+int binlog_index_load(FDIRInodeBinlogIndexContext *ctx)
 {
     int result;
     char filename[PATH_MAX];
+
+    binlog_index_get_filename(filename, sizeof(filename));
+    if (access(filename, F_OK) == 0) {
+        return load(ctx, filename);
+    } else if (errno == ENOENT) {
+        memset(ctx, 0, sizeof(*ctx));
+        return 0;
+    } else {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "access file %s fail, "
+                "errno: %d, error info: %s", __LINE__,
+                filename, result, STRERROR(result));
+        return result;
+    }
+}
+
+int binlog_index_save(FDIRInodeBinlogIndexContext *ctx)
+{
+    char filename[PATH_MAX];
+    binlog_index_get_filename(filename, sizeof(filename));
 
     return 0;
 }

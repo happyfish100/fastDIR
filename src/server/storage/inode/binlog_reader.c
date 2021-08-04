@@ -43,16 +43,6 @@
 
 #define BINLOG_RECORD_MAX_SIZE     64
 
-#define BINLOG_PARSE_INT_SILENCE(var, caption, index, endchr, min_val) \
-    do {   \
-        var = strtol(cols[index].str, &endptr, 10);  \
-        if (*endptr != endchr || var < min_val) {    \
-            sprintf(error_info, "invalid %s: %.*s",  \
-                    caption, cols[index].len, cols[index].str); \
-            return EINVAL;  \
-        }  \
-    } while (0)
-
 static int binlog_parse(const string_t *line,
         FDIRStorageInodeIndexOpType *op_type,
         FDIRStorageInodeIndexInfo *inode_index, char *error_info)
@@ -69,7 +59,7 @@ static int binlog_parse(const string_t *line,
         return EINVAL;
     }
 
-    BINLOG_PARSE_INT_SILENCE(inode_index->inode, "inode",
+    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->inode, "inode",
             BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
     if (*op_type == inode_index_op_type_create) {
@@ -78,9 +68,9 @@ static int binlog_parse(const string_t *line,
                     count, BINLOG_MAX_FIELD_COUNT);
             return EINVAL;
         }
-        BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
+        FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
                 BINLOG_FIELD_INDEX_FILE_ID, ' ', 0);
-        BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
+        FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
                 BINLOG_FIELD_INDEX_OFFSET, '\n', 0);
     } else if (*op_type == inode_index_op_type_remove) {
         if (count != BINLOG_MIN_FIELD_COUNT) {
