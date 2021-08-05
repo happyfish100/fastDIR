@@ -20,17 +20,23 @@
 #include "sf/sf_types.h"
 
 #define FDIR_STORAGE_BATCH_INODES     (64 * 1024)
-#define FDIR_STORAGE_INODE_BINLOGS_PER_DIR  1024
+
+#define FDIR_STORAGE_INODE_STATUS_NORMAL   0
+#define FDIR_STORAGE_INODE_STATUS_DELETED  1
 
 typedef struct fdir_storage_inode_index_info {
     uint64_t inode;
-    int file_id;
+    int64_t file_id;
     int offset;
+    int status;
 } FDIRStorageInodeIndexInfo;
 
 typedef struct fdir_storage_inode_index_array {
     FDIRStorageInodeIndexInfo *inodes;
-    int count;
+    struct {
+        int total;
+        int deleted;
+    } counts;
 } FDIRStorageInodeIndexArray;
 
 typedef enum fdir_storage_inode_index_op_type {

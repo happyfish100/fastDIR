@@ -228,6 +228,7 @@ static int save(FDIRInodeBinlogIndexContext *ctx, const char *filename)
         return result;
     }
 
+    result = 0;
     p = buff;
     bend = buff + sizeof(buff);
     p += sprintf(p, "%d %"PRId64"\n", ctx->index_array.count,
@@ -242,7 +243,7 @@ static int save(FDIRInodeBinlogIndexContext *ctx, const char *filename)
                 logError("file: "__FILE__", line: %d, "
                         "write file %s fail, errno: %d, error info: %s",
                         __LINE__, filename, result, STRERROR(result));
-                return result;
+                break;
             }
             p = buff;
         }
@@ -252,17 +253,18 @@ static int save(FDIRInodeBinlogIndexContext *ctx, const char *filename)
                 index->inodes.last);
     }
 
-    len = p - buff;
-    if (len > 0 && fc_safe_write(fd, buff, len) != len) {
-        result = errno != 0 ? errno : EIO;
-        logError("file: "__FILE__", line: %d, "
-                "write file %s fail, errno: %d, error info: %s",
-                __LINE__, filename, result, STRERROR(result));
-        return result;
+    if (result == 0) {
+        len = p - buff;
+        if (len > 0 && fc_safe_write(fd, buff, len) != len) {
+            result = errno != 0 ? errno : EIO;
+            logError("file: "__FILE__", line: %d, "
+                    "write file %s fail, errno: %d, error info: %s",
+                    __LINE__, filename, result, STRERROR(result));
+        }
     }
 
     close(fd);
-    return 0;
+    return result;
 }
 
 int binlog_index_save(FDIRInodeBinlogIndexContext *ctx)

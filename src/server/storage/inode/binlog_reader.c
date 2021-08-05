@@ -93,6 +93,8 @@ int binlog_reader_load(const int binlog_index,
     int result;
     char filename[PATH_MAX];
 
+    binlog_fd_cache_filename(binlog_index, filename, sizeof(filename));
+
     return 0;
 }
 
