@@ -13,23 +13,21 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//binlog_reader.h
+#ifndef _READ_FD_CACHE_H
+#define _READ_FD_CACHE_H
 
-#ifndef _INODE_BINLOG_READER_H_
-#define _INODE_BINLOG_READER_H_
-
-#include "inode_types.h"
+#include "../storage_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int binlog_reader_load(const int binlog_id,
-        FDIRStorageInodeIndexArray *index_array);
+    int inode_array_allocator_init(const int64_t memory_limit);
 
-int binlog_reader_get_first_inode(const int binlog_id, int64_t *inode);
+    FDIRStorageInodeIndexInfo *inode_array_allocator_alloc(
+            const int count, int *alloc);
 
-int binlog_reader_get_last_inode(const int binlog_id, int64_t *inode);
+    void inode_array_allocator_free(FDIRStorageInodeIndexInfo *index);
 
 #ifdef __cplusplus
 }

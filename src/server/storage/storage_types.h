@@ -19,7 +19,8 @@
 #include "fastcommon/common_define.h"
 #include "sf/sf_types.h"
 
-#define FDIR_STORAGE_BATCH_INODES     (64 * 1024)
+#define FDIR_STORAGE_BATCH_INODE_BITS   16
+#define FDIR_STORAGE_BATCH_INODE_COUNT  (1 << FDIR_STORAGE_BATCH_INODE_BITS)
 
 #define FDIR_STORAGE_INODE_STATUS_NORMAL   0
 #define FDIR_STORAGE_INODE_STATUS_DELETED  1
@@ -33,6 +34,7 @@ typedef struct fdir_storage_inode_index_info {
 
 typedef struct fdir_storage_inode_index_array {
     FDIRStorageInodeIndexInfo *inodes;
+    int alloc;
     struct {
         int total;
         int deleted;

@@ -8,12 +8,12 @@ TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
 FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
                    inode/binlog_fd_cache.lo inode/write_fd_cache.lo \
                    inode/read_fd_cache.lo inode/binlog_reader.lo \
-                   inode/binlog_index.lo
+                   inode/binlog_index.lo inode/inode_array_allocator.lo
 
 FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
                    inode/binlog_fd_cache.o inode/write_fd_cache.o \
                    inode/read_fd_cache.o inode/binlog_reader.o \
-                   inode/binlog_index.o
+                   inode/binlog_index.o inode/inode_array_allocator.o
 
 HEADER_FILES =
 

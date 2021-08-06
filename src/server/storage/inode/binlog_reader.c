@@ -30,7 +30,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "../../server_global.h"
-#include "binlog_fd_cache.h"
+#include "read_fd_cache.h"
 #include "binlog_reader.h"
 
 #define BINLOG_MIN_FIELD_COUNT   2
@@ -87,18 +87,20 @@ static int binlog_parse(const string_t *line,
     return 0;
 }
 
-int binlog_reader_load(const int binlog_index,
+int binlog_reader_load(const int binlog_id,
         FDIRStorageInodeIndexArray *index_array)
 {
     int result;
-    char filename[PATH_MAX];
+    int fd;
 
-    binlog_fd_cache_filename(binlog_index, filename, sizeof(filename));
+    if ((fd=read_fd_cache_get(binlog_id)) < 0) {
+        return -1 * fd;
+    }
 
     return 0;
 }
 
-int binlog_reader_get_first_inode(const int binlog_index, int64_t *inode)
+int binlog_reader_get_first_inode(const int binlog_id, int64_t *inode)
 {
     char filename[PATH_MAX];
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
@@ -106,7 +108,7 @@ int binlog_reader_get_first_inode(const int binlog_index, int64_t *inode)
     int result;
     int64_t bytes;
 
-    binlog_fd_cache_filename(binlog_index, filename, sizeof(filename));
+    binlog_fd_cache_filename(binlog_id, filename, sizeof(filename));
 
     *error_info = '\0';
     bytes = sizeof(buff);
@@ -137,7 +139,7 @@ int binlog_reader_get_first_inode(const int binlog_index, int64_t *inode)
     return result;
 }
 
-int binlog_reader_get_last_inode(const int binlog_index, int64_t *inode)
+int binlog_reader_get_last_inode(const int binlog_id, int64_t *inode)
 {
     char filename[PATH_MAX];
     char buff[BINLOG_RECORD_MAX_SIZE + 1];
@@ -147,7 +149,7 @@ int binlog_reader_get_last_inode(const int binlog_index, int64_t *inode)
     int64_t file_size = 0;
     int64_t bytes;
 
-    binlog_fd_cache_filename(binlog_index, filename, sizeof(filename));
+    binlog_fd_cache_filename(binlog_id, filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         result = getFileSize(filename, &file_size);
     } else {
