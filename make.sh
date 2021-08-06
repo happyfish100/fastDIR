@@ -2,9 +2,6 @@ ENABLE_STATIC_LIB=0
 ENABLE_SHARED_LIB=1
 TARGET_PREFIX=$DESTDIR/usr
 TARGET_CONF_PATH=$DESTDIR/etc/fdir
-TARGET_INIT_PATH=$DESTDIR/etc/init.d
-
-WITH_LINUX_SERVICE=1
 
 DEBUG_FLAG=1
 
@@ -143,21 +140,3 @@ perl -pi -e "s#\\\$\(CFLAGS\)#$CFLAGS#g" Makefile
 perl -pi -e "s#\\\$\(LIBS\)#$LIBS#g" Makefile
 perl -pi -e "s#\\\$\(TARGET_PREFIX\)#$TARGET_PREFIX#g" Makefile
 cd ..
-
-if [ "$1" = "install" ]; then
-  cd ../..
-
-  if [ "$uname" = "Linux" ]; then
-    if [ "$WITH_LINUX_SERVICE" = "1" ]; then
-      if [ ! -d $TARGET_CONF_PATH ]; then
-        mkdir -p $TARGET_CONF_PATH
-        cp -f conf/server.conf $TARGET_CONF_PATH/server.conf.sample
-        cp -f conf/client.conf $TARGET_CONF_PATH/client.conf.sample
-      fi
-#      mkdir -p $TARGET_INIT_PATH
-#      cp -f init.d/fdir_serverd $TARGET_INIT_PATH
-#      /sbin/chkconfig --add fdir_serverd 
-    fi
-  fi
-fi
-
