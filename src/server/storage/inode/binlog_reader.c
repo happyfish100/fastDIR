@@ -31,6 +31,7 @@
 #include "fastcommon/pthread_func.h"
 #include "../../server_global.h"
 #include "read_fd_cache.h"
+#include "inode_index_array.h"
 #include "binlog_reader.h"
 
 #define BINLOG_MIN_FIELD_COUNT   2
@@ -87,17 +88,65 @@ static int binlog_parse(const string_t *line,
     return 0;
 }
 
+static int load(const string_t *context, FDIRStorageInodeIndexArray *index_array)
+{
+    int result;
+    string_t line;
+    char *line_start;
+    char *buff_end;
+    char *line_end;
+    FDIRStorageInodeIndexInfo *inode;
+    FDIRStorageInodeIndexOpType op_type;
+    char error_info[256];
+
+    inode = index_array->inodes;
+    line_start = context->str;
+    buff_end = context->str + context->len;
+    while (line_start < buff_end) {
+        line_end = (char *)memchr(line_start, '\n', buff_end - line_start);
+        if (line_end == NULL) {
+            break;
+        }
+
+        line.str = line_start;
+        line.len = line_end - line_start;
+        if ((result=binlog_parse(&line, &op_type, inode++, error_info)) != 0) {
+            //TODO
+            return result;
+        }
+
+        if (op_type == inode_index_op_type_create) {
+        } else {
+        }
+
+        line_start = line_end + 1;
+    }
+
+    return 0;
+}
+
 int binlog_reader_load(const int binlog_id,
         FDIRStorageInodeIndexArray *index_array)
 {
     int result;
-    int fd;
+    char filename[PATH_MAX];
+    int64_t file_size;
+    string_t context;
 
-    if ((fd=read_fd_cache_get(binlog_id)) < 0) {
-        return -1 * fd;
+    binlog_fd_cache_filename(binlog_id, filename, sizeof(filename));
+    if ((result=getFileContent(filename, &context.str, &file_size)) != 0) {
+        return result;
+    }
+    context.len = file_size;
+
+    if ((result=inode_index_array_alloc(index_array,
+                    FDIR_STORAGE_BATCH_INODE_COUNT)) == 0)
+    {
+        result = load(&context, index_array);
     }
 
-    return 0;
+    free(context.str);
+    return result;
 }
 
 int binlog_reader_get_first_inode(const int binlog_id, int64_t *inode)

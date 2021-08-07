@@ -74,7 +74,7 @@ FDIRStorageInodeIndexInfo *inode_array_allocator_alloc(
             &array_allocator_ctx, bytes);
 }
 
-void inode_array_allocator_free(FDIRStorageInodeIndexInfo *index)
+void inode_array_allocator_free(FDIRStorageInodeIndexInfo *inodes)
 {
-    fast_allocator_free(&array_allocator_ctx, index);
+    fast_allocator_free(&array_allocator_ctx, inodes);
 }

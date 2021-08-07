@@ -13,8 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _READ_FD_CACHE_H
-#define _READ_FD_CACHE_H
+#ifndef _INODE_ARRAY_ALLOCATOR_H
+#define _INODE_ARRAY_ALLOCATOR_H
 
 #include "../storage_types.h"
 
@@ -27,7 +27,7 @@ extern "C" {
     FDIRStorageInodeIndexInfo *inode_array_allocator_alloc(
             const int count, int *alloc);
 
-    void inode_array_allocator_free(FDIRStorageInodeIndexInfo *index);
+    void inode_array_allocator_free(FDIRStorageInodeIndexInfo *inodes);
 
 #ifdef __cplusplus
 }
