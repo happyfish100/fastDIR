@@ -69,7 +69,7 @@ int binlog_fd_cache_init(BinlogFDCacheContext *cache_ctx,
 }
 
 static int fd_cache_get(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id)
+        const uint64_t binlog_id)
 {
     BinlogFDCacheEntry **bucket;
     BinlogFDCacheEntry *entry;
@@ -100,7 +100,7 @@ static int fd_cache_get(BinlogFDCacheContext *cache_ctx,
 }
 
 static int fd_cache_delete(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id)
+        const uint64_t binlog_id)
 {
     BinlogFDCacheEntry **bucket;
     BinlogFDCacheEntry *previous;
@@ -141,7 +141,7 @@ static int fd_cache_delete(BinlogFDCacheContext *cache_ctx,
 }
 
 static int fd_cache_add(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id, const int fd)
+        const uint64_t binlog_id, const int fd)
 {
     BinlogFDCacheEntry **bucket;
     BinlogFDCacheEntry *entry;
@@ -171,7 +171,7 @@ static int fd_cache_add(BinlogFDCacheContext *cache_ctx,
 }
 
 static inline int open_file(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id)
+        const uint64_t binlog_id)
 {
     int fd;
     int result;
@@ -195,7 +195,7 @@ static inline int open_file(BinlogFDCacheContext *cache_ctx,
 }
 
 int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
-        const uint32_t binlog_id)
+        const uint64_t binlog_id)
 {
     int fd;
     int result;

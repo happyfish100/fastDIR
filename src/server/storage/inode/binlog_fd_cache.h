@@ -23,7 +23,7 @@
 #include "inode_types.h"
 
 typedef struct binlog_id_fd_pair {
-    uint32_t binlog_id;
+    uint64_t binlog_id;
     int fd;
 } BinlogIdFDPair;
 
@@ -60,9 +60,9 @@ extern "C" {
 
     //return fd, < 0 for error
     int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
-            const uint32_t binlog_id);
+            const uint64_t binlog_id);
 
-    static inline int binlog_fd_cache_filename(const uint32_t binlog_id,
+    static inline int binlog_fd_cache_filename(const uint64_t binlog_id,
             char *full_filename, const int size)
     {
         int path_index;
@@ -78,7 +78,7 @@ extern "C" {
         }
         */
 
-        snprintf(full_filename, size, "%s/%02X/%02X/binlog.%08X",
+        snprintf(full_filename, size, "%s/%02X/%02X/binlog.%08"PRIX64,
                 STORAGE_PATH_STR, path_index, path_index, binlog_id);
         return 0;
     }
