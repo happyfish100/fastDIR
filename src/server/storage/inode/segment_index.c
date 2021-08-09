@@ -28,8 +28,10 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
-#include "fastcommon/sched_thread.h"
+#include "fastcommon/fc_atomic.h"
 #include "binlog_index.h"
+#include "binlog_reader.h"
+#include "inode_index_array.h"
 #include "segment_index.h"
 
 typedef struct inode_segment_index_info {
@@ -38,6 +40,13 @@ typedef struct inode_segment_index_info {
         volatile uint64_t first;
         volatile uint64_t last;
         FDIRStorageInodeIndexArray array;
+        union {
+            int value;
+            struct {
+                bool in_memory : 1;
+                bool dirty : 1;
+            };
+        } flags;
     } inodes;
     time_t last_access_time;
     pthread_mutex_t lock;
@@ -141,5 +150,119 @@ int inode_segment_index_init()
 
     result = dump(&binlog_index_ctx);
     binlog_index_free(&binlog_index_ctx);
+    return result;
+}
+
+static int segment_index_compare(const InodeSegmentIndexInfo **segment1,
+        const InodeSegmentIndexInfo **segment2)
+{
+    int64_t sub;
+    sub = (*segment1)->inodes.first - (*segment2)->inodes.first;
+    if (sub < 0) {
+        if ((*segment2)->inodes.first <= (*segment1)->inodes.last) {
+            return 0;
+        }
+        return -1;
+    } else if (sub > 0) {
+        if ((*segment1)->inodes.first <= (*segment2)->inodes.last) {
+            return 0;
+        }
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+static InodeSegmentIndexInfo *find(const uint64_t inode)
+{
+    volatile InodeSegmentIndexArray *si_array;
+    struct {
+        InodeSegmentIndexInfo holder;
+        InodeSegmentIndexInfo *ptr;
+    } target;
+    InodeSegmentIndexInfo **found;
+
+    target.holder.inodes.first = target.holder.inodes.last = inode;
+    target.ptr = &target.holder;
+    si_array = FC_ATOMIC_GET(segment_index_ctx.si_array);
+
+    found = (InodeSegmentIndexInfo **)bsearch(&target.ptr,
+            si_array->segments, si_array->count,
+            sizeof(InodeSegmentIndexInfo *),
+            (int (*)(const void *, const void *))segment_index_compare);
+    return (found != NULL ? *found : NULL);
+}
+
+int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
+{
+    InodeSegmentIndexInfo *segment;
+    int result;
+
+    //TODO
+    if ((segment=find(inode->inode)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&segment->lock);
+    do {
+        if (!segment->inodes.flags.in_memory) {
+            if ((result=binlog_reader_load(segment->binlog_id,
+                            &segment->inodes.array)) != 0)
+            {
+                break;
+            }
+            segment->inodes.flags.in_memory = true;
+        }
+        result = inode_index_array_add(&segment->inodes.array, inode);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&segment->lock);
+
+    return result;
+}
+
+int inode_segment_index_delete(const uint64_t inode)
+{
+    InodeSegmentIndexInfo *segment;
+    int result;
+
+    if ((segment=find(inode)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&segment->lock);
+    if (segment->inodes.flags.in_memory) {
+        result = inode_index_array_delete_ex(
+                &segment->inodes.array, inode, true);
+    } else {
+        result = 0;
+    }
+    PTHREAD_MUTEX_UNLOCK(&segment->lock);
+
+    return result;
+}
+
+int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
+{
+    InodeSegmentIndexInfo *segment;
+    int result;
+
+    if ((segment=find(inode->inode)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&segment->lock);
+    do {
+        if (!segment->inodes.flags.in_memory) {
+            if ((result=binlog_reader_load(segment->binlog_id,
+                            &segment->inodes.array)) != 0)
+            {
+                break;
+            }
+            segment->inodes.flags.in_memory = true;
+        }
+        result = inode_index_array_find(&segment->inodes.array, inode);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&segment->lock);
+
     return result;
 }

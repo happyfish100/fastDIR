@@ -50,7 +50,7 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
 static int inode_index_array_compare(const FDIRStorageInodeIndexInfo *node1,
         const FDIRStorageInodeIndexInfo *node2)
 {
-    return (int64_t)node1->inode - (int64_t)node2->inode;
+    return fc_compare_int64(node1->inode, node2->inode);
 }
 
 static inline FDIRStorageInodeIndexInfo *inode_index_array_get(
