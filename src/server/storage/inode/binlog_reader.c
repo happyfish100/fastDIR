@@ -288,8 +288,8 @@ static int detect_last_created_inode(const uint64_t binlog_id,
     string_t content;
     int64_t offset;
     int64_t read_bytes;
-    int fd;
     int remain_len;
+    int fd;
     int result;
 
     fd = open(filename, O_RDONLY);
@@ -301,6 +301,7 @@ static int detect_last_created_inode(const uint64_t binlog_id,
         return result;
     }
 
+    result = EAGAIN;
     remain_len = file_size;
     while (remain_len > 0) {
         if (remain_len >= sizeof(buff)) {
