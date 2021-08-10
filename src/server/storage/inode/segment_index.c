@@ -31,29 +31,12 @@
 #include "fastcommon/fc_atomic.h"
 #include "binlog_index.h"
 #include "binlog_reader.h"
+#include "binlog_writer.h"
 #include "inode_index_array.h"
 #include "segment_index.h"
 
-typedef struct inode_segment_index_info {
-    int64_t binlog_id;
-    struct {
-        volatile uint64_t first;
-        volatile uint64_t last;
-        FDIRStorageInodeIndexArray array;
-        union {
-            int value;
-            struct {
-                bool in_memory : 1;
-                bool dirty : 1;
-            };
-        } flags;
-    } inodes;
-    time_t last_access_time;
-    pthread_mutex_t lock;
-} InodeSegmentIndexInfo;
-
 typedef struct inode_segment_index_array {
-    InodeSegmentIndexInfo **segments;
+    FDIRInodeSegmentIndexInfo **segments;
     volatile int count;
     int alloc;
 } InodeSegmentIndexArray;
@@ -62,11 +45,12 @@ typedef struct inode_segment_index_context {
     volatile InodeSegmentIndexArray *si_array;
     struct fast_mblock_man array_allocator;
     struct fast_mblock_man segment_allocator;
+    volatile int64_t version;
 } InodeSegmentIndexContext;
 
 static InodeSegmentIndexContext segment_index_ctx;
 
-static int segment_alloc_init_func(InodeSegmentIndexInfo *element, void *args)
+static int segment_alloc_init_func(FDIRInodeSegmentIndexInfo *element, void *args)
 {
     return init_pthread_lock(&element->lock);
 }
@@ -78,8 +62,8 @@ static int alloc_segments(InodeSegmentIndexArray *array, const int size)
         array->alloc *= 2;
     }
 
-    array->segments = (InodeSegmentIndexInfo **)fc_malloc(
-            sizeof(InodeSegmentIndexInfo *) * array->alloc);
+    array->segments = (FDIRInodeSegmentIndexInfo **)fc_malloc(
+            sizeof(FDIRInodeSegmentIndexInfo *) * array->alloc);
     if (array->segments == NULL) {
         return ENOMEM;
     }
@@ -93,7 +77,7 @@ static int dump(FDIRInodeBinlogIndexContext *bctx)
     FDIRInodeBinlogIndexInfo *binlog;
     FDIRInodeBinlogIndexInfo *end;
     InodeSegmentIndexArray *si_array;
-    InodeSegmentIndexInfo **segment;
+    FDIRInodeSegmentIndexInfo **segment;
 
     si_array = (InodeSegmentIndexArray *)fast_mblock_alloc_object(
             &segment_index_ctx.array_allocator);
@@ -109,7 +93,7 @@ static int dump(FDIRInodeBinlogIndexContext *bctx)
     for (binlog=bctx->index_array.indexes, segment=si_array->segments;
             binlog<end; binlog++, segment++)
     {
-        *segment = (InodeSegmentIndexInfo *)fast_mblock_alloc_object(
+        *segment = (FDIRInodeSegmentIndexInfo *)fast_mblock_alloc_object(
                 &segment_index_ctx.segment_allocator);
         if (*segment == NULL) {
             return ENOMEM;
@@ -137,7 +121,7 @@ int inode_segment_index_init()
         return result;
     }
     if ((result=fast_mblock_init_ex1(&segment_index_ctx.segment_allocator,
-                    "segment-index-info", sizeof(InodeSegmentIndexInfo),
+                    "segment-index-info", sizeof(FDIRInodeSegmentIndexInfo),
                     8 * 1024, 0, (fast_mblock_alloc_init_func)
                     segment_alloc_init_func, NULL, true)) != 0)
     {
@@ -153,8 +137,8 @@ int inode_segment_index_init()
     return result;
 }
 
-static int segment_index_compare(const InodeSegmentIndexInfo **segment1,
-        const InodeSegmentIndexInfo **segment2)
+static int segment_index_compare(const FDIRInodeSegmentIndexInfo **segment1,
+        const FDIRInodeSegmentIndexInfo **segment2)
 {
     int64_t sub;
     sub = (*segment1)->inodes.first - (*segment2)->inodes.first;
@@ -173,77 +157,55 @@ static int segment_index_compare(const InodeSegmentIndexInfo **segment1,
     }
 }
 
-static InodeSegmentIndexInfo *find(const uint64_t inode)
+static FDIRInodeSegmentIndexInfo *find(const uint64_t inode)
 {
     volatile InodeSegmentIndexArray *si_array;
     struct {
-        InodeSegmentIndexInfo holder;
-        InodeSegmentIndexInfo *ptr;
+        FDIRInodeSegmentIndexInfo holder;
+        FDIRInodeSegmentIndexInfo *ptr;
     } target;
-    InodeSegmentIndexInfo **found;
+    FDIRInodeSegmentIndexInfo **found;
 
     target.holder.inodes.first = target.holder.inodes.last = inode;
     target.ptr = &target.holder;
     si_array = FC_ATOMIC_GET(segment_index_ctx.si_array);
 
-    found = (InodeSegmentIndexInfo **)bsearch(&target.ptr,
+    found = (FDIRInodeSegmentIndexInfo **)bsearch(&target.ptr,
             si_array->segments, si_array->count,
-            sizeof(InodeSegmentIndexInfo *),
+            sizeof(FDIRInodeSegmentIndexInfo *),
             (int (*)(const void *, const void *))segment_index_compare);
     return (found != NULL ? *found : NULL);
 }
 
 int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
 {
-    InodeSegmentIndexInfo *segment;
-    int result;
+    FDIRInodeSegmentIndexInfo *segment;
 
-    //TODO
     if ((segment=find(inode->inode)) == NULL) {
         return ENOENT;
     }
 
-    PTHREAD_MUTEX_LOCK(&segment->lock);
-    do {
-        if (!segment->inodes.flags.in_memory) {
-            if ((result=binlog_reader_load(segment->binlog_id,
-                            &segment->inodes.array)) != 0)
-            {
-                break;
-            }
-            segment->inodes.flags.in_memory = true;
-        }
-        result = inode_index_array_add(&segment->inodes.array, inode);
-    } while (0);
-    PTHREAD_MUTEX_UNLOCK(&segment->lock);
-
-    return result;
+    return inode_binlog_writer_log(segment,
+            inode_index_op_type_create, inode); 
 }
 
 int inode_segment_index_delete(const uint64_t inode)
 {
-    InodeSegmentIndexInfo *segment;
-    int result;
+    FDIRInodeSegmentIndexInfo *segment;
+    FDIRStorageInodeIndexInfo inode_index;
 
     if ((segment=find(inode)) == NULL) {
         return ENOENT;
     }
 
-    PTHREAD_MUTEX_LOCK(&segment->lock);
-    if (segment->inodes.flags.in_memory) {
-        result = inode_index_array_delete_ex(
-                &segment->inodes.array, inode, true);
-    } else {
-        result = 0;
-    }
-    PTHREAD_MUTEX_UNLOCK(&segment->lock);
-
-    return result;
+    inode_index.inode = inode;
+    return inode_binlog_writer_log(segment,
+            inode_index_op_type_remove, &inode_index);
 }
 
 int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
 {
-    InodeSegmentIndexInfo *segment;
+    FDIRInodeSegmentIndexInfo *segment;
     int result;
 
     if ((segment=find(inode->inode)) == NULL) {
@@ -253,7 +215,7 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
     PTHREAD_MUTEX_LOCK(&segment->lock);
     do {
         if (!segment->inodes.flags.in_memory) {
-            if ((result=binlog_reader_load(segment->binlog_id,
+            if ((result=inode_binlog_writer_load(segment->binlog_id,
                             &segment->inodes.array)) != 0)
             {
                 break;
@@ -262,6 +224,40 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
         }
         result = inode_index_array_find(&segment->inodes.array, inode);
     } while (0);
+    PTHREAD_MUTEX_UNLOCK(&segment->lock);
+
+    return result;
+}
+
+int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
+        FDIRInodeBinlogRecord **records, const int count)
+{
+    int result;
+    FDIRInodeBinlogRecord **record;
+    FDIRInodeBinlogRecord **end;
+
+    PTHREAD_MUTEX_LOCK(&segment->lock);
+    if (segment->inodes.flags.in_memory) {
+        end = records + count;
+        for (record=records; record<end; record++) {
+            if ((*record)->op_type == inode_index_op_type_create) {
+                result = inode_index_array_add(&segment->inodes.array,
+                        &(*record)->inode_index);
+            } else {
+                result = inode_index_array_delete_ex(&segment->inodes.array,
+                        (*record)->inode_index.inode, true);
+            }
+            if (result != 0) {
+                if (result == ENOENT) {
+                    result = 0;
+                } else {
+                    break;
+                }
+            }
+        }
+    } else {
+        result = 0;
+    }
     PTHREAD_MUTEX_UNLOCK(&segment->lock);
 
     return result;

@@ -26,8 +26,12 @@ extern "C" {
 
 int inode_binlog_writer_init();
 
-int inode_binlog_writer_log(const FDIRStorageInodeIndexOpType op_type,
+int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo *segment,
+        const FDIRStorageInodeIndexOpType op_type,
         const FDIRStorageInodeIndexInfo *inode_index);
+
+int inode_binlog_writer_load(const uint64_t binlog_id,
+        FDIRStorageInodeIndexArray *index_array);
 
 void inode_binlog_writer_finish();
 

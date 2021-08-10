@@ -25,6 +25,8 @@
 #define FDIR_STORAGE_INODE_STATUS_NORMAL   0
 #define FDIR_STORAGE_INODE_STATUS_DELETED  1
 
+#define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  64
+
 typedef struct fdir_storage_inode_index_info {
     uint64_t inode;
     int64_t file_id;
@@ -43,8 +45,37 @@ typedef struct fdir_storage_inode_index_array {
 
 typedef enum fdir_storage_inode_index_op_type {
     inode_index_op_type_create = 'c',
-    inode_index_op_type_remove = 'r'
+    inode_index_op_type_remove = 'r',
+    inode_index_op_type_load = 'l'
 } FDIRStorageInodeIndexOpType;
+
+typedef struct fdir_inode_binlog_record {
+    uint64_t binlog_id;
+    int64_t version;  //for stable sort
+    FDIRStorageInodeIndexOpType op_type;
+    FDIRStorageInodeIndexInfo inode_index;
+    void *args;
+    struct fdir_inode_binlog_record *next;  //for queue
+} FDIRInodeBinlogRecord;
+
+typedef struct fdir_inode_segment_index_info {
+    int64_t binlog_id;
+    struct {
+        volatile uint64_t first;
+        volatile uint64_t last;
+        FDIRStorageInodeIndexArray array;
+        union {
+            int value;
+            struct {
+                bool in_memory : 1;
+                bool dirty : 1;
+            };
+        } flags;
+    } inodes;
+    time_t last_access_time;
+    pthread_mutex_t lock;
+} FDIRInodeSegmentIndexInfo;
+
 
 #define FDIR_BINLOG_PARSE_INT_SILENCE(var, caption, index, endchr, min_val) \
     do {   \

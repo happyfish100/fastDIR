@@ -29,6 +29,9 @@ int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode);
 int inode_segment_index_delete(const uint64_t inode);
 int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode);
 
+int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
+        FDIRInodeBinlogRecord **records, const int count);
+
 #ifdef __cplusplus
 }
 #endif

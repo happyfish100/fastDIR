@@ -42,8 +42,6 @@
 #define BINLOG_FIELD_INDEX_FILE_ID  2
 #define BINLOG_FIELD_INDEX_OFFSET   3
 
-#define BINLOG_RECORD_MAX_SIZE     64
-
 static int binlog_parse(const string_t *line,
         FDIRStorageInodeIndexOpType *op_type,
         FDIRStorageInodeIndexInfo *inode_index, char *error_info)
@@ -180,7 +178,7 @@ int binlog_reader_load(const uint64_t binlog_id,
 int binlog_reader_get_first_inode(const uint64_t binlog_id, int64_t *inode)
 {
     char filename[PATH_MAX];
-    char buff[BINLOG_RECORD_MAX_SIZE];
+    char buff[FDIR_INODE_BINLOG_RECORD_MAX_SIZE];
     char error_info[SF_ERROR_INFO_SIZE];
     char *line_end;
     int result;
@@ -345,7 +343,7 @@ static int detect_last_created_inode(const uint64_t binlog_id,
 int binlog_reader_get_last_inode(const uint64_t binlog_id, int64_t *inode)
 {
     char filename[PATH_MAX];
-    char buff[BINLOG_RECORD_MAX_SIZE];
+    char buff[FDIR_INODE_BINLOG_RECORD_MAX_SIZE];
     string_t line;
     int result;
     int64_t file_size;
