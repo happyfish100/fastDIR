@@ -24,8 +24,7 @@
 extern "C" {
 #endif
 
-int binlog_reader_load(const uint64_t binlog_id,
-        FDIRStorageInodeIndexArray *index_array);
+int binlog_reader_load(FDIRInodeSegmentIndexInfo *segment);
 
 int binlog_reader_get_first_inode(const uint64_t binlog_id, int64_t *inode);
 

@@ -40,11 +40,8 @@ static inline int inode_index_array_alloc(FDIRStorageInodeIndexArray
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
         const FDIRStorageInodeIndexInfo *node);
 
-#define inode_index_array_delete(array, inode) \
-    inode_index_array_delete_ex(array, inode, false)
-
-int inode_index_array_delete_ex(FDIRStorageInodeIndexArray *array,
-        const uint64_t inode, const bool shrink_memory);
+int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
+        const uint64_t inode);
 
 int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array);
 

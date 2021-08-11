@@ -99,14 +99,15 @@ static int fd_cache_get(BinlogFDCacheContext *cache_ctx,
     }
 }
 
-static int fd_cache_delete(BinlogFDCacheContext *cache_ctx,
+int binlog_fd_cache_remove(BinlogFDCacheContext *cache_ctx,
         const uint64_t binlog_id)
 {
     BinlogFDCacheEntry **bucket;
     BinlogFDCacheEntry *previous;
     BinlogFDCacheEntry *entry;
 
-    bucket = cache_ctx->htable.buckets + binlog_id % cache_ctx->htable.size;
+    bucket = cache_ctx->htable.buckets +
+        binlog_id % cache_ctx->htable.size;
     if (*bucket == NULL) {
         return ENOENT;
     }
@@ -149,7 +150,7 @@ static int fd_cache_add(BinlogFDCacheContext *cache_ctx,
     if (cache_ctx->lru.count >= cache_ctx->lru.capacity) {
         entry = fc_list_entry(cache_ctx->lru.head.next,
                 BinlogFDCacheEntry, dlink);
-        fd_cache_delete(cache_ctx, entry->pair.binlog_id);
+        binlog_fd_cache_remove(cache_ctx, entry->pair.binlog_id);
     }
 
     entry = (BinlogFDCacheEntry *)fast_mblock_alloc_object(
@@ -161,7 +162,8 @@ static int fd_cache_add(BinlogFDCacheContext *cache_ctx,
     entry->pair.binlog_id = binlog_id;
     entry->pair.fd = fd;
 
-    bucket = cache_ctx->htable.buckets + binlog_id % cache_ctx->htable.size;
+    bucket = cache_ctx->htable.buckets +
+        binlog_id % cache_ctx->htable.size;
     entry->next = *bucket;
     *bucket = entry;
 

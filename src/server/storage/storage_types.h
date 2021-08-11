@@ -28,6 +28,7 @@
 #define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  64
 
 typedef struct fdir_storage_inode_index_info {
+    int64_t version;
     uint64_t inode;
     int64_t file_id;
     int offset;

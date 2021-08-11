@@ -62,6 +62,9 @@ extern "C" {
     int binlog_fd_cache_get(BinlogFDCacheContext *cache_ctx,
             const uint64_t binlog_id);
 
+    int binlog_fd_cache_remove(BinlogFDCacheContext *cache_ctx,
+            const uint64_t binlog_id);
+
     static inline int binlog_fd_cache_filename(const uint64_t binlog_id,
             char *full_filename, const int size)
     {

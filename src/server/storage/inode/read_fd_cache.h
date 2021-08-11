@@ -29,7 +29,7 @@ extern "C" {
     int read_fd_cache_init(const int max_idle_time, const int capacity);
 
     //return fd, < 0 for error
-    static inline int read_fd_cache_get(const uint32_t binlog_id)
+    static inline int read_fd_cache_get(const uint64_t binlog_id)
     {
         int fd;
         int result;

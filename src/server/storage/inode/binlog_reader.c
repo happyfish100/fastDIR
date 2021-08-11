@@ -32,15 +32,17 @@
 #include "../../server_global.h"
 #include "read_fd_cache.h"
 #include "inode_index_array.h"
+#include "binlog_writer.h"
 #include "binlog_reader.h"
 
-#define BINLOG_MIN_FIELD_COUNT   2
-#define BINLOG_MAX_FIELD_COUNT   4
+#define BINLOG_MIN_FIELD_COUNT   3
+#define BINLOG_MAX_FIELD_COUNT   5
 
-#define BINLOG_FIELD_INDEX_INODE    0
-#define BINLOG_FIELD_INDEX_OP_TYPE  1
-#define BINLOG_FIELD_INDEX_FILE_ID  2
-#define BINLOG_FIELD_INDEX_OFFSET   3
+#define BINLOG_FIELD_INDEX_VERSION  0
+#define BINLOG_FIELD_INDEX_INODE    1
+#define BINLOG_FIELD_INDEX_OP_TYPE  2
+#define BINLOG_FIELD_INDEX_FILE_ID  3
+#define BINLOG_FIELD_INDEX_OFFSET   4
 
 static int binlog_parse(const string_t *line,
         FDIRStorageInodeIndexOpType *op_type,
@@ -58,8 +60,10 @@ static int binlog_parse(const string_t *line,
         return EINVAL;
     }
 
-    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->inode, "inode",
-            BINLOG_FIELD_INDEX_INODE, ' ', 0);
+    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->version,
+            "version", BINLOG_FIELD_INDEX_VERSION, ' ', 0);
+    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->inode,
+            "inode", BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
     if (*op_type == inode_index_op_type_create) {
         if (count != BINLOG_MAX_FIELD_COUNT) {
@@ -86,8 +90,7 @@ static int binlog_parse(const string_t *line,
     return 0;
 }
 
-static int load(const uint64_t binlog_id, const string_t *context,
-        FDIRStorageInodeIndexArray *array)
+static int load(FDIRInodeSegmentIndexInfo *segment, const string_t *context)
 {
     int result;
     string_t line;
@@ -100,7 +103,7 @@ static int load(const uint64_t binlog_id, const string_t *context,
     char *caption;
 
     result = 0;
-    inode = array->inodes;
+    inode = segment->inodes.array.inodes;
     line_start = context->str;
     buff_end = context->str + context->len;
     while (line_start < buff_end) {
@@ -117,13 +120,17 @@ static int load(const uint64_t binlog_id, const string_t *context,
         }
 
         if (op_type == inode_index_op_type_create) {
-            if ((result=inode_index_array_add(array, inode)) != 0) {
+            if ((result=inode_index_array_add(&segment->
+                            inodes.array, inode)) != 0)
+            {
                 caption = "add inode to array";
                 *error_info = '\0';
                 break;
             }
         } else {
-            if ((result=inode_index_array_delete(array, inode->inode)) != 0) {
+            if ((result=inode_index_array_delete(&segment->
+                            inodes.array, inode->inode)) != 0)
+            {
                 if (result == ENOENT) {
                     result = 0;
                 } else {
@@ -139,36 +146,52 @@ static int load(const uint64_t binlog_id, const string_t *context,
 
     if (result != 0) {
         char filename[PATH_MAX];
-        binlog_fd_cache_filename(binlog_id, filename, sizeof(filename));
+        binlog_fd_cache_filename(segment->binlog_id,
+                filename, sizeof(filename));
         logError("file: "__FILE__", line: %d, "
                 "%s fail, binlog id: %"PRId64", binlog file: %s%s%s",
-                __LINE__, caption, binlog_id, filename,
+                __LINE__, caption, segment->binlog_id, filename,
                 (*error_info != '\0' ? ", error info: " : ""), error_info);
-    } else if (2 * array->counts.deleted >= array->counts.total) {
-        result = inode_index_array_check_shrink(array);
+    } else if (2 * segment->inodes.array.counts.deleted >=
+            segment->inodes.array.counts.total)
+    {
+        result = inode_binlog_writer_shrink(segment);
     }
 
     return result;
 }
 
-int binlog_reader_load(const uint64_t binlog_id,
-        FDIRStorageInodeIndexArray *array)
+int binlog_reader_load(FDIRInodeSegmentIndexInfo *segment)
 {
     int result;
     char filename[PATH_MAX];
     int64_t file_size;
     string_t context;
 
-    binlog_fd_cache_filename(binlog_id, filename, sizeof(filename));
+    binlog_fd_cache_filename(segment->binlog_id,
+            filename, sizeof(filename));
+    if (access(filename, F_OK) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        if (result == ENOENT) {
+            return 0;
+        } else {
+            logError("file: "__FILE__", line: %d, "
+                    "binlog id: %"PRId64", access binlog file %s fail, "
+                    "errno: %d, error info: %s", __LINE__, segment->
+                    binlog_id, filename, result,STRERROR(result));
+            return result;
+        }
+    }
+
     if ((result=getFileContent(filename, &context.str, &file_size)) != 0) {
         return result;
     }
     context.len = file_size;
 
-    if ((result=inode_index_array_alloc(array,
+    if ((result=inode_index_array_alloc(&segment->inodes.array,
                     FDIR_STORAGE_BATCH_INODE_COUNT)) == 0)
     {
-        result = load(binlog_id, &context, array);
+        result = load(segment, &context);
     }
 
     free(context.str);

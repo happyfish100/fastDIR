@@ -109,8 +109,8 @@ int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array)
     return 0;
 }
 
-int inode_index_array_delete_ex(FDIRStorageInodeIndexArray *array,
-        const uint64_t inode, const bool shrink_memory)
+int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
+        const uint64_t inode)
 {
     FDIRStorageInodeIndexInfo *node;
 
@@ -120,9 +120,6 @@ int inode_index_array_delete_ex(FDIRStorageInodeIndexArray *array,
 
     node->status = FDIR_STORAGE_INODE_STATUS_DELETED;
     array->counts.deleted++;
-    if (shrink_memory) {
-        return inode_index_array_check_shrink(array);
-    }
     return 0;
 }
 

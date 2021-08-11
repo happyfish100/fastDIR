@@ -27,9 +27,14 @@ extern "C" {
     int write_fd_cache_init(const int max_idle_time, const int capacity);
 
     //return fd, < 0 for error
-    static inline int write_fd_cache_get(const uint32_t binlog_id)
+    static inline int write_fd_cache_get(const uint64_t binlog_id)
     {
         return binlog_fd_cache_get(&g_write_cache_ctx, binlog_id);
+    }
+
+    static inline int write_fd_cache_remove(const uint64_t binlog_id)
+    {
+        return binlog_fd_cache_remove(&g_write_cache_ctx, binlog_id);
     }
 
 #ifdef __cplusplus

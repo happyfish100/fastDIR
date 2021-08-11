@@ -29,11 +29,16 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/fc_atomic.h"
+#include "../../server_global.h"
 #include "binlog_index.h"
 #include "binlog_reader.h"
 #include "binlog_writer.h"
 #include "inode_index_array.h"
 #include "segment_index.h"
+
+#define BINLOG_INDEX_FILENAME "binlog_index.dat"
+
+#define BINLOG_INDEX_ITEM_CURRENT_WRITE     "current_write"
 
 typedef struct inode_segment_index_array {
     FDIRInodeSegmentIndexInfo **segments;
@@ -42,6 +47,12 @@ typedef struct inode_segment_index_array {
 } InodeSegmentIndexArray;
 
 typedef struct inode_segment_index_context {
+    struct {
+        int write_index;
+        int inode_count;
+        FDIRInodeSegmentIndexInfo *segment;
+    } current_binlog;
+
     volatile InodeSegmentIndexArray *si_array;
     struct fast_mblock_man array_allocator;
     struct fast_mblock_man segment_allocator;
@@ -49,6 +60,52 @@ typedef struct inode_segment_index_context {
 } InodeSegmentIndexContext;
 
 static InodeSegmentIndexContext segment_index_ctx;
+
+static int write_to_binlog_index(const int current_write_index)
+{
+    char full_filename[PATH_MAX];
+    char buff[256];
+    int len;
+
+    snprintf(full_filename, sizeof(full_filename),
+            "%s/%s", STORAGE_PATH_STR, BINLOG_INDEX_FILENAME);
+    len = sprintf(buff, "%s=%d\n",
+            BINLOG_INDEX_ITEM_CURRENT_WRITE, current_write_index);
+    return safeWriteToFile(full_filename, buff, len);
+}
+
+static int get_binlog_index_from_file()
+{
+    char full_filename[PATH_MAX];
+    IniContext iniContext;
+    int result;
+
+    snprintf(full_filename, sizeof(full_filename),
+            "%s/%s", STORAGE_PATH_STR, BINLOG_INDEX_FILENAME);
+    if (access(full_filename, F_OK) != 0) {
+        if (errno == ENOENT) {
+            return write_to_binlog_index(segment_index_ctx.
+                    current_binlog.write_index);
+        } else {
+            return errno != 0 ? errno : EPERM;
+        }
+    }
+
+    memset(&iniContext, 0, sizeof(IniContext));
+    if ((result=iniLoadFromFile(full_filename, &iniContext)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "load from file \"%s\" fail, "
+                "error code: %d",
+                __LINE__, full_filename, result);
+        return result;
+    }
+
+    segment_index_ctx.current_binlog.write_index = iniGetIntValue(
+            NULL, BINLOG_INDEX_ITEM_CURRENT_WRITE, &iniContext, 0);
+
+    iniFreeContext(&iniContext);
+    return 0;
+}
 
 static int segment_alloc_init_func(FDIRInodeSegmentIndexInfo *element, void *args)
 {
@@ -128,6 +185,10 @@ int inode_segment_index_init()
         return result;
     }
 
+    if ((result=get_binlog_index_from_file()) != 0) {
+        return result;
+    }
+
     if ((result=binlog_index_load(&binlog_index_ctx)) != 0) {
         return result;
     }
@@ -181,9 +242,14 @@ int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
 {
     FDIRInodeSegmentIndexInfo *segment;
 
+    //TODO
     if ((segment=find(inode->inode)) == NULL) {
         return ENOENT;
     }
+
+    //segment_index_ctx.current_binlog.segment
+    //segment_index_ctx.current_binlog.write_index
+    //segment_index_ctx.current_binlog.inode_count
 
     return inode_binlog_writer_log(segment,
             inode_index_op_type_create, inode); 
@@ -215,9 +281,7 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
     PTHREAD_MUTEX_LOCK(&segment->lock);
     do {
         if (!segment->inodes.flags.in_memory) {
-            if ((result=inode_binlog_writer_load(segment->binlog_id,
-                            &segment->inodes.array)) != 0)
-            {
+            if ((result=inode_binlog_writer_load(segment)) != 0) {
                 break;
             }
             segment->inodes.flags.in_memory = true;
@@ -244,8 +308,15 @@ int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
                 result = inode_index_array_add(&segment->inodes.array,
                         &(*record)->inode_index);
             } else {
-                result = inode_index_array_delete_ex(&segment->inodes.array,
-                        (*record)->inode_index.inode, true);
+                if ((result=inode_index_array_delete(&segment->inodes.array,
+                                (*record)->inode_index.inode)) == 0)
+                {
+                    if (2 * segment->inodes.array.counts.deleted >=
+                            segment->inodes.array.counts.total)
+                    {
+                        result = inode_binlog_writer_shrink(segment);
+                    }
+                }
             }
             if (result != 0) {
                 if (result == ENOENT) {
@@ -258,6 +329,26 @@ int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
     } else {
         result = 0;
     }
+    PTHREAD_MUTEX_UNLOCK(&segment->lock);
+
+    return result;
+}
+
+int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment)
+{
+    int result;
+
+    PTHREAD_MUTEX_LOCK(&segment->lock);
+    do {
+        if (!segment->inodes.flags.in_memory) {
+            if ((result=binlog_reader_load(segment)) != 0) {
+                break;
+            }
+            segment->inodes.flags.in_memory = true;
+        }
+
+        result = inode_index_array_check_shrink(&segment->inodes.array);
+    } while (0);
     PTHREAD_MUTEX_UNLOCK(&segment->lock);
 
     return result;
