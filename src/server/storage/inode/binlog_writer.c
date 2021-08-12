@@ -33,20 +33,20 @@
 #include "sf/sf_func.h"
 #include "../../server_global.h"
 #include "write_fd_cache.h"
+#include "inode_index_array.h"
 #include "binlog_reader.h"
 #include "segment_index.h"
 #include "binlog_writer.h"
 
 #define BINLOG_RECORD_BATCH_SIZE  1024
 
-typedef struct binlog_writer_load_args {
+typedef struct binlog_writer_synchronize_args {
     struct {
         bool done;
-        int32_t result;
         pthread_lock_cond_pair_t lcp;
     } notify;
     FDIRInodeSegmentIndexInfo *segment;
-} BinlogWriterLoadArgs;
+} BWriterSynchronizeArgs;
 
 typedef struct binlog_writer_shrink_task {
     FDIRInodeSegmentIndexInfo *segment;
@@ -55,7 +55,7 @@ typedef struct binlog_writer_shrink_task {
 
 typedef struct {
     struct {
-        struct fast_mblock_man largs;  //load args
+        struct fast_mblock_man sargs;  //synchronize args
         struct fast_mblock_man record;
         struct fast_mblock_man stask;  //shrink task
     } allocators;
@@ -81,13 +81,12 @@ static BinlogWriterContext binlog_writer_ctx;
 #define WRITER_NORMAL_QUEUE   binlog_writer_ctx.queues.normal
 #define WRITER_SHRINK_QUEUE   binlog_writer_ctx.queues.shrink
 
-static inline void notify(BinlogWriterLoadArgs *load_args, const int result)
+static inline void notify(BWriterSynchronizeArgs *sync_args)
 {
-    PTHREAD_MUTEX_LOCK(&load_args->notify.lcp.lock);
-    load_args->notify.done = true;
-    load_args->notify.result = result;
-    pthread_cond_signal(&load_args->notify.lcp.cond);
-    PTHREAD_MUTEX_UNLOCK(&load_args->notify.lcp.lock);
+    PTHREAD_MUTEX_LOCK(&sync_args->notify.lcp.lock);
+    sync_args->notify.done = true;
+    pthread_cond_signal(&sync_args->notify.lcp.cond);
+    PTHREAD_MUTEX_UNLOCK(&sync_args->notify.lcp.lock);
 }
 
 static inline void cache_init(BinlogWriterCache *cache)
@@ -176,13 +175,16 @@ static int log(FDIRInodeBinlogRecord *record, BinlogWriterCache *cache)
     inode_segment_index_update((FDIRInodeSegmentIndexInfo *) \
             (*start)->args, start, end - start)
 
+#define dec_segment_updating_count(start, end)  \
+    FC_ATOMIC_DEC_EX(((FDIRInodeSegmentIndexInfo *)(*start)-> \
+                args)->inodes.updating_count, end - start)
+
 static int deal_sorted_record(FDIRInodeBinlogRecord **records,
         const int count)
 {
     FDIRInodeBinlogRecord **record;
     FDIRInodeBinlogRecord **end;
     FDIRInodeBinlogRecord **start;
-    BinlogWriterLoadArgs *load_args;
     BinlogWriterCache cache;
     int r;
     int result;
@@ -192,19 +194,14 @@ static int deal_sorted_record(FDIRInodeBinlogRecord **records,
     result = 0;
     end = records + count;
     for (record=records; record<end; record++) {
-        if ((*record)->op_type == inode_index_op_type_load) {
+        if ((*record)->op_type == inode_index_op_type_synchronize) {
             if (start != NULL) {
                 if ((result=update_segment_index(start, record)) != 0) {
                     break;
                 }
                 start = NULL;
             }
-            load_args = (BinlogWriterLoadArgs *)(*record)->args;
-            result = binlog_reader_load(load_args->segment);
-            notify(load_args, result);
-            if (result != 0) {
-                break;
-            }
+            notify((BWriterSynchronizeArgs *)(*record)->args);
         } else {
             if (start == NULL) {
                 start = record;
@@ -231,9 +228,8 @@ static int deal_sorted_record(FDIRInodeBinlogRecord **records,
     }
 
     for (; record<end; record++) {
-        if ((*record)->op_type == inode_index_op_type_load) {
-            load_args = (BinlogWriterLoadArgs *)(*record)->args;
-            notify(load_args, ECANCELED);
+        if ((*record)->op_type == inode_index_op_type_synchronize) {
+            notify((BWriterSynchronizeArgs *)(*record)->args);
         }
     }
 
@@ -249,6 +245,36 @@ static int record_compare(const FDIRInodeBinlogRecord **record1,
         return fc_compare_int64((*record1)->version, (*record2)->version);
     } else {
         return sub;
+    }
+}
+
+static void dec_updating_count(FDIRInodeBinlogRecord **records,
+        const int count)
+{
+    FDIRInodeBinlogRecord **record;
+    FDIRInodeBinlogRecord **end;
+    FDIRInodeBinlogRecord **start;
+
+    start = NULL;
+    end = records + count;
+    for (record=records; record<end; record++) {
+        if ((*record)->op_type == inode_index_op_type_synchronize) {
+            if (start != NULL) {
+                dec_segment_updating_count(start, record);
+                start = NULL;
+            }
+        } else {
+            if (start == NULL) {
+                start = record;
+            } else if ((*record)->binlog_id != (*start)->binlog_id) {
+                dec_segment_updating_count(start, record);
+                start = record;
+            }
+        }
+    }
+
+    if (start != NULL) {
+        dec_segment_updating_count(start, end);
     }
 }
 
@@ -287,6 +313,7 @@ static int deal_binlog_records(FDIRInodeBinlogRecord *head)
     }
 
     result = deal_sorted_record(records, count);
+    dec_updating_count(records, count);
     fast_mblock_batch_free(&binlog_writer_ctx.allocators.record, &chain);
     return result;
 }
@@ -419,7 +446,7 @@ static void *binlog_writer_func(void *arg)
     return NULL;
 }
 
-static int largs_alloc_init_func(BinlogWriterLoadArgs *element, void *args)
+static int sargs_alloc_init_func(BWriterSynchronizeArgs *element, void *args)
 {
     return init_pthread_lock_cond_pair(&element->notify.lcp);
 }
@@ -429,10 +456,10 @@ int inode_binlog_writer_init()
     int result;
     pthread_t tid;
 
-    if ((result=fast_mblock_init_ex1(&binlog_writer_ctx.allocators.largs,
-                    "inode-load-args", sizeof(BinlogWriterLoadArgs),
+    if ((result=fast_mblock_init_ex1(&binlog_writer_ctx.allocators.sargs,
+                    "inode-sync-args", sizeof(BWriterSynchronizeArgs),
                     1024, 0, (fast_mblock_alloc_init_func)
-                    largs_alloc_init_func, NULL, true)) != 0)
+                    sargs_alloc_init_func, NULL, true)) != 0)
     {
         return result;
     }
@@ -499,6 +526,7 @@ int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo *segment,
         const FDIRStorageInodeIndexOpType op_type,
         const FDIRStorageInodeIndexInfo *inode_index)
 {
+    FC_ATOMIC_INC(segment->inodes.updating_count);
     return push_to_normal_queue(segment->binlog_id,
             op_type, inode_index, segment);
 }
@@ -518,36 +546,36 @@ int inode_binlog_writer_shrink(FDIRInodeSegmentIndexInfo *segment)
     return 0;
 }
 
-int inode_binlog_writer_load(FDIRInodeSegmentIndexInfo *segment)
+int inode_binlog_writer_synchronize(FDIRInodeSegmentIndexInfo *segment)
 {
-    BinlogWriterLoadArgs *load_args;
+    BWriterSynchronizeArgs *sync_args;
     int result;
 
-    if ((load_args=(BinlogWriterLoadArgs *)fast_mblock_alloc_object(
-                    &binlog_writer_ctx.allocators.largs)) == NULL)
+    if ((sync_args=(BWriterSynchronizeArgs *)fast_mblock_alloc_object(
+                    &binlog_writer_ctx.allocators.sargs)) == NULL)
     {
         return ENOMEM;
     }
-    load_args->segment = segment;
+    sync_args->segment = segment;
 
     do {
         result = push_to_normal_queue(segment->binlog_id,
-                inode_index_op_type_load, NULL, load_args);
+                inode_index_op_type_synchronize, NULL, sync_args);
         if (result != 0) {
             break;
         }
 
-        PTHREAD_MUTEX_LOCK(&load_args->notify.lcp.lock);
-        while (!load_args->notify.done) {
-            pthread_cond_wait(&load_args->notify.lcp.cond,
-                    &load_args->notify.lcp.lock);
+        PTHREAD_MUTEX_LOCK(&sync_args->notify.lcp.lock);
+        while (!sync_args->notify.done) {
+            pthread_cond_wait(&sync_args->notify.lcp.cond,
+                    &sync_args->notify.lcp.lock);
         }
-        load_args->notify.done = false;  /* reset for next */
-        result = load_args->notify.result;
-        PTHREAD_MUTEX_UNLOCK(&load_args->notify.lcp.lock);
+        sync_args->notify.done = false;  /* reset for next */
+        PTHREAD_MUTEX_UNLOCK(&sync_args->notify.lcp.lock);
     } while (0);
 
-    fast_mblock_free_object(&binlog_writer_ctx.allocators.largs, load_args);
+    fast_mblock_free_object(&binlog_writer_ctx.
+            allocators.sargs, sync_args);
     return result;
 }
 

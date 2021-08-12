@@ -30,7 +30,7 @@ int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo *segment,
         const FDIRStorageInodeIndexOpType op_type,
         const FDIRStorageInodeIndexInfo *inode_index);
 
-int inode_binlog_writer_load(FDIRInodeSegmentIndexInfo *segment);
+int inode_binlog_writer_synchronize(FDIRInodeSegmentIndexInfo *segment);
 
 int inode_binlog_writer_shrink(FDIRInodeSegmentIndexInfo *segment);
 

@@ -25,6 +25,10 @@
 #define FDIR_STORAGE_INODE_STATUS_NORMAL   0
 #define FDIR_STORAGE_INODE_STATUS_DELETED  1
 
+#define FDIR_STORAGE_SEGMENT_STATUS_CLEAN    0
+#define FDIR_STORAGE_SEGMENT_STATUS_LOADING  1
+#define FDIR_STORAGE_SEGMENT_STATUS_READY    2
+
 #define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  64
 
 typedef struct fdir_storage_inode_index_info {
@@ -47,7 +51,7 @@ typedef struct fdir_storage_inode_index_array {
 typedef enum fdir_storage_inode_index_op_type {
     inode_index_op_type_create = 'c',
     inode_index_op_type_remove = 'r',
-    inode_index_op_type_load = 'l'
+    inode_index_op_type_synchronize = 's'
 } FDIRStorageInodeIndexOpType;
 
 typedef struct fdir_inode_binlog_record {
@@ -65,16 +69,18 @@ typedef struct fdir_inode_segment_index_info {
         volatile uint64_t first;
         volatile uint64_t last;
         FDIRStorageInodeIndexArray array;
+        short status;
         union {
-            int value;
+            short value;
             struct {
                 bool in_memory : 1;
                 bool dirty : 1;
             };
         } flags;
+        volatile int updating_count;
     } inodes;
     time_t last_access_time;
-    pthread_mutex_t lock;
+    pthread_lock_cond_pair_t lcp;
 } FDIRInodeSegmentIndexInfo;
 
 
