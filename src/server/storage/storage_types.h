@@ -45,6 +45,7 @@ typedef struct fdir_storage_inode_index_array {
     struct {
         int total;
         int deleted;
+        int adding;
     } counts;
 } FDIRStorageInodeIndexArray;
 
@@ -66,8 +67,8 @@ typedef struct fdir_inode_binlog_record {
 typedef struct fdir_inode_segment_index_info {
     int64_t binlog_id;
     struct {
-        volatile uint64_t first;
-        volatile uint64_t last;
+        uint64_t first;
+        uint64_t last;
         FDIRStorageInodeIndexArray array;
         short status;
         union {
