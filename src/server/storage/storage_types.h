@@ -51,9 +51,14 @@ typedef struct fdir_storage_inode_index_array {
 
 typedef enum fdir_storage_inode_index_op_type {
     inode_index_op_type_create = 'c',
-    inode_index_op_type_remove = 'r',
+    inode_index_op_type_remove = 'd',
     inode_index_op_type_synchronize = 's'
 } FDIRStorageInodeIndexOpType;
+
+typedef enum fdir_inode_binlog_id_op_type {
+    inode_binlog_id_op_type_create = 'c',
+    inode_binlog_id_op_type_remove = 'd'
+} FDIRInodeBinlogIdOpType;
 
 typedef struct fdir_inode_binlog_record {
     uint64_t binlog_id;
@@ -84,6 +89,16 @@ typedef struct fdir_inode_segment_index_info {
     pthread_lock_cond_pair_t lcp;
 } FDIRInodeSegmentIndexInfo;
 
+typedef struct fdir_inode_binlog_id_journal {
+    uint64_t binlog_id;
+    int64_t version;
+    FDIRInodeBinlogIdOpType op_type;
+} FDIRInodeBinlogIdJournal;
+
+typedef struct fdir_inode_bid_journal_array {
+    FDIRInodeBinlogIdJournal *records;
+    int count;
+} FDIRInodeBidJournalArray;
 
 #define FDIR_BINLOG_PARSE_INT_SILENCE(var, caption, index, endchr, min_val) \
     do {   \

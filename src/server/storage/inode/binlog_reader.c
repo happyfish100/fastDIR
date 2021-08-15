@@ -337,19 +337,24 @@ static int detect_last_created_inode(const uint64_t binlog_id,
             break;
         }
 
-        content.str = memchr(buff, '\n', read_bytes);
-        if (content.str == NULL) {
-            logError("file: "__FILE__", line: %d, "
-                    "binlog id: %"PRId64", binlog file: %s, "
-                    "offset: %"PRId64", length: %"PRId64", "
-                    "expect new line char (\\n)", __LINE__,
-                    binlog_id, filename, offset, read_bytes);
-            result = EINVAL;
-            break;
+        if (offset == 0) {
+            content.str = buff;
+            content.len = read_bytes;
+        } else {
+            content.str = memchr(buff, '\n', read_bytes);
+            if (content.str == NULL) {
+                logError("file: "__FILE__", line: %d, "
+                        "binlog id: %"PRId64", binlog file: %s, "
+                        "offset: %"PRId64", length: %"PRId64", "
+                        "expect new line char (\\n)", __LINE__,
+                        binlog_id, filename, offset, read_bytes);
+                result = EINVAL;
+                break;
+            }
+            content.str += 1;  //skip new line
+            content.len = read_bytes - (content.str - buff);
         }
 
-        content.str += 1;  //skip new line
-        content.len = read_bytes - (content.str - buff);
         if ((result=reverse_detect_created_inode(binlog_id,
                         filename, &content, inode)) != EAGAIN)
         {

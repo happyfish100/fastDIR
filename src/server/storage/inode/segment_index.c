@@ -36,10 +36,8 @@
 #include "inode_index_array.h"
 #include "segment_index.h"
 
-#define BINLOG_INDEX_FILENAME "binlog_index.dat"
-
+#define BINLOG_INDEX_FILENAME      "binlog_index.dat"
 #define BINLOG_INDEX_ITEM_CURRENT_WRITE     "current_write"
-#define DELAY_FREE_SECONDS   300
 
 typedef struct inode_segment_index_array {
     FDIRInodeSegmentIndexInfo **segments;
@@ -62,7 +60,7 @@ static InodeSegmentIndexContext segment_index_ctx = {
     {1, NULL}, {NULL, 0, 0}
 };
 
-static int write_to_binlog_index(const int64_t current_binlog_id)
+static int write_to_binlog_index()
 {
     char full_filename[PATH_MAX];
     char buff[256];
@@ -72,7 +70,7 @@ static int write_to_binlog_index(const int64_t current_binlog_id)
             "%s/%s", STORAGE_PATH_STR, BINLOG_INDEX_FILENAME);
     len = sprintf(buff, "%s=%"PRId64"\n",
             BINLOG_INDEX_ITEM_CURRENT_WRITE,
-            current_binlog_id);
+            segment_index_ctx.current_binlog.binlog_id);
     return safeWriteToFile(full_filename, buff, len);
 }
 
@@ -86,8 +84,7 @@ static int get_binlog_index_from_file()
             "%s/%s", STORAGE_PATH_STR, BINLOG_INDEX_FILENAME);
     if (access(full_filename, F_OK) != 0) {
         if (errno == ENOENT) {
-            return write_to_binlog_index(segment_index_ctx.
-                    current_binlog.binlog_id);
+            return write_to_binlog_index();
         } else {
             return errno != 0 ? errno : EPERM;
         }
@@ -205,6 +202,9 @@ static int segment_array_inc(const uint64_t first_inode)
 
     if (si_array->count > 0) {
         segment_index_ctx.current_binlog.binlog_id++;
+        if ((result=write_to_binlog_index()) != 0) {
+            return result;
+        }
     }
 
     segment->binlog_id = segment_index_ctx.current_binlog.binlog_id;
