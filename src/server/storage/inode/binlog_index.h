@@ -47,6 +47,8 @@ int binlog_index_load(FDIRInodeBinlogIndexContext *ctx);
 
 int binlog_index_save(FDIRInodeBinlogIndexContext *ctx);
 
+int binlog_index_expand(FDIRInodeBinlogIndexContext *ctx);
+
 static inline void binlog_index_free(FDIRInodeBinlogIndexContext *ctx)
 {
     if (ctx->index_array.indexes != NULL) {

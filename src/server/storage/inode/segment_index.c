@@ -34,6 +34,7 @@
 #include "binlog_reader.h"
 #include "binlog_writer.h"
 #include "inode_index_array.h"
+#include "bid_journal.h"
 #include "segment_index.h"
 
 #define BINLOG_INDEX_FILENAME      "binlog_index.dat"
@@ -54,6 +55,7 @@ typedef struct inode_segment_index_context {
     InodeSegmentIndexArray si_array;
     struct fast_mblock_man segment_allocator;
     pthread_rwlock_t rwlock;
+    FDIRInodeBinlogIndexContext binlog_index_ctx;
 } InodeSegmentIndexContext;
 
 static InodeSegmentIndexContext segment_index_ctx = {
@@ -142,7 +144,7 @@ static int check_alloc_segments(InodeSegmentIndexArray *array, const int size)
     return 0;
 }
 
-static int dump(FDIRInodeBinlogIndexContext *bctx)
+static int convert_to_segement_array(FDIRInodeBinlogIndexContext *bctx)
 {
     int result;
     FDIRInodeBinlogIndexInfo *binlog;
@@ -213,7 +215,50 @@ static int segment_array_inc(const uint64_t first_inode)
     segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
     si_array->segments[si_array->count++] = segment;
     segment_index_ctx.current_binlog.segment = segment;
-    return 0;
+
+    return bid_journal_log(segment->binlog_id,
+            inode_binlog_id_op_type_create);
+}
+
+static int convert_to_index_array(FDIRInodeBinlogIndexContext *bctx)
+{
+    int result;
+    InodeSegmentIndexArray *si_array;
+    FDIRInodeSegmentIndexInfo **segment;
+    FDIRInodeSegmentIndexInfo **end;
+    FDIRInodeBinlogIndexInfo *binlog;
+
+    result = 0;
+    si_array = &segment_index_ctx.si_array;
+
+    PTHREAD_RWLOCK_RDLOCK(&segment_index_ctx.rwlock);
+    end = si_array->segments + si_array->count;
+    for (segment=si_array->segments,
+            binlog=bctx->index_array.indexes;
+            segment<end; segment++)
+    {
+        if ((*segment)->inodes.status == FDIR_STORAGE_SEGMENT_STATUS_READY
+                && (*segment)->inodes.array.counts.total == 0)
+        {
+            continue;
+        }
+
+        if (bctx->index_array.count >= bctx->index_array.alloc) {
+            if ((result=binlog_index_expand(bctx)) != 0) {
+                break;
+            }
+            binlog = bctx->index_array.indexes + bctx->index_array.count;
+        }
+
+        binlog->binlog_id = (*segment)->binlog_id;
+        binlog->inodes.first = (*segment)->inodes.first;
+        binlog->inodes.last = (*segment)->inodes.last;
+        binlog++;
+        bctx->index_array.count++;
+    }
+    PTHREAD_RWLOCK_RDLOCK(&segment_index_ctx.rwlock);
+
+    return result;
 }
 
 static int set_current_binlog()
@@ -234,10 +279,31 @@ static int set_current_binlog()
     return 0;
 }
 
+static int binlog_index_dump(void *args)
+{
+    int64_t current_version;
+    int result;
+
+    current_version = bid_journal_current_version();
+    if (segment_index_ctx.binlog_index_ctx.last_version == current_version) {
+        return 0;
+    }
+
+    if ((result=convert_to_index_array(&segment_index_ctx.
+                    binlog_index_ctx)) != 0)
+    {
+        return result;
+    }
+
+    segment_index_ctx.binlog_index_ctx.last_version = current_version;
+    return binlog_index_save(&segment_index_ctx.binlog_index_ctx);
+}
+
 int inode_segment_index_init()
 {
     int result;
-    FDIRInodeBinlogIndexContext binlog_index_ctx;
+    ScheduleArray scheduleArray;
+    ScheduleEntry scheduleEntries[1];
 
     if ((result=init_pthread_rwlock(&segment_index_ctx.rwlock)) != 0) {
         return result;
@@ -255,17 +321,28 @@ int inode_segment_index_init()
         return result;
     }
 
-    if ((result=binlog_index_load(&binlog_index_ctx)) != 0) {
+    if ((result=binlog_index_load(&segment_index_ctx.
+                    binlog_index_ctx)) != 0)
+    {
         return result;
     }
 
-    result = dump(&binlog_index_ctx);
-    binlog_index_free(&binlog_index_ctx);
-
-    if (result != 0) {
+    if ((result=convert_to_segement_array(&segment_index_ctx.
+                    binlog_index_ctx)) != 0)
+    {
         return result;
     }
-    return set_current_binlog();
+
+    if ((result=set_current_binlog()) != 0) {
+        return result;
+    }
+
+    INIT_SCHEDULE_ENTRY_EX(scheduleEntries[0], sched_generate_next_id(),
+            INODE_INDEX_DUMP_BASE_TIME, INODE_INDEX_DUMP_INTERVAL,
+            binlog_index_dump, NULL);
+    scheduleArray.entries = scheduleEntries;
+    scheduleArray.count = 1;
+    return sched_add_entries(&scheduleArray);
 }
 
 static int segment_index_compare(const FDIRInodeSegmentIndexInfo **segment1,
@@ -453,7 +530,7 @@ int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
     FDIRInodeBinlogRecord **end;
 
     PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
-    if (segment->inodes.flags.in_memory) {
+    if (segment->inodes.status == FDIR_STORAGE_SEGMENT_STATUS_READY) {
         end = records + count;
         for (record=records; record<end; record++) {
             if ((*record)->op_type == inode_index_op_type_create) {
@@ -492,15 +569,9 @@ int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment)
     int result;
     bool new_load;
 
-    PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
-    do {
-        if ((result=check_load(segment, false, &new_load)) != 0) {
-            break;
-        }
+    if ((result=check_load(segment, false, &new_load)) != 0) {
+        return result;
+    }
 
-        result = inode_index_array_check_shrink(&segment->inodes.array);
-    } while (0);
-    PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
-
-    return result;
+    return inode_index_array_check_shrink(&segment->inodes.array);
 }

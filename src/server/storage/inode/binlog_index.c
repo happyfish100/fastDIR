@@ -292,3 +292,31 @@ int binlog_index_save(FDIRInodeBinlogIndexContext *ctx)
 
     return 0;
 }
+
+int binlog_index_expand(FDIRInodeBinlogIndexContext *ctx)
+{
+    int alloc;
+    FDIRInodeBinlogIndexInfo *indexes;
+
+    if (ctx->index_array.alloc == 0) {
+        alloc = 64;
+    } else {
+        alloc = ctx->index_array.alloc * 2;
+    }
+    indexes = (FDIRInodeBinlogIndexInfo *)fc_malloc(
+            sizeof(FDIRInodeBinlogIndexInfo) * alloc);
+    if (indexes == NULL) {
+        return ENOMEM;
+    }
+
+    if (ctx->index_array.count > 0) {
+        memcpy(indexes, ctx->index_array.indexes,
+                sizeof(FDIRInodeBinlogIndexInfo) *
+                ctx->index_array.count);
+        free(ctx->index_array.indexes);
+    }
+
+    ctx->index_array.indexes = indexes;
+    ctx->index_array.alloc = alloc;
+    return 0;
+}

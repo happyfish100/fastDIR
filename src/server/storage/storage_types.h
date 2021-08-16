@@ -76,13 +76,6 @@ typedef struct fdir_inode_segment_index_info {
         uint64_t last;
         FDIRStorageInodeIndexArray array;
         short status;
-        union {
-            short value;
-            struct {
-                bool in_memory : 1;
-                bool dirty : 1;
-            };
-        } flags;
         volatile int updating_count;
     } inodes;
     time_t last_access_time;

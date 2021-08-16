@@ -155,14 +155,20 @@ int bid_journal_init()
     return journal_open();
 }
 
-int bid_journal_log(const FDIRInodeBinlogIdJournal *journal)
+int64_t bid_journal_current_version()
+{
+    return __sync_add_and_fetch(&journal_ctx.version, 0);
+}
+
+int bid_journal_log(const uint64_t binlog_id,
+        const FDIRInodeBinlogIdOpType op_type)
 {
     char buff[BID_JOURNAL_RECORD_MAX_SIZE];
     int len;
 
     len = sprintf(buff, "%"PRId64" %"PRId64" %c\n",
             __sync_add_and_fetch(&journal_ctx.version, 1),
-            journal->binlog_id, journal->op_type);
+            binlog_id, op_type);
     return fc_safe_write(journal_ctx.fd, buff, len);
 }
 
@@ -291,12 +297,15 @@ int bid_journal_fetch(FDIRInodeBidJournalArray *jarray,
         }
 
         if (result == 0) {
+            *error_info = '\0';
             if ((result=parse_buffer(jarray, start_version,
                             &content, distance, error_info)) != 0)
             {
-                logError("file: "__FILE__", line: %d, "
-                        "parse binlog fail, file: %s, error info: %s",
-                        __LINE__, full_filename, error_info);
+                if (*error_info != '\0') {
+                    logError("file: "__FILE__", line: %d, "
+                            "parse binlog fail, file: %s, error info: %s",
+                            __LINE__, full_filename, error_info);
+                }
             }
         }
     }

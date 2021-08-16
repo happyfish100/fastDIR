@@ -35,6 +35,7 @@
 #include "write_fd_cache.h"
 #include "inode_index_array.h"
 #include "binlog_reader.h"
+#include "bid_journal.h"
 #include "segment_index.h"
 #include "binlog_writer.h"
 
@@ -331,11 +332,15 @@ static int shrink(FDIRInodeSegmentIndexInfo *segment)
         return result;
     }
 
-    write_fd_cache_remove(segment->binlog_id);
     binlog_fd_cache_filename(segment->binlog_id,
             full_filename, sizeof(full_filename));
     if (segment->inodes.array.counts.total == 0) {
-        return fc_delete_file_ex(full_filename, "inode binlog");
+        if ((result=fc_delete_file_ex(full_filename, "inode binlog")) != 0) {
+            return result;
+        } else {
+            return bid_journal_log(segment->binlog_id,
+                    inode_binlog_id_op_type_remove);
+        }
     }
 
     snprintf(tmp_filename, sizeof(tmp_filename),
@@ -383,6 +388,7 @@ static int shrink(FDIRInodeSegmentIndexInfo *segment)
 static void deal_shrink_queue()
 {
     BinlogWriterShrinkTask *stask;
+    int result;
 
     while (g_current_time - binlog_writer_ctx.last_shrink_time == 0) {
         if (fc_queue_timedpeek_ms(&WRITER_NORMAL_QUEUE, 100) != NULL) {
@@ -395,7 +401,7 @@ static void deal_shrink_queue()
     }
 
     if ((stask=(BinlogWriterShrinkTask *)fc_queue_try_pop(
-            &WRITER_SHRINK_QUEUE)) == NULL)
+                    &WRITER_SHRINK_QUEUE)) == NULL)
     {
         return;
     }
@@ -404,7 +410,12 @@ static void deal_shrink_queue()
     }
 
     binlog_writer_ctx.last_shrink_time = g_current_time;
-    if (shrink(stask->segment) != 0) {
+
+    write_fd_cache_remove(stask->segment->binlog_id);
+    PTHREAD_MUTEX_LOCK(&stask->segment->lcp.lock);
+    result = shrink(stask->segment);
+    PTHREAD_MUTEX_UNLOCK(&stask->segment->lcp.lock);
+    if (result != 0) {
         logCrit("file: "__FILE__", line: %d, "
                 "deal_shrink_queue fail, "
                 "program exit!", __LINE__);

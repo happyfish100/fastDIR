@@ -26,10 +26,13 @@ extern "C" {
 
 int bid_journal_init();
 
-int bid_journal_log(const FDIRInodeBinlogIdJournal *journal);
+int bid_journal_log(const uint64_t binlog_id,
+        const FDIRInodeBinlogIdOpType op_type);
 
 int bid_journal_fetch(FDIRInodeBidJournalArray *jarray,
         const int64_t start_version);
+
+int64_t bid_journal_current_version();
 
 #ifdef __cplusplus
 }
