@@ -179,6 +179,137 @@ static int convert_to_segement_array(FDIRInodeBinlogIndexContext *bctx)
     return 0;
 }
 
+static int segment_index_compare_bid(const FDIRInodeSegmentIndexInfo
+        **segment1, const FDIRInodeSegmentIndexInfo **segment2)
+{
+    return fc_compare_int64((*segment1)->binlog_id, (*segment2)->binlog_id);
+}
+
+static FDIRInodeSegmentIndexInfo *find_segment_by_bid(const uint64_t binlog_id)
+{
+    struct {
+        FDIRInodeSegmentIndexInfo holder;
+        FDIRInodeSegmentIndexInfo *ptr;
+    } target;
+    FDIRInodeSegmentIndexInfo **found;
+
+    target.holder.binlog_id = binlog_id;
+    target.ptr = &target.holder;
+    found = (FDIRInodeSegmentIndexInfo **)bsearch(&target.ptr,
+            segment_index_ctx.si_array.segments,
+            segment_index_ctx.si_array.count,
+            sizeof(FDIRInodeSegmentIndexInfo *),
+            (int (*)(const void *, const void *))
+            segment_index_compare_bid);
+    return (found != NULL ? *found : NULL);
+}
+
+static int segment_array_add(const uint64_t binlog_id,
+        const int64_t first_inode, const int64_t last_inode)
+{
+    int result;
+    InodeSegmentIndexArray *si_array;
+    FDIRInodeSegmentIndexInfo *segment;
+
+    segment = (FDIRInodeSegmentIndexInfo *)fast_mblock_alloc_object(
+            &segment_index_ctx.segment_allocator);
+    if (segment == NULL) {
+        return ENOMEM;
+    }
+
+    si_array = &segment_index_ctx.si_array;
+    if ((result=check_alloc_segments(si_array, si_array->count + 1)) != 0) {
+        return result;
+    }
+
+    segment->binlog_id = binlog_id;
+    segment->inodes.first = first_inode;
+    segment->inodes.last = last_inode;
+    segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
+    si_array->segments[si_array->count++] = segment;
+
+    return 0;
+}
+
+static int set_last_segment_inode(uint64_t *last_bid)
+{
+    int result;
+    int64_t last_inode;
+    FDIRInodeSegmentIndexInfo *segment;
+
+    if (segment_index_ctx.si_array.count == 0) {
+        return 0;
+    }
+
+    segment = segment_index_ctx.si_array.segments[
+        segment_index_ctx.si_array.count - 1];
+    if (segment->binlog_id == *last_bid) {
+        return 0;
+    }
+
+    *last_bid = segment->binlog_id;
+    if ((result=binlog_reader_get_last_inode(segment->
+                    binlog_id, &last_inode)) != 0)
+    {
+        return result == ENOENT ? 0 : result;
+    }
+
+    segment->inodes.last = last_inode;
+    return 0;
+}
+
+static int replay_with_bid_journal()
+{
+    int result;
+    FDIRInodeBidJournalArray jarray;
+    FDIRInodeBinlogIdJournal *journal;
+    FDIRInodeBinlogIdJournal *end;
+    FDIRInodeSegmentIndexInfo *segment;
+    int64_t first_inode;
+    int64_t last_inode;
+
+    result = bid_journal_fetch(&jarray, segment_index_ctx.
+            binlog_index_ctx.last_version + 1);
+    if (result != 0) {
+        return (result == ENOENT ? 0 : result);
+    }
+
+    end = jarray.records + jarray.count;
+    for (journal=jarray.records; journal<end; journal++) {
+        segment = find_segment_by_bid(journal->binlog_id);
+        if (journal->op_type == inode_binlog_id_op_type_create) {
+            if (segment == NULL) {
+                result = binlog_reader_get_first_inode(
+                        journal->binlog_id, &first_inode);
+                if (result != 0) {
+                    if (result == ENOENT) {
+                        result = 0;
+                        continue;
+                    }
+                    break;
+                }
+                if ((result=binlog_reader_get_last_inode(journal->
+                                binlog_id, &last_inode)) != 0)
+                {
+                    break;
+                }
+                if ((result=segment_array_add(journal->binlog_id,
+                                first_inode, last_inode)) != 0)
+                {
+                    break;
+                }
+            }
+        } else {
+            if (segment != NULL) {
+                segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
+            }
+        }
+    }
+
+    bid_journal_free(&jarray);
+    return result;
+}
+
 static int segment_array_inc(const uint64_t first_inode)
 {
     int result;
@@ -302,6 +433,7 @@ static int binlog_index_dump(void *args)
 int inode_segment_index_init()
 {
     int result;
+    uint64_t last_bid;
     ScheduleArray scheduleArray;
     ScheduleEntry scheduleEntries[1];
 
@@ -327,11 +459,18 @@ int inode_segment_index_init()
         return result;
     }
 
+    last_bid = 0;
+    set_last_segment_inode(&last_bid);
     if ((result=convert_to_segement_array(&segment_index_ctx.
                     binlog_index_ctx)) != 0)
     {
         return result;
     }
+
+    if ((result=replay_with_bid_journal()) != 0) {
+        return result;
+    }
+    set_last_segment_inode(&last_bid);
 
     if ((result=set_current_binlog()) != 0) {
         return result;
@@ -345,8 +484,8 @@ int inode_segment_index_init()
     return sched_add_entries(&scheduleArray);
 }
 
-static int segment_index_compare(const FDIRInodeSegmentIndexInfo **segment1,
-        const FDIRInodeSegmentIndexInfo **segment2)
+static int segment_index_compare_inode(const FDIRInodeSegmentIndexInfo
+        **segment1, const FDIRInodeSegmentIndexInfo **segment2)
 {
     int64_t sub;
     sub = (*segment1)->inodes.first - (*segment2)->inodes.first;
@@ -365,7 +504,7 @@ static int segment_index_compare(const FDIRInodeSegmentIndexInfo **segment1,
     }
 }
 
-static FDIRInodeSegmentIndexInfo *find_segment(const uint64_t inode)
+static FDIRInodeSegmentIndexInfo *find_segment_by_inode(const uint64_t inode)
 {
     struct {
         FDIRInodeSegmentIndexInfo holder;
@@ -382,7 +521,7 @@ static FDIRInodeSegmentIndexInfo *find_segment(const uint64_t inode)
             segment_index_ctx.si_array.count,
             sizeof(FDIRInodeSegmentIndexInfo *),
             (int (*)(const void *, const void *))
-            segment_index_compare);
+            segment_index_compare_inode);
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
     return (found != NULL ? *found : NULL);
 }
@@ -432,7 +571,7 @@ int inode_segment_index_delete(const uint64_t inode)
     FDIRInodeSegmentIndexInfo *segment;
     FDIRStorageInodeIndexInfo inode_index;
 
-    if ((segment=find_segment(inode)) == NULL) {
+    if ((segment=find_segment_by_inode(inode)) == NULL) {
         return ENOENT;
     }
 
@@ -493,7 +632,7 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
     int result;
     bool new_load;
 
-    if ((segment=find_segment(inode->inode)) == NULL) {
+    if ((segment=find_segment_by_inode(inode->inode)) == NULL) {
         return ENOENT;
     }
 

@@ -34,6 +34,15 @@ int bid_journal_fetch(FDIRInodeBidJournalArray *jarray,
 
 int64_t bid_journal_current_version();
 
+static inline void bid_journal_free(FDIRInodeBidJournalArray *jarray)
+{
+    if (jarray->records != NULL) {
+        free(jarray->records);
+        jarray->records = NULL;
+        jarray->count = 0;
+    }
+}
+
 #ifdef __cplusplus
 }
 #endif
