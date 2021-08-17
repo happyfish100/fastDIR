@@ -17,6 +17,7 @@
 #define _FDIR_STORAGE_TYPES_H
 
 #include "fastcommon/common_define.h"
+#include "fastcommon/fc_list.h"
 #include "sf/sf_types.h"
 
 #define FDIR_STORAGE_BATCH_INODE_BITS   16
@@ -80,6 +81,7 @@ typedef struct fdir_inode_segment_index_info {
     } inodes;
     time_t last_access_time;
     pthread_lock_cond_pair_t lcp;
+    struct fc_list_head dlink;  //for FIFO elimination algorithm
 } FDIRInodeSegmentIndexInfo;
 
 typedef struct fdir_inode_binlog_id_journal {

@@ -100,10 +100,7 @@ int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array)
         inode_array_allocator_free(array->inodes);
         *array = new_array;
     } else {
-        inode_array_allocator_free(array->inodes);
-        array->inodes = NULL;
-        array->alloc = 0;
-        array->counts.total = array->counts.deleted = 0;
+        inode_index_array_free(array);
     }
 
     return 0;

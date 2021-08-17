@@ -33,6 +33,8 @@ int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment);
 int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
         FDIRInodeBinlogRecord **records, const int count);
 
+int inode_segment_index_eliminate(const int min_elements);
+
 #ifdef __cplusplus
 }
 #endif

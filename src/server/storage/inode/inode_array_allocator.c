@@ -14,6 +14,7 @@
  */
 
 #include "fastcommon/fast_allocator.h"
+#include "segment_index.h"
 #include "inode_array_allocator.h"
 
 #define STORAGE_BATCH_INODE_START_BIT     6
@@ -48,15 +49,17 @@ int inode_array_allocator_init(const int64_t memory_limit)
         start = end;
     }
 
-    return fast_allocator_init_ex(&array_allocator_ctx, "inode-idx-arr",
-            regions, region - regions, memory_limit, 0.9999,
-            reclaim_interval, true);
+    return fast_allocator_init_ex(&array_allocator_ctx,
+            "inode-idx-arr", regions, region - regions,
+            memory_limit, 0.9999, reclaim_interval, true);
 }
 
 FDIRStorageInodeIndexInfo *inode_array_allocator_alloc(
         const int count, int *alloc)
 {
     int bytes;
+    int64_t total_reclaim_bytes;
+    FDIRStorageInodeIndexInfo *inodes;
 
     if (count <= STORAGE_BATCH_INODE_START_COUNT) {
         *alloc = STORAGE_BATCH_INODE_START_COUNT;
@@ -70,8 +73,21 @@ FDIRStorageInodeIndexInfo *inode_array_allocator_alloc(
     }
 
     bytes = (*alloc) * sizeof(FDIRStorageInodeIndexInfo);
-    return (FDIRStorageInodeIndexInfo *)fast_allocator_alloc(
-            &array_allocator_ctx, bytes);
+    while (1) {
+        if ((inodes=(FDIRStorageInodeIndexInfo *)fast_allocator_alloc(
+                        &array_allocator_ctx, bytes)) != NULL)
+        {
+            return inodes;
+        }
+        if (inode_segment_index_eliminate(8 *
+                    FDIR_STORAGE_BATCH_INODE_COUNT) != 0)
+        {
+            return NULL;
+        }
+
+        fast_allocator_retry_reclaim(&array_allocator_ctx,
+                &total_reclaim_bytes);
+    }
 }
 
 void inode_array_allocator_free(FDIRStorageInodeIndexInfo *inodes)

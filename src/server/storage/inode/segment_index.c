@@ -29,6 +29,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/fc_atomic.h"
+#include "fastcommon/locked_list.h"
 #include "../../server_global.h"
 #include "binlog_index.h"
 #include "binlog_reader.h"
@@ -56,6 +57,7 @@ typedef struct inode_segment_index_context {
     struct fast_mblock_man segment_allocator;
     pthread_rwlock_t rwlock;
     FDIRInodeBinlogIndexContext binlog_index_ctx;
+    FCLockedList fifo; //element: FDIRInodeSegmentIndexInfo
 } InodeSegmentIndexContext;
 
 static InodeSegmentIndexContext segment_index_ctx = {
@@ -347,6 +349,7 @@ static int segment_array_inc(const uint64_t first_inode)
     si_array->segments[si_array->count++] = segment;
     segment_index_ctx.current_binlog.segment = segment;
 
+    locked_list_add_tail(&segment->dlink, &segment_index_ctx.fifo);
     return bid_journal_log(segment->binlog_id,
             inode_binlog_id_op_type_create);
 }
@@ -446,6 +449,10 @@ int inode_segment_index_init()
                     8 * 1024, 0, (fast_mblock_alloc_init_func)
                     segment_alloc_init_func, NULL, true)) != 0)
     {
+        return result;
+    }
+
+    if ((result=locked_list_init(&segment_index_ctx.fifo)) != 0) {
         return result;
     }
 
@@ -609,6 +616,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
                 }
                 *new_load = true;
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
+                locked_list_add_tail(&segment->dlink, &segment_index_ctx.fifo);
                 pthread_cond_broadcast(&segment->lcp.cond);
                 break;
             case FDIR_STORAGE_SEGMENT_STATUS_LOADING:
@@ -712,5 +720,36 @@ int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment)
         return result;
     }
 
-    return inode_index_array_check_shrink(&segment->inodes.array);
+    if ((result=inode_index_array_check_shrink(&segment->inodes.array)) != 0) {
+        return result;
+    }
+
+    if (segment->inodes.array.inodes == NULL) {
+        locked_list_del(&segment->dlink, &segment_index_ctx.fifo);
+    }
+    return 0;
+}
+
+int inode_segment_index_eliminate(const int min_elements)
+{
+    int total;
+    FDIRInodeSegmentIndexInfo *segment;
+
+    total = 0;
+    do {
+        locked_list_pop(&segment_index_ctx.fifo,
+                FDIRInodeSegmentIndexInfo,
+                dlink, segment);
+        if (segment == NULL) {
+            return ENOENT;
+        }
+
+        PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
+        total += segment->inodes.array.alloc;
+        inode_index_array_free(&segment->inodes.array);
+        segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
+        PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
+    } while(total < min_elements);
+
+    return 0;
 }

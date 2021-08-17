@@ -25,16 +25,26 @@
 extern "C" {
 #endif
 
-static inline int inode_index_array_alloc(FDIRStorageInodeIndexArray
-        *index_array, const int count)
+static inline int inode_index_array_alloc(FDIRStorageInodeIndexArray *array,
+        const int count)
 {
-    if ((index_array->inodes=inode_array_allocator_alloc(count,
-                    &index_array->alloc)) == NULL)
+    if ((array->inodes=inode_array_allocator_alloc(
+                    count, &array->alloc)) == NULL)
     {
         return ENOMEM;
     }
 
     return 0;
+}
+
+static inline void inode_index_array_free(FDIRStorageInodeIndexArray *array)
+{
+    if (array->inodes != NULL) {
+        inode_array_allocator_free(array->inodes);
+        array->inodes = NULL;
+        array->alloc = 0;
+        array->counts.total = array->counts.deleted = 0;
+    }
 }
 
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
