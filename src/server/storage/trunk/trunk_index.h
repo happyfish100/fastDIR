@@ -18,6 +18,7 @@
 #ifndef _TRUNK_INDEX_H_
 #define _TRUNK_INDEX_H_
 
+#include "sf/sf_binlog_index.h"
 #include "trunk_types.h"
 
 typedef struct fdir_trunk_index_info {
@@ -28,34 +29,32 @@ typedef struct fdir_trunk_index_info {
     int free_start;
 } FDIRTrunkIndexInfo;
 
-typedef struct fdir_trunk_index_array {
-    FDIRTrunkIndexInfo *trunks;
-    int alloc;
-    int count;
-} FDIRTrunkIndexArray;
-
-typedef struct fdir_trunk_index_context {
-    FDIRTrunkIndexArray index_array;
-    int64_t last_version;
-} FDIRTrunkIndexContext;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int trunk_index_load(FDIRTrunkIndexContext *ctx);
+extern SFBinlogIndexContext g_trunk_index_ctx;
 
-int trunk_index_save(FDIRTrunkIndexContext *ctx);
+void trunk_index_init();
 
-int trunk_index_expand(FDIRTrunkIndexContext *ctx);
-
-static inline void trunk_index_free(FDIRTrunkIndexContext *ctx)
+static inline int trunk_index_load()
 {
-    if (ctx->index_array.trunks != NULL) {
-        free(ctx->index_array.trunks);
-        ctx->index_array.trunks = NULL;
-        ctx->index_array.alloc = ctx->index_array.count = 0;
-    }
+    return sf_binlog_index_load(&g_trunk_index_ctx);
+}
+
+static inline int trunk_index_save()
+{
+    return sf_binlog_index_save(&g_trunk_index_ctx);
+}
+
+static inline int trunk_index_expand()
+{
+    return sf_binlog_index_expand(&g_trunk_index_ctx);
+}
+
+static inline void trunk_index_free()
+{
+    sf_binlog_index_free(&g_trunk_index_ctx);
 }
 
 #ifdef __cplusplus

@@ -95,15 +95,4 @@ typedef struct fdir_inode_bid_journal_array {
     int count;
 } FDIRInodeBidJournalArray;
 
-#define FDIR_BINLOG_PARSE_INT_SILENCE(var, caption, index, endchr, min_val) \
-    do {   \
-        var = strtol(cols[index].str, &endptr, 10);  \
-        if (*endptr != endchr || var < min_val) {    \
-            sprintf(error_info, "invalid %s: %.*s",  \
-                    caption, cols[index].len, cols[index].str); \
-            return EINVAL;  \
-        }  \
-    } while (0)
-
-
 #endif

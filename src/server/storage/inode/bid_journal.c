@@ -13,20 +13,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
+#include "sf/sf_binlog_index.h"
 #include "../../server_global.h"
 #include "bid_journal.h"
 
@@ -61,9 +50,9 @@ static int parse_line(const string_t *line, FDIRInodeBinlogIdJournal
         return EINVAL;
     }
 
-    FDIR_BINLOG_PARSE_INT_SILENCE(journal->version,
+    SF_BINLOG_PARSE_INT_SILENCE(journal->version,
             "version", BID_JOURNAL_FIELD_INDEX_VERSION, ' ', 1);
-    FDIR_BINLOG_PARSE_INT_SILENCE(journal->binlog_id,
+    SF_BINLOG_PARSE_INT_SILENCE(journal->binlog_id,
             "binlog_id", BID_JOURNAL_FIELD_INDEX_BINLOG_ID, ' ', 0);
     journal->op_type = cols[BID_JOURNAL_FIELD_INDEX_OP_TYPE].str[0];
     if (!((journal->op_type == inode_binlog_id_op_type_create) ||

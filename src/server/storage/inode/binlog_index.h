@@ -18,6 +18,7 @@
 #ifndef _INODE_BINLOG_INDEX_H_
 #define _INODE_BINLOG_INDEX_H_
 
+#include "sf/sf_binlog_index.h"
 #include "inode_types.h"
 
 typedef struct fdir_inode_binlog_index_info {
@@ -28,34 +29,32 @@ typedef struct fdir_inode_binlog_index_info {
     } inodes;
 } FDIRInodeBinlogIndexInfo;
 
-typedef struct fdir_inode_binlog_index_array {
-    FDIRInodeBinlogIndexInfo *indexes;
-    int alloc;
-    int count;
-} FDIRInodeBinlogIndexArray;
-
-typedef struct fdir_inode_binlog_index_context {
-    FDIRInodeBinlogIndexArray index_array;
-    int64_t last_version;
-} FDIRInodeBinlogIndexContext;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int binlog_index_load(FDIRInodeBinlogIndexContext *ctx);
+extern SFBinlogIndexContext g_binlog_index_ctx;
 
-int binlog_index_save(FDIRInodeBinlogIndexContext *ctx);
+void binlog_index_init();
 
-int binlog_index_expand(FDIRInodeBinlogIndexContext *ctx);
-
-static inline void binlog_index_free(FDIRInodeBinlogIndexContext *ctx)
+static inline int binlog_index_load()
 {
-    if (ctx->index_array.indexes != NULL) {
-        free(ctx->index_array.indexes);
-        ctx->index_array.indexes = NULL;
-        ctx->index_array.alloc = ctx->index_array.count = 0;
-    }
+    return sf_binlog_index_load(&g_binlog_index_ctx);
+}
+
+static inline int binlog_index_save()
+{
+    return sf_binlog_index_save(&g_binlog_index_ctx);
+}
+
+static inline int binlog_index_expand()
+{
+    return sf_binlog_index_expand(&g_binlog_index_ctx);
+}
+
+static inline void binlog_index_free()
+{
+    sf_binlog_index_free(&g_binlog_index_ctx);
 }
 
 #ifdef __cplusplus

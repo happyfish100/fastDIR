@@ -13,22 +13,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
-#include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
-#include "fastcommon/pthread_func.h"
+#include "sf/sf_binlog_index.h"
 #include "../../server_global.h"
 #include "read_fd_cache.h"
 #include "inode_index_array.h"
@@ -60,9 +47,9 @@ static int binlog_parse(const string_t *line,
         return EINVAL;
     }
 
-    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->version,
+    SF_BINLOG_PARSE_INT_SILENCE(inode_index->version,
             "version", BINLOG_FIELD_INDEX_VERSION, ' ', 0);
-    FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->inode,
+    SF_BINLOG_PARSE_INT_SILENCE(inode_index->inode,
             "inode", BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
     if (*op_type == inode_index_op_type_create) {
@@ -71,9 +58,9 @@ static int binlog_parse(const string_t *line,
                     count, BINLOG_MAX_FIELD_COUNT);
             return EINVAL;
         }
-        FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
+        SF_BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
                 BINLOG_FIELD_INDEX_FILE_ID, ' ', 0);
-        FDIR_BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
+        SF_BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
                 BINLOG_FIELD_INDEX_OFFSET, '\n', 0);
     } else if (*op_type == inode_index_op_type_remove) {
         if (count != BINLOG_MIN_FIELD_COUNT) {

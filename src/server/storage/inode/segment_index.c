@@ -56,7 +56,6 @@ typedef struct inode_segment_index_context {
     InodeSegmentIndexArray si_array;
     struct fast_mblock_man segment_allocator;
     pthread_rwlock_t rwlock;
-    FDIRInodeBinlogIndexContext binlog_index_ctx;
     FCLockedList fifo; //element: FDIRInodeSegmentIndexInfo
 } InodeSegmentIndexContext;
 
@@ -146,7 +145,7 @@ static int check_alloc_segments(InodeSegmentIndexArray *array, const int size)
     return 0;
 }
 
-static int convert_to_segement_array(FDIRInodeBinlogIndexContext *bctx)
+static int convert_to_segement_array(SFBinlogIndexContext *bctx)
 {
     int result;
     FDIRInodeBinlogIndexInfo *binlog;
@@ -270,8 +269,7 @@ static int replay_with_bid_journal()
     int64_t first_inode;
     int64_t last_inode;
 
-    result = bid_journal_fetch(&jarray, segment_index_ctx.
-            binlog_index_ctx.last_version + 1);
+    result = bid_journal_fetch(&jarray, g_binlog_index_ctx.last_version + 1);
     if (result != 0) {
         return (result == ENOENT ? 0 : result);
     }
@@ -354,7 +352,7 @@ static int segment_array_inc(const uint64_t first_inode)
             inode_binlog_id_op_type_create);
 }
 
-static int convert_to_index_array(FDIRInodeBinlogIndexContext *bctx)
+static int convert_to_index_array(SFBinlogIndexContext *bctx)
 {
     int result;
     InodeSegmentIndexArray *si_array;
@@ -378,7 +376,7 @@ static int convert_to_index_array(FDIRInodeBinlogIndexContext *bctx)
         }
 
         if (bctx->index_array.count >= bctx->index_array.alloc) {
-            if ((result=binlog_index_expand(bctx)) != 0) {
+            if ((result=binlog_index_expand()) != 0) {
                 break;
             }
             binlog = bctx->index_array.indexes + bctx->index_array.count;
@@ -419,18 +417,16 @@ static int binlog_index_dump(void *args)
     int result;
 
     current_version = bid_journal_current_version();
-    if (segment_index_ctx.binlog_index_ctx.last_version == current_version) {
+    if (g_binlog_index_ctx.last_version == current_version) {
         return 0;
     }
 
-    if ((result=convert_to_index_array(&segment_index_ctx.
-                    binlog_index_ctx)) != 0)
-    {
+    if ((result=convert_to_index_array(&g_binlog_index_ctx)) != 0) {
         return result;
     }
 
-    segment_index_ctx.binlog_index_ctx.last_version = current_version;
-    return binlog_index_save(&segment_index_ctx.binlog_index_ctx);
+    g_binlog_index_ctx.last_version = current_version;
+    return binlog_index_save();
 }
 
 int inode_segment_index_init()
@@ -460,17 +456,13 @@ int inode_segment_index_init()
         return result;
     }
 
-    if ((result=binlog_index_load(&segment_index_ctx.
-                    binlog_index_ctx)) != 0)
-    {
+    if ((result=binlog_index_load()) != 0) {
         return result;
     }
 
     last_bid = 0;
     set_last_segment_inode(&last_bid);
-    if ((result=convert_to_segement_array(&segment_index_ctx.
-                    binlog_index_ctx)) != 0)
-    {
+    if ((result=convert_to_segement_array(&g_binlog_index_ctx)) != 0) {
         return result;
     }
 
