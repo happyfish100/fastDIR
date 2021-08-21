@@ -9,13 +9,15 @@ FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
                    inode/binlog_fd_cache.lo inode/write_fd_cache.lo \
                    inode/read_fd_cache.lo inode/binlog_reader.lo \
                    inode/binlog_index.lo inode/inode_array_allocator.lo \
-                   inode/inode_index_array.lo inode/bid_journal.lo
+                   inode/inode_index_array.lo inode/bid_journal.lo \
+                   trunk/trunk_index.lo
 
 FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
                    inode/binlog_fd_cache.o inode/write_fd_cache.o \
                    inode/read_fd_cache.o inode/binlog_reader.o \
                    inode/binlog_index.o inode/inode_array_allocator.o \
-                   inode/inode_index_array.o inode/bid_journal.o
+                   inode/inode_index_array.o inode/bid_journal.o \
+                   trunk/trunk_index.o
 
 HEADER_FILES =
 
