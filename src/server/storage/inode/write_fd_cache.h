@@ -16,25 +16,34 @@
 #ifndef _WRITE_FD_CACHE_H
 #define _WRITE_FD_CACHE_H
 
-#include "binlog_fd_cache.h"
+#include "diskallocator/binlog/common/write_fd_cache.h"
+#include "../storage_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    extern BinlogFDCacheContext g_write_cache_ctx;
-
-    int write_fd_cache_init(const int max_idle_time, const int capacity);
-
     //return fd, < 0 for error
     static inline int write_fd_cache_get(const uint64_t binlog_id)
     {
-        return binlog_fd_cache_get(&g_write_cache_ctx, binlog_id);
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
+                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        return da_write_fd_cache_get(&key);
     }
 
     static inline int write_fd_cache_remove(const uint64_t binlog_id)
     {
-        return binlog_fd_cache_remove(&g_write_cache_ctx, binlog_id);
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
+                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        return da_write_fd_cache_remove(&key);
+    }
+
+    static inline int write_fd_cache_filename(const uint64_t binlog_id,
+            char *full_filename, const int size)
+    {
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
+                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        return da_write_fd_cache_filename(&key, full_filename, size);
     }
 
 #ifdef __cplusplus

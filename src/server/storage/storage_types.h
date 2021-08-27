@@ -19,6 +19,11 @@
 #include "fastcommon/common_define.h"
 #include "fastcommon/fc_list.h"
 #include "sf/sf_types.h"
+#include "diskallocator/binlog/common/binlog_types.h"
+
+#define FDIR_STORAGE_BINLOG_TYPE_INODE   0
+#define FDIR_STORAGE_BINLOG_TYPE_TRUNK   1
+#define FDIR_STORAGE_BINLOG_TYPE_COUNT   2
 
 #define FDIR_STORAGE_BATCH_INODE_BITS   16
 #define FDIR_STORAGE_BATCH_INODE_COUNT  (1 << FDIR_STORAGE_BATCH_INODE_BITS)
@@ -71,13 +76,12 @@ typedef struct fdir_inode_binlog_record {
 } FDIRInodeBinlogRecord;
 
 typedef struct fdir_inode_segment_index_info {
-    int64_t binlog_id;
+    DABinlogWriter writer;
     struct {
         uint64_t first;
         uint64_t last;
         FDIRStorageInodeIndexArray array;
         short status;
-        volatile int updating_count;
     } inodes;
     time_t last_access_time;
     pthread_lock_cond_pair_t lcp;

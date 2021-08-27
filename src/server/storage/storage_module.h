@@ -13,13 +13,19 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "read_fd_cache.h"
+#ifndef _STORAGE_MODULE_H
+#define _STORAGE_MODULE_H
 
-BinlogFDCacheContext g_read_cache_ctx;
+#include "storage_types.h"
 
-int read_fd_cache_init(const int max_idle_time, const int capacity)
-{
-    const int open_flags =  O_RDONLY;
-    return binlog_fd_cache_init(&g_read_cache_ctx,
-            open_flags, max_idle_time, capacity);
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+    int storage_module_init(const int max_idle_time, const int capacity);
+
+#ifdef __cplusplus
 }
+#endif
+
+#endif
