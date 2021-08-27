@@ -33,7 +33,7 @@
 #define BINLOG_FIELD_INDEX_OFFSET   4
 
 static int binlog_parse(const string_t *line,
-        FDIRStorageInodeIndexOpType *op_type,
+        DABinlogOpType *op_type,
         FDIRStorageInodeIndexInfo *inode_index, char *error_info)
 {
     int count;
@@ -84,10 +84,11 @@ int binlog_reader_unpack_record(const string_t *line,
     int result;
     FDIRInodeSegmentIndexInfo *segment;
     FDIRStorageInodeIndexInfo *inode;
-    FDIRStorageInodeIndexOpType op_type;
+    DABinlogOpType op_type;
 
     segment = (FDIRInodeSegmentIndexInfo *)args;
-    inode = segment->inodes.array.inodes + segment->inodes.array.counts.total;
+    inode = segment->inodes.array.inodes +
+        segment->inodes.array.counts.total;
     if ((result=binlog_parse(line, &op_type, inode, error_info)) != 0) {
         return result;
     }
@@ -145,7 +146,7 @@ int binlog_reader_get_first_inode(const uint64_t binlog_id, int64_t *inode)
     int result;
     int64_t bytes;
     string_t line;
-    FDIRStorageInodeIndexOpType op_type;
+    DABinlogOpType op_type;
     FDIRStorageInodeIndexInfo inode_index;
 
     write_fd_cache_filename(binlog_id, filename, sizeof(filename));
@@ -190,7 +191,7 @@ static inline int parse_created_inode(const uint64_t binlog_id,
 {
     int result;
     char error_info[SF_ERROR_INFO_SIZE];
-    FDIRStorageInodeIndexOpType op_type;
+    DABinlogOpType op_type;
     FDIRStorageInodeIndexInfo inode_index;
 
     if ((result=binlog_parse(line, &op_type,

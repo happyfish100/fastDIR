@@ -170,7 +170,8 @@ static int convert_to_segement_array(SFBinlogIndexContext *bctx)
             return ENOMEM;
         }
 
-        (*segment)->writer.key.id = binlog->binlog_id;
+        DA_SET_BINLOG_ID_TYPE((*segment)->writer.key, binlog->
+                binlog_id, FDIR_STORAGE_BINLOG_TYPE_INODE);
         (*segment)->inodes.first = binlog->inodes.first;
         (*segment)->inodes.last = binlog->inodes.last;
         (*segment)->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
@@ -223,7 +224,8 @@ static int segment_array_add(const uint64_t binlog_id,
         return result;
     }
 
-    segment->writer.key.id = binlog_id;
+    DA_SET_BINLOG_ID_TYPE(segment->writer.key, binlog_id,
+            FDIR_STORAGE_BINLOG_TYPE_INODE);
     segment->inodes.first = first_inode;
     segment->inodes.last = last_inode;
     segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
@@ -340,7 +342,8 @@ static int segment_array_inc(const uint64_t first_inode)
         }
     }
 
-    segment->writer.key.id = segment_index_ctx.current_binlog.binlog_id;
+    DA_SET_BINLOG_ID_TYPE(segment->writer.key, segment_index_ctx.
+            current_binlog.binlog_id, FDIR_STORAGE_BINLOG_TYPE_INODE);
     segment->inodes.first = first_inode;
     segment->inodes.last = first_inode;
     segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
@@ -560,7 +563,7 @@ int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
 
     if (result == 0) {
         return inode_binlog_writer_log(segment,
-                inode_index_op_type_create, inode);
+                da_binlog_op_type_create, inode);
     } else {
         return result;
     }
@@ -577,7 +580,7 @@ int inode_segment_index_delete(const uint64_t inode)
 
     inode_index.inode = inode;
     return inode_binlog_writer_log(segment,
-            inode_index_op_type_remove, &inode_index);
+            da_binlog_op_type_remove, &inode_index);
 }
 
 static int check_load(FDIRInodeSegmentIndexInfo *segment,
@@ -663,23 +666,24 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
 }
 
 int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
-        FDIRInodeBinlogRecord **records, const int count)
+        DABinlogRecord **records, const int count)
 {
     int result;
-    FDIRInodeBinlogRecord **record;
-    FDIRInodeBinlogRecord **end;
+    DABinlogRecord **record;
+    DABinlogRecord **end;
 
     PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
     if (segment->inodes.status == FDIR_STORAGE_SEGMENT_STATUS_READY) {
         end = records + count;
         for (record=records; record<end; record++) {
-            if ((*record)->op_type == inode_index_op_type_create) {
+            if ((*record)->op_type == da_binlog_op_type_create) {
                 result = inode_index_array_add(&segment->inodes.array,
-                        &(*record)->inode_index);
+                        (FDIRStorageInodeIndexInfo *)(*record)->args);
                 segment->inodes.array.counts.adding--;
             } else {
                 if ((result=inode_index_array_delete(&segment->inodes.array,
-                                (*record)->inode_index.inode)) == 0)
+                                ((FDIRStorageInodeIndexInfo *)
+                                 (*record)->args)->inode)) == 0)
                 {
                     if (2 * segment->inodes.array.counts.deleted >=
                             segment->inodes.array.counts.total)

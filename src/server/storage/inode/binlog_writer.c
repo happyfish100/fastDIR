@@ -31,7 +31,6 @@
 #include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
 #include "sf/sf_func.h"
-#include "diskallocator/binlog/space/binlog_writer.h"
 #include "write_fd_cache.h"
 #include "inode_index_array.h"
 #include "binlog_reader.h"
@@ -55,58 +54,55 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     cache->current += sprintf(cache->current,
             "%"PRId64" %"PRId64" %c %"PRId64" %d\n",
             index->version, index->inode,
-            inode_index_op_type_create,
+            da_binlog_op_type_create,
             index->file_id, index->offset);
     return 0;
 }
 
-static inline int log4remove(const FDIRStorageInodeIndexInfo *index,
-        DABinlogWriterCache *cache)
+int inode_binlog_pack_record_callback(void *args,
+        const DABinlogOpType op_type,
+        char *buff, const int size)
 {
-    int result;
+    FDIRStorageInodeIndexInfo *index;
 
-    if (cache->buff_end - cache->current <
-            FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
-    {
-        if ((result=da_binlog_writer_cache_write(cache)) != 0) {
-            return result;
-        }
-    }
-
-    cache->current += sprintf(cache->current,
-            "%"PRId64" %"PRId64" %c\n",
-            index->version, index->inode,
-            inode_index_op_type_remove);
-    return 0;
-}
-
-static int log(FDIRInodeBinlogRecord *record, DABinlogWriterCache *cache)
-{
-    if (record->op_type == inode_index_op_type_create) {
-        return log4create(&record->inode_index, cache);
+    index = (FDIRStorageInodeIndexInfo *)args;
+    if (op_type == da_binlog_op_type_create) {
+        return snprintf(buff, size,
+                "%"PRId64" %"PRId64" %c %"PRId64" %d\n",
+                index->version, index->inode,
+                op_type, index->file_id, index->offset);
     } else {
-        return log4remove(&record->inode_index, cache);
+        return snprintf(buff, size,
+                "%"PRId64" %"PRId64" %c\n",
+                index->version, index->inode, op_type);
     }
 }
 
-#define update_segment_index(start, end)  \
-    inode_segment_index_update((FDIRInodeSegmentIndexInfo *) \
-            (*start)->args, start, end - start)
+int inode_binlog_batch_update_callback(DABinlogWriter *writer,
+            DABinlogRecord **records, const int count)
+{
+    FDIRInodeSegmentIndexInfo *segment;
 
-static int shrink(FDIRInodeSegmentIndexInfo *segment)
+    segment = fc_list_entry(writer, FDIRInodeSegmentIndexInfo, writer);
+    return inode_segment_index_update(segment, records, count);
+}
+
+int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args)
 {
     int result;
+    FDIRInodeSegmentIndexInfo *segment;
     DABinlogWriterCache cache;
     FDIRStorageInodeIndexInfo *inode;
     FDIRStorageInodeIndexInfo *end;
     char full_filename[PATH_MAX];
     char tmp_filename[PATH_MAX];
 
+    segment = (FDIRInodeSegmentIndexInfo *)args;
     if ((result=inode_segment_index_shrink(segment)) != 0) {
         return result;
     }
 
-    write_fd_cache_filename(segment->writer.key.id,
+    da_write_fd_cache_filename(&segment->writer.key,
             full_filename, sizeof(full_filename));
     if (segment->inodes.array.counts.total == 0) {
         if ((result=fc_delete_file_ex(full_filename, "inode binlog")) != 0) {

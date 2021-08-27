@@ -31,7 +31,7 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode);
 int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment);
 
 int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
-        FDIRInodeBinlogRecord **records, const int count);
+        DABinlogRecord **records, const int count);
 
 int inode_segment_index_eliminate(const int min_elements);
 

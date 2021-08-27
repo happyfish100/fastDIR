@@ -18,19 +18,41 @@
 #ifndef _INODE_BINLOG_WRITER_H_
 #define _INODE_BINLOG_WRITER_H_
 
+#include "diskallocator/binlog/space/binlog_writer.h"
 #include "../storage_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo *segment,
-        const FDIRStorageInodeIndexOpType op_type,
-        const FDIRStorageInodeIndexInfo *inode_index);
+static inline int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo
+        *segment, const DABinlogOpType op_type,
+        const FDIRStorageInodeIndexInfo *inode_index)
+{
+    return da_binlog_writer_log(&segment->writer,
+            op_type, (void *)inode_index);
+}
 
-int inode_binlog_writer_synchronize(FDIRInodeSegmentIndexInfo *segment);
+static inline int inode_binlog_writer_synchronize(
+        FDIRInodeSegmentIndexInfo *segment)
+{
+    return da_binlog_writer_synchronize(&segment->writer);
+}
 
-int inode_binlog_writer_shrink(FDIRInodeSegmentIndexInfo *segment);
+static inline int inode_binlog_writer_shrink(
+        FDIRInodeSegmentIndexInfo *segment)
+{
+    return da_binlog_writer_shrink(&segment->writer, segment);
+}
+
+int inode_binlog_pack_record_callback(void *args,
+        const DABinlogOpType op_type,
+        char *buff, const int size);
+
+int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args);
+
+int inode_binlog_batch_update_callback(DABinlogWriter *writer,
+            DABinlogRecord **records, const int count);
 
 #ifdef __cplusplus
 }

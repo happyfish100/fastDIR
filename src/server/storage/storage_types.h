@@ -55,25 +55,10 @@ typedef struct fdir_storage_inode_index_array {
     } counts;
 } FDIRStorageInodeIndexArray;
 
-typedef enum fdir_storage_inode_index_op_type {
-    inode_index_op_type_create = 'c',
-    inode_index_op_type_remove = 'd',
-    inode_index_op_type_synchronize = 's'
-} FDIRStorageInodeIndexOpType;
-
 typedef enum fdir_inode_binlog_id_op_type {
     inode_binlog_id_op_type_create = 'c',
     inode_binlog_id_op_type_remove = 'd'
 } FDIRInodeBinlogIdOpType;
-
-typedef struct fdir_inode_binlog_record {
-    uint64_t binlog_id;
-    int64_t version;  //for stable sort
-    FDIRStorageInodeIndexOpType op_type;
-    FDIRStorageInodeIndexInfo inode_index;
-    void *args;
-    struct fdir_inode_binlog_record *next;  //for queue
-} FDIRInodeBinlogRecord;
 
 typedef struct fdir_inode_segment_index_info {
     DABinlogWriter writer;
