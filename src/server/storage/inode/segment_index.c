@@ -251,7 +251,7 @@ static int set_last_segment_inode(uint64_t *last_bid)
     }
 
     *last_bid = segment->writer.key.id;
-    if ((result=binlog_reader_get_last_inode(segment->
+    if ((result=inode_binlog_reader_get_last_inode(segment->
                     writer.key.id, &last_inode)) != 0)
     {
         return result == ENOENT ? 0 : result;
@@ -281,7 +281,7 @@ static int replay_with_bid_journal()
         segment = find_segment_by_bid(journal->binlog_id);
         if (journal->op_type == inode_binlog_id_op_type_create) {
             if (segment == NULL) {
-                result = binlog_reader_get_first_inode(
+                result = inode_binlog_reader_get_first_inode(
                         journal->binlog_id, &first_inode);
                 if (result != 0) {
                     if (result == ENOENT) {
@@ -290,7 +290,7 @@ static int replay_with_bid_journal()
                     }
                     break;
                 }
-                if ((result=binlog_reader_get_last_inode(journal->
+                if ((result=inode_binlog_reader_get_last_inode(journal->
                                 binlog_id, &last_inode)) != 0)
                 {
                     break;
@@ -607,7 +607,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
                     }
                 }
 
-                if ((result=binlog_reader_load(segment)) != 0) {
+                if ((result=inode_binlog_reader_load(segment)) != 0) {
                     break;
                 }
                 *new_load = true;

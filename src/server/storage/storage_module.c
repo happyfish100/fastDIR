@@ -26,7 +26,7 @@ int storage_module_init(const int max_idle_time, const int capacity)
     DA_BINLOG_SET_TYPE_SUBDIR_PAIR(pairs[FDIR_STORAGE_BINLOG_TYPE_INODE],
             FDIR_STORAGE_BINLOG_TYPE_INODE, "inode",
             inode_binlog_pack_record_callback,
-            binlog_reader_unpack_record,
+            inode_binlog_reader_unpack_record,
             inode_binlog_batch_update_callback,
             inode_binlog_shrink_callback);
 

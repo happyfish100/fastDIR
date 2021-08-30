@@ -24,14 +24,16 @@
 extern "C" {
 #endif
 
-int binlog_reader_unpack_record(const string_t *line,
+int inode_binlog_reader_unpack_record(const string_t *line,
         void *args, char *error_info);
 
-int binlog_reader_load(FDIRInodeSegmentIndexInfo *segment);
+int inode_binlog_reader_load(FDIRInodeSegmentIndexInfo *segment);
 
-int binlog_reader_get_first_inode(const uint64_t binlog_id, int64_t *inode);
+int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
+        int64_t *inode);
 
-int binlog_reader_get_last_inode(const uint64_t binlog_id, int64_t *inode);
+int inode_binlog_reader_get_last_inode(const uint64_t binlog_id,
+        int64_t *inode);
 
 #ifdef __cplusplus
 }

@@ -18,4 +18,29 @@
 
 #include "../storage_types.h"
 
+typedef struct fdir_trunk_slice_info {
+    int64_t version;
+    int offset;
+    int size;
+    int status;
+} FDIRTrunkSliceInfo;
+
+typedef struct fdir_trunk_slice_array {
+    FDIRTrunkSliceInfo *slices;
+    int alloc;
+    struct {
+        int total;
+        int deleted;
+        int adding;
+    } counts;
+} FDIRTrunkSliceArray;
+
+typedef struct fdir_storage_trunk_info {
+    int64_t version;
+    int trunk_id;
+    int file_size;
+    int used_bytes;
+    int free_start;
+} FDIRStorageTrunkInfo;
+
 #endif
