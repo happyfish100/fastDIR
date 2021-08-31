@@ -16,6 +16,8 @@
 #include "diskallocator/binlog/common/write_fd_cache.h"
 #include "inode/binlog_reader.h"
 #include "inode/binlog_writer.h"
+#include "trunk/binlog_reader.h"
+#include "trunk/binlog_writer.h"
 #include "storage_module.h"
 
 int storage_module_init(const int max_idle_time, const int capacity)
@@ -32,8 +34,10 @@ int storage_module_init(const int max_idle_time, const int capacity)
 
 
     DA_BINLOG_SET_TYPE_SUBDIR_PAIR(pairs[FDIR_STORAGE_BINLOG_TYPE_TRUNK],
-            FDIR_STORAGE_BINLOG_TYPE_TRUNK, "trunk", NULL, NULL, NULL, NULL);
-    //    _pack_record, _unpack_record, _batch_update, _shrink);
+            FDIR_STORAGE_BINLOG_TYPE_TRUNK, "trunk",
+            slice_binlog_pack_record_callback,
+            slice_binlog_reader_unpack_record,
+            NULL, NULL);
 
     type_subdir_array.pairs = pairs;
     type_subdir_array.count = FDIR_STORAGE_BINLOG_TYPE_COUNT;

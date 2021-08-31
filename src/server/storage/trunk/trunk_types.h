@@ -18,6 +18,8 @@
 
 #include "../storage_types.h"
 
+#define FDIR_SLICE_BINLOG_RECORD_MAX_SIZE  64
+
 typedef struct fdir_trunk_slice_info {
     int64_t version;
     int offset;
@@ -35,12 +37,16 @@ typedef struct fdir_trunk_slice_array {
     } counts;
 } FDIRTrunkSliceArray;
 
-typedef struct fdir_storage_trunk_info {
-    int64_t version;
-    int trunk_id;
+typedef struct fdir_trunk_info {
+    DABinlogWriter writer;
+    struct {
+        FDIRTrunkSliceArray array;
+        short status;
+    } slices;
+
     int file_size;
     int used_bytes;
     int free_start;
-} FDIRStorageTrunkInfo;
+} FDIRTrunkInfo;
 
 #endif

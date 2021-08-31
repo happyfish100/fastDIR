@@ -13,8 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _INODE_WRITE_FD_CACHE_H
-#define _INODE_WRITE_FD_CACHE_H
+#ifndef _SLICE_WRITE_FD_CACHE_H
+#define _SLICE_WRITE_FD_CACHE_H
 
 #include "diskallocator/binlog/common/write_fd_cache.h"
 #include "../storage_types.h"
@@ -24,25 +24,25 @@ extern "C" {
 #endif
 
     //return fd, < 0 for error
-    static inline int write_fd_cache_get(const uint64_t binlog_id)
+    static inline int write_fd_cache_get(const uint64_t trunk_id)
     {
-        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
-                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, trunk_id,
+                FDIR_STORAGE_BINLOG_TYPE_TRUNK);
         return da_write_fd_cache_get(&key);
     }
 
-    static inline int write_fd_cache_remove(const uint64_t binlog_id)
+    static inline int write_fd_cache_remove(const uint64_t trunk_id)
     {
-        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
-                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, trunk_id,
+                FDIR_STORAGE_BINLOG_TYPE_TRUNK);
         return da_write_fd_cache_remove(&key);
     }
 
-    static inline int write_fd_cache_filename(const uint64_t binlog_id,
+    static inline int write_fd_cache_filename(const uint64_t trunk_id,
             char *full_filename, const int size)
     {
-        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, binlog_id,
-                FDIR_STORAGE_BINLOG_TYPE_INODE);
+        DA_DECLARE_BINLOG_ID_TYPE_VAR(key, trunk_id,
+                FDIR_STORAGE_BINLOG_TYPE_TRUNK);
         return da_write_fd_cache_filename(&key, full_filename, size);
     }
 
