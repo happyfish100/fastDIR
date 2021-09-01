@@ -52,7 +52,9 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
     SF_BINLOG_PARSE_INT_SILENCE(inode_index->inode,
             "inode", BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
-    if (*op_type == da_binlog_op_type_create) {
+    if (*op_type == da_binlog_op_type_create ||
+            *op_type == da_binlog_op_type_update)
+    {
         if (count != BINLOG_MAX_FIELD_COUNT) {
             sprintf(error_info, "field count: %d != %d",
                     count, BINLOG_MAX_FIELD_COUNT);
@@ -94,6 +96,12 @@ int inode_binlog_reader_unpack_record(const string_t *line,
 
     if (op_type == da_binlog_op_type_create) {
         if ((result=inode_index_array_add(&segment->
+                        inodes.array, inode)) != 0)
+        {
+            *error_info = '\0';
+        }
+    } else if (op_type == da_binlog_op_type_update) {
+        if ((result=inode_index_array_update(&segment->
                         inodes.array, inode)) != 0)
         {
             *error_info = '\0';

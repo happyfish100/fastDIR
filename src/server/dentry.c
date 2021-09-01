@@ -121,6 +121,12 @@ static void dentry_do_free(void *ptr)
     FDIRServerDentry *dentry;
     dentry = (FDIRServerDentry *)ptr;
 
+    if (STORAGE_ENABLED) {
+        if (__sync_sub_and_fetch(&dentry->db_args->reffer_count, 1) != 0) {
+            return;
+        }
+    }
+
     if (dentry->children != NULL) {
         uniq_skiplist_free(dentry->children);
     }
@@ -253,6 +259,7 @@ struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
 int dentry_init_context(FDIRDataThreadContext *db_context)
 {
     FDIRDentryContext *context;
+    int element_size;
     int result;
 
     context = &db_context->dentry_context;
@@ -265,9 +272,15 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
         return result;
     }
 
+    if (STORAGE_ENABLED) {
+        element_size = sizeof(FDIRServerDentry) +
+            sizeof(FDIRServerDentryDBArgs);
+    } else {
+        element_size = sizeof(FDIRServerDentry);
+    }
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
-                    "dentry", sizeof(FDIRServerDentry), 8 * 1024,
-                    0, dentry_init_obj, context, false)) != 0)
+                    "dentry", element_size, 8 * 1024,
+                    0, dentry_init_obj, context, true)) != 0)
     {
         return result;
     }
@@ -505,6 +518,9 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
             &db_context->dentry_context.dentry_allocator);
     if (current == NULL) {
         return ENOMEM;
+    }
+    if (STORAGE_ENABLED) {
+        __sync_add_and_fetch(&current->db_args->reffer_count, 1);
     }
 
     is_dir = S_ISDIR(record->stat.mode);

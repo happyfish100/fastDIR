@@ -70,7 +70,7 @@ int inode_binlog_batch_update_callback(DABinlogWriter *writer,
     FDIRInodeSegmentIndexInfo *segment;
 
     segment = fc_list_entry(writer, FDIRInodeSegmentIndexInfo, writer);
-    return inode_segment_index_update(segment, records, count);
+    return inode_segment_index_batch_update(segment, records, count);
 }
 
 int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args)

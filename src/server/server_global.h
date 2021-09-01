@@ -78,7 +78,7 @@ typedef struct server_global_vars {
     } data;  //for binlog
 
     struct {
-        volatile uint32_t current_file_id; //binlog file id
+        bool enabled;
         int inode_binlog_subdirs;
         int inode_index_dump_interval;
         TimeInfo inode_index_dump_base_time;
@@ -136,6 +136,8 @@ typedef struct server_global_vars {
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
 
+
+#define STORAGE_ENABLED         g_server_global_vars.storage.enabled
 #define STORAGE_PATH            g_server_global_vars.storage.path
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len

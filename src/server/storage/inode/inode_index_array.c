@@ -30,7 +30,7 @@
 #include "inode_index_array.h"
 
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeIndexInfo *node)
+        const FDIRStorageInodeIndexInfo *inode)
 {
     FDIRStorageInodeIndexInfo *dest;
 
@@ -42,7 +42,7 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
     }
 
     dest = array->inodes + array->counts.total++;
-    *dest = *node;
+    *dest = *inode;
     dest->status = FDIR_STORAGE_INODE_STATUS_NORMAL;
     return 0;
 }
@@ -123,15 +123,31 @@ int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
 int inode_index_array_find(FDIRStorageInodeIndexArray *array,
         FDIRStorageInodeIndexInfo *inode)
 {
-    FDIRStorageInodeIndexInfo *node;
+    FDIRStorageInodeIndexInfo *found;
 
-    node = (FDIRStorageInodeIndexInfo *)bsearch(inode, array->inodes,
+    found = (FDIRStorageInodeIndexInfo *)bsearch(inode, array->inodes,
             array->counts.total, sizeof(FDIRStorageInodeIndexInfo),
             (int (*)(const void *, const void *))inode_index_array_compare);
-    if (node == NULL || node->status != FDIR_STORAGE_INODE_STATUS_NORMAL) {
+    if (found == NULL || found->status != FDIR_STORAGE_INODE_STATUS_NORMAL) {
         return ENOENT;
     }
 
-    *inode = *node;
+    *inode = *found;
+    return 0;
+}
+
+int inode_index_array_update(FDIRStorageInodeIndexArray *array,
+        const FDIRStorageInodeIndexInfo *inode)
+{
+    FDIRStorageInodeIndexInfo *found;
+
+    found = (FDIRStorageInodeIndexInfo *)bsearch(inode, array->inodes,
+            array->counts.total, sizeof(FDIRStorageInodeIndexInfo),
+            (int (*)(const void *, const void *))inode_index_array_compare);
+    if (found == NULL || found->status != FDIR_STORAGE_INODE_STATUS_NORMAL) {
+        return ENOENT;
+    }
+
+    *found = *inode;
     return 0;
 }

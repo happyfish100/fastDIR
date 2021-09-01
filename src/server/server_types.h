@@ -29,6 +29,7 @@
 #include "fastcommon/fc_atomic.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
+#include "diskallocator/binlog/common/binlog_types.h"
 #include "common/fdir_types.h"
 
 #define FDIR_MAX_NS_SUBSCRIBERS                8
@@ -105,10 +106,18 @@ struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
 
+typedef struct fdir_server_dentry_db_args {
+    int64_t version;
+    bool in_queue;
+    DABinlogOpType op_type;
+    volatile int reffer_count;
+    struct fc_list_head dlink;
+} FDIRServerDentryDBArgs;
+
 typedef struct fdir_server_dentry {
     int64_t inode;
-    unsigned int hash_code;   //data thread dispach & mutex lock
     string_t name;
+    unsigned int hash_code;   //data thread dispach & mutex lock
     FDIRDEntryStat stat;
 
     union {
@@ -122,7 +131,8 @@ typedef struct fdir_server_dentry {
     struct fdir_server_dentry *parent;
     struct fdir_namespace_entry *ns_entry;
     struct flock_entry *flock_entry;
-    struct fdir_server_dentry *ht_next;  //for inode hash table;
+    struct fdir_server_dentry *ht_next;  //for inode hash table
+    FDIRServerDentryDBArgs db_args[0];  //for data persistency, since V3.0
 } FDIRServerDentry;
 
 typedef struct fdir_server_dentry_array {

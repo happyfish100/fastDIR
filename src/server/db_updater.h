@@ -13,28 +13,21 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//segment_index.h
 
-#ifndef _INODE_SEGMENT_INDEX_H_
-#define _INODE_SEGMENT_INDEX_H_
+#ifndef _FDIR_DB_UPDATER_H
+#define _FDIR_DB_UPDATER_H
 
-#include "../storage_types.h"
+#include "server_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int inode_segment_index_init();
-int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode);
-int inode_segment_index_delete(const uint64_t inode);
-int inode_segment_index_update(const FDIRStorageInodeIndexInfo *inode);
-int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode);
-int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment);
+    int db_updater_init();
+    void db_updater_destroy();
 
-int inode_segment_index_batch_update(FDIRInodeSegmentIndexInfo *segment,
-        DABinlogRecord **records, const int count);
-
-int inode_segment_index_eliminate(const int min_elements);
+    void db_updater_push_to_queue(FDIRServerDentry *dentry,
+            const int64_t version, const DABinlogOpType op_type);
 
 #ifdef __cplusplus
 }

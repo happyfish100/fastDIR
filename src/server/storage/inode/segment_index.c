@@ -583,6 +583,18 @@ int inode_segment_index_delete(const uint64_t inode)
             da_binlog_op_type_remove, &inode_index);
 }
 
+int inode_segment_index_update(const FDIRStorageInodeIndexInfo *inode)
+{
+    FDIRInodeSegmentIndexInfo *segment;
+
+    if ((segment=find_segment_by_inode(inode->inode)) == NULL) {
+        return ENOENT;
+    }
+
+    return inode_binlog_writer_log(segment,
+            da_binlog_op_type_update, inode);
+}
+
 static int check_load(FDIRInodeSegmentIndexInfo *segment,
         const bool synchronized, bool *new_load)
 {
@@ -665,7 +677,7 @@ int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
     return result;
 }
 
-int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
+int inode_segment_index_batch_update(FDIRInodeSegmentIndexInfo *segment,
         DABinlogRecord **records, const int count)
 {
     int result;
@@ -680,6 +692,9 @@ int inode_segment_index_update(FDIRInodeSegmentIndexInfo *segment,
                 result = inode_index_array_add(&segment->inodes.array,
                         (FDIRStorageInodeIndexInfo *)(*record)->args);
                 segment->inodes.array.counts.adding--;
+            } else if ((*record)->op_type == da_binlog_op_type_update) {
+                result = inode_index_array_update(&segment->inodes.array,
+                        (FDIRStorageInodeIndexInfo *)(*record)->args);
             } else {
                 if ((result=inode_index_array_delete(&segment->inodes.array,
                                 ((FDIRStorageInodeIndexInfo *)

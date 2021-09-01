@@ -30,7 +30,7 @@ SHARED_LIBS = libfdirstorage.so
 STATIC_LIBS = libfdirstorage.a
 ALL_LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
 
-all: $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
+all: $(ALL_OBJS) $(ALL_PRGS) $(STATIC_LIBS)
 libfdirstorage.so: $(FAST_SHARED_OBJS)
 	$(COMPILE) -o $@ -shared $(FAST_SHARED_OBJS) $(LIB_PATH)
 libfdirstorage.a: $(FAST_STATIC_OBJS)
