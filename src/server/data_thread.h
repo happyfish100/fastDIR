@@ -37,6 +37,7 @@ typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
     struct fast_mblock_man kvarray_allocators[FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT];
+    struct fast_mblock_man event_allocator;  //for change notify when data persistency
     struct fast_allocator_context name_acontext;
     struct fdir_data_thread_context *db_context;
     FDIRDentryCounters counters;
@@ -64,6 +65,7 @@ typedef struct server_delay_free_context {
 
 typedef struct fdir_data_thread_context {
     int index;
+    volatile int64_t last_data_version;  //for data persistency
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerDelayFreeContext delay_free_context;

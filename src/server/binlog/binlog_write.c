@@ -49,6 +49,8 @@ int binlog_write_init()
     {
         return result;
     }
+    sf_binlog_writer_set_flags(&g_binlog_writer_ctx.writer,
+            SF_BINLOG_WRITER_FLAGS_WANT_DONE_VERSION);
 
     return sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
             FDIR_BINLOG_SUBDIR_NAME, &g_binlog_writer_ctx.writer,

@@ -31,6 +31,7 @@
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
+#include "sf/sf_func.h"
 #include "sf/sf_nio.h"
 #include "common/fdir_proto.h"
 #include "../server_global.h"
@@ -227,7 +228,7 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int length,
         const SFVersionRange *data_version)
 {
-    ServerBinlogRecordBuffer *rb = NULL;
+    ServerBinlogRecordBuffer *rb;
     static int max_waiting_count = 0;
     int result;
     int waiting_count;

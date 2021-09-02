@@ -31,9 +31,11 @@
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
+#include "sf/sf_func.h"
 #include "server_global.h"
 #include "dentry.h"
 #include "inode_index.h"
+#include "db_updater.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -165,6 +167,7 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
     {
         return result;
     }
+
     return 0;
 }
 
@@ -308,6 +311,14 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     return dentry_rename(thread_ctx, record);
 }
 
+static int push_to_update_queue(FDIRBinlogRecord *record)
+{
+    if (record->removed.count > 0) {
+    //record->removed.dentries[record->removed.count
+    }
+    return 0;
+}
+
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -316,6 +327,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     bool set_data_verson;
     bool is_error;
 
+    record->removed.count = 0;
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:
@@ -384,6 +396,21 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         if (record->data_version > old_version) {
             __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
                     old_version, record->data_version);
+        }
+    }
+
+    if (result == 0 && STORAGE_ENABLED) {
+        if (record->data_version > thread_ctx->last_data_version) {
+            thread_ctx->last_data_version = record->data_version;
+        }
+
+        if (record->type == fdir_record_type_update) {
+            if ((result=push_to_update_queue(record)) != 0) {
+                logCrit("file: "__FILE__", line: %d, "
+                        "push_to_update_queue fail, "
+                        "program exit!", __LINE__);
+                sf_terminate_myself();
+            }
         }
     }
 

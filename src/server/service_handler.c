@@ -1075,6 +1075,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
     task->continue_callback = handle_record_deal_done;
     RECORD->notify.func = record_deal_done_notify; //call by data thread
     RECORD->notify.args = task;
+    RECORD->type = fdir_record_type_update;
     push_to_data_thread_queue(RECORD);
     return TASK_STATUS_CONTINUE;
 }

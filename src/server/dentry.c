@@ -30,6 +30,7 @@
 #include "inode_generator.h"
 #include "inode_index.h"
 #include "ns_manager.h"
+#include "change_notify.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2
@@ -273,6 +274,13 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     }
 
     if (STORAGE_ENABLED) {
+        if ((result=fast_mblock_init_ex1(&context->event_allocator,
+                        "chg-event", sizeof(FDIRChangeNotifyEvent),
+                        8 * 1024, 0, NULL, NULL, true)) != 0)
+        {
+            return result;
+        }
+
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
     } else {
@@ -635,7 +643,8 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
 }
 
 static int do_remove_dentry(FDIRDataThreadContext *db_context,
-        FDIRServerDentry *dentry, bool *free_dentry)
+        FDIRBinlogRecord *record, FDIRServerDentry *dentry,
+        bool *free_dentry)
 {
     int result;
 
@@ -652,7 +661,11 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
             {
                 return result;
             }
+            record->removed.dentries[record->removed.count++] =
+                dentry->src_dentry;
         }
+
+        record->removed.dentries[record->removed.count++] = dentry;
         *free_dentry = true;
     } else {
         if (--(dentry->stat.nlink) == 0) {
@@ -660,13 +673,14 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                 return result;
             }
 
+            record->removed.dentries[record->removed.count++] = dentry;
             *free_dentry = true;
         } else {
             /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "dentry: %"PRId64", nlink: %d > 0, skip remove",
-                    __LINE__, dentry->inode, dentry->stat.nlink);
-                    */
+               logInfo("file: "__FILE__", line: %d, "
+               "dentry: %"PRId64", nlink: %d > 0, skip remove",
+               __LINE__, dentry->inode, dentry->stat.nlink);
+             */
             *free_dentry = false;
         }
     }
@@ -708,8 +722,8 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     }
 
     record->inode = record->me.dentry->inode;
-    if ((result=do_remove_dentry(db_context, record->me.
-                    dentry, &free_dentry)) != 0)
+    if ((result=do_remove_dentry(db_context, record,
+                    record->me.dentry, &free_dentry)) != 0)
     {
         return result;
     }
@@ -939,9 +953,10 @@ static int move_dentry(FDIRDataThreadContext *db_context,
     }
 
     do {
-        if ((result=set_and_store_dentry_name(db_context, record->rename.src.dentry,
-                        &record->rename.dest.pname.name, name_changed,
-                        &old_src_pair)) != 0)
+        if ((result=set_and_store_dentry_name(db_context,
+                        record->rename.src.dentry,
+                        &record->rename.dest.pname.name,
+                        name_changed, &old_src_pair)) != 0)
         {
             break;
         }
@@ -960,8 +975,8 @@ static int move_dentry(FDIRDataThreadContext *db_context,
         record->rename.overwritten = record->rename.dest.dentry;
         if (record->rename.dest.dentry != NULL) {
             bool free_dentry;
-            if ((result=do_remove_dentry(db_context, record->rename.
-                            dest.dentry, &free_dentry)) == 0)
+            if ((result=do_remove_dentry(db_context, record, record->
+                            rename.dest.dentry, &free_dentry)) == 0)
             {
                 result = uniq_skiplist_replace_ex(record->rename.dest.parent->
                         children, record->rename.src.dentry, free_dentry);

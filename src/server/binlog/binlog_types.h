@@ -69,15 +69,21 @@ typedef struct {
     FDIRServerDentry *dentry;
 } FDIRRecordDEntry;
 
+typedef enum {
+    fdir_record_type_load = 'l',
+    fdir_record_type_update = 'u'
+} FDIRRecordType;
+
 typedef struct fdir_binlog_record {
     uint64_t data_version;
     int64_t inode;
+    string_t ns;   //namespace
+    FDIRRecordType type;
     unsigned int hash_code;
     int operation;
     int timestamp;
     int flags;
     FDIRStatModifyFlags options;
-    string_t ns;   //namespace
 
     union {
         struct {
@@ -94,6 +100,12 @@ typedef struct fdir_binlog_record {
 
         FDIRRecordDEntry me;  //for create and remove
     };
+
+    /* removed dentries for rename and remove operation */
+    struct {
+        FDIRServerDentry *dentries[2];
+        int count;
+    } removed;
 
     FDIRDEntryStat stat;
 
