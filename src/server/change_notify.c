@@ -17,7 +17,8 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/sorted_queue.h"
-#include "server_global.h"
+#include "data_thread.h"
+#include "db_updater.h"
 #include "change_notify.h"
 
 typedef struct fdir_change_notify_context {
@@ -26,15 +27,39 @@ typedef struct fdir_change_notify_context {
 
 static FDIRchangeNotifyContext change_notify_ctx;
 
+static void deal_events(FDIRChangeNotifyEvent *head)
+{
+    FDIRChangeNotifyEvent *event;
+
+    do {
+        event = head;
+        head = head->next;
+
+        db_updater_push_to_queue(event);
+        fast_mblock_free_object(&event->marray.messages[0].
+                dentry->context->event_allocator, event);
+    } while (head != NULL);
+}
+
 static void *change_notify_func(void *arg)
 {
+
+    FDIRChangeNotifyEvent less_than;
+    FDIRChangeNotifyEvent *head;
 
 #ifdef OS_LINUX
     prctl(PR_SET_NAME, "chg-notify");
 #endif
 
     while (SF_G_CONTINUE_FLAG) {
-        //TODO
+        less_than.version = data_thread_get_last_data_version();
+        if ((head=sorted_queue_pop_all(&change_notify_ctx.
+                        queue, &less_than)) != NULL)
+        {
+            deal_events(head);
+        }
+
+        fc_sleep_ms(10);
     }
 
     return NULL;

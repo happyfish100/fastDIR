@@ -32,7 +32,6 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
 #include "sf/sf_func.h"
-#include "server_global.h"
 #include "dentry.h"
 #include "inode_index.h"
 #include "change_notify.h"
@@ -113,7 +112,7 @@ int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
     return 0;
 }
 
-static int deal_delay_free_queque(FDIRDataThreadContext *thread_ctx)
+static int deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
 {
     ServerDelayFreeContext *delay_context;
     ServerDelayFreeNode *node;
@@ -497,8 +496,8 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     }
 
     if (result == 0 && STORAGE_ENABLED) {
-        if (record->data_version > thread_ctx->last_data_version) {
-            thread_ctx->last_data_version = record->data_version;
+        if (record->data_version > thread_ctx->update_notify.last_version) {
+            thread_ctx->update_notify.last_version = record->data_version;
         }
 
         if (record->type == fdir_record_type_update) {
@@ -531,6 +530,7 @@ static void *data_thread_func(void *arg)
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *current;
     FDIRDataThreadContext *thread_ctx;
+    int count;
 
     __sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     thread_ctx = (FDIRDataThreadContext *)arg;
@@ -550,13 +550,20 @@ static void *data_thread_func(void *arg)
             continue;
         }
 
+        count = 0;
         do {
             current = record;
             record = record->next;
             deal_binlog_one_record(thread_ctx, current);
+            ++count;
         } while (record != NULL);
 
-        deal_delay_free_queque(thread_ctx);
+        if (STORAGE_ENABLED) {
+            __sync_sub_and_fetch(&thread_ctx->update_notify.
+                    waiting_records, count);
+        }
+
+        deal_delay_free_queue(thread_ctx);
     }
     __sync_sub_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     return NULL;

@@ -18,6 +18,7 @@
 #define _FDIR_DB_UPDATER_H
 
 #include "server_types.h"
+#include "change_notify.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,8 +27,7 @@ extern "C" {
     int db_updater_init();
     void db_updater_destroy();
 
-    void db_updater_push_to_queue(FDIRServerDentry *dentry,
-            const int64_t version, const DABinlogOpType op_type);
+    void db_updater_push_to_queue(FDIRChangeNotifyEvent *event);
 
 #ifdef __cplusplus
 }

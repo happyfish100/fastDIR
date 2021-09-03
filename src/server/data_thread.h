@@ -22,6 +22,7 @@
 #include "fastcommon/server_id_func.h"
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
+#include "server_global.h"
 
 #define FDIR_DATA_ERROR_MODE_STRICT   1   //for master update operations
 #define FDIR_DATA_ERROR_MODE_LOOSE    2   //for data load or binlog replication
@@ -65,7 +66,10 @@ typedef struct server_delay_free_context {
 
 typedef struct fdir_data_thread_context {
     int index;
-    volatile int64_t last_data_version;  //for data persistency
+    struct {
+        volatile int waiting_records;
+        volatile int64_t last_version;
+    } update_notify; //for data persistency
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerDelayFreeContext delay_free_context;
@@ -127,7 +131,36 @@ extern "C" {
         FDIRDataThreadContext *context;
         context = g_data_thread_vars.thread_array.contexts +
             record->hash_code % g_data_thread_vars.thread_array.count;
+        if (STORAGE_ENABLED) {
+            __sync_add_and_fetch(&context->update_notify.waiting_records, 1);
+        }
         fc_queue_push(&context->queue, record);
+    }
+
+    static inline int64_t data_thread_get_last_data_version()
+    {
+        FDIRDataThreadContext *ctx;
+        FDIRDataThreadContext *end;
+        int64_t min_version;
+        int64_t max_version;
+
+        min_version = INT64_MAX;
+        max_version = 0;
+        end = g_data_thread_vars.thread_array.contexts +
+            g_data_thread_vars.thread_array.count;
+        for (ctx=g_data_thread_vars.thread_array.contexts; ctx<end; ctx++) {
+            if (__sync_add_and_fetch(&ctx->update_notify.waiting_records, 0) > 0) {
+                if (min_version > ctx->update_notify.last_version) {
+                    min_version = ctx->update_notify.last_version;
+                }
+            } else {
+                if (max_version < ctx->update_notify.last_version) {
+                    max_version = ctx->update_notify.last_version;
+                }
+            }
+        }
+
+        return (min_version != INT64_MAX ?  min_version : max_version);
     }
 
 #ifdef __cplusplus

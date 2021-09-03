@@ -865,12 +865,6 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
     StringHolderPtrPair old_src_pair;
     StringHolderPtrPair old_dest_pair;
 
-    if (record->rename.dest.parent == record->rename.src.parent) {
-        //TODO exchange name
-        record->inode = record->rename.src.dentry->inode;
-        return 0;
-    }
-
     /*
     logInfo("file: "__FILE__", line: %d, "
             "src parent inode: %"PRId64", dest parent inode: %"PRId64,

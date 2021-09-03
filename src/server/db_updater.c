@@ -59,21 +59,25 @@ void db_updater_destroy()
 {
 }
 
-void db_updater_push_to_queue(FDIRServerDentry *dentry,
-        const int64_t version, const DABinlogOpType op_type)
+void db_updater_push_to_queue(FDIRChangeNotifyEvent *event)
 {
     bool notify;
+    FDIRChangeNotifyMessage *msg;
+    FDIRChangeNotifyMessage *end;
 
     PTHREAD_MUTEX_LOCK(&db_updater_ctx.lc_pair.lock);
-    dentry->db_args->version = version;
-    dentry->db_args->op_type = op_type;
     notify = fc_list_empty(&db_updater_ctx.head);
-    if (!dentry->db_args->in_queue) {
-        dentry->db_args->in_queue = true;
-        __sync_add_and_fetch(&dentry->db_args->reffer_count, 1);
-        fc_list_add_tail(&dentry->db_args->dlink, &db_updater_ctx.head);
-    } else {
-        fc_list_move_tail(&dentry->db_args->dlink, &db_updater_ctx.head);
+    end = event->marray.messages + event->marray.count;
+    for (msg=event->marray.messages; msg<end; msg++) {
+        msg->dentry->db_args->version = event->version;
+        msg->dentry->db_args->op_type = msg->op_type;
+        if (!msg->dentry->db_args->in_queue) {
+            msg->dentry->db_args->in_queue = true;
+            __sync_add_and_fetch(&msg->dentry->db_args->reffer_count, 1);
+            fc_list_add_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);
+        } else {
+            fc_list_move_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);
+        }
     }
     PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);
 
