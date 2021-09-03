@@ -276,10 +276,12 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     if (STORAGE_ENABLED) {
         if ((result=fast_mblock_init_ex1(&context->event_allocator,
                         "chg-event", sizeof(FDIRChangeNotifyEvent),
-                        8 * 1024, 0, NULL, NULL, true)) != 0)
+                        8 * 1024, 16 * 1024, NULL, NULL, true)) != 0)
         {
             return result;
         }
+        fast_mblock_set_need_wait(&context->event_allocator,
+                true, (bool *)&SF_G_CONTINUE_FLAG);
 
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
@@ -864,6 +866,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
     StringHolderPtrPair old_dest_pair;
 
     if (record->rename.dest.parent == record->rename.src.parent) {
+        //TODO exchange name
         record->inode = record->rename.src.dentry->inode;
         return 0;
     }

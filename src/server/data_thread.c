@@ -35,7 +35,7 @@
 #include "server_global.h"
 #include "dentry.h"
 #include "inode_index.h"
-#include "db_updater.h"
+#include "change_notify.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -311,11 +311,108 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     return dentry_rename(thread_ctx, record);
 }
 
-static int push_to_update_queue(FDIRBinlogRecord *record)
+#define GENERATE_DENTRY_MESSAGES(msg, dentry, op_type) \
+    if ((dentry)->parent != NULL) {  \
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, \
+                (dentry)->parent, da_binlog_op_type_update); \
+    }  \
+    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, op_type)
+
+static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
+        FDIRBinlogRecord *record)
 {
-    if (record->removed.count > 0) {
-    //record->removed.dentries[record->removed.count
+    FDIRServerDentry **dentry;
+    FDIRServerDentry **end;
+    bool removed;
+
+    removed = false;
+    end = record->removed.dentries + record->removed.count;
+    for (dentry=record->removed.dentries; dentry<end; dentry++) {
+        GENERATE_DENTRY_MESSAGES(*msg, *dentry,
+                da_binlog_op_type_remove);
+        if (*dentry == record->me.dentry) {
+            removed = true;
+        }
     }
+
+    if (!removed) {
+        GENERATE_DENTRY_MESSAGES(*msg, record->
+                me.dentry, da_binlog_op_type_update);
+    }
+}
+
+static void generate_rename_messages(FDIRChangeNotifyMessage **msg,
+        FDIRBinlogRecord *record)
+{
+    FDIRServerDentry **dentry;
+    FDIRServerDentry **end;
+
+    if ((record->flags & RENAME_EXCHANGE)) {
+        GENERATE_DENTRY_MESSAGES(*msg, record->rename.
+                src.dentry, da_binlog_op_type_update);
+        GENERATE_DENTRY_MESSAGES(*msg, record->rename.
+                dest.dentry, da_binlog_op_type_update);
+        return;
+    }
+
+    end = record->removed.dentries + record->removed.count;
+    for (dentry=record->removed.dentries; dentry<end; dentry++) {
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, *dentry,
+                da_binlog_op_type_remove);
+    }
+
+    GENERATE_DENTRY_MESSAGES(*msg, record->rename.
+            src.dentry, da_binlog_op_type_update);
+    if (record->rename.src.parent != record->rename.
+            src.dentry->parent)  //parent changed
+    {
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
+                rename.src.parent, da_binlog_op_type_update);
+    }
+}
+
+static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    FDIRChangeNotifyEvent *event;
+    FDIRChangeNotifyMessage *msg;
+
+    event = (FDIRChangeNotifyEvent *)fast_mblock_alloc_object(
+            &thread_ctx->dentry_context.event_allocator);
+    if (event == NULL) {
+        return ENOMEM;
+    }
+
+    event->version = record->data_version;
+    msg = event->marray.messages;
+
+    switch (record->operation) {
+        case BINLOG_OP_CREATE_DENTRY_INT:
+            GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
+                    da_binlog_op_type_create);
+            if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+                FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
+                        hdlink.src_dentry, da_binlog_op_type_update);
+            }
+            break;
+        case BINLOG_OP_UPDATE_DENTRY_INT:
+        case BINLOG_OP_SET_XATTR_INT:
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
+                    me.dentry, da_binlog_op_type_update);
+            break;
+        case BINLOG_OP_REMOVE_DENTRY_INT:
+            generate_remove_messages(&msg, record);
+            break;
+        case BINLOG_OP_RENAME_DENTRY_INT:
+            generate_rename_messages(&msg, record);
+            break;
+        default:
+            break;
+    }
+
+    event->marray.count = msg - event->marray.messages;
+    change_notify_push_to_queue(event);
     return 0;
 }
 
@@ -405,7 +502,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         }
 
         if (record->type == fdir_record_type_update) {
-            if ((result=push_to_update_queue(record)) != 0) {
+            if ((result=push_to_update_queue(thread_ctx, record)) != 0) {
                 logCrit("file: "__FILE__", line: %d, "
                         "push_to_update_queue fail, "
                         "program exit!", __LINE__);

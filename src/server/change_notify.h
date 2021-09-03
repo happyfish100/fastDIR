@@ -19,7 +19,7 @@
 
 #include "server_types.h"
 
-#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
+#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  4
 
 typedef struct fdir_change_notify_message {
     FDIRServerDentry *dentry;
@@ -36,6 +36,12 @@ typedef struct fdir_change_notify_event {
     FDIRChangeNotifyMessageArray marray;
     struct fdir_change_notify_event *next; //for queue
 } FDIRChangeNotifyEvent;
+
+#define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type) \
+    (message)->dentry = ent; (message)->op_type = type
+
+#define FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(message, ent, type) \
+    FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type); (message)++
 
 #ifdef __cplusplus
 extern "C" {
