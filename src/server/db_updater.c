@@ -18,6 +18,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
 #include "server_global.h"
+#include "dentry.h"
 #include "db_updater.h"
 
 typedef struct fdir_db_updater_context {
@@ -29,13 +30,32 @@ static FDIRDBUpdaterContext db_updater_ctx;
 
 static void *db_updater_func(void *arg)
 {
+    FDIRServerDentry *dentry;
 
 #ifdef OS_LINUX
     prctl(PR_SET_NAME, "db-updater");
 #endif
 
     while (SF_G_CONTINUE_FLAG) {
-        //TODO
+        PTHREAD_MUTEX_LOCK(&db_updater_ctx.lc_pair.lock);
+        if ((dentry=fc_list_first_entry(&db_updater_ctx.head,
+                        FDIRServerDentry, db_args->dlink)) == NULL)
+        {
+            pthread_cond_wait(&db_updater_ctx.lc_pair.cond,
+                    &db_updater_ctx.lc_pair.lock);
+            dentry = fc_list_first_entry(&db_updater_ctx.head,
+                    FDIRServerDentry, db_args->dlink);
+        }
+
+        if (dentry != NULL) {
+            dentry->db_args->in_queue = false;
+            fc_list_del_init(&dentry->db_args->dlink);
+        }
+        PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);
+
+        if (dentry != NULL) {
+            dentry_release(dentry);
+        }
     }
 
     return NULL;
@@ -73,7 +93,7 @@ void db_updater_push_to_queue(FDIRChangeNotifyEvent *event)
         msg->dentry->db_args->op_type = msg->op_type;
         if (!msg->dentry->db_args->in_queue) {
             msg->dentry->db_args->in_queue = true;
-            __sync_add_and_fetch(&msg->dentry->db_args->reffer_count, 1);
+            dentry_hold(msg->dentry);
             fc_list_add_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);
         } else {
             fc_list_move_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);

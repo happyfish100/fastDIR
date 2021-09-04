@@ -150,10 +150,16 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
     if (delay_seconds > 0) {
         server_add_to_delay_free_queue(&dentry->context->db_context->
-                delay_free_context, ptr, dentry_do_free, delay_seconds);
+                free_context, ptr, dentry_do_free, delay_seconds);
     } else {
         dentry_do_free(ptr);
     }
+}
+
+void dentry_release(FDIRServerDentry *dentry)
+{
+    server_add_to_immediate_free_queue(&dentry->context->
+            db_context->free_context, dentry, dentry_do_free);
 }
 
 int dentry_init_obj(void *element, void *init_args)

@@ -61,8 +61,18 @@ typedef struct server_delay_free_queue {
 typedef struct server_delay_free_context {
     time_t last_check_time;
     ServerDelayFreeQueue queue;
-    struct fast_mblock_man allocator;
 } ServerDelayFreeContext;
+
+typedef struct server_immediate_free_context {
+    volatile int waiting_count;
+    struct fc_queue queue;
+} ServerImmediateFreeContext;
+
+typedef struct server_free_context {
+    struct fast_mblock_man allocator;
+    ServerImmediateFreeContext immediate;
+    ServerDelayFreeContext delay;
+} ServerFreeContext;
 
 typedef struct fdir_data_thread_context {
     int index;
@@ -72,7 +82,7 @@ typedef struct fdir_data_thread_context {
     } update_notify; //for data persistency
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
-    ServerDelayFreeContext delay_free_context;
+    ServerFreeContext free_context;
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {
@@ -104,10 +114,10 @@ extern "C" {
 
     void data_thread_sum_counters(FDIRDentryCounters *counters);
 
-    int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
+    int server_add_to_delay_free_queue(ServerFreeContext *free_ctx,
             void *ptr, server_free_func free_func, const int delay_seconds);
 
-    int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
+    int server_add_to_delay_free_queue_ex(ServerFreeContext *free_ctx,
             void *ctx, void *ptr, server_free_func_ex free_func_ex,
             const int delay_seconds);
 
@@ -115,10 +125,13 @@ extern "C" {
             *context, char *str)
     {
         server_add_to_delay_free_queue_ex(&context->db_context->
-                delay_free_context, &context->name_acontext, str,
+                free_context, &context->name_acontext, str,
                 (server_free_func_ex)fast_allocator_free,
                 FDIR_DELAY_FREE_SECONDS);
     }
+
+    int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
+            void *ptr, server_free_func free_func);
 
     static inline void set_data_thread_index(FDIRBinlogRecord *record)
     {

@@ -61,27 +61,26 @@ void data_thread_sum_counters(FDIRDentryCounters *counters)
     }
 }
 
-static inline void add_to_delay_free_queue(ServerDelayFreeContext *pContext,
-        ServerDelayFreeNode *node, void *ptr, const int delay_seconds)
+static inline void add_to_delay_free_queue(ServerDelayFreeContext *dfctx,
+        ServerDelayFreeNode *node, const int delay_seconds)
 {
     node->expires = g_current_time + delay_seconds;
-    node->ptr = ptr;
     node->next = NULL;
-    if (pContext->queue.head == NULL) {
-        pContext->queue.head = node;
+    if (dfctx->queue.head == NULL) {
+        dfctx->queue.head = node;
     } else {
-        pContext->queue.tail->next = node;
+        dfctx->queue.tail->next = node;
     }
-    pContext->queue.tail = node;
+    dfctx->queue.tail = node;
 }
 
-int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
-        void *ptr, server_free_func free_func, const int delay_seconds)
+int server_add_to_delay_free_queue(ServerFreeContext *free_ctx, void *ptr,
+        server_free_func free_func, const int delay_seconds)
 {
     ServerDelayFreeNode *node;
 
     node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
-            &pContext->allocator);
+            &free_ctx->allocator);
     if (node == NULL) {
         return ENOMEM;
     }
@@ -89,18 +88,19 @@ int server_add_to_delay_free_queue(ServerDelayFreeContext *pContext,
     node->free_func = free_func;
     node->free_func_ex = NULL;
     node->ctx = NULL;
-    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
+    node->ptr = ptr;
+    add_to_delay_free_queue(&free_ctx->delay, node, delay_seconds);
     return 0;
 }
 
-int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
+int server_add_to_delay_free_queue_ex(ServerFreeContext *free_ctx,
         void *ctx, void *ptr, server_free_func_ex free_func_ex,
         const int delay_seconds)
 {
     ServerDelayFreeNode *node;
 
     node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
-            &pContext->allocator);
+            &free_ctx->allocator);
     if (node == NULL) {
         return ENOMEM;
     }
@@ -108,23 +108,46 @@ int server_add_to_delay_free_queue_ex(ServerDelayFreeContext *pContext,
     node->free_func = NULL;
     node->free_func_ex = free_func_ex;
     node->ctx = ctx;
-    add_to_delay_free_queue(pContext, node, ptr, delay_seconds);
+    node->ptr = ptr;
+    add_to_delay_free_queue(&free_ctx->delay, node, delay_seconds);
     return 0;
 }
 
-static int deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
+int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
+        void *ptr, server_free_func free_func)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &free_ctx->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = free_func;
+    node->free_func_ex = NULL;
+    node->ctx = NULL;
+    node->ptr = ptr;
+    __sync_add_and_fetch(&free_ctx->immediate.waiting_count, 1);
+    fc_queue_push_silence(&free_ctx->immediate.queue, node);
+    return 0;
+}
+
+static void deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
 {
     ServerDelayFreeContext *delay_context;
     ServerDelayFreeNode *node;
-    ServerDelayFreeNode *deleted;
+    ServerDelayFreeNode *tail;
+    struct fast_mblock_chain chain;
 
-    delay_context = &thread_ctx->delay_free_context;
+    delay_context = &thread_ctx->free_context.delay;
     if (delay_context->last_check_time == g_current_time ||
             delay_context->queue.head == NULL)
     {
-        return 0;
+        return;
     }
 
+    tail = NULL;
     delay_context->last_check_time = g_current_time;
     node = delay_context->queue.head;
     while ((node != NULL) && (node->expires < g_current_time)) {
@@ -134,17 +157,62 @@ static int deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
             node->free_func_ex(node->ctx, node->ptr);
         }
 
-        deleted = node;
+        tail = node;
         node = node->next;
-        fast_mblock_free_object(&delay_context->allocator, deleted);
     }
+
+    if (tail == NULL) {
+        return;
+    }
+
+    tail->next = NULL;
+    chain.head = fast_mblock_to_node_ptr(delay_context->queue.head);
+    chain.tail = fast_mblock_to_node_ptr(tail);
+    fast_mblock_batch_free(&thread_ctx->free_context.allocator, &chain);
 
     delay_context->queue.head = node;
     if (node == NULL) {
         delay_context->queue.tail = NULL;
     }
+}
 
-    return 0;
+static void deal_immediate_free_queue(FDIRDataThreadContext *thread_ctx)
+{
+    struct fc_queue_info qinfo;
+    struct fast_mblock_chain chain;
+    ServerDelayFreeNode *node;
+    int count;
+
+    fc_queue_try_pop_to_queue(&thread_ctx->free_context.
+            immediate.queue, &qinfo);
+    if (qinfo.head == NULL) {
+        return;
+    }
+
+    count = 0;
+    node = qinfo.head;
+    do {
+        if (node->free_func != NULL) {
+            node->free_func(node->ptr);
+        } else {
+            node->free_func_ex(node->ctx, node->ptr);
+        }
+
+        ++count;
+        node = node->next;
+    } while (node != NULL);
+
+    chain.head = fast_mblock_to_node_ptr(qinfo.head);
+    chain.tail = fast_mblock_to_node_ptr(qinfo.tail);
+    fast_mblock_batch_free(&thread_ctx->free_context.allocator, &chain);
+
+    logInfo("file: "__FILE__", line: %d, "
+            "free count: %d, free_context.immediate.waiting_count: %d",
+            __LINE__, count,  __sync_add_and_fetch(&thread_ctx->
+                free_context.immediate.waiting_count, 0));
+
+    __sync_sub_and_fetch(&thread_ctx->free_context.
+            immediate.waiting_count, count);
 }
 
 static int init_thread_ctx(FDIRDataThreadContext *context)
@@ -154,9 +222,15 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
         return result;
     }
 
-    if ((result=fast_mblock_init_ex1(&context->delay_free_context.allocator,
-                    "delay_free_node", sizeof(ServerDelayFreeNode), 16 * 1024,
-                    0, NULL, NULL, true)) != 0)
+    if ((result=fast_mblock_init_ex1(&context->free_context.allocator,
+                    "delay_free_node", sizeof(ServerDelayFreeNode),
+                    16 * 1024, 0, NULL, NULL, true)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=fc_queue_init(&context->free_context.immediate.queue,
+                    (long)(&((ServerDelayFreeNode *)NULL)->next))) != 0)
     {
         return result;
     }
@@ -564,6 +638,16 @@ static void *data_thread_func(void *arg)
         }
 
         deal_delay_free_queue(thread_ctx);
+        if (__sync_add_and_fetch(&thread_ctx->free_context.
+                    immediate.waiting_count, 0) != 0)
+        {
+            logInfo("file: "__FILE__", line: %d, "
+                    "free_context.immediate.waiting_count: %d",
+                    __LINE__, __sync_add_and_fetch(&thread_ctx->
+                        free_context.immediate.waiting_count, 0));
+
+            deal_immediate_free_queue(thread_ctx);
+        }
     }
     __sync_sub_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     return NULL;
