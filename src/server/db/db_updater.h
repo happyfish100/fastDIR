@@ -17,7 +17,7 @@
 #ifndef _FDIR_DB_UPDATER_H
 #define _FDIR_DB_UPDATER_H
 
-#include "server_types.h"
+#include "../server_types.h"
 #include "change_notify.h"
 
 #ifdef __cplusplus

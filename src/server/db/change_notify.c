@@ -17,7 +17,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/sorted_queue.h"
-#include "data_thread.h"
+#include "../data_thread.h"
 #include "db_updater.h"
 #include "change_notify.h"
 

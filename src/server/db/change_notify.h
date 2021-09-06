@@ -17,7 +17,7 @@
 #ifndef _FDIR_CHANGE_NOTIFY_H
 #define _FDIR_CHANGE_NOTIFY_H
 
-#include "server_types.h"
+#include "../server_types.h"
 
 #define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  4
 

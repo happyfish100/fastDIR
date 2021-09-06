@@ -17,8 +17,8 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
-#include "server_global.h"
-#include "dentry.h"
+#include "../server_global.h"
+#include "../dentry.h"
 #include "db_updater.h"
 
 typedef struct fdir_db_updater_context {
@@ -54,6 +54,7 @@ static void *db_updater_func(void *arg)
         PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);
 
         if (dentry != NULL) {
+            //TODO
             dentry_release(dentry);
         }
     }
@@ -82,6 +83,7 @@ void db_updater_destroy()
 void db_updater_push_to_queue(FDIRChangeNotifyEvent *event)
 {
     bool notify;
+    DABinlogOpType old_op_type;
     FDIRChangeNotifyMessage *msg;
     FDIRChangeNotifyMessage *end;
 
@@ -89,14 +91,25 @@ void db_updater_push_to_queue(FDIRChangeNotifyEvent *event)
     notify = fc_list_empty(&db_updater_ctx.head);
     end = event->marray.messages + event->marray.count;
     for (msg=event->marray.messages; msg<end; msg++) {
+        old_op_type = msg->dentry->db_args->op_type;
         msg->dentry->db_args->version = event->version;
         msg->dentry->db_args->op_type = msg->op_type;
         if (!msg->dentry->db_args->in_queue) {
             msg->dentry->db_args->in_queue = true;
             dentry_hold(msg->dentry);
-            fc_list_add_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);
+            fc_list_add_tail(&msg->dentry->db_args->dlink,
+                    &db_updater_ctx.head);
         } else {
-            fc_list_move_tail(&msg->dentry->db_args->dlink, &db_updater_ctx.head);
+            if (old_op_type == da_binlog_op_type_create &&
+                    msg->op_type == da_binlog_op_type_remove)
+            {
+                msg->dentry->db_args->in_queue = false;
+                fc_list_del_init(&msg->dentry->db_args->dlink);
+                dentry_release(msg->dentry);
+            } else {
+                fc_list_move_tail(&msg->dentry->db_args->dlink,
+                        &db_updater_ctx.head);
+            }
         }
     }
     PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);

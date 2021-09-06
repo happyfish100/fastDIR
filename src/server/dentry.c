@@ -296,7 +296,7 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     }
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
                     "dentry", element_size, 8 * 1024,
-                    0, dentry_init_obj, context, true)) != 0)
+                    0, dentry_init_obj, context, false)) != 0)
     {
         return result;
     }
