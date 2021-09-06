@@ -13,6 +13,7 @@ ALL_OBJS = ../common/fdir_proto.o ../common/fdir_global.o \
            cluster_relationship.o data_thread.o data_loader.o \
            inode_generator.o shared_thread_pool.o server_binlog.o \
            cluster_info.o db/db_updater.o db/change_notify.o \
+           db/dentry_serializer.o \
            binlog/binlog_producer.o binlog/binlog_local_consumer.o \
            binlog/binlog_write.o binlog/binlog_read_thread.o \
            binlog/binlog_replication.o binlog/replica_consumer_thread.o \

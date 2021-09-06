@@ -100,7 +100,7 @@ typedef struct fdir_dentry_stat {
     int atime;  /* access time */
     int ctime;  /* status change time */
     int mtime;  /* modify time */
-    int nlink;  /* ref count for hard link */
+    int nlink;  /* ref count for hard link and directory */
     int64_t size;   /* file size in bytes */
     int64_t alloc;  /* alloc space in bytes */
     int64_t space_end;   /* for remove disk space when deallocate */
