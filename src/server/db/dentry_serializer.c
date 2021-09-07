@@ -145,77 +145,77 @@ static int pack(const FDIRServerDentry *dentry, FastBuffer *buffer)
         }
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_MODE,
                     dentry->stat.mode)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_ATIME,
                     dentry->stat.atime)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_BTIME,
                     dentry->stat.btime)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_CTIME,
                     dentry->stat.ctime)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_MTIME,
                     dentry->stat.mtime)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_UID,
                     dentry->stat.uid)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_GID,
                     dentry->stat.gid)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int64(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_FILE_SIZE,
                     dentry->stat.size)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int64(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_ALLOC_SIZE,
                     dentry->stat.alloc)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int64(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_SPACE_END,
                     dentry->stat.space_end)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
+    if ((result=sf_serializer_pack_integer(buffer,
                     DENTRY_FIELD_ID_NLINK,
                     dentry->stat.nlink)) != 0)
     {

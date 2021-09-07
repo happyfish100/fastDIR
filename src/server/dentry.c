@@ -30,7 +30,7 @@
 #include "inode_generator.h"
 #include "inode_index.h"
 #include "ns_manager.h"
-#include "change_notify.h"
+#include "db/change_notify.h"
 #include "dentry.h"
 
 #define INIT_LEVEL_COUNT 2

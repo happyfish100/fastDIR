@@ -18,6 +18,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/sorted_queue.h"
 #include "../data_thread.h"
+#include "../binlog/binlog_write.h"
 #include "db_updater.h"
 #include "change_notify.h"
 
@@ -43,7 +44,10 @@ static void deal_events(FDIRChangeNotifyEvent *head)
 
 static void *change_notify_func(void *arg)
 {
-
+    struct {
+        int64_t data_thread;
+        int64_t binlog_writer;
+    } last_data_versions;
     FDIRChangeNotifyEvent less_than;
     FDIRChangeNotifyEvent *head;
 
@@ -52,10 +56,18 @@ static void *change_notify_func(void *arg)
 #endif
 
     while (SF_G_CONTINUE_FLAG) {
-        less_than.version = data_thread_get_last_data_version();
+        last_data_versions.data_thread = data_thread_get_last_data_version();
+        last_data_versions.binlog_writer = binlog_writer_get_last_version();
+        less_than.version = FC_MIN(last_data_versions.data_thread,
+                last_data_versions.binlog_writer);
         if ((head=sorted_queue_pop_all(&change_notify_ctx.
                         queue, &less_than)) != NULL)
         {
+            logInfo("file: "__FILE__", line: %d, "
+                    "last_data_versions: {data_thread: %"PRId64", "
+                    "binlog_writer: %"PRId64"}", __LINE__,
+                    last_data_versions.data_thread,
+                    last_data_versions.binlog_writer);
             deal_events(head);
         }
 

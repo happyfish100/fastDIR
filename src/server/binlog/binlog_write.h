@@ -42,6 +42,11 @@ static inline int binlog_write_set_next_version()
             __sync_sub_and_fetch(&DATA_CURRENT_VERSION, 0) + 1);
 }
 
+static inline int64_t binlog_writer_get_last_version()
+{
+    return sf_binlog_writer_get_last_version(&g_binlog_writer_ctx.writer);
+}
+
 static inline void binlog_write_finish()
 {
     sf_binlog_writer_finish(&g_binlog_writer_ctx.writer);

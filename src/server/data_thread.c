@@ -34,7 +34,7 @@
 #include "sf/sf_func.h"
 #include "dentry.h"
 #include "inode_index.h"
-#include "change_notify.h"
+#include "db/change_notify.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -461,12 +461,12 @@ static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
 
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
-            GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
-                    da_binlog_op_type_create);
             if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
                 FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
                         hdlink.src_dentry, da_binlog_op_type_update);
             }
+            GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
+                    da_binlog_op_type_create);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
         case BINLOG_OP_SET_XATTR_INT:
