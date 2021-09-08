@@ -43,6 +43,12 @@
 
 #define FIXED_INODES_ARRAY_SIZE  1024
 
+#define DEFAULT_PACKED_BUFFER_SIZE  1024
+
+static const char *piece_field_names[] = {
+    "basic", "children", "xattr"
+};
+
 typedef struct
 {
     int64_t fixed[FIXED_INODES_ARRAY_SIZE];
@@ -50,6 +56,38 @@ typedef struct
     int count;
     int alloc;
 } smart_int64_array_t;
+
+typedef struct
+{
+    struct fast_mblock_man buffer_allocator;
+} DentrySerializerContext;
+
+static DentrySerializerContext serializer_ctx;
+
+static int buffer_init_func(void *element, void *init_args)
+{
+    FastBuffer *buffer;
+    buffer = (FastBuffer *)element;
+    return fast_buffer_init_ex(buffer, DEFAULT_PACKED_BUFFER_SIZE);
+}
+
+int dentry_serializer_init()
+{
+    int result;
+    if ((result=fast_mblock_init_ex1(&serializer_ctx.buffer_allocator,
+                    "packed-buffer", sizeof(FastBuffer), 1024, 0,
+                    buffer_init_func, NULL, true)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
+
+void dentry_serializer_batch_free_buffer(FastBuffer *head)
+{
+    //TODO
+}
 
 static int realloc_array(smart_int64_array_t *array)
 {
@@ -101,7 +139,7 @@ static int pack_children(const FDIRServerDentry *dentry, FastBuffer *buffer)
     return result;
 }
 
-static int pack(const FDIRServerDentry *dentry, FastBuffer *buffer)
+static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
 {
     int result;
     int64_t parent_inode;
@@ -229,35 +267,65 @@ static int pack(const FDIRServerDentry *dentry, FastBuffer *buffer)
         return result;
     }
 
-    if (dentry->kv_array != NULL) {
-        if ((result=sf_serializer_pack_map(buffer,
-                        DENTRY_FIELD_ID_XATTR,
-                        dentry->kv_array->elts,
-                        dentry->kv_array->count)) != 0)
-        {
-            return result;
-        }
-    }
-
-    if (S_ISDIR(dentry->stat.mode)) {
-        return pack_children(dentry, buffer);
-    }
-
     return 0;
 }
 
-int dentry_serializer_pack(const FDIRServerDentry *dentry, FastBuffer *buffer)
+int dentry_serializer_pack(const FDIRServerDentry *dentry,
+        const int field_index, FastBuffer **buffer)
 {
     int result;
 
-    sf_serializer_pack_begin(buffer);
-    if ((result=pack(dentry, buffer)) != 0) {
+    if (field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
+        if (uniq_skiplist_empty(dentry->children)) {
+            *buffer = NULL;
+            return 0;
+        }
+    } else if (field_index == FDIR_PIECE_FIELD_INDEX_XATTR) {
+        if (dentry->kv_array == NULL || dentry->kv_array->count == 0) {
+            *buffer = NULL;
+            return 0;
+        }
+    }
+
+    *buffer = (FastBuffer *)fast_mblock_alloc_object(
+            &serializer_ctx.buffer_allocator);
+    if (*buffer == NULL) {
+        return ENOMEM;
+    }
+
+    sf_serializer_pack_begin(*buffer);
+
+    switch (field_index) {
+        case FDIR_PIECE_FIELD_INDEX_BASIC:
+            result = pack_basic(dentry, *buffer);
+            break;
+        case FDIR_PIECE_FIELD_INDEX_CHILDREN:
+            if (S_ISDIR(dentry->stat.mode)) {
+                result = pack_children(dentry, *buffer);
+            } else {
+                result = EINVAL;
+            }
+            break;
+        case FDIR_PIECE_FIELD_INDEX_XATTR:
+            result = sf_serializer_pack_map(*buffer,
+                    DENTRY_FIELD_ID_XATTR,
+                    dentry->kv_array->elts,
+                    dentry->kv_array->count);
+            break;
+        default:
+            result = EINVAL;
+            break;
+    }
+
+    if (result != 0) {
         logError("file: "__FILE__", line: %d, "
-                "pack dentry fail, inode: %"PRId64,
-                __LINE__, dentry->inode);
+                "pack dentry %s fail, inode: %"PRId64", "
+                "errno: %d, error info: %s", __LINE__,
+                piece_field_names[field_index], dentry->inode,
+                result, STRERROR(result));
         return result;
     }
 
-    sf_serializer_pack_end(buffer);
+    sf_serializer_pack_end(*buffer);
     return 0;
 }

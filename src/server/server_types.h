@@ -93,6 +93,11 @@
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
+#define FDIR_PIECE_FIELD_INDEX_BASIC     0
+#define FDIR_PIECE_FIELD_INDEX_CHILDREN  1
+#define FDIR_PIECE_FIELD_INDEX_XATTR     2
+#define FDIR_PIECE_FIELD_COUNT           3
+
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
@@ -106,11 +111,19 @@ struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
 
+typedef struct fdir_server_piece_storage {
+    int file_id;
+    int offset;
+    int size;
+} FDIRServerPieceStorage;
+
 typedef struct fdir_server_dentry_db_args {
     int64_t version;
     bool in_queue;
-    DABinlogOpType op_type;
     volatile int reffer_count;
+    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
+
+    DABinlogOpType op_type;
     struct fc_list_head dlink;
 } FDIRServerDentryDBArgs;
 
@@ -306,5 +319,13 @@ typedef struct fdir_server_context {
         } cluster;
     };
 } FDIRServerContext;
+
+#define FDIR_SERVER_INIT_PIECE_STORAGE(piece) \
+    (piece).file_id = (piece).offset = (piece).size = 0
+
+#define FDIR_SERVER_INIT_DENTRY_STORAGE(fields)        \
+    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_BASIC]);    \
+    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_CHILDREN]); \
+    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_XATTR])
 
 #endif

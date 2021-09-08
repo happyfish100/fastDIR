@@ -162,7 +162,7 @@ void dentry_release(FDIRServerDentry *dentry)
             db_context->free_context, dentry, dentry_do_free);
 }
 
-int dentry_init_obj(void *element, void *init_args)
+static int dentry_init_obj(void *element, void *init_args)
 {
     FDIRServerDentry *dentry;
     dentry = (FDIRServerDentry *)element;
@@ -537,6 +537,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
     if (STORAGE_ENABLED) {
         __sync_add_and_fetch(&current->db_args->reffer_count, 1);
+        FDIR_SERVER_INIT_DENTRY_STORAGE(current->db_args->fields);
     }
 
     is_dir = S_ISDIR(record->stat.mode);

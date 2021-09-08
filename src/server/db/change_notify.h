@@ -24,6 +24,8 @@
 typedef struct fdir_change_notify_message {
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
+    int field_index;
+    FastBuffer *buffer;
 } FDIRChangeNotifyMessage;
 
 typedef struct fdir_change_notify_message_array {
