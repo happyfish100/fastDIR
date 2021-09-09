@@ -35,6 +35,7 @@
 #include "dentry.h"
 #include "inode_index.h"
 #include "db/change_notify.h"
+#include "db/dentry_serializer.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -387,9 +388,11 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
 #define GENERATE_DENTRY_MESSAGES(msg, dentry, op_type) \
     if ((dentry)->parent != NULL) {  \
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, \
-                (dentry)->parent, da_binlog_op_type_update); \
+                (dentry)->parent, da_binlog_op_type_update, \
+                FDIR_PIECE_FIELD_INDEX_CHILDREN); \
     }  \
-    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, op_type)
+    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
+            op_type, FDIR_PIECE_FIELD_INDEX_BASIC)
 
 static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
@@ -421,17 +424,28 @@ static void generate_rename_messages(FDIRChangeNotifyMessage **msg,
     FDIRServerDentry **end;
 
     if ((record->flags & RENAME_EXCHANGE)) {
-        GENERATE_DENTRY_MESSAGES(*msg, record->rename.
-                src.dentry, da_binlog_op_type_update);
-        GENERATE_DENTRY_MESSAGES(*msg, record->rename.
-                dest.dentry, da_binlog_op_type_update);
+        if (record->rename.src.dentry->parent ==
+                record->rename.dest.dentry->parent)
+        {
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
+                    rename.src.dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_BASIC);
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
+                    rename.dest.dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_BASIC);
+        } else {
+            GENERATE_DENTRY_MESSAGES(*msg, record->rename.
+                    src.dentry, da_binlog_op_type_update);
+            GENERATE_DENTRY_MESSAGES(*msg, record->rename.
+                    dest.dentry, da_binlog_op_type_update);
+        }
         return;
     }
 
     end = record->removed.dentries + record->removed.count;
     for (dentry=record->removed.dentries; dentry<end; dentry++) {
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, *dentry,
-                da_binlog_op_type_remove);
+                da_binlog_op_type_remove, FDIR_PIECE_FIELD_INDEX_BASIC);
     }
 
     GENERATE_DENTRY_MESSAGES(*msg, record->rename.
@@ -440,13 +454,35 @@ static void generate_rename_messages(FDIRChangeNotifyMessage **msg,
             src.dentry->parent)  //parent changed
     {
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
-                rename.src.parent, da_binlog_op_type_update);
+                rename.src.parent, da_binlog_op_type_update,
+                FDIR_PIECE_FIELD_INDEX_CHILDREN);
     }
+}
+
+static inline int pack_messages(FDIRChangeNotifyEvent *event)
+{
+    int result;
+    FDIRChangeNotifyMessage *msg;
+    FDIRChangeNotifyMessage *end;
+
+    end = event->marray.messages + event->marray.count;
+    for (msg=event->marray.messages; msg<end; msg++) {
+        if (msg->op_type == da_binlog_op_type_remove) {
+            msg->buffer = NULL;
+        } else if ((result=dentry_serializer_pack(msg->dentry,
+                        msg->field_index, &msg->buffer)) != 0)
+        {
+            return result;
+        }
+    }
+
+    return 0;
 }
 
 static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
+    int result;
     FDIRChangeNotifyEvent *event;
     FDIRChangeNotifyMessage *msg;
 
@@ -463,16 +499,22 @@ static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
         case BINLOG_OP_CREATE_DENTRY_INT:
             if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
                 FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
-                        hdlink.src_dentry, da_binlog_op_type_update);
+                        hdlink.src_dentry, da_binlog_op_type_update,
+                        FDIR_PIECE_FIELD_INDEX_BASIC);
             }
             GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
                     da_binlog_op_type_create);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
+                    me.dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_BASIC);
+            break;
         case BINLOG_OP_SET_XATTR_INT:
         case BINLOG_OP_REMOVE_XATTR_INT:
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
-                    me.dentry, da_binlog_op_type_update);
+                    me.dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_XATTR);
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
             generate_remove_messages(&msg, record);
@@ -485,6 +527,10 @@ static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
     }
 
     event->marray.count = msg - event->marray.messages;
+    if ((result=pack_messages(event)) != 0) {
+        return result;
+    }
+
     change_notify_push_to_queue(event);
     return 0;
 }

@@ -23,6 +23,7 @@
 #include "change_notify.h"
 
 typedef struct fdir_change_notify_context {
+    volatile int waiting_count;
     struct sorted_queue queue;
 } FDIRchangeNotifyContext;
 
@@ -30,9 +31,12 @@ static FDIRchangeNotifyContext change_notify_ctx;
 
 static void deal_events(FDIRChangeNotifyEvent *head)
 {
+    int count;
     FDIRChangeNotifyEvent *event;
 
+    count = 0;
     do {
+        ++count;
         event = head;
         head = head->next;
 
@@ -40,6 +44,9 @@ static void deal_events(FDIRChangeNotifyEvent *head)
         fast_mblock_free_object(&event->marray.messages[0].
                 dentry->context->event_allocator, event);
     } while (head != NULL);
+
+    __sync_sub_and_fetch(&change_notify_ctx.
+            waiting_count, count);
 }
 
 static void *change_notify_func(void *arg)
@@ -50,12 +57,27 @@ static void *change_notify_func(void *arg)
     } last_data_versions;
     FDIRChangeNotifyEvent less_than;
     FDIRChangeNotifyEvent *head;
+    time_t last_time;
+    int wait_seconds;
 
 #ifdef OS_LINUX
     prctl(PR_SET_NAME, "chg-notify");
 #endif
 
+    last_time = g_current_time;
     while (SF_G_CONTINUE_FLAG) {
+        wait_seconds = (last_time + BATCH_STORE_INTERVAL) - g_current_time;
+        last_time = g_current_time;
+        if (wait_seconds > 0 && __sync_add_and_fetch(&change_notify_ctx.
+                    waiting_count, 0) < BATCH_STORE_ON_MODIFIES)
+        {
+            if (sorted_queue_timedpeek_sec(&change_notify_ctx.
+                        queue, wait_seconds) == NULL)
+            {
+                continue;
+            }
+        }
+
         last_data_versions.data_thread = data_thread_get_last_data_version();
         last_data_versions.binlog_writer = binlog_writer_get_last_version();
         less_than.version = FC_MIN(last_data_versions.data_thread,
@@ -70,8 +92,6 @@ static void *change_notify_func(void *arg)
                     last_data_versions.binlog_writer);
             deal_events(head);
         }
-
-        fc_sleep_ms(10);
     }
 
     return NULL;
@@ -106,5 +126,12 @@ void change_notify_destroy()
 
 void change_notify_push_to_queue(FDIRChangeNotifyEvent *event)
 {
-    sorted_queue_push(&change_notify_ctx.queue, event);
+    bool notify;
+
+    notify = __sync_add_and_fetch(&change_notify_ctx.
+            waiting_count, 1) == BATCH_STORE_ON_MODIFIES;
+    sorted_queue_push_silence(&change_notify_ctx.queue, event);
+    if (notify) {
+        pthread_cond_signal(&change_notify_ctx.queue.queue.lc_pair.cond);
+    }
 }

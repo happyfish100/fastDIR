@@ -84,9 +84,22 @@ int dentry_serializer_init()
     return 0;
 }
 
-void dentry_serializer_batch_free_buffer(FastBuffer *head)
+void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
+            const int count)
 {
-    //TODO
+    FastBuffer **buf;
+    FastBuffer **end;
+
+    end = buffers + count;
+    for (buf=buffers; buf<end; buf++) {
+        (*buf)->length = 0;  //reset data length
+        if ((*buf)->alloc_size > DEFAULT_PACKED_BUFFER_SIZE) {
+            fast_buffer_set_capacity(*buf, DEFAULT_PACKED_BUFFER_SIZE);
+        }
+    }
+
+    fast_mblock_free_objects(&serializer_ctx.buffer_allocator,
+            (void **)buffers, count);
 }
 
 static int realloc_array(smart_int64_array_t *array)
@@ -173,7 +186,7 @@ static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
                         dentry->src_dentry->inode)) != 0)
         {
             return result;
-        } 
+        }
     } else if (S_ISLNK(dentry->stat.mode)) {
         if ((result=sf_serializer_pack_string(buffer,
                         DENTRY_FIELD_ID_LINK,

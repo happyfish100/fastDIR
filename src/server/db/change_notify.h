@@ -39,11 +39,13 @@ typedef struct fdir_change_notify_event {
     struct fdir_change_notify_event *next; //for queue
 } FDIRChangeNotifyEvent;
 
-#define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type) \
-    (message)->dentry = ent; (message)->op_type = type
+#define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index) \
+    (message)->dentry = ent;   \
+    (message)->op_type = type; \
+    (message)->field_index = index
 
-#define FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(message, ent, type) \
-    FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type); (message)++
+#define FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(message, ent, type, index) \
+    FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index); (message)++
 
 #ifdef __cplusplus
 extern "C" {

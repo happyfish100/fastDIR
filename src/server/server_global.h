@@ -79,6 +79,8 @@ typedef struct server_global_vars {
 
     struct {
         bool enabled;
+        int batch_store_on_modifies;
+        int batch_store_interval;
         int inode_binlog_subdirs;
         int inode_index_dump_interval;
         TimeInfo inode_index_dump_base_time;
@@ -142,6 +144,8 @@ typedef struct server_global_vars {
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
+#define BATCH_STORE_INTERVAL       g_server_global_vars.storage.batch_store_interval
+#define BATCH_STORE_ON_MODIFIES    g_server_global_vars.storage.batch_store_on_modifies
 #define INODE_BINLOG_SUBDIRS       g_server_global_vars.storage.inode_binlog_subdirs
 #define INODE_INDEX_DUMP_INTERVAL  g_server_global_vars.storage.inode_index_dump_interval
 #define INODE_INDEX_DUMP_BASE_TIME g_server_global_vars.storage.inode_index_dump_base_time

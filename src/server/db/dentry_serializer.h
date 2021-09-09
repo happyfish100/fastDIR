@@ -31,7 +31,8 @@ extern "C" {
     int dentry_serializer_pack(const FDIRServerDentry *dentry,
             const int field_index, FastBuffer **buffer);
 
-    void dentry_serializer_batch_free_buffer(FastBuffer *head);
+    void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
+            const int count);
 
 #ifdef __cplusplus
 }
