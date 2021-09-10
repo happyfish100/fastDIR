@@ -27,6 +27,7 @@
 #include "fastcommon/fc_list.h"
 #include "fastcommon/fc_queue.h"
 #include "fastcommon/fc_atomic.h"
+#include "fastcommon/array_allocator.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
 #include "diskallocator/binlog/common/binlog_types.h"
@@ -121,6 +122,7 @@ typedef struct fdir_server_dentry_db_args {
     int64_t version;
     bool in_queue;
     volatile int reffer_count;
+    I64Array *children;  //children inodes
     FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
 
     DABinlogOpType op_type;

@@ -538,6 +538,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     if (STORAGE_ENABLED) {
         __sync_add_and_fetch(&current->db_args->reffer_count, 1);
         FDIR_SERVER_INIT_DENTRY_STORAGE(current->db_args->fields);
+        current->db_args->children = NULL;
     }
 
     is_dir = S_ISDIR(record->stat.mode);

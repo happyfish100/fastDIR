@@ -19,13 +19,14 @@
 
 #include "../server_types.h"
 
-#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  4
+#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
 
 typedef struct fdir_change_notify_message {
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
     int field_index;
     FastBuffer *buffer;
+    int64_t child;  //child inode
 } FDIRChangeNotifyMessage;
 
 typedef struct fdir_change_notify_message_array {
