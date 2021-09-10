@@ -114,6 +114,26 @@ int server_add_to_delay_free_queue_ex(ServerFreeContext *free_ctx,
     return 0;
 }
 
+int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
+        void *ctx, void *ptr, server_free_func_ex free_func_ex)
+{
+    ServerDelayFreeNode *node;
+
+    node = (ServerDelayFreeNode *)fast_mblock_alloc_object(
+            &free_ctx->allocator);
+    if (node == NULL) {
+        return ENOMEM;
+    }
+
+    node->free_func = NULL;
+    node->free_func_ex = free_func_ex;
+    node->ctx = ctx;
+    node->ptr = ptr;
+    __sync_add_and_fetch(&free_ctx->immediate.waiting_count, 1);
+    fc_queue_push_silence(&free_ctx->immediate.queue, node);
+    return 0;
+}
+
 int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
         void *ptr, server_free_func free_func)
 {
@@ -275,8 +295,40 @@ static int init_data_thread_array()
 
 int data_thread_init()
 {
+    int alloc_elements_once;
+    int64_t alloc_elements_limit;
     int result;
     int count;
+
+    if (STORAGE_ENABLED) {
+        if (BATCH_STORE_ON_MODIFIES < 1000) {
+            alloc_elements_once = 1 * 1024;
+            alloc_elements_limit = 8 * 1024;
+        } else if (BATCH_STORE_ON_MODIFIES < 10 * 1000) {
+            alloc_elements_once = 2 * 1024;
+            alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 8;
+        } else if (BATCH_STORE_ON_MODIFIES < 100 * 1000) {
+            alloc_elements_once = 4 * 1024;
+            alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 4;
+        } else {
+            alloc_elements_once = 8 * 1024;
+            if (BATCH_STORE_ON_MODIFIES < 1000 * 1000) {
+                alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 2;
+            } else {
+                alloc_elements_limit = BATCH_STORE_ON_MODIFIES;
+            }
+        }
+
+        if ((result=fast_mblock_init_ex1(&NOTIFY_EVENT_ALLOCATOR,
+                        "chg-event", sizeof(FDIRChangeNotifyEvent),
+                        alloc_elements_once, alloc_elements_limit,
+                        NULL, NULL, true)) != 0)
+        {
+            return result;
+        }
+        fast_mblock_set_need_wait(&NOTIFY_EVENT_ALLOCATOR,
+                true, (bool *)&SF_G_CONTINUE_FLAG);
+    }
 
     if ((result=init_data_thread_array()) != 0) {
         return result;
@@ -404,7 +456,7 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg,    \
                 (dentry)->parent, (dentry)->inode); \
     } else { \
-        GENERATE_ADD_TO_PARENT_MESSAGE(msg,    \
+        GENERATE_ADD_TO_PARENT_MESSAGE(msg,         \
                 (dentry)->parent, (dentry)->inode); \
     } \
     FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
@@ -499,6 +551,8 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
         {
             return result;
         }
+
+        dentry_hold(msg->dentry);
     }
 
     return 0;
@@ -512,7 +566,7 @@ static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
     FDIRChangeNotifyMessage *msg;
 
     event = (FDIRChangeNotifyEvent *)fast_mblock_alloc_object(
-            &thread_ctx->dentry_context.event_allocator);
+            &NOTIFY_EVENT_ALLOCATOR);
     if (event == NULL) {
         return ENOMEM;
     }

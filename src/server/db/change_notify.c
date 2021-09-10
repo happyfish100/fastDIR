@@ -41,8 +41,7 @@ static void deal_events(FDIRChangeNotifyEvent *head)
         head = head->next;
 
         db_updater_push_to_queue(event);
-        fast_mblock_free_object(&event->marray.messages[0].
-                dentry->context->event_allocator, event);
+        fast_mblock_free_object(&NOTIFY_EVENT_ALLOCATOR, event);
     } while (head != NULL);
 
     __sync_sub_and_fetch(&change_notify_ctx.

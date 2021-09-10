@@ -38,7 +38,6 @@ typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct fast_mblock_man dentry_allocator;
     struct fast_mblock_man kvarray_allocators[FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT];
-    struct fast_mblock_man event_allocator;  //for change notify when data persistency
     struct fast_allocator_context name_acontext;
     struct fdir_data_thread_context *db_context;
     FDIRDentryCounters counters;
@@ -94,6 +93,7 @@ typedef struct fdir_data_thread_variables {
     FDIRDataThreadArray thread_array;
     volatile int running_count;
     int error_mode;
+    struct fast_mblock_man event_allocator;  //for change notify when data persistency
 } FDIRDataThreadVariables;
 
 #define dentry_strdup(context, dest, src) \
@@ -101,6 +101,8 @@ typedef struct fdir_data_thread_variables {
 
 #define dentry_strfree(context, s) \
     fast_allocator_free(&(context)->name_acontext, (s)->str)
+
+#define NOTIFY_EVENT_ALLOCATOR  g_data_thread_vars.event_allocator
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,6 +131,9 @@ extern "C" {
                 (server_free_func_ex)fast_allocator_free,
                 FDIR_DELAY_FREE_SECONDS);
     }
+
+    int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
+            void *ctx, void *ptr, server_free_func_ex free_func_ex);
 
     int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
             void *ptr, server_free_func free_func);

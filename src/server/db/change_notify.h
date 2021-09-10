@@ -26,7 +26,7 @@ typedef struct fdir_change_notify_message {
     DABinlogOpType op_type;
     int field_index;
     FastBuffer *buffer;
-    int64_t child;  //child inode
+    int64_t child;  //child inodes
 } FDIRChangeNotifyMessage;
 
 typedef struct fdir_change_notify_message_array {

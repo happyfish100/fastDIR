@@ -117,13 +117,15 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     dentry->kv_array->count = 0;
 }
 
-static void dentry_do_free(void *ptr)
+static void dentry_do_free(void *ptr, const int dec_count)
 {
     FDIRServerDentry *dentry;
     dentry = (FDIRServerDentry *)ptr;
 
     if (STORAGE_ENABLED) {
-        if (__sync_sub_and_fetch(&dentry->db_args->reffer_count, 1) != 0) {
+        if (__sync_sub_and_fetch(&dentry->db_args->
+                    reffer_count, dec_count) != 0)
+        {
             return;
         }
     }
@@ -143,6 +145,16 @@ static void dentry_do_free(void *ptr)
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
+static void dentry_free(void *ptr)
+{
+    dentry_do_free(ptr, 1);
+}
+
+static void dentry_free_ex(void *ctx, void *ptr)
+{
+    dentry_do_free(ptr, (long)ctx);
+}
+
 static void dentry_free_func(void *ptr, const int delay_seconds)
 {
     FDIRServerDentry *dentry;
@@ -150,16 +162,16 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
     if (delay_seconds > 0) {
         server_add_to_delay_free_queue(&dentry->context->db_context->
-                free_context, ptr, dentry_do_free, delay_seconds);
+                free_context, ptr, dentry_free, delay_seconds);
     } else {
-        dentry_do_free(ptr);
+        dentry_free(ptr);
     }
 }
 
-void dentry_release(FDIRServerDentry *dentry)
+void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 {
-    server_add_to_immediate_free_queue(&dentry->context->
-            db_context->free_context, dentry, dentry_do_free);
+    server_add_to_immediate_free_queue_ex(&dentry->context->db_context->
+            free_context, (void *)(long)dec_count, dentry, dentry_free_ex);
 }
 
 static int dentry_init_obj(void *element, void *init_args)
@@ -280,15 +292,6 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     }
 
     if (STORAGE_ENABLED) {
-        if ((result=fast_mblock_init_ex1(&context->event_allocator,
-                        "chg-event", sizeof(FDIRChangeNotifyEvent),
-                        8 * 1024, 16 * 1024, NULL, NULL, true)) != 0)
-        {
-            return result;
-        }
-        fast_mblock_set_need_wait(&context->event_allocator,
-                true, (bool *)&SF_G_CONTINUE_FLAG);
-
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
     } else {
@@ -608,7 +611,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         current->src_dentry->stat.nlink++;
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
-            dentry_do_free(current);
+            dentry_free(current);
             return result;
         }
     }
