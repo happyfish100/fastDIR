@@ -4,7 +4,6 @@ export DH_VERBOSE=1
 export DESTDIR=$(CURDIR)/debian/tmp
 
 export CONFDIR=$(DESTDIR)/etc/fastcfs/fdir/
-export SYSTEMDIR=$(DESTDIR)/usr/lib/systemd/system/
 
 %:
 	dh $@
@@ -16,7 +15,10 @@ override_dh_auto_build:
 override_dh_auto_install:
 	DESTDIR=$(DESTDIR) ./make.sh install
 	mkdir -p $(CONFDIR)
-	mkdir -p $(SYSTEMDIR)
 	cp conf/*.conf $(CONFDIR)
-	cp systemd/fastdir.service $(SYSTEMDIR)
+	cp systemd/fastdir.service debian/fastdir-server.fastdir.service
 	dh_auto_install
+
+override_dh_installsystemd:
+	dh_installsystemd --package=fastdir-server --name=fastdir --no-start
+	
