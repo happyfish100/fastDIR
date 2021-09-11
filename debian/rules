@@ -20,5 +20,4 @@ override_dh_auto_install:
 	dh_auto_install
 
 override_dh_installsystemd:
-	dh_installsystemd --package=fastdir-server --name=fastdir --no-start
-	
+	dh_installsystemd --package=fastdir-server --name=fastdir --no-start --no-restart-on-upgrade
