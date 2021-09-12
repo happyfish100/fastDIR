@@ -27,7 +27,7 @@ extern "C" {
     int db_updater_init();
     void db_updater_destroy();
 
-    void db_updater_push_to_queue(FDIRChangeNotifyEvent *event);
+    int db_updater_deal_events(FDIRChangeNotifyEvent *head, int *count);
 
 #ifdef __cplusplus
 }

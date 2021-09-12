@@ -455,12 +455,14 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     if (op_type == da_binlog_op_type_remove) {      \
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg,    \
                 (dentry)->parent, (dentry)->inode); \
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
+                op_type, FDIR_PIECE_FIELD_MAX_INDEX); \
     } else { \
         GENERATE_ADD_TO_PARENT_MESSAGE(msg,         \
                 (dentry)->parent, (dentry)->inode); \
-    } \
-    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
-            op_type, FDIR_PIECE_FIELD_INDEX_BASIC)
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
+                op_type, FDIR_PIECE_FIELD_INDEX_BASIC); \
+    }
 
 
 #define GENERATE_MOVE_DENTRY_MESSAGES(msg, old_parent, dentry)  \
@@ -542,6 +544,7 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
 
     end = event->marray.messages + event->marray.count;
     for (msg=event->marray.messages; msg<end; msg++) {
+        msg->version = event->version;
         if (msg->op_type == da_binlog_op_type_remove ||
                 msg->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN)
         {

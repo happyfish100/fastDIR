@@ -22,6 +22,7 @@
 #define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
 
 typedef struct fdir_change_notify_message {
+    int64_t version;
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
     int field_index;
@@ -33,6 +34,12 @@ typedef struct fdir_change_notify_message_array {
     FDIRChangeNotifyMessage messages[FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT];
     int count;
 } FDIRChangeNotifyMessageArray;
+
+typedef struct fdir_change_notify_message_ptr_array {
+    FDIRChangeNotifyMessage **messages;
+    int count;
+    int alloc;
+} FDIRChangeNotifyMessagePtrArray;
 
 typedef struct fdir_change_notify_event {
     int64_t version;

@@ -17,6 +17,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/sorted_queue.h"
+#include "sf/sf_func.h"
 #include "../data_thread.h"
 #include "../binlog/binlog_write.h"
 #include "db_updater.h"
@@ -29,23 +30,20 @@ typedef struct fdir_change_notify_context {
 
 static FDIRchangeNotifyContext change_notify_ctx;
 
-static void deal_events(FDIRChangeNotifyEvent *head)
+static int deal_events(struct fc_queue_info *qinfo)
 {
+    int result;
     int count;
-    FDIRChangeNotifyEvent *event;
 
-    count = 0;
-    do {
-        ++count;
-        event = head;
-        head = head->next;
+    if ((result=db_updater_deal_events(qinfo->head, &count)) != 0) {
+        return result;
+    }
 
-        db_updater_push_to_queue(event);
-        fast_mblock_free_object(&NOTIFY_EVENT_ALLOCATOR, event);
-    } while (head != NULL);
-
+    sorted_queue_free_chain(&change_notify_ctx.queue,
+            &NOTIFY_EVENT_ALLOCATOR, qinfo);
     __sync_sub_and_fetch(&change_notify_ctx.
             waiting_count, count);
+    return 0;
 }
 
 static void *change_notify_func(void *arg)
@@ -55,7 +53,7 @@ static void *change_notify_func(void *arg)
         int64_t binlog_writer;
     } last_data_versions;
     FDIRChangeNotifyEvent less_than;
-    FDIRChangeNotifyEvent *head;
+    struct fc_queue_info qinfo;
     time_t last_time;
     int wait_seconds;
 
@@ -81,15 +79,20 @@ static void *change_notify_func(void *arg)
         last_data_versions.binlog_writer = binlog_writer_get_last_version();
         less_than.version = FC_MIN(last_data_versions.data_thread,
                 last_data_versions.binlog_writer);
-        if ((head=sorted_queue_pop_all(&change_notify_ctx.
-                        queue, &less_than)) != NULL)
-        {
+        sorted_queue_try_pop_to_queue(&change_notify_ctx.
+                queue, &less_than, &qinfo);
+        if (qinfo.head != NULL) {
             logInfo("file: "__FILE__", line: %d, "
                     "last_data_versions: {data_thread: %"PRId64", "
                     "binlog_writer: %"PRId64"}", __LINE__,
                     last_data_versions.data_thread,
                     last_data_versions.binlog_writer);
-            deal_events(head);
+            if (deal_events(&qinfo) != 0) {
+                logCrit("file: "__FILE__", line: %d, "
+                        "deal notify events fail, "
+                        "program exit!", __LINE__);
+                sf_terminate_myself();
+            }
         }
     }
 

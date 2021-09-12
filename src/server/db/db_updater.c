@@ -22,99 +22,118 @@
 #include "db_updater.h"
 
 typedef struct fdir_db_updater_context {
-    struct fc_list_head head;
-    pthread_lock_cond_pair_t lc_pair;
+    FDIRChangeNotifyMessagePtrArray msg_ptr_array;
+    //pthread_lock_cond_pair_t lc_pair;
 } FDIRDBUpdaterContext;
 
 static FDIRDBUpdaterContext db_updater_ctx;
 
-static void *db_updater_func(void *arg)
-{
-    FDIRServerDentry *dentry;
-
-#ifdef OS_LINUX
-    prctl(PR_SET_NAME, "db-updater");
-#endif
-
-    while (SF_G_CONTINUE_FLAG) {
-        PTHREAD_MUTEX_LOCK(&db_updater_ctx.lc_pair.lock);
-        if ((dentry=fc_list_first_entry(&db_updater_ctx.head,
-                        FDIRServerDentry, db_args->dlink)) == NULL)
-        {
-            pthread_cond_wait(&db_updater_ctx.lc_pair.cond,
-                    &db_updater_ctx.lc_pair.lock);
-            dentry = fc_list_first_entry(&db_updater_ctx.head,
-                    FDIRServerDentry, db_args->dlink);
-        }
-
-        if (dentry != NULL) {
-            dentry->db_args->in_queue = false;
-            fc_list_del_init(&dentry->db_args->dlink);
-        }
-        PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);
-
-        if (dentry != NULL) {
-            //TODO
-            dentry_release(dentry);
-        }
-    }
-
-    return NULL;
-}
+#define MSG_PTR_ARRAY  db_updater_ctx.msg_ptr_array
 
 int db_updater_init()
 {
+    /*
     int result;
-    pthread_t tid;
 
     if ((result=init_pthread_lock_cond_pair(&db_updater_ctx.lc_pair)) != 0) {
         return result;
     }
+    */
 
-    FC_INIT_LIST_HEAD(&db_updater_ctx.head);
-    return fc_create_thread(&tid, db_updater_func,
-            NULL, SF_G_THREAD_STACK_SIZE);
+    return 0;
 }
 
 void db_updater_destroy()
 {
 }
 
-void db_updater_push_to_queue(FDIRChangeNotifyEvent *event)
+static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
 {
-    bool notify;
-    DABinlogOpType old_op_type;
+    FDIRChangeNotifyMessage **messages;
+
+    if (array->alloc == 0) {
+        array->alloc = 8 * 1024;
+    } else {
+        array->alloc *= 2;
+    }
+
+    messages = (FDIRChangeNotifyMessage **)fc_malloc(
+            sizeof(FDIRChangeNotifyMessage *) * array->alloc);
+    if (messages == NULL) {
+        return ENOMEM;
+    }
+
+    if (array->messages != NULL) {
+        memcpy(messages, array->messages, sizeof(
+                    FDIRChangeNotifyMessage *) * array->count);
+        free(array->messages);
+    }
+
+    array->messages = messages;
+    return 0;
+}
+
+static int add_to_msg_ptr_array(FDIRChangeNotifyEvent *event)
+{
+    int result;
     FDIRChangeNotifyMessage *msg;
     FDIRChangeNotifyMessage *end;
 
-    PTHREAD_MUTEX_LOCK(&db_updater_ctx.lc_pair.lock);
-    notify = fc_list_empty(&db_updater_ctx.head);
-    end = event->marray.messages + event->marray.count;
-    for (msg=event->marray.messages; msg<end; msg++) {
-        old_op_type = msg->dentry->db_args->op_type;
-        msg->dentry->db_args->version = event->version;
-        msg->dentry->db_args->op_type = msg->op_type;
-        if (!msg->dentry->db_args->in_queue) {
-            msg->dentry->db_args->in_queue = true;
-            dentry_hold(msg->dentry);
-            fc_list_add_tail(&msg->dentry->db_args->dlink,
-                    &db_updater_ctx.head);
-        } else {
-            if (old_op_type == da_binlog_op_type_create &&
-                    msg->op_type == da_binlog_op_type_remove)
-            {
-                msg->dentry->db_args->in_queue = false;
-                fc_list_del_init(&msg->dentry->db_args->dlink);
-                dentry_release(msg->dentry);
-            } else {
-                fc_list_move_tail(&msg->dentry->db_args->dlink,
-                        &db_updater_ctx.head);
-            }
+    if (MSG_PTR_ARRAY.count + event->marray.count > MSG_PTR_ARRAY.alloc) {
+        if ((result=realloc_msg_ptr_array(&MSG_PTR_ARRAY)) != 0) {
+            return result;
         }
     }
-    PTHREAD_MUTEX_UNLOCK(&db_updater_ctx.lc_pair.lock);
 
-    if (notify) {
-        pthread_cond_signal(&db_updater_ctx.lc_pair.cond);
+    end = event->marray.messages + event->marray.count;
+    for (msg=event->marray.messages; msg<end; msg++) {
+        MSG_PTR_ARRAY.messages[MSG_PTR_ARRAY.count++] = msg;
     }
+
+    return 0;
+}
+
+static int compare_msg_ptr_func(const FDIRChangeNotifyMessage **msg1,
+        const FDIRChangeNotifyMessage **msg2)
+{
+    int sub;
+    if ((sub=fc_compare_int64((*msg1)->dentry->inode,
+                    (*msg2)->dentry->inode)) != 0)
+    {
+        return sub;
+    }
+
+    if ((sub=(int)(*msg1)->field_index - (int)
+                (*msg2)->field_index) != 0)
+    {
+        return sub;
+    }
+
+    return fc_compare_int64((*msg1)->version, (*msg2)->version);
+}
+
+int db_updater_deal_events(FDIRChangeNotifyEvent *head, int *count)
+{
+    int result;
+    FDIRChangeNotifyEvent *event;
+
+    MSG_PTR_ARRAY.count = 0;
+    *count = 0;
+    event = head;
+    do {
+        ++(*count);
+
+        if ((result=add_to_msg_ptr_array(event)) != 0) {
+            return result;
+        }
+        event = event->next;
+    } while (event != NULL);
+
+    if (MSG_PTR_ARRAY.count > 1) {
+        qsort(MSG_PTR_ARRAY.messages, MSG_PTR_ARRAY.count,
+                sizeof(FDIRChangeNotifyMessage *),
+                (int (*)(const void *, const void *))compare_msg_ptr_func);
+    }
+
+    return result;
 }

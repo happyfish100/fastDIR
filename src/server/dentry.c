@@ -120,8 +120,8 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
 static void dentry_do_free(void *ptr, const int dec_count)
 {
     FDIRServerDentry *dentry;
-    dentry = (FDIRServerDentry *)ptr;
 
+    dentry = (FDIRServerDentry *)ptr;
     if (STORAGE_ENABLED) {
         if (__sync_sub_and_fetch(&dentry->db_args->
                     reffer_count, dec_count) != 0)

@@ -94,10 +94,14 @@
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
+
 #define FDIR_PIECE_FIELD_INDEX_BASIC     0
 #define FDIR_PIECE_FIELD_INDEX_CHILDREN  1
 #define FDIR_PIECE_FIELD_INDEX_XATTR     2
+
+#define FDIR_PIECE_FIELD_MAX_INDEX       2
 #define FDIR_PIECE_FIELD_COUNT           3
+
 
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
@@ -119,14 +123,9 @@ typedef struct fdir_server_piece_storage {
 } FDIRServerPieceStorage;
 
 typedef struct fdir_server_dentry_db_args {
-    int64_t version;
-    bool in_queue;
     volatile int reffer_count;
     I64Array *children;  //children inodes
     FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
-
-    DABinlogOpType op_type;
-    struct fc_list_head dlink;
 } FDIRServerDentryDBArgs;
 
 typedef struct fdir_server_dentry {
