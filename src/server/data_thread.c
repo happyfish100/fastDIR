@@ -456,7 +456,7 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg,    \
                 (dentry)->parent, (dentry)->inode); \
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
-                op_type, FDIR_PIECE_FIELD_MAX_INDEX); \
+                op_type, FDIR_PIECE_FIELD_INDEX_FOR_REMOVE); \
     } else { \
         GENERATE_ADD_TO_PARENT_MESSAGE(msg,         \
                 (dentry)->parent, (dentry)->inode); \

@@ -21,9 +21,19 @@
 #include "../server_types.h"
 #include "change_notify.h"
 
+typedef struct
+{
+    struct fast_mblock_man buffer_allocator;
+    struct array_allocator_context i64_array_allocator_ctx;
+} DentrySerializerContext;
+
+#define I64_ARRAY_ALLOCATOR_CTX g_serializer_ctx.i64_array_allocator_ctx
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+    extern DentrySerializerContext g_serializer_ctx;
 
     int dentry_serializer_init();
     void dentry_serializer_destroy();

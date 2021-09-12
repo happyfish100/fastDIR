@@ -57,12 +57,7 @@ typedef struct
     int alloc;
 } smart_int64_array_t;
 
-typedef struct
-{
-    struct fast_mblock_man buffer_allocator;
-} DentrySerializerContext;
-
-static DentrySerializerContext serializer_ctx;
+DentrySerializerContext g_serializer_ctx;
 
 static int buffer_init_func(void *element, void *init_args)
 {
@@ -73,10 +68,19 @@ static int buffer_init_func(void *element, void *init_args)
 
 int dentry_serializer_init()
 {
+    const int min_bits = 6;
+    const int max_bits = 16;
     int result;
-    if ((result=fast_mblock_init_ex1(&serializer_ctx.buffer_allocator,
+
+    if ((result=fast_mblock_init_ex1(&g_serializer_ctx.buffer_allocator,
                     "packed-buffer", sizeof(FastBuffer), 1024, 0,
                     buffer_init_func, NULL, true)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=i64_array_allocator_init(&I64_ARRAY_ALLOCATOR_CTX,
+                    min_bits, max_bits)) != 0)
     {
         return result;
     }
@@ -92,13 +96,13 @@ void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
 
     end = buffers + count;
     for (buf=buffers; buf<end; buf++) {
-        (*buf)->length = 0;  //reset data length
         if ((*buf)->alloc_size > DEFAULT_PACKED_BUFFER_SIZE) {
+            (*buf)->length = 0;  //reset data length
             fast_buffer_set_capacity(*buf, DEFAULT_PACKED_BUFFER_SIZE);
         }
     }
 
-    fast_mblock_free_objects(&serializer_ctx.buffer_allocator,
+    fast_mblock_free_objects(&g_serializer_ctx.buffer_allocator,
             (void **)buffers, count);
 }
 
@@ -301,7 +305,7 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
     }
 
     *buffer = (FastBuffer *)fast_mblock_alloc_object(
-            &serializer_ctx.buffer_allocator);
+            &g_serializer_ctx.buffer_allocator);
     if (*buffer == NULL) {
         return ENOMEM;
     }

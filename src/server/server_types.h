@@ -95,12 +95,13 @@
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
 
-#define FDIR_PIECE_FIELD_INDEX_BASIC     0
-#define FDIR_PIECE_FIELD_INDEX_CHILDREN  1
-#define FDIR_PIECE_FIELD_INDEX_XATTR     2
+#define FDIR_PIECE_FIELD_INDEX_BASIC       0
+#define FDIR_PIECE_FIELD_INDEX_CHILDREN    1
+#define FDIR_PIECE_FIELD_INDEX_XATTR       2
+#define FDIR_PIECE_FIELD_COUNT             3
 
-#define FDIR_PIECE_FIELD_MAX_INDEX       2
-#define FDIR_PIECE_FIELD_COUNT           3
+//virtual field index for sort and check
+#define FDIR_PIECE_FIELD_INDEX_FOR_REMOVE 10
 
 
 typedef void (*server_free_func)(void *ptr);
