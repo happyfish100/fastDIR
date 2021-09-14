@@ -49,14 +49,6 @@ static const char *piece_field_names[] = {
     "basic", "children", "xattr"
 };
 
-typedef struct
-{
-    int64_t fixed[FIXED_INODES_ARRAY_SIZE];
-    int64_t *elts;
-    int count;
-    int alloc;
-} smart_int64_array_t;
-
 DentrySerializerContext g_serializer_ctx;
 
 static int buffer_init_func(void *element, void *init_args)
@@ -68,8 +60,9 @@ static int buffer_init_func(void *element, void *init_args)
 
 int dentry_serializer_init()
 {
-    const int min_bits = 6;
+    const int min_bits = 2;
     const int max_bits = 16;
+    const bool allow_duplicate = false;
     int result;
 
     if ((result=fast_mblock_init_ex1(&g_serializer_ctx.buffer_allocator,
@@ -85,6 +78,7 @@ int dentry_serializer_init()
         return result;
     }
 
+    sorted_i64_array_init(&I64_SORTED_ARRAY_CTX, allow_duplicate);
     return 0;
 }
 
@@ -104,56 +98,6 @@ void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
 
     fast_mblock_free_objects(&g_serializer_ctx.buffer_allocator,
             (void **)buffers, count);
-}
-
-static int realloc_array(smart_int64_array_t *array)
-{
-    int64_t *elts;
-
-    array->alloc *= 2;
-    if ((elts=fc_malloc(sizeof(int64_t) * array->alloc)) == NULL) {
-        return ENOMEM;
-    }
-
-    memcpy(elts, array->elts, sizeof(int64_t) * array->count);
-    if (array->elts != array->fixed) {
-        free(array->elts);
-    }
-    array->elts = elts;
-    return 0;
-}
-
-static int pack_children(const FDIRServerDentry *dentry, FastBuffer *buffer)
-{
-    smart_int64_array_t children;
-    UniqSkiplistIterator it;
-    FDIRServerDentry *child;
-    int result;
-
-    result = 0;
-    children.elts = children.fixed;
-    children.alloc = FIXED_INODES_ARRAY_SIZE;
-    children.count = 0;
-    uniq_skiplist_iterator(dentry->children, &it);
-    while ((child=uniq_skiplist_next(&it)) != NULL) {
-        if (children.count >= children.alloc) {
-            if ((result=realloc_array(&children)) != 0) {
-                break;
-            }
-        }
-        children.elts[children.count++] = child->inode;
-    }
-
-    if (result == 0) {
-        result = sf_serializer_pack_int64_array(buffer,
-                DENTRY_FIELD_ID_CHILDREN,
-                children.elts, children.count);
-    }
-
-    if (children.elts != children.fixed) {
-        free(children.elts);
-    }
-    return result;
 }
 
 static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
@@ -293,7 +237,7 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
     int result;
 
     if (field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
-        if (uniq_skiplist_empty(dentry->children)) {
+        if (dentry->db_args->children == NULL) {
             *buffer = NULL;
             return 0;
         }
@@ -318,7 +262,10 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
             break;
         case FDIR_PIECE_FIELD_INDEX_CHILDREN:
             if (S_ISDIR(dentry->stat.mode)) {
-                result = pack_children(dentry, *buffer);
+                result = sf_serializer_pack_int64_array(*buffer,
+                        DENTRY_FIELD_ID_CHILDREN,
+                        dentry->db_args->children->elts,
+                        dentry->db_args->children->count);
             } else {
                 result = EINVAL;
             }

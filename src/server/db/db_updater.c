@@ -183,20 +183,89 @@ static inline void free_message_buffer(
     }
 }
 
+static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
+{
+    if (dentry->db_args->children == NULL || dentry->db_args->
+            children->alloc <= dentry->db_args->children->count)
+    {
+        dentry->db_args->children = i64_array_allocator_realloc(
+                &I64_ARRAY_ALLOCATOR_CTX, dentry->db_args->children,
+                dentry->db_args->children->count + 1);
+        if (dentry->db_args->children == NULL) {
+            return ENOMEM;
+        }
+    }
+
+    return sorted_array_insert(&I64_SORTED_ARRAY_CTX, dentry->db_args->
+            children->elts, &dentry->db_args->children->count, &inode);
+}
+
+static int merge_children_messages(FDIRDentryMergedMessages *merged,
+        FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
+{
+    int result;
+    FDIRChangeNotifyMessage **msg;
+
+    for (msg=start; msg<end; msg++) {
+        if ((*msg)->op_type == da_binlog_op_type_create) {
+            if ((result=insert_children((*msg)->dentry,
+                            (*msg)->child)) != 0)
+            {
+                if (result == ENOMEM) {
+                    return result;
+                } else {
+                    logWarning("file: "__FILE__", line: %d, "
+                            "inode: %"PRId64", insert child %"PRId64" "
+                            "fail, errno: %d, error info: %s", __LINE__,
+                            (*msg)->dentry->inode, (*msg)->child,
+                            result, STRERROR(result));
+                }
+            }
+        } else {
+            if ((*msg)->dentry->db_args->children == NULL) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "inode: %"PRId64", child inode: %"PRId64", "
+                        "the children array is NULL!", __LINE__,
+                        (*msg)->dentry->inode, (*msg)->child);
+                continue;
+            }
+
+            if ((result=sorted_array_delete(&I64_SORTED_ARRAY_CTX,
+                            (*msg)->dentry->db_args->children->elts,
+                            &(*msg)->dentry->db_args->children->count,
+                            &(*msg)->child)) != 0)
+            {
+                logWarning("file: "__FILE__", line: %d, "
+                        "inode: %"PRId64", delete child %"PRId64" fail, "
+                        "errno: %d, error info: %s", __LINE__,
+                        (*msg)->dentry->inode, (*msg)->child,
+                        result, STRERROR(result));
+            }
+        }
+    }
+
+    if ((result=dentry_serializer_pack((*start)->dentry, (*start)->
+                    field_index, &(*start)->buffer)) != 0)
+    {
+        return result;
+    }
+    merged->messages[merged->msg_count++] = *start;
+    return 0;
+}
+
 static int merge_one_field_messages(FDIRDentryMergedMessages *merged,
         FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
 {
     FDIRChangeNotifyMessage **last;
 
     if ((*start)->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
-        //TODO
+        return merge_children_messages(merged, start, end);
     } else {
         last = end - 1;
         merged->messages[merged->msg_count++] = *last;
         free_message_buffer(start, last);
+        return 0;
     }
-
-    return 0;
 }
 
 static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,

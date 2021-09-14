@@ -28,6 +28,7 @@
 #include "fastcommon/fc_queue.h"
 #include "fastcommon/fc_atomic.h"
 #include "fastcommon/array_allocator.h"
+#include "fastcommon/sorted_array.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
 #include "diskallocator/binlog/common/binlog_types.h"
