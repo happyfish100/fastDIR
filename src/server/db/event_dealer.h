@@ -14,8 +14,8 @@
  */
 
 
-#ifndef _FDIR_DB_UPDATER_H
-#define _FDIR_DB_UPDATER_H
+#ifndef _FDIR_EVENT_DEALER_H
+#define _FDIR_EVENT_DEALER_H
 
 #include "../server_types.h"
 #include "change_notify.h"
@@ -24,10 +24,7 @@
 extern "C" {
 #endif
 
-    int db_updater_init();
-    void db_updater_destroy();
-
-    int db_updater_push_task(FDIRChangeNotifyEvent *head, int *count);
+    int event_dealer_do(FDIRChangeNotifyEvent *head, int *count);
 
 #ifdef __cplusplus
 }

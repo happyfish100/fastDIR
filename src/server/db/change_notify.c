@@ -20,7 +20,7 @@
 #include "sf/sf_func.h"
 #include "../data_thread.h"
 #include "../binlog/binlog_write.h"
-#include "db_updater.h"
+#include "event_dealer.h"
 #include "change_notify.h"
 
 typedef struct fdir_change_notify_context {
@@ -35,7 +35,7 @@ static int deal_events(struct fc_queue_info *qinfo)
     int result;
     int count;
 
-    if ((result=db_updater_deal_events(qinfo->head, &count)) != 0) {
+    if ((result=event_dealer_do(qinfo->head, &count)) != 0) {
         return result;
     }
 

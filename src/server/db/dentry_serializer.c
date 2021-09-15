@@ -62,7 +62,7 @@ int dentry_serializer_init()
 {
     const int min_bits = 2;
     const int max_bits = 16;
-    const bool allow_duplicate = false;
+    const bool allow_duplication = false;
     int result;
 
     if ((result=fast_mblock_init_ex1(&g_serializer_ctx.buffer_allocator,
@@ -78,7 +78,7 @@ int dentry_serializer_init()
         return result;
     }
 
-    sorted_i64_array_init(&I64_SORTED_ARRAY_CTX, allow_duplicate);
+    sorted_i64_array_init(&I64_SORTED_ARRAY_CTX, allow_duplication);
     return 0;
 }
 

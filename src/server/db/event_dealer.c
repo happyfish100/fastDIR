@@ -20,7 +20,7 @@
 #include "../server_global.h"
 #include "../dentry.h"
 #include "dentry_serializer.h"
-#include "db_updater.h"
+#include "event_dealer.h"
 
 #define BUFFER_BATCH_FREE_COUNT  1024
 
@@ -36,7 +36,7 @@ typedef struct fdir_dentry_merged_messages_array {
     int alloc;
 } FDIRDentryMergedMessagesArray;
 
-typedef struct fdir_db_updater_context {
+typedef struct fdir_event_dealer_context {
     int64_t last_version;
     FDIRChangeNotifyMessagePtrArray msg_ptr_array;
     FDIRDentryMergedMessagesArray merged_msg_array;
@@ -44,32 +44,13 @@ typedef struct fdir_db_updater_context {
         FastBuffer *buffers[BUFFER_BATCH_FREE_COUNT];
         int count;
     } buffer_ptr_array;
+} FDIREventDealerContext;
 
-    //pthread_lock_cond_pair_t lc_pair;
-} FDIRDBUpdaterContext;
+static FDIREventDealerContext event_dealer_ctx;
 
-static FDIRDBUpdaterContext db_updater_ctx;
-
-#define MSG_PTR_ARRAY     db_updater_ctx.msg_ptr_array
-#define MERGED_MSG_ARRAY  db_updater_ctx.merged_msg_array
-#define BUFFER_PTR_ARRAY  db_updater_ctx.buffer_ptr_array
-
-int db_updater_init()
-{
-    /*
-    int result;
-
-    if ((result=init_pthread_lock_cond_pair(&db_updater_ctx.lc_pair)) != 0) {
-        return result;
-    }
-    */
-
-    return 0;
-}
-
-void db_updater_destroy()
-{
-}
+#define MSG_PTR_ARRAY     event_dealer_ctx.msg_ptr_array
+#define MERGED_MSG_ARRAY  event_dealer_ctx.merged_msg_array
+#define BUFFER_PTR_ARRAY  event_dealer_ctx.buffer_ptr_array
 
 static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
 {
@@ -335,7 +316,7 @@ static int merge_messages()
     return merge_one_dentry_messages(start, msg);
 }
 
-int db_updater_push_task(FDIRChangeNotifyEvent *head, int *count)
+int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
 {
     int result;
     FDIRChangeNotifyEvent *event;
@@ -355,7 +336,7 @@ int db_updater_push_task(FDIRChangeNotifyEvent *head, int *count)
         event = event->next;
     } while (event != NULL);
 
-    db_updater_ctx.last_version = last->version;
+    event_dealer_ctx.last_version = last->version;
     if (MSG_PTR_ARRAY.count > 1) {
         qsort(MSG_PTR_ARRAY.messages, MSG_PTR_ARRAY.count,
                 sizeof(FDIRChangeNotifyMessage *),
