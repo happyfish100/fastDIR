@@ -20,6 +20,31 @@
 #include "../server_types.h"
 #include "change_notify.h"
 
+typedef struct fdir_db_updater_message {
+    DABinlogOpType op_type;
+    int field_index;
+    FastBuffer *buffer;
+    FDIRServerPieceStorage store;
+} FDIRDBUpdaterMessage;
+
+typedef struct fdir_dentry_merged_messages {
+    FDIRDBUpdaterMessage messages[FDIR_PIECE_FIELD_COUNT];
+    int msg_count;
+    int merge_count;
+} FDIRDentryMergedMessages;
+
+typedef struct fdir_db_updater_dentry {
+    int64_t inode;
+    FDIRDentryMergedMessages mms;
+    FDIRServerDentry *dentry;
+} FDIRDBUpdaterDentry;
+
+typedef struct fdir_db_updater_dentry_array {
+    FDIRDBUpdaterDentry *entries;
+    int count;
+    int alloc;
+} FDIRDBUpdaterDentryArray;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -27,7 +52,10 @@ extern "C" {
     int db_updater_init();
     void db_updater_destroy();
 
-    int db_updater_push_task(FDIRChangeNotifyEvent *head, int *count);
+    int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array);
+
+    int db_updater_deal(const FDIRDBUpdaterDentryArray *array,
+            const int64_t last_version);
 
 #ifdef __cplusplus
 }
