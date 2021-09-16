@@ -138,8 +138,8 @@ static void dentry_do_free(void *ptr, const int dec_count)
     if ((!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode) &&
             S_ISLNK(dentry->stat.mode)) && dentry->link.str != NULL)
     {
-        fast_allocator_free(&dentry->context->name_acontext,
-                dentry->link.str);
+        fast_allocator_free(&dentry->context->
+                name_acontext, dentry->link.str);
     }
     dentry_free_xattrs(dentry);
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
@@ -564,6 +564,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
         current->src_dentry = record->hdlink.src_dentry;
+        FC_SET_STRING_NULL(current->link);
     } else if (S_ISLNK(record->stat.mode)) {
         if ((result=dentry_strdup(&db_context->dentry_context,
                         &current->link, &record->link)) != 0)
@@ -618,8 +619,8 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if (current->parent == NULL) {
         ns_entry->dentry_root = current;
-    } else if ((result=uniq_skiplist_insert(current->parent->children,
-                    current)) == 0)
+    } else if ((result=uniq_skiplist_insert(current->
+                    parent->children, current)) == 0)
     {
         current->parent->stat.nlink++;
     } else {
@@ -743,8 +744,11 @@ int dentry_remove(FDIRDataThreadContext *db_context,
 
     if (record->me.parent == NULL) {
         ns_entry->dentry_root = NULL;
-    } else if ((result=uniq_skiplist_delete_ex(record->me.parent->children,
-                    record->me.dentry, free_dentry)) == 0)
+        if (free_dentry) {
+            dentry_free_func(record->me.dentry, FDIR_DELAY_FREE_SECONDS);
+        }
+    } else if ((result=uniq_skiplist_delete_ex(record->me.parent->
+                    children, record->me.dentry, free_dentry)) == 0)
     {
         record->me.parent->stat.nlink--;
     } else {
