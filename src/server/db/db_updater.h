@@ -34,6 +34,7 @@ typedef struct fdir_dentry_merged_messages {
 } FDIRDentryMergedMessages;
 
 typedef struct fdir_db_updater_dentry {
+    int64_t version;
     int64_t inode;
     FDIRDentryMergedMessages mms;
     FDIRServerDentry *dentry;
@@ -45,6 +46,12 @@ typedef struct fdir_db_updater_dentry_array {
     int alloc;
 } FDIRDBUpdaterDentryArray;
 
+typedef struct fdir_db_updater_context {
+    FDIRDBUpdaterDentryArray array;
+    int64_t last_version;
+    FastBuffer buffer;
+} FDIRDBUpdaterContext;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -54,8 +61,7 @@ extern "C" {
 
     int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array);
 
-    int db_updater_deal(const FDIRDBUpdaterDentryArray *array,
-            const int64_t last_version);
+    int db_updater_deal(FDIRDBUpdaterContext *ctx);
 
 #ifdef __cplusplus
 }

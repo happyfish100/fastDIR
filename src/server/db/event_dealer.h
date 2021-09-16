@@ -24,6 +24,8 @@
 extern "C" {
 #endif
 
+    int event_dealer_init();
+
     int event_dealer_do(FDIRChangeNotifyEvent *head, int *count);
 
 #ifdef __cplusplus

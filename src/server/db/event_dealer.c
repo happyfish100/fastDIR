@@ -27,7 +27,7 @@
 
 typedef struct fdir_event_dealer_context {
     FDIRChangeNotifyMessagePtrArray msg_ptr_array;
-    FDIRDBUpdaterDentryArray merged_dentry_array;
+    FDIRDBUpdaterContext updater_ctx;
     struct {
         FastBuffer *buffers[BUFFER_BATCH_FREE_COUNT];
         int count;
@@ -37,8 +37,21 @@ typedef struct fdir_event_dealer_context {
 static FDIREventDealerContext event_dealer_ctx;
 
 #define MSG_PTR_ARRAY       event_dealer_ctx.msg_ptr_array
-#define MERGED_DENTRY_ARRAY event_dealer_ctx.merged_dentry_array
+#define MERGED_DENTRY_ARRAY event_dealer_ctx.updater_ctx.array
 #define BUFFER_PTR_ARRAY    event_dealer_ctx.buffer_ptr_array
+
+int event_dealer_init()
+{
+    int result;
+
+    if ((result=fast_buffer_init_ex(&event_dealer_ctx.
+                    updater_ctx.buffer, 1024)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
 
 static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
 {
@@ -237,12 +250,13 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
         }
     }
 
+    last = end - 1;
     merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     merged->inode = (*start)->dentry->inode;
     merged->dentry = (*start)->dentry;
     merged->mms.merge_count = end - start;
+    merged->version = (*last)->version;
 
-    last = end - 1;
     if ((*last)->op_type == da_binlog_op_type_remove && (*last)->
             field_index == FDIR_PIECE_FIELD_INDEX_FOR_REMOVE)
     {
@@ -300,16 +314,24 @@ static int merge_messages()
         }
     }
 
-    return merge_one_dentry_messages(start, msg);
+    result = merge_one_dentry_messages(start, msg);
+
+    if (BUFFER_PTR_ARRAY.count > 0) {
+        dentry_serializer_batch_free_buffer(
+                BUFFER_PTR_ARRAY.buffers,
+                BUFFER_PTR_ARRAY.count);
+        BUFFER_PTR_ARRAY.count = 0;
+    }
+    return result;
 }
 
-static int deal_merged_entries(const int64_t last_version)
+static int deal_merged_entries()
 {
     int result;
     FDIRDBUpdaterDentry *entry;
     FDIRDBUpdaterDentry *end;
 
-    result = db_updater_deal(&MERGED_DENTRY_ARRAY, last_version);
+    result = db_updater_deal(&event_dealer_ctx.updater_ctx);
     end = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     for (entry=MERGED_DENTRY_ARRAY.entries; entry<end; entry++) {
         dentry_release_ex(entry->dentry, entry->mms.merge_count);
@@ -348,15 +370,9 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
         return result;
     }
 
-    if ((result=deal_merged_entries(last->version)) != 0) {
+    event_dealer_ctx.updater_ctx.last_version = last->version;
+    if ((result=deal_merged_entries()) != 0) {
         return result;
-    }
-
-    if (BUFFER_PTR_ARRAY.count > 0) {
-        dentry_serializer_batch_free_buffer(
-                BUFFER_PTR_ARRAY.buffers,
-                BUFFER_PTR_ARRAY.count);
-        BUFFER_PTR_ARRAY.count = 0;
     }
 
     return result;
