@@ -246,27 +246,35 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     if ((*last)->op_type == da_binlog_op_type_remove && (*last)->
             field_index == FDIR_PIECE_FIELD_INDEX_FOR_REMOVE)
     {
-        copy_message(merged->mms.messages, *last);
-        merged->mms.msg_count = 1;
-        free_message_buffer(start, last);
-    } else {
-        merged->mms.msg_count = 0;
-        for (msg=start + 1; msg<end; msg++) {
-            if ((*msg)->field_index != (*start)->field_index) {
-                if ((result=merge_one_field_messages(merged,
-                                start, msg)) != 0)
-                {
-                    return result;
-                }
-                start = msg;
-            }
-        }
-
-        if ((result=merge_one_field_messages(merged,
-                        start, msg)) != 0)
+        if ((*start)->op_type == da_binlog_op_type_create &&
+                (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
-            return result;
+            dentry_release_ex(merged->dentry, merged->mms.merge_count);
+        } else {
+            copy_message(merged->mms.messages, *last);
+            merged->mms.msg_count = 1;
+            MERGED_DENTRY_ARRAY.count++;
         }
+        free_message_buffer(start, last);
+        return 0;
+    }
+
+    merged->mms.msg_count = 0;
+    for (msg=start + 1; msg<end; msg++) {
+        if ((*msg)->field_index != (*start)->field_index) {
+            if ((result=merge_one_field_messages(merged,
+                            start, msg)) != 0)
+            {
+                return result;
+            }
+            start = msg;
+        }
+    }
+
+    if ((result=merge_one_field_messages(merged,
+                    start, msg)) != 0)
+    {
+        return result;
     }
 
     MERGED_DENTRY_ARRAY.count++;
