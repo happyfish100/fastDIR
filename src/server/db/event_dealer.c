@@ -159,10 +159,8 @@ static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
 static inline void copy_message(FDIRDBUpdaterMessage *umsg,
         const FDIRChangeNotifyMessage *nmsg)
 {
-    umsg->op_type = nmsg->op_type;
     umsg->buffer = nmsg->buffer;
     umsg->field_index = nmsg->field_index;
-    umsg->store = nmsg->dentry->db_args->fields[nmsg->field_index];
 }
 
 static int merge_children_messages(FDIRDBUpdaterDentry *merged,
@@ -252,10 +250,13 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
 
     last = end - 1;
     merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
+    merged->version = (*last)->version;
     merged->inode = (*start)->dentry->inode;
     merged->dentry = (*start)->dentry;
     merged->mms.merge_count = end - start;
-    merged->version = (*last)->version;
+    merged->mms.msg_count = 0;
+    memcpy(merged->fields, (*start)->dentry->db_args->
+            fields, sizeof(merged->fields));
 
     if ((*last)->op_type == da_binlog_op_type_remove && (*last)->
             field_index == FDIR_PIECE_FIELD_INDEX_FOR_REMOVE)
@@ -265,15 +266,21 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
         {
             dentry_release_ex(merged->dentry, merged->mms.merge_count);
         } else {
-            copy_message(merged->mms.messages, *last);
-            merged->mms.msg_count = 1;
+            merged->op_type = da_binlog_op_type_remove;
             MERGED_DENTRY_ARRAY.count++;
         }
         free_message_buffer(start, last);
         return 0;
     }
 
-    merged->mms.msg_count = 0;
+    if ((*start)->op_type == da_binlog_op_type_create &&
+            (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+    {
+        merged->op_type = da_binlog_op_type_create;
+    } else {
+        merged->op_type = da_binlog_op_type_update;
+    }
+
     for (msg=start + 1; msg<end; msg++) {
         if ((*msg)->field_index != (*start)->field_index) {
             if ((result=merge_one_field_messages(merged,

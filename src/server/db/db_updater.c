@@ -28,10 +28,13 @@
 #define REDO_HEADER_FIELD_ID_RECORD_COUNT   1
 #define REDO_HEADER_FIELD_ID_LAST_VERSION   2
 
-#define REDO_DENTRY_FIELD_INDEX_BASE       20
-#define REDO_DENTRY_FIELD_ID_VERSION        1
-#define REDO_DENTRY_FIELD_ID_INODE          2
-#define REDO_DENTRY_FIELD_ID_FIELD_INDEXES  3
+#define REDO_DENTRY_FIELD_INDEX_BASE              20
+#define REDO_DENTRY_FIELD_ID_VERSION               1
+#define REDO_DENTRY_FIELD_ID_INODE                 2
+#define REDO_DENTRY_FIELD_ID_OP_TYPE               3
+#define REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES   4
+#define REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES  5
+#define REDO_DENTRY_FIELD_ID_PIECES_SIZE           6
 #define REDO_DENTRY_FIELD_ID_INDEX_BASIC      \
     (REDO_DENTRY_FIELD_INDEX_BASE + FDIR_PIECE_FIELD_INDEX_BASIC)
 #define REDO_DENTRY_FIELD_ID_INDEX_CHILDREN   \
@@ -101,12 +104,12 @@ int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array)
     return 0;
 }
 
-static inline int write_buffer_to_file(FDIRDBUpdaterContext *ctx)
+static inline int write_buffer_to_file(const FastBuffer *buffer)
 {
     int result;
 
-    if (fc_safe_write(db_updater_ctx.redo.fd, ctx->buffer.data,
-                ctx->buffer.length) != ctx->buffer.length)
+    if (fc_safe_write(db_updater_ctx.redo.fd, buffer->data,
+                buffer->length) != buffer->length)
     {
         result = errno != 0 ? errno : EIO;
         logError("file: "__FILE__", line: %d, "
@@ -138,23 +141,111 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     }
 
     sf_serializer_pack_end(&ctx->buffer);
-    return write_buffer_to_file(ctx);
+    return write_buffer_to_file(&ctx->buffer);
+}
+
+static inline int pack_piece_storage(FastBuffer *buffer,
+        const FDIRServerPieceStorage *store, const int fid)
+{
+    int32_t values[4];
+    int count;
+
+    count = 0;
+    values[count++] = store->file_id;
+    values[count++] = store->offset;
+    values[count++] = store->size;
+    return sf_serializer_pack_int32_array(buffer, fid, values, count);
 }
 
 static int write_one_entry(FDIRDBUpdaterContext *ctx,
-        FDIRDBUpdaterDentry *entry)
+        const FDIRDBUpdaterDentry *entry)
 {
-    FDIRDBUpdaterMessage *msg;
-    FDIRDBUpdaterMessage *end;
-    //int result;
+    const FDIRDBUpdaterMessage *msg;
+    const FDIRDBUpdaterMessage *end;
+    //TODO
+    int8_t field_indexes[FDIR_PIECE_FIELD_COUNT];
+    int field_count;
+    int pieces_size;
+    int result;
 
+    field_count = 0;
+    pieces_size = 0;
     end = entry->mms.messages + entry->mms.msg_count;
     for (msg=entry->mms.messages; msg<end; msg++) {
-        //TODO
+        if (msg->buffer != NULL) {
+            pieces_size += msg->buffer->length;
+            //TODO
+        }
+        field_indexes[field_count++] = msg->field_index;
     }
 
     sf_serializer_pack_begin(&ctx->buffer);
+
+    if ((result=sf_serializer_pack_int64(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_VERSION,
+                    entry->version)) != 0)
+    {
+        return result;
+    }
+    if ((result=sf_serializer_pack_int64(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_INODE,
+                    entry->inode)) != 0)
+    {
+        return result;
+    }
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_OP_TYPE,
+                    entry->op_type)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=sf_serializer_pack_int8_array(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES,
+                    field_indexes, field_count)) != 0)
+    {
+        return result;
+    }
+    //TODO: REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES
+
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_PIECES_SIZE,
+                    pieces_size)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=pack_piece_storage(&ctx->buffer, entry->
+                    fields + FDIR_PIECE_FIELD_INDEX_BASIC,
+                    REDO_DENTRY_FIELD_ID_INDEX_BASIC)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=pack_piece_storage(&ctx->buffer, entry->
+                    fields + FDIR_PIECE_FIELD_INDEX_CHILDREN,
+                    REDO_DENTRY_FIELD_ID_INDEX_CHILDREN)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=pack_piece_storage(&ctx->buffer, entry->
+                    fields + FDIR_PIECE_FIELD_INDEX_XATTR,
+                    REDO_DENTRY_FIELD_ID_INDEX_XATTR)) != 0)
+    {
+        return result;
+    }
+
     sf_serializer_pack_end(&ctx->buffer);
+    if ((result=write_buffer_to_file(&ctx->buffer)) != 0) {
+        return result;
+    }
+
+    for (msg=entry->mms.messages; msg<end; msg++) {
+        if ((result=write_buffer_to_file(msg->buffer)) != 0) {
+            return result;
+        }
+    }
 
     return 0;
 }

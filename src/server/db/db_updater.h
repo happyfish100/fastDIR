@@ -21,10 +21,8 @@
 #include "change_notify.h"
 
 typedef struct fdir_db_updater_message {
-    DABinlogOpType op_type;
     int field_index;
     FastBuffer *buffer;
-    FDIRServerPieceStorage store;
 } FDIRDBUpdaterMessage;
 
 typedef struct fdir_dentry_merged_messages {
@@ -36,6 +34,8 @@ typedef struct fdir_dentry_merged_messages {
 typedef struct fdir_db_updater_dentry {
     int64_t version;
     int64_t inode;
+    DABinlogOpType op_type;
+    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
     FDIRDentryMergedMessages mms;
     FDIRServerDentry *dentry;
 } FDIRDBUpdaterDentry;

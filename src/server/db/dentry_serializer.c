@@ -237,7 +237,9 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
     int result;
 
     if (field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
-        if (dentry->db_args->children == NULL) {
+        if (dentry->db_args->children == NULL ||
+                dentry->db_args->children->count == 0)
+        {
             *buffer = NULL;
             return 0;
         }
