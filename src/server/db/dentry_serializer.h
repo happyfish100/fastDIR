@@ -43,6 +43,26 @@ extern "C" {
     int dentry_serializer_pack(const FDIRServerDentry *dentry,
             const int field_index, FastBuffer **buffer);
 
+
+    static inline FastBuffer *dentry_serializer_alloc_buffer(
+            const int capacity)
+    {
+        FastBuffer *buffer;
+        if ((buffer=(FastBuffer *)fast_mblock_alloc_object(
+                        &g_serializer_ctx.buffer_allocator)) == NULL)
+        {
+            return NULL;
+        }
+
+        buffer->length = 0;
+        if (fast_buffer_check_capacity(buffer, capacity) != 0) {
+            fast_mblock_free_object(&g_serializer_ctx.
+                    buffer_allocator, buffer);
+            return NULL;
+        }
+        return buffer;
+    }
+
     void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
             const int count);
 
