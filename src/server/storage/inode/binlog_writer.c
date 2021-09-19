@@ -24,6 +24,31 @@
 #include "segment_index.h"
 #include "binlog_writer.h"
 
+int inode_binlog_pack_record_callback(void *args,
+        const DABinlogOpType op_type,
+        char *buff, const int size)
+{
+    FDIRStorageInodeIndexInfo *index;
+    int len;
+    int i;
+
+    index = (FDIRStorageInodeIndexInfo *)args;
+    if (op_type == da_binlog_op_type_create) {
+        len = snprintf(buff, size, "%"PRId64" %"PRId64" %c ",
+                index->version, index->inode, op_type);
+        for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
+            len += snprintf(buff + len, size - len, "%d %d %d%c",
+                    index->fields[i].file_id, index->fields[i].offset,
+                    index->fields[i].size, (i < (FDIR_PIECE_FIELD_COUNT
+                            - 1) ? ' ' : '\n'));
+        }
+        return len;
+    } else {
+        return snprintf(buff, size, "%"PRId64" %"PRId64" %c\n",
+                index->version, index->inode, op_type);
+    }
+}
+
 static inline int log4create(const FDIRStorageInodeIndexInfo *index,
         DABinlogWriterCache *cache)
 {
@@ -37,31 +62,10 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
         }
     }
 
-    cache->current += sprintf(cache->current,
-            "%"PRId64" %"PRId64" %c %"PRId64" %d\n",
-            index->version, index->inode,
-            da_binlog_op_type_create,
-            index->file_id, index->offset);
+    cache->current += inode_binlog_pack_record_callback(
+            (void *)index, da_binlog_op_type_create,
+            cache->current, cache->buff_end - cache->current);
     return 0;
-}
-
-int inode_binlog_pack_record_callback(void *args,
-        const DABinlogOpType op_type,
-        char *buff, const int size)
-{
-    FDIRStorageInodeIndexInfo *index;
-
-    index = (FDIRStorageInodeIndexInfo *)args;
-    if (op_type == da_binlog_op_type_create) {
-        return snprintf(buff, size,
-                "%"PRId64" %"PRId64" %c %"PRId64" %d\n",
-                index->version, index->inode,
-                op_type, index->file_id, index->offset);
-    } else {
-        return snprintf(buff, size,
-                "%"PRId64" %"PRId64" %c\n",
-                index->version, index->inode, op_type);
-    }
 }
 
 int inode_binlog_batch_update_callback(DABinlogWriter *writer,

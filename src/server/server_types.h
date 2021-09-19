@@ -33,6 +33,7 @@
 #include "sf/idempotency/server/server_types.h"
 #include "diskallocator/binlog/common/binlog_types.h"
 #include "common/fdir_types.h"
+#include "common/fdir_server_types.h"
 
 #define FDIR_MAX_NS_SUBSCRIBERS                8
 
@@ -96,15 +97,6 @@
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
 
-#define FDIR_PIECE_FIELD_INDEX_BASIC       0
-#define FDIR_PIECE_FIELD_INDEX_CHILDREN    1
-#define FDIR_PIECE_FIELD_INDEX_XATTR       2
-#define FDIR_PIECE_FIELD_COUNT             3
-
-//virtual field index for sort and check
-#define FDIR_PIECE_FIELD_INDEX_FOR_REMOVE 10
-
-
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
@@ -117,12 +109,6 @@ struct fdir_namespace_entry;
 struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
-
-typedef struct fdir_server_piece_storage {
-    int file_id;
-    int offset;
-    int size;
-} FDIRServerPieceStorage;
 
 typedef struct fdir_server_dentry_db_args {
     volatile int reffer_count;

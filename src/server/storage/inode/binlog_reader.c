@@ -23,19 +23,21 @@
 #include "binlog_writer.h"
 #include "binlog_reader.h"
 
-#define BINLOG_MIN_FIELD_COUNT   3
-#define BINLOG_MAX_FIELD_COUNT   5
+#define BINLOG_PIECE_FIELD_INDEX_BASE 3
+#define BINLOG_MIN_FIELD_COUNT        3
+#define BINLOG_MAX_FIELD_COUNT  (BINLOG_PIECE_FIELD_INDEX_BASE + \
+        3 * FDIR_PIECE_FIELD_COUNT)
 
 #define BINLOG_FIELD_INDEX_VERSION  0
 #define BINLOG_FIELD_INDEX_INODE    1
 #define BINLOG_FIELD_INDEX_OP_TYPE  2
-#define BINLOG_FIELD_INDEX_FILE_ID  3
-#define BINLOG_FIELD_INDEX_OFFSET   4
 
 static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
-        FDIRStorageInodeIndexInfo *inode_index, char *error_info)
+        FDIRStorageInodeIndexInfo *index, char *error_info)
 {
     int count;
+    int field_index;
+    int i;
     char *endptr;
     string_t cols[BINLOG_MAX_FIELD_COUNT];
 
@@ -47,10 +49,10 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
         return EINVAL;
     }
 
-    SF_BINLOG_PARSE_INT_SILENCE(inode_index->version,
-            "version", BINLOG_FIELD_INDEX_VERSION, ' ', 0);
-    SF_BINLOG_PARSE_INT_SILENCE(inode_index->inode,
-            "inode", BINLOG_FIELD_INDEX_INODE, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(index->version, "version",
+            BINLOG_FIELD_INDEX_VERSION, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(index->inode, "inode",
+            BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
     if (*op_type == da_binlog_op_type_create ||
             *op_type == da_binlog_op_type_update)
@@ -60,10 +62,21 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
                     count, BINLOG_MAX_FIELD_COUNT);
             return EINVAL;
         }
-        SF_BINLOG_PARSE_INT_SILENCE(inode_index->file_id, "file id",
-                BINLOG_FIELD_INDEX_FILE_ID, ' ', 0);
-        SF_BINLOG_PARSE_INT_SILENCE(inode_index->offset, "offset",
-                BINLOG_FIELD_INDEX_OFFSET, '\n', 0);
+
+        field_index = BINLOG_PIECE_FIELD_INDEX_BASE;
+        for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
+            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].file_id,
+                    "file id", field_index, ' ', 0);
+            field_index++;
+            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].offset,
+                    "offset", field_index, ' ', 0);
+            field_index++;
+
+            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].size, "size",
+                    field_index, (i < FDIR_PIECE_FIELD_COUNT - 1 ?
+                        ' ' : '\n'), 0);
+            field_index++;
+        }
     } else if (*op_type == da_binlog_op_type_remove) {
         if (count != BINLOG_MIN_FIELD_COUNT) {
             sprintf(error_info, "field count: %d != %d",

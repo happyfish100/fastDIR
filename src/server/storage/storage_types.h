@@ -20,6 +20,7 @@
 #include "fastcommon/fc_list.h"
 #include "sf/sf_types.h"
 #include "diskallocator/binlog/common/binlog_types.h"
+#include "fastdir/client/fdir_server_types.h"
 
 #define FDIR_STORAGE_BINLOG_TYPE_INODE   0
 #define FDIR_STORAGE_BINLOG_TYPE_TRUNK   1
@@ -35,13 +36,12 @@
 #define FDIR_STORAGE_SEGMENT_STATUS_LOADING  1
 #define FDIR_STORAGE_SEGMENT_STATUS_READY    2
 
-#define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  64
+#define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  128
 
 typedef struct fdir_storage_inode_index_info {
     int64_t version;
     uint64_t inode;
-    int64_t file_id;
-    int offset;
+    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
     int status;
 } FDIRStorageInodeIndexInfo;
 
