@@ -68,8 +68,11 @@ typedef struct db_updater_ctx {
 
 static DBUpdaterCtx db_updater_ctx;
 
+static int resume_from_redo_log(const int64_t start_version);
+
 int db_updater_init()
 {
+    int64_t start_version;
     char full_filename[PATH_MAX];
 
     snprintf(full_filename, sizeof(full_filename), "%s/%s",
@@ -87,7 +90,9 @@ int db_updater_init()
     }
     db_updater_ctx.redo.fd = -1;
 
-    return 0;
+    //TODO
+    start_version = 0;
+    return resume_from_redo_log(start_version);
 }
 
 void db_updater_destroy()
@@ -357,7 +362,7 @@ static int unpack_from_file(SFSerializerIterator *it)
     string_t content;
 
     if ((length=sf_serializer_read_message(db_updater_ctx.
-                    redo.fd, buff, sizeof(buff))) != 0)
+                    redo.fd, buff, sizeof(buff))) < 0)
     {
         result = errno != 0 ? errno : EIO;
         logError("file: "__FILE__", line: %d, "
@@ -514,6 +519,7 @@ static int unpack_one_dentry(const int64_t start_version,
         return it->error_no;
     }
 
+    entry->dentry = NULL;
     for (i=0; i<packed_fields.count; i++) {
         msg = entry->mms.messages + entry->mms.msg_count;
         msg->field_index = packed_fields.indexes[i];
@@ -592,13 +598,13 @@ static int do_load(const int64_t start_version,
     return result;
 }
 
-static int load_from_redo_log(const int64_t start_version,
-        FDIRDBUpdaterContext *ctx)
+static int resume_from_redo_log(const int64_t start_version)
 {
+    FDIRDBUpdaterContext ctx;
     int result;
 
-    ctx->array.entries = NULL;
-    ctx->array.count = ctx->array.alloc = 0;
+    ctx.array.entries = NULL;
+    ctx.array.count = ctx.array.alloc = 0;
     if ((db_updater_ctx.redo.fd=open(db_updater_ctx.
                     redo.filename, O_RDONLY)) < 0)
     {
@@ -613,12 +619,13 @@ static int load_from_redo_log(const int64_t start_version,
         return result;
     }
 
-    result = do_load(start_version, ctx);
+    result = do_load(start_version, &ctx);
     close(db_updater_ctx.redo.fd);
 
     if (result == 0) {
     }
 
+    free(ctx.array.entries);
     return result;
 }
 
