@@ -151,8 +151,9 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
                     char filename[PATH_MAX];
                     int64_t line_count;
 
-                    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
-                            binlog_position->index, filename, sizeof(filename));
+                    sf_binlog_writer_get_filename(DATA_PATH_STR,
+                            FDIR_BINLOG_SUBDIR_NAME, binlog_position->
+                            index, filename, sizeof(filename));
                     if (fc_get_file_line_count_ex(filename, binlog_position->
                             offset + (p - buff), &line_count) == 0)
                     {

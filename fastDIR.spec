@@ -1,7 +1,6 @@
 %define FastDIRServer fastDIR-server
 %define FastDIRClient fastDIR-client
 %define FastDIRDevel  fastDIR-devel
-%define FastDIRDebuginfo fastDIR-debuginfo
 %define FastDIRConfig fastDIR-config
 %define CommitVersion %(echo $COMMIT_VERSION)
 

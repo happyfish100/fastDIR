@@ -60,8 +60,8 @@ static inline int binlog_get_current_write_index()
 static inline void binlog_get_current_write_position(
         SFBinlogFilePosition *position)
 {
-    position->index = g_binlog_writer_ctx.writer.binlog.index;
-    position->offset = g_binlog_writer_ctx.writer.file.size;
+    sf_binlog_get_current_write_position(
+            &g_binlog_writer_ctx.writer, position);
 }
 
 static inline int push_to_binlog_write_queue(ServerBinlogRecordBuffer *rbuffer)

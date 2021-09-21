@@ -45,9 +45,9 @@ static int open_readable_binlog(ServerBinlogReader *reader)
         close(reader->fd);
     }
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
-            reader->position.index, reader->filename,
-            sizeof(reader->filename));
+    sf_binlog_writer_get_filename(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, reader->position.index,
+            reader->filename, sizeof(reader->filename));
     reader->fd = open(reader->filename, O_RDONLY);
     if (reader->fd < 0) {
         result = errno != 0 ? errno : EACCES;
@@ -591,7 +591,7 @@ int binlog_get_first_record_version(const int file_index,
     int64_t bytes;
     int offset;
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
             file_index, filename, sizeof(filename));
 
     *error_info = '\0';
@@ -649,7 +649,7 @@ int binlog_get_last_record_version(const int file_index,
     int64_t file_size = 0;
     int64_t bytes;
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
             file_index, filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         result = getFileSize(filename, &file_size);

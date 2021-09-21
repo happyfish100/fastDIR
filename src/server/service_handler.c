@@ -254,7 +254,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
 
     long2buff(FC_ATOMIC_GET(DATA_CURRENT_VERSION),
             stat_resp->binlog.current_version);
-    long2buff(g_binlog_writer_ctx.writer.total_count,
+    long2buff(g_binlog_writer_ctx.writer.fw.total_count,
             stat_resp->binlog.writer.total_count);
     long2buff(g_binlog_writer_ctx.writer.version_ctx.next,
             stat_resp->binlog.writer.next_version);
