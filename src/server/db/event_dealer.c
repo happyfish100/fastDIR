@@ -252,11 +252,10 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     merged->version = (*last)->version;
     merged->inode = (*start)->dentry->inode;
-    merged->dentry = (*start)->dentry;
+    merged->args = (*start)->dentry;
+    merged->fields.ptr = (*start)->dentry->db_args->fields;
     merged->mms.merge_count = end - start;
     merged->mms.msg_count = 0;
-    memcpy(merged->fields, (*start)->dentry->db_args->
-            fields, sizeof(merged->fields));
 
     if ((*last)->op_type == da_binlog_op_type_remove && (*last)->
             field_index == FDIR_PIECE_FIELD_INDEX_FOR_REMOVE)
@@ -264,7 +263,7 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
         if ((*start)->op_type == da_binlog_op_type_create &&
                 (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
-            dentry_release_ex(merged->dentry, merged->mms.merge_count);
+            dentry_release_ex((*start)->dentry, merged->mms.merge_count);
         } else {
             merged->op_type = da_binlog_op_type_remove;
             MERGED_DENTRY_ARRAY.count++;
@@ -341,7 +340,7 @@ static int deal_merged_entries()
     result = db_updater_deal(&event_dealer_ctx.updater_ctx);
     end = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     for (entry=MERGED_DENTRY_ARRAY.entries; entry<end; entry++) {
-        dentry_release_ex(entry->dentry, entry->mms.merge_count);
+        dentry_release_ex(entry->args, entry->mms.merge_count);
     }
 
     return result;

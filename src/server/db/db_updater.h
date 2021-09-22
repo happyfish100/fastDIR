@@ -18,33 +18,6 @@
 #define _FDIR_DB_UPDATER_H
 
 #include "../server_types.h"
-#include "change_notify.h"
-
-typedef struct fdir_db_updater_message {
-    int field_index;
-    FastBuffer *buffer;
-} FDIRDBUpdaterMessage;
-
-typedef struct fdir_dentry_merged_messages {
-    FDIRDBUpdaterMessage messages[FDIR_PIECE_FIELD_COUNT];
-    int msg_count;
-    int merge_count;
-} FDIRDentryMergedMessages;
-
-typedef struct fdir_db_updater_dentry {
-    int64_t version;
-    int64_t inode;
-    DABinlogOpType op_type;
-    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
-    FDIRDentryMergedMessages mms;
-    FDIRServerDentry *dentry;
-} FDIRDBUpdaterDentry;
-
-typedef struct fdir_db_updater_dentry_array {
-    FDIRDBUpdaterDentry *entries;
-    int count;
-    int alloc;
-} FDIRDBUpdaterDentryArray;
 
 typedef struct fdir_db_updater_context {
     FDIRDBUpdaterDentryArray array;

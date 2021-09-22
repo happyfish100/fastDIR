@@ -16,7 +16,7 @@
 #ifndef _FDIR_SERVER_COMMON_TYPES_H
 #define _FDIR_SERVER_COMMON_TYPES_H
 
-#include "fastcommon/common_define.h"
+#include "fastcommon/fast_buffer.h"
 
 //piece storage field indexes
 #define FDIR_PIECE_FIELD_INDEX_BASIC       0
@@ -32,5 +32,34 @@ typedef struct fdir_server_piece_storage {
     int offset;
     int size;
 } FDIRServerPieceStorage;
+
+typedef struct fdir_db_updater_message {
+    int field_index;
+    FastBuffer *buffer;
+} FDIRDBUpdaterMessage;
+
+typedef struct fdir_dentry_merged_messages {
+    FDIRDBUpdaterMessage messages[FDIR_PIECE_FIELD_COUNT];
+    int msg_count;
+    int merge_count;
+} FDIRDentryMergedMessages;
+
+typedef struct fdir_db_updater_dentry {
+    int64_t version;
+    int64_t inode;
+    DABinlogOpType op_type;
+    struct {
+        FDIRServerPieceStorage holder[FDIR_PIECE_FIELD_COUNT];
+        FDIRServerPieceStorage *ptr;
+    } fields;
+    FDIRDentryMergedMessages mms;
+    void *args;
+} FDIRDBUpdaterDentry;
+
+typedef struct fdir_db_updater_dentry_array {
+    FDIRDBUpdaterDentry *entries;
+    int count;
+    int alloc;
+} FDIRDBUpdaterDentryArray;
 
 #endif

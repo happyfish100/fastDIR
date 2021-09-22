@@ -18,7 +18,6 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
 #include "../server_global.h"
-#include "../dentry.h"
 #include "dentry_serializer.h"
 #include "db_updater.h"
 
@@ -252,21 +251,21 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
     }
 
     if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields + FDIR_PIECE_FIELD_INDEX_BASIC,
+                    fields.ptr + FDIR_PIECE_FIELD_INDEX_BASIC,
                     REDO_DENTRY_FIELD_ID_INDEX_BASIC)) != 0)
     {
         return result;
     }
 
     if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields + FDIR_PIECE_FIELD_INDEX_CHILDREN,
+                    fields.ptr + FDIR_PIECE_FIELD_INDEX_CHILDREN,
                     REDO_DENTRY_FIELD_ID_INDEX_CHILDREN)) != 0)
     {
         return result;
     }
 
     if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields + FDIR_PIECE_FIELD_INDEX_XATTR,
+                    fields.ptr + FDIR_PIECE_FIELD_INDEX_XATTR,
                     REDO_DENTRY_FIELD_ID_INDEX_XATTR)) != 0)
     {
         return result;
@@ -457,6 +456,8 @@ static int unpack_one_dentry(const int64_t start_version,
         }
     }
     entry = ctx->array.entries + ctx->array.count;
+    entry->args = NULL;
+    entry->fields.ptr = entry->fields.holder;
     entry->mms.msg_count = 0;
     packed_fields.count = 0;
     size_array.count = 0;
@@ -494,15 +495,15 @@ static int unpack_one_dentry(const int64_t start_version,
                 size_array.count = fv->value.int_array.count;
                 break;
             case REDO_DENTRY_FIELD_ID_INDEX_BASIC:
-                unpack_piece_storage(fv, entry->fields +
+                unpack_piece_storage(fv, entry->fields.ptr +
                         FDIR_PIECE_FIELD_INDEX_BASIC);
                 break;
             case REDO_DENTRY_FIELD_ID_INDEX_CHILDREN:
-                unpack_piece_storage(fv, entry->fields +
+                unpack_piece_storage(fv, entry->fields.ptr +
                         FDIR_PIECE_FIELD_INDEX_CHILDREN);
                 break;
             case REDO_DENTRY_FIELD_ID_INDEX_XATTR:
-                unpack_piece_storage(fv, entry->fields +
+                unpack_piece_storage(fv, entry->fields.ptr +
                         FDIR_PIECE_FIELD_INDEX_XATTR);
                 break;
             default:
@@ -519,7 +520,6 @@ static int unpack_one_dentry(const int64_t start_version,
         return it->error_no;
     }
 
-    entry->dentry = NULL;
     for (i=0; i<packed_fields.count; i++) {
         msg = entry->mms.messages + entry->mms.msg_count;
         msg->field_index = packed_fields.indexes[i];
