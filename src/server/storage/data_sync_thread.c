@@ -55,6 +55,7 @@ static int data_sync_thread_deal(FDIRDBUpdateDentry *head)
         dentry = dentry->next;
     } while (dentry != NULL);
 
+    fdir_data_sync_finish(count);
     return 0;
 }
 
