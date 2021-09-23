@@ -15,7 +15,7 @@
 
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
-#include "../../server_global.h"
+#include "../storage_global.h"
 #include "binlog_index.h"
 
 #define BINLOG_INDEX_FILENAME   "ib_index.dat"

@@ -11,7 +11,7 @@ FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
                    inode/inode_index_array.lo inode/bid_journal.lo \
                    trunk/trunk_index.lo trunk/slice_array.lo \
                    trunk/binlog_reader.lo trunk/binlog_writer.lo \
-                   storage_module.lo
+                   storage_module.lo data_sync_thread.lo storage_global.lo
 
 FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
                    inode/binlog_reader.o \
@@ -19,7 +19,7 @@ FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
                    inode/inode_index_array.o inode/bid_journal.o \
                    trunk/trunk_index.o trunk/slice_array.o \
                    trunk/binlog_reader.o trunk/binlog_writer.o \
-                   storage_module.o
+                   storage_module.o data_sync_thread.o storage_global.o
 
 HEADER_FILES =
 
@@ -30,7 +30,7 @@ SHARED_LIBS = libfdirstorage.so
 STATIC_LIBS = libfdirstorage.a
 ALL_LIBS = $(SHARED_LIBS) $(STATIC_LIBS)
 
-all: $(ALL_OBJS) $(ALL_PRGS) $(STATIC_LIBS)
+all: $(ALL_OBJS) $(ALL_PRGS) $(ALL_LIBS)
 libfdirstorage.so: $(FAST_SHARED_OBJS)
 	$(COMPILE) -o $@ -shared $(FAST_SHARED_OBJS) $(LIB_PATH)
 libfdirstorage.a: $(FAST_STATIC_OBJS)

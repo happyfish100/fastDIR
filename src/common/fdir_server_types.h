@@ -54,6 +54,7 @@ typedef struct fdir_db_updater_dentry {
     } fields;
     FDIRDentryMergedMessages mms;
     void *args;
+    struct fdir_db_updater_dentry *next;  //for queue
 } FDIRDBUpdaterDentry;
 
 typedef struct fdir_db_updater_dentry_array {

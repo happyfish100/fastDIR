@@ -84,4 +84,13 @@ typedef struct fdir_inode_bid_journal_array {
     int count;
 } FDIRInodeBidJournalArray;
 
+typedef struct fdir_data_sync_thread_info {
+    struct fc_queue queue;
+} FDIRDataSyncThreadInfo;
+
+typedef struct fdir_data_sync_thread_array {
+    FDIRDataSyncThreadInfo *threads;
+    int count;
+} FDIRDataSyncThreadArray;
+
 #endif

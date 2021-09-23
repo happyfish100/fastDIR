@@ -30,7 +30,7 @@
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/fc_atomic.h"
 #include "fastcommon/locked_list.h"
-#include "../../server_global.h"
+#include "../storage_global.h"
 #include "binlog_index.h"
 #include "binlog_reader.h"
 #include "binlog_writer.h"

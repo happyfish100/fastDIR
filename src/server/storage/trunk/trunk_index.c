@@ -15,7 +15,7 @@
 
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
-#include "../../server_global.h"
+#include "../storage_global.h"
 #include "trunk_index.h"
 
 #define TRUNK_INDEX_FILENAME   "trunk_index.dat"

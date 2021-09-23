@@ -16,7 +16,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/shared_func.h"
 #include "sf/sf_binlog_index.h"
-#include "../../server_global.h"
+#include "../storage_global.h"
 #include "bid_journal.h"
 
 #define BINLOG_ID_JOURNAL_FILENAME "binlog_id.journal"
