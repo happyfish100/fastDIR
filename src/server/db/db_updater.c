@@ -21,8 +21,8 @@
 #include "dentry_serializer.h"
 #include "db_updater.h"
 
-#define REDO_TMP_FILENAME  ".store.tmp"
-#define REDO_LOG_FILENAME  "store.redo"
+#define REDO_TMP_FILENAME  ".dbstore.tmp"
+#define REDO_LOG_FILENAME  "dbstore.redo"
 
 #define REDO_HEADER_FIELD_ID_RECORD_COUNT   1
 #define REDO_HEADER_FIELD_ID_LAST_VERSION   2
@@ -75,14 +75,14 @@ int db_updater_init()
     char full_filename[PATH_MAX];
 
     snprintf(full_filename, sizeof(full_filename), "%s/%s",
-            STORAGE_PATH_STR, REDO_LOG_FILENAME);
+            DATA_PATH_STR, REDO_LOG_FILENAME);
     db_updater_ctx.redo.filename = fc_strdup(full_filename);
     if (db_updater_ctx.redo.filename == NULL) {
         return ENOMEM;
     }
 
     snprintf(full_filename, sizeof(full_filename), "%s/%s",
-            STORAGE_PATH_STR, REDO_TMP_FILENAME);
+            DATA_PATH_STR, REDO_TMP_FILENAME);
     db_updater_ctx.redo.tmp_filename = fc_strdup(full_filename);
     if (db_updater_ctx.redo.tmp_filename == NULL) {
         return ENOMEM;
@@ -98,15 +98,15 @@ void db_updater_destroy()
 {
 }
 
-static int compare_dentry_version(const FDIRDBUpdaterDentry *entry1,
-        const FDIRDBUpdaterDentry *entry2)
+static int compare_dentry_version(const FDIRDBUpdateDentry *entry1,
+        const FDIRDBUpdateDentry *entry2)
 {
     return fc_compare_int64(entry1->version, entry2->version);
 }
 
-int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array)
+int db_updater_realloc_dentry_array(FDIRDBUpdateDentryArray *array)
 {
-    FDIRDBUpdaterDentry *entries;
+    FDIRDBUpdateDentry *entries;
 
     if (array->alloc == 0) {
         array->alloc = 8 * 1024;
@@ -114,15 +114,15 @@ int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array)
         array->alloc *= 2;
     }
 
-    entries = (FDIRDBUpdaterDentry *)fc_malloc(
-            sizeof(FDIRDBUpdaterDentry) * array->alloc);
+    entries = (FDIRDBUpdateDentry *)fc_malloc(
+            sizeof(FDIRDBUpdateDentry) * array->alloc);
     if (entries == NULL) {
         return ENOMEM;
     }
 
     if (array->entries != NULL) {
         memcpy(entries, array->entries, sizeof(
-                    FDIRDBUpdaterDentry) * array->count);
+                    FDIRDBUpdateDentry) * array->count);
         free(array->entries);
     }
 
@@ -183,10 +183,10 @@ static inline int pack_piece_storage(FastBuffer *buffer,
 }
 
 static int write_one_entry(FDIRDBUpdaterContext *ctx,
-        const FDIRDBUpdaterDentry *entry)
+        const FDIRDBUpdateDentry *entry)
 {
-    const FDIRDBUpdaterMessage *msg;
-    const FDIRDBUpdaterMessage *end;
+    const FDIRDBUpdateMessage *msg;
+    const FDIRDBUpdateMessage *end;
     FieldIndexArray packed_fields;
     FieldIndexArray empty_fields;
     PiecesSizeArray size_array;
@@ -290,8 +290,8 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
 static int do_write(FDIRDBUpdaterContext *ctx)
 {
     int result;
-    FDIRDBUpdaterDentry *entry;
-    FDIRDBUpdaterDentry *last;
+    FDIRDBUpdateDentry *entry;
+    FDIRDBUpdateDentry *last;
 
     if ((result=write_header(ctx)) != 0) {
         return result;
@@ -438,8 +438,8 @@ static int unpack_one_dentry(const int64_t start_version,
     int result;
     int i;
     int read_bytes;
-    FDIRDBUpdaterDentry *entry;
-    FDIRDBUpdaterMessage *msg;
+    FDIRDBUpdateDentry *entry;
+    FDIRDBUpdateMessage *msg;
     const SFSerializerFieldValue *fv;
     FieldIndexArray packed_fields;
     PiecesSizeArray size_array;
@@ -569,7 +569,7 @@ static int unpack_dentries(const int64_t start_version,
 
     if (ctx->array.count > 1) {
         qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdaterDentry), (int (*)(const void *,
+                    FDIRDBUpdateDentry), (int (*)(const void *,
                             const void *))compare_dentry_version);
     }
 
@@ -635,7 +635,7 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
 
     if (ctx->array.count > 1) {
         qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdaterDentry), (int (*)(const void *,
+                    FDIRDBUpdateDentry), (int (*)(const void *,
                             const void *))compare_dentry_version);
     }
 

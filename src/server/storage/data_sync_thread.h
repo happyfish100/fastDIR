@@ -25,7 +25,7 @@ extern "C" {
     int data_sync_thread_init();
     int data_sync_thread_start();
 
-    static inline void data_sync_thread_push(FDIRDBUpdaterDentry *dentry)
+    static inline void data_sync_thread_push(FDIRDBUpdateDentry *dentry)
     {
         FDIRDataSyncThreadInfo *thread;
 

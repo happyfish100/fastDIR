@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "sf/sf_global.h"
+#include "sf/sf_func.h"
 #include "data_sync_thread.h"
 
 int data_sync_thread_init()
@@ -32,7 +32,7 @@ int data_sync_thread_init()
     end = DATA_SYNC_THREAD_ARRAY.threads + DATA_SYNC_THREAD_ARRAY.count;
     for (thread=DATA_SYNC_THREAD_ARRAY.threads; thread<end; thread++) {
         if ((result=fc_queue_init(&thread->queue, (long)
-                        (&((FDIRDBUpdaterDentry *)NULL)->next))) != 0)
+                        (&((FDIRDBUpdateDentry *)NULL)->next))) != 0)
         {
             return result;
         }
@@ -41,10 +41,27 @@ int data_sync_thread_init()
     return 0;
 }
 
-static void *change_notify_func(void *arg)
+static int data_sync_thread_deal(FDIRDBUpdateDentry *head)
+{
+    FDIRDBUpdateDentry *dentry;
+    int count;
+
+    dentry = head;
+    count = 0;
+    do {
+        ++count;
+        //TODO
+
+        dentry = dentry->next;
+    } while (dentry != NULL);
+
+    return 0;
+}
+
+static void *data_sync_thread_func(void *arg)
 {
     FDIRDataSyncThreadInfo *thread;
-    FDIRDBUpdaterDentry *head;
+    FDIRDBUpdateDentry *head;
 
     thread = arg;
 #ifdef OS_LINUX
@@ -57,6 +74,12 @@ static void *change_notify_func(void *arg)
 
     while (1) {
         if ((head=fc_queue_pop_all(&thread->queue)) != NULL) {
+            if (data_sync_thread_deal(head) != 0) {
+                logCrit("file: "__FILE__", line: %d, "
+                        "deal dentry fail, program exit!",
+                        __LINE__);
+                sf_terminate_myself();
+            }
         }
     }
 
@@ -72,7 +95,7 @@ int data_sync_thread_start()
 
     end = DATA_SYNC_THREAD_ARRAY.threads + DATA_SYNC_THREAD_ARRAY.count;
     for (thread=DATA_SYNC_THREAD_ARRAY.threads; thread<end; thread++) {
-        if ((result=fc_create_thread(&tid, change_notify_func,
+        if ((result=fc_create_thread(&tid, data_sync_thread_func,
                         thread, SF_G_THREAD_STACK_SIZE)) != 0)
         {
             return result;

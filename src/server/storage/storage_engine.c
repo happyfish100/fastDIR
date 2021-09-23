@@ -18,10 +18,13 @@
 #include "inode/binlog_writer.h"
 #include "trunk/binlog_reader.h"
 #include "trunk/binlog_writer.h"
-#include "storage_module.h"
+#include "data_sync_thread.h"
+#include "storage_engine.h"
 
-int storage_module_init(const int max_idle_time, const int capacity)
+static int init_write_fd_cache()
 {
+    const int max_idle_time = 3600;
+    const int capacity = 1361;
     DABinlogTypeSubdirPair pairs[FDIR_STORAGE_BINLOG_TYPE_COUNT];
     DABinlogTypeSubdirArray type_subdir_array;
 
@@ -43,4 +46,44 @@ int storage_module_init(const int max_idle_time, const int capacity)
     type_subdir_array.count = FDIR_STORAGE_BINLOG_TYPE_COUNT;
     return da_write_fd_cache_init(&type_subdir_array,
             max_idle_time, capacity);
+}
+
+int fdir_storage_engine_init(IniFullContext *ini_ctx)
+{
+    int result;
+
+    if ((result=init_write_fd_cache()) != 0) {
+        return result;
+    }
+
+    if ((result=data_sync_thread_init()) != 0) {
+        return result;
+    }
+
+    return 0;
+}
+
+int fdir_storage_engine_start()
+{
+    int result;
+
+    if ((result=data_sync_thread_start()) != 0) {
+        return result;
+    }
+
+    return 0;
+}
+
+void fdir_storage_engine_terminate()
+{
+}
+
+int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array)
+{
+    return 0;
+}
+
+int fdir_storage_engine_fetch(FDIRDBFetchDentry *dentry)
+{
+    return 0;
 }

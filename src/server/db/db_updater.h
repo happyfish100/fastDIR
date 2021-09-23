@@ -20,7 +20,7 @@
 #include "../server_types.h"
 
 typedef struct fdir_db_updater_context {
-    FDIRDBUpdaterDentryArray array;
+    FDIRDBUpdateDentryArray array;
     int64_t last_version;
     FastBuffer buffer;
 } FDIRDBUpdaterContext;
@@ -32,7 +32,7 @@ extern "C" {
     int db_updater_init();
     void db_updater_destroy();
 
-    int db_updater_realloc_dentry_array(FDIRDBUpdaterDentryArray *array);
+    int db_updater_realloc_dentry_array(FDIRDBUpdateDentryArray *array);
 
     int db_updater_deal(FDIRDBUpdaterContext *ctx);
 

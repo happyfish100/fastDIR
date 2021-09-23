@@ -33,18 +33,18 @@ typedef struct fdir_server_piece_storage {
     int size;
 } FDIRServerPieceStorage;
 
-typedef struct fdir_db_updater_message {
+typedef struct fdir_db_update_message {
     int field_index;
     FastBuffer *buffer;
-} FDIRDBUpdaterMessage;
+} FDIRDBUpdateMessage;
 
 typedef struct fdir_dentry_merged_messages {
-    FDIRDBUpdaterMessage messages[FDIR_PIECE_FIELD_COUNT];
+    FDIRDBUpdateMessage messages[FDIR_PIECE_FIELD_COUNT];
     int msg_count;
     int merge_count;
 } FDIRDentryMergedMessages;
 
-typedef struct fdir_db_updater_dentry {
+typedef struct fdir_db_update_dentry {
     int64_t version;
     int64_t inode;
     DABinlogOpType op_type;
@@ -54,13 +54,20 @@ typedef struct fdir_db_updater_dentry {
     } fields;
     FDIRDentryMergedMessages mms;
     void *args;
-    struct fdir_db_updater_dentry *next;  //for queue
-} FDIRDBUpdaterDentry;
+    struct fdir_db_update_dentry *next;  //for queue
+} FDIRDBUpdateDentry;
 
-typedef struct fdir_db_updater_dentry_array {
-    FDIRDBUpdaterDentry *entries;
+typedef struct fdir_db_update_dentry_array {
+    FDIRDBUpdateDentry *entries;
     int count;
     int alloc;
-} FDIRDBUpdaterDentryArray;
+} FDIRDBUpdateDentryArray;
+
+typedef struct fdir_db_fetch_dentry {
+    int64_t inode;
+    int field_index;
+    FDIRServerPieceStorage fields;
+    FastBuffer *buffer;
+} FDIRDBFetchDentry;
 
 #endif

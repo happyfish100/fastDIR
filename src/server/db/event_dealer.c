@@ -156,14 +156,14 @@ static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
             children->elts, &dentry->db_args->children->count, &inode);
 }
 
-static inline void copy_message(FDIRDBUpdaterMessage *umsg,
+static inline void copy_message(FDIRDBUpdateMessage *umsg,
         const FDIRChangeNotifyMessage *nmsg)
 {
     umsg->buffer = nmsg->buffer;
     umsg->field_index = nmsg->field_index;
 }
 
-static int merge_children_messages(FDIRDBUpdaterDentry *merged,
+static int merge_children_messages(FDIRDBUpdateDentry *merged,
         FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
 {
     int result;
@@ -217,7 +217,7 @@ static int merge_children_messages(FDIRDBUpdaterDentry *merged,
     return 0;
 }
 
-static int merge_one_field_messages(FDIRDBUpdaterDentry *merged,
+static int merge_one_field_messages(FDIRDBUpdateDentry *merged,
         FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
 {
     FDIRChangeNotifyMessage **last;
@@ -238,7 +238,7 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     int result;
     FDIRChangeNotifyMessage **last;
     FDIRChangeNotifyMessage **msg;
-    FDIRDBUpdaterDentry *merged;
+    FDIRDBUpdateDentry *merged;
 
     if (MERGED_DENTRY_ARRAY.count >= MERGED_DENTRY_ARRAY.alloc) {
         if ((result=db_updater_realloc_dentry_array(
@@ -334,8 +334,8 @@ static int merge_messages()
 static int deal_merged_entries()
 {
     int result;
-    FDIRDBUpdaterDentry *entry;
-    FDIRDBUpdaterDentry *end;
+    FDIRDBUpdateDentry *entry;
+    FDIRDBUpdateDentry *end;
 
     result = db_updater_deal(&event_dealer_ctx.updater_ctx);
     end = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;

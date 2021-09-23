@@ -13,16 +13,25 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#ifndef _STORAGE_MODULE_H
-#define _STORAGE_MODULE_H
+#ifndef _FDIR_STORAGE_ENGINE_H
+#define _FDIR_STORAGE_ENGINE_H
 
+#include "fastcommon/ini_file_reader.h"
 #include "storage_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    int storage_module_init(const int max_idle_time, const int capacity);
+    int fdir_storage_engine_init(IniFullContext *ini_ctx);
+
+    int fdir_storage_engine_start();
+
+    void fdir_storage_engine_terminate();
+
+    int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array);
+
+    int fdir_storage_engine_fetch(FDIRDBFetchDentry *dentry);
 
 #ifdef __cplusplus
 }
