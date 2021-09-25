@@ -41,19 +41,28 @@ int data_sync_thread_init()
     return 0;
 }
 
+static int sync_dentry(FDIRDBUpdateDentry *dentry)
+{
+    if (dentry->op_type == da_binlog_op_type_remove) {
+    }
+
+    return 0;
+}
+
 static int data_sync_thread_deal(FDIRDBUpdateDentry *head)
 {
     FDIRDBUpdateDentry *dentry;
     int count;
+    int result;
 
     dentry = head;
     count = 0;
     do {
         ++count;
-        //TODO
-
-        dentry = dentry->next;
-    } while (dentry != NULL);
+        if ((result=sync_dentry(dentry)) != 0) {
+            return result;
+        }
+    } while ((dentry=dentry->next) != NULL);
 
     fdir_data_sync_finish(count);
     return 0;

@@ -18,7 +18,7 @@
 #ifndef _INODE_BINLOG_WRITER_H_
 #define _INODE_BINLOG_WRITER_H_
 
-#include "diskallocator/binlog/space/binlog_writer.h"
+#include "diskallocator/binlog/common/binlog_writer.h"
 #include "../storage_types.h"
 
 #ifdef __cplusplus

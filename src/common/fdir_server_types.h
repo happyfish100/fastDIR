@@ -28,9 +28,9 @@
 #define FDIR_PIECE_FIELD_INDEX_FOR_REMOVE 10
 
 typedef struct fdir_server_piece_storage {
-    int file_id;
-    int offset;
-    int size;
+    uint32_t file_id;
+    uint32_t offset;
+    uint32_t size;
 } FDIRServerPieceStorage;
 
 typedef struct fdir_db_update_message {

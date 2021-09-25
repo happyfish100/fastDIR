@@ -17,7 +17,7 @@
 #include "fastcommon/shared_func.h"
 #include "sf/sf_binlog_index.h"
 #include "../storage_global.h"
-#include "diskallocator/binlog/space/binlog_reader.h"
+#include "diskallocator/binlog/common/binlog_reader.h"
 #include "write_fd_cache.h"
 #include "inode_index_array.h"
 #include "binlog_writer.h"

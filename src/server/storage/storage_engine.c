@@ -119,7 +119,7 @@ int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array)
     sf_ordered_writer_push_versions(&ORDERED_WRITER_CTX, &chain);
 
     PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
-    if (DATA_SYNC_NOTIFY_WAITINGS != 0) {
+    if (DATA_SYNC_NOTIFY_WAITINGS > 0) {
         pthread_cond_wait(&DATA_SYNC_NOTIFY_LCP.cond,
                 &DATA_SYNC_NOTIFY_LCP.lock);
     }

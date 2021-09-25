@@ -18,7 +18,7 @@
 #ifndef _SLICE_BINLOG_WRITER_H_
 #define _SLICE_BINLOG_WRITER_H_
 
-#include "diskallocator/binlog/space/binlog_writer.h"
+#include "diskallocator/binlog/common/binlog_writer.h"
 #include "trunk_types.h"
 
 #ifdef __cplusplus
