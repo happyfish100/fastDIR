@@ -27,25 +27,12 @@
 #define REDO_HEADER_FIELD_ID_RECORD_COUNT   1
 #define REDO_HEADER_FIELD_ID_LAST_VERSION   2
 
-#define REDO_DENTRY_FIELD_INDEX_BASE              20
 #define REDO_DENTRY_FIELD_ID_VERSION               1
 #define REDO_DENTRY_FIELD_ID_INODE                 2
 #define REDO_DENTRY_FIELD_ID_OP_TYPE               3
 #define REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES   4
 #define REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES  5
 #define REDO_DENTRY_FIELD_ID_PACKED_PIECE_SIZES    6
-#define REDO_DENTRY_FIELD_ID_INDEX_BASIC      \
-    (REDO_DENTRY_FIELD_INDEX_BASE + FDIR_PIECE_FIELD_INDEX_BASIC)
-#define REDO_DENTRY_FIELD_ID_INDEX_CHILDREN   \
-    (REDO_DENTRY_FIELD_INDEX_BASE + FDIR_PIECE_FIELD_INDEX_CHILDREN)
-#define REDO_DENTRY_FIELD_ID_INDEX_XATTR      \
-    (REDO_DENTRY_FIELD_INDEX_BASE + FDIR_PIECE_FIELD_INDEX_XATTR )
-
-
-#define PIECE_STORAGE_FIELD_INDEX_FILE_ID  0
-#define PIECE_STORAGE_FIELD_INDEX_OFFSET   1
-#define PIECE_STORAGE_FIELD_INDEX_SIZE     2
-#define PIECE_STORAGE_FIELD_COUNT          3
 
 typedef struct {
     int8_t indexes[FDIR_PIECE_FIELD_COUNT];
@@ -170,18 +157,6 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     return write_buffer_to_file(&ctx->buffer);
 }
 
-static inline int pack_piece_storage(FastBuffer *buffer,
-        const FDIRServerPieceStorage *store, const int fid)
-{
-    int32_t values[PIECE_STORAGE_FIELD_COUNT];
-
-    values[PIECE_STORAGE_FIELD_INDEX_FILE_ID] = store->file_id;
-    values[PIECE_STORAGE_FIELD_INDEX_OFFSET] = store->offset;
-    values[PIECE_STORAGE_FIELD_INDEX_SIZE] = store->size;
-    return sf_serializer_pack_int32_array(buffer, fid,
-            values, PIECE_STORAGE_FIELD_COUNT);
-}
-
 static int write_one_entry(FDIRDBUpdaterContext *ctx,
         const FDIRDBUpdateDentry *entry)
 {
@@ -246,27 +221,6 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
                 sf_serializer_pack_int32_array(&ctx->buffer,
                     REDO_DENTRY_FIELD_ID_PACKED_PIECE_SIZES,
                     size_array.sizes, size_array.count)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields.ptr + FDIR_PIECE_FIELD_INDEX_BASIC,
-                    REDO_DENTRY_FIELD_ID_INDEX_BASIC)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields.ptr + FDIR_PIECE_FIELD_INDEX_CHILDREN,
-                    REDO_DENTRY_FIELD_ID_INDEX_CHILDREN)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=pack_piece_storage(&ctx->buffer, entry->
-                    fields.ptr + FDIR_PIECE_FIELD_INDEX_XATTR,
-                    REDO_DENTRY_FIELD_ID_INDEX_XATTR)) != 0)
     {
         return result;
     }
@@ -420,18 +374,6 @@ static int unpack_header(SFSerializerIterator *it,
     return 0;
 }
 
-static inline void unpack_piece_storage(
-        const SFSerializerFieldValue *fv,
-        FDIRServerPieceStorage *store)
-{
-    store->file_id = fv->value.int_array.
-        elts[PIECE_STORAGE_FIELD_INDEX_FILE_ID];
-    store->offset = fv->value.int_array.
-        elts[PIECE_STORAGE_FIELD_INDEX_OFFSET];
-    store->size = fv->value.int_array.
-        elts[PIECE_STORAGE_FIELD_INDEX_SIZE];
-}
-
 static int unpack_one_dentry(const int64_t start_version,
         SFSerializerIterator *it, FDIRDBUpdaterContext *ctx)
 {
@@ -457,7 +399,6 @@ static int unpack_one_dentry(const int64_t start_version,
     }
     entry = ctx->array.entries + ctx->array.count;
     entry->args = NULL;
-    entry->fields.ptr = entry->fields.holder;
     entry->mms.msg_count = 0;
     packed_fields.count = 0;
     size_array.count = 0;
@@ -493,18 +434,6 @@ static int unpack_one_dentry(const int64_t start_version,
                     size_array.sizes[i] = fv->value.int_array.elts[i];
                 }
                 size_array.count = fv->value.int_array.count;
-                break;
-            case REDO_DENTRY_FIELD_ID_INDEX_BASIC:
-                unpack_piece_storage(fv, entry->fields.ptr +
-                        FDIR_PIECE_FIELD_INDEX_BASIC);
-                break;
-            case REDO_DENTRY_FIELD_ID_INDEX_CHILDREN:
-                unpack_piece_storage(fv, entry->fields.ptr +
-                        FDIR_PIECE_FIELD_INDEX_CHILDREN);
-                break;
-            case REDO_DENTRY_FIELD_ID_INDEX_XATTR:
-                unpack_piece_storage(fv, entry->fields.ptr +
-                        FDIR_PIECE_FIELD_INDEX_XATTR);
                 break;
             default:
                 break;

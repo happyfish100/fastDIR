@@ -32,7 +32,7 @@ SFBinlogIndexContext g_trunk_index_ctx;
 
 static int pack_record(char *buff, FDIRTrunkIndexInfo *record)
 {
-    return sprintf(buff, "%"PRId64" %d %d %d %d\n",
+    return sprintf(buff, "%"PRId64" %u %u %u %u\n",
             record->version, record->trunk_id, record->file_size,
             record->used_bytes, record->free_start);
 }

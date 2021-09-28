@@ -48,10 +48,6 @@ typedef struct fdir_db_update_dentry {
     int64_t version;
     int64_t inode;
     DABinlogOpType op_type;
-    struct {
-        FDIRServerPieceStorage holder[FDIR_PIECE_FIELD_COUNT];
-        FDIRServerPieceStorage *ptr;
-    } fields;
     FDIRDentryMergedMessages mms;
     void *args;
     struct fdir_db_update_dentry *next;  //for queue

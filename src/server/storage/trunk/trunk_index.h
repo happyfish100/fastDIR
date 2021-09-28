@@ -23,10 +23,10 @@
 
 typedef struct fdir_trunk_index_info {
     int64_t version;
-    int trunk_id;
-    int file_size;
-    int used_bytes;
-    int free_start;
+    uint32_t trunk_id;
+    uint32_t file_size;
+    uint32_t used_bytes;
+    uint32_t free_start;
 } FDIRTrunkIndexInfo;
 
 #ifdef __cplusplus

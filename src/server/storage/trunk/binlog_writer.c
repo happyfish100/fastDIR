@@ -25,7 +25,7 @@ int slice_binlog_pack_record_callback(void *args,
 
     slice = (FDIRTrunkSliceInfo *)args;
     return snprintf(buff, size,
-            "%"PRId64" %c %d %d\n",
+            "%"PRId64" %c %u %u\n",
             slice->version, op_type,
             slice->offset, slice->size);
 }

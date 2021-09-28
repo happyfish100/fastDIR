@@ -113,7 +113,6 @@ struct flock_entry;
 typedef struct fdir_server_dentry_db_args {
     volatile int reffer_count;
     I64Array *children;  //children inodes
-    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
 } FDIRServerDentryDBArgs;
 
 typedef struct fdir_server_dentry {
@@ -308,13 +307,5 @@ typedef struct fdir_server_context {
         } cluster;
     };
 } FDIRServerContext;
-
-#define FDIR_SERVER_INIT_PIECE_STORAGE(piece) \
-    (piece).file_id = (piece).offset = (piece).size = 0
-
-#define FDIR_SERVER_INIT_DENTRY_STORAGE(fields)        \
-    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_BASIC]);    \
-    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_CHILDREN]); \
-    FDIR_SERVER_INIT_PIECE_STORAGE(fields[FDIR_PIECE_FIELD_INDEX_XATTR])
 
 #endif

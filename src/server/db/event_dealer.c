@@ -253,7 +253,6 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     merged->version = (*last)->version;
     merged->inode = (*start)->dentry->inode;
     merged->args = (*start)->dentry;
-    merged->fields.ptr = (*start)->dentry->db_args->fields;
     merged->mms.merge_count = end - start;
     merged->mms.msg_count = 0;
 

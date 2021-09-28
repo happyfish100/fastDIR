@@ -22,8 +22,8 @@
 
 typedef struct fdir_trunk_slice_info {
     int64_t version;
-    int offset;
-    int size;
+    uint32_t offset;
+    uint32_t size;
     int status;
 } FDIRTrunkSliceInfo;
 
@@ -44,9 +44,9 @@ typedef struct fdir_trunk_info {
         short status;
     } slices;
 
-    int file_size;
-    int used_bytes;
-    int free_start;
+    uint32_t file_size;
+    uint32_t used_bytes;
+    uint32_t free_start;
 } FDIRTrunkInfo;
 
 #endif
