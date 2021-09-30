@@ -642,7 +642,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
     return result;
 }
 
-int inode_segment_index_find(FDIRStorageInodeIndexInfo *inode)
+int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode)
 {
     FDIRInodeSegmentIndexInfo *segment;
     int result;

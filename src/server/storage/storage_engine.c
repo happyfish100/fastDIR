@@ -120,7 +120,8 @@ int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array)
     return 0;
 }
 
-int fdir_storage_engine_fetch(FDIRDBFetchDentry *dentry)
+int fdir_storage_engine_fetch(const int64_t inode,
+        const int field_index, FastBuffer *buffer)
 {
     return 0;
 }

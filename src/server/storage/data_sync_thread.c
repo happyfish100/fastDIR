@@ -14,6 +14,7 @@
  */
 
 #include "sf/sf_func.h"
+#include "inode/segment_index.h"
 #include "data_sync_thread.h"
 
 int data_sync_thread_init()
@@ -41,11 +42,48 @@ int data_sync_thread_init()
     return 0;
 }
 
+static int remove_dentry(FDIRStorageInodeIndexInfo *index)
+{
+    //inode_segment_index_delete
+    return 0;
+}
+
+static int set_dentry_fields(FDIRDBUpdateDentry *dentry,
+        FDIRStorageInodeIndexInfo *index)
+{
+    /*
+       FDIRDBUpdateMessage *msg;
+       FDIRDBUpdateMessage *end;
+       DATrunkSpaceWithVersion space;
+       int count;
+       int result;
+     */
+
+    //storage_allocator_normal_alloc(blk_hc, size, spaces, count)
+    return 0;
+}
+
 static int sync_dentry(FDIRDBUpdateDentry *dentry)
 {
-    if (dentry->op_type == da_binlog_op_type_remove) {
+    int result;
+    FDIRStorageInodeIndexInfo index;
+
+    index.inode = dentry->inode;
+    if ((result=inode_segment_index_get(&index)) != 0) {
+        if (result != ENOENT) {
+            return result;
+        }
     }
 
+    if (dentry->op_type == da_binlog_op_type_remove) {
+        if (result == 0) {
+            return remove_dentry(&index);
+        }
+
+        return result;
+    }
+
+    set_dentry_fields(dentry, &index);
     return 0;
 }
 
