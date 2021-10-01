@@ -37,10 +37,11 @@ int inode_binlog_pack_record_callback(void *args,
         len = snprintf(buff, size, "%"PRId64" %"PRId64" %c ",
                 index->version, index->inode, op_type);
         for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
-            len += snprintf(buff + len, size - len, "%d %d %d%c",
-                    index->fields[i].file_id, index->fields[i].offset,
-                    index->fields[i].size, (i < (FDIR_PIECE_FIELD_COUNT
-                            - 1) ? ' ' : '\n'));
+            len += snprintf(buff + len, size - len,
+                    "%"PRId64" %d %d %d%c",
+                    index->fields[i].version, index->fields[i].file_id,
+                    index->fields[i].offset, index->fields[i].size,
+                    (i < (FDIR_PIECE_FIELD_COUNT - 1) ? ' ' : '\n'));
         }
         return len;
     } else {

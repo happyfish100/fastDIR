@@ -60,11 +60,4 @@ typedef struct fdir_db_update_dentry_array {
     int alloc;
 } FDIRDBUpdateDentryArray;
 
-typedef struct fdir_db_fetch_dentry {
-    int64_t inode;
-    int field_index;
-    FDIRServerPieceStorage fields;
-    FastBuffer *buffer;
-} FDIRDBFetchDentry;
-
 #endif

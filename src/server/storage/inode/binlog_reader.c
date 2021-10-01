@@ -26,7 +26,7 @@
 #define BINLOG_PIECE_FIELD_INDEX_BASE 3
 #define BINLOG_MIN_FIELD_COUNT        3
 #define BINLOG_MAX_FIELD_COUNT  (BINLOG_PIECE_FIELD_INDEX_BASE + \
-        3 * FDIR_PIECE_FIELD_COUNT)
+        4 * FDIR_PIECE_FIELD_COUNT)
 
 #define BINLOG_FIELD_INDEX_VERSION  0
 #define BINLOG_FIELD_INDEX_INODE    1
@@ -65,9 +65,14 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
 
         field_index = BINLOG_PIECE_FIELD_INDEX_BASE;
         for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
+            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].version,
+                    "version", field_index, ' ', 0);
+            field_index++;
+
             SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].file_id,
                     "file id", field_index, ' ', 0);
             field_index++;
+
             SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].offset,
                     "offset", field_index, ' ', 0);
             field_index++;
