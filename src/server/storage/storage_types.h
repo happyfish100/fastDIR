@@ -19,6 +19,7 @@
 #include "fastcommon/common_define.h"
 #include "fastcommon/fc_list.h"
 #include "sf/sf_types.h"
+#include "diskallocator/storage_types.h"
 #include "diskallocator/binlog/common/binlog_types.h"
 #include "fastdir/client/fdir_server_types.h"
 
@@ -41,7 +42,7 @@
 typedef struct fdir_storage_inode_index_info {
     int64_t version;
     uint64_t inode;
-    FDIRServerPieceStorage fields[FDIR_PIECE_FIELD_COUNT];
+    DAPieceFieldStorage fields[FDIR_PIECE_FIELD_COUNT];
     int status;
 } FDIRStorageInodeIndexInfo;
 

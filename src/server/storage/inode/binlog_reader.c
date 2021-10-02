@@ -69,7 +69,7 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
                     "version", field_index, ' ', 0);
             field_index++;
 
-            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].file_id,
+            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].trunk_id,
                     "file id", field_index, ' ', 0);
             field_index++;
 

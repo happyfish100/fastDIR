@@ -14,6 +14,7 @@
  */
 
 #include "sf/sf_func.h"
+#include "diskallocator/storage_allocator.h"
 #include "inode/segment_index.h"
 #include "data_sync_thread.h"
 
@@ -42,23 +43,60 @@ int data_sync_thread_init()
     return 0;
 }
 
+/*
+    DATrunkSpaceLogRecord *record;
+
+    record = (DATrunkSpaceLogRecord *)fast_mblock_alloc_object(
+            &g_trunk_space_log_ctx.record_allocator);
+    if (record == NULL) {
+        return ENOMEM;
+    }
+
+    record->version = version;
+    record->oid = oid;
+    record->fid = fid;
+    record->op_type = op_type;
+    */
+
+static int remove_field(FDIRStorageInodeIndexInfo *index,
+        const int field_index)
+{
+    if (DA_PIECE_FIELD_IS_EMPTY(index->fields + field_index)) {
+        return 0;
+    }
+
+    return 0;
+}
+
 static int remove_dentry(FDIRStorageInodeIndexInfo *index)
 {
-    //inode_segment_index_delete
+    int i;
+
+    for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
+        remove_field(index, i);
+    }
+
+    inode_segment_index_delete(index->inode);
     return 0;
 }
 
 static int set_dentry_fields(FDIRDBUpdateDentry *dentry,
         FDIRStorageInodeIndexInfo *index)
 {
+    FDIRDBUpdateMessage *msg;
+    FDIRDBUpdateMessage *end;
     /*
-       FDIRDBUpdateMessage *msg;
-       FDIRDBUpdateMessage *end;
-       DATrunkSpaceWithVersion space;
-       int count;
-       int result;
-     */
+    DATrunkSpaceWithVersion space;
+    int count;
+    int result;
+    */
 
+    end = dentry->mms.messages + dentry->mms.msg_count;
+    for (msg=dentry->mms.messages; msg<end; msg++) {
+        if (msg->buffer != NULL) {
+        } else {
+        }
+    }
     //storage_allocator_normal_alloc(blk_hc, size, spaces, count)
     return 0;
 }
@@ -76,14 +114,20 @@ static int sync_dentry(FDIRDBUpdateDentry *dentry)
     }
 
     if (dentry->op_type == da_binlog_op_type_remove) {
-        if (result == 0) {
-            return remove_dentry(&index);
+        if (result != 0) {
+            return result;
         }
 
-        return result;
+        if ((result=remove_dentry(&index)) != 0) {
+            return result;
+        }
+    } else {
+        if ((result=set_dentry_fields(dentry, &index)) != 0) {
+            return result;
+        }
     }
 
-    set_dentry_fields(dentry, &index);
+    //TODO
     return 0;
 }
 

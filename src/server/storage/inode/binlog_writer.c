@@ -39,7 +39,7 @@ int inode_binlog_pack_record_callback(void *args,
         for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
             len += snprintf(buff + len, size - len,
                     "%"PRId64" %d %d %d%c",
-                    index->fields[i].version, index->fields[i].file_id,
+                    index->fields[i].version, index->fields[i].trunk_id,
                     index->fields[i].offset, index->fields[i].size,
                     (i < (FDIR_PIECE_FIELD_COUNT - 1) ? ' ' : '\n'));
         }
