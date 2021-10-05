@@ -39,6 +39,11 @@
 
 #define FDIR_INODE_BINLOG_RECORD_MAX_SIZE  128
 
+#define FDIR_PIECE_FIELDS_CLEAR(fields) \
+    DA_PIECE_FIELD_DELETE(fields + FDIR_PIECE_FIELD_INDEX_BASIC);    \
+    DA_PIECE_FIELD_DELETE(fields + FDIR_PIECE_FIELD_INDEX_CHILDREN); \
+    DA_PIECE_FIELD_DELETE(fields + FDIR_PIECE_FIELD_INDEX_XATTR)
+
 typedef struct fdir_storage_inode_index_info {
     int64_t version;
     uint64_t inode;
@@ -87,6 +92,8 @@ typedef struct fdir_inode_bid_journal_array {
 
 typedef struct fdir_data_sync_thread_info {
     struct fc_queue queue;
+    SFSynchronizeContext synchronize_ctx;
+    struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
 } FDIRDataSyncThreadInfo;
 
 typedef struct fdir_data_sync_thread_array {

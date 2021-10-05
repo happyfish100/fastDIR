@@ -27,6 +27,11 @@
 //virtual field index for sort and check
 #define FDIR_PIECE_FIELD_INDEX_FOR_REMOVE 10
 
+#define FDIR_PIECE_FIELD_CLEAR(fields) \
+    DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_BASIC]);    \
+    DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_CHILDREN]); \
+    DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_XATTR])
+
 typedef struct fdir_db_update_message {
     int field_index;
     FastBuffer *buffer;
