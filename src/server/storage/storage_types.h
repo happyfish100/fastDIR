@@ -51,6 +51,11 @@ typedef struct fdir_storage_inode_index_info {
     int status;
 } FDIRStorageInodeIndexInfo;
 
+typedef struct fdir_storage_inode_field_info {
+    int index;
+    DAPieceFieldStorage storage;
+} FDIRStorageInodeFieldInfo;
+
 typedef struct fdir_storage_inode_index_array {
     FDIRStorageInodeIndexInfo *inodes;
     int alloc;

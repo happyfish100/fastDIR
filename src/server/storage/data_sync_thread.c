@@ -110,13 +110,11 @@ static int remove_field_ex(FDIRDataSyncThreadInfo *thread,
         return result;
     }
 
-    /*
-       // TODO
+    //TODO
     if (clear_field) {
         DA_PIECE_FIELD_DELETE(index->fields + field_index);
         index->fields[field_index].version = dentry->version;
     }
-    */
 
     return 0;
 }
@@ -142,6 +140,7 @@ static int remove_dentry(FDIRDataSyncThreadInfo *thread,
         }
     }
 
+    //TODO check
     return inode_segment_index_delete(index->inode);
 }
 
@@ -180,13 +179,11 @@ static int set_field(FDIRDataSyncThreadInfo *thread,
         return result;
     }
 
-    /*
-       // TODO
+    //TODO
     index->fields[msg->field_index].trunk_id = space.id_info.id;
     index->fields[msg->field_index].offset = space.offset;
     index->fields[msg->field_index].size = space.size;
     index->fields[msg->field_index].version = dentry->version;
-    */
 
     return 0;
 }

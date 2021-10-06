@@ -583,7 +583,8 @@ int inode_segment_index_delete(const uint64_t inode)
             da_binlog_op_type_remove, &inode_index);
 }
 
-int inode_segment_index_update(const FDIRStorageInodeIndexInfo *inode)
+int inode_segment_index_update(const FDIRStorageInodeIndexInfo *inode,
+        const int field_index)
 {
     FDIRInodeSegmentIndexInfo *segment;
 

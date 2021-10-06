@@ -290,9 +290,7 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
         }
     }
 
-    if ((result=merge_one_field_messages(merged,
-                    start, msg)) != 0)
-    {
+    if ((result=merge_one_field_messages(merged, start, msg)) != 0) {
         return result;
     }
 
