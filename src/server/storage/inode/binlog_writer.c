@@ -28,25 +28,19 @@ int inode_binlog_pack_record_callback(void *args,
         const DABinlogOpType op_type,
         char *buff, const int size)
 {
-    FDIRStorageInodeIndexInfo *index;
-    int len;
-    int i;
+    FDIRStorageInodeFieldInfo *field;
 
-    index = (FDIRStorageInodeIndexInfo *)args;
-    if (op_type == da_binlog_op_type_create) {
-        len = snprintf(buff, size, "%"PRId64" %"PRId64" %c ",
-                index->version, index->inode, op_type);
-        for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
-            len += snprintf(buff + len, size - len,
-                    "%"PRId64" %d %d %d%c",
-                    index->fields[i].version, index->fields[i].trunk_id,
-                    index->fields[i].offset, index->fields[i].size,
-                    (i < (FDIR_PIECE_FIELD_COUNT - 1) ? ' ' : '\n'));
-        }
-        return len;
+    field = (FDIRStorageInodeFieldInfo *)args;
+    if (op_type == da_binlog_op_type_create ||
+            op_type == da_binlog_op_type_update)
+    {
+        return snprintf(buff, size, "%"PRId64" %"PRId64" %c %d "
+                "%u %u %u\n", field->storage.version, field->inode,
+                op_type, field->index, field->storage.trunk_id,
+                field->storage.offset, field->storage.size);
     } else {
         return snprintf(buff, size, "%"PRId64" %"PRId64" %c\n",
-                index->version, index->inode, op_type);
+                field->storage.version, field->inode, op_type);
     }
 }
 
@@ -54,8 +48,12 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
         DABinlogWriterCache *cache)
 {
     int result;
+    int i;
+    int count;
+    DABinlogOpType op_type;
+    FDIRStorageInodeFieldInfo field;
 
-    if (cache->buff_end - cache->current <
+    if (cache->buff_end - cache->current < FDIR_PIECE_FIELD_COUNT *
             FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
     {
         if ((result=da_binlog_writer_cache_write(cache)) != 0) {
@@ -63,9 +61,21 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
         }
     }
 
-    cache->current += inode_binlog_pack_record_callback(
-            (void *)index, da_binlog_op_type_create,
-            cache->current, cache->buff_end - cache->current);
+    count = 0;
+    field.inode = index->inode;
+    for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
+        if (!DA_PIECE_FIELD_IS_EMPTY(index->fields + i)) {
+            op_type = (++count == 1) ?
+                da_binlog_op_type_create :
+                da_binlog_op_type_update;
+            field.index = i;
+            field.storage = index->fields[i];
+            cache->current += inode_binlog_pack_record_callback(
+                    &field, op_type, cache->current,
+                    cache->buff_end - cache->current);
+        }
+    }
+
     return 0;
 }
 

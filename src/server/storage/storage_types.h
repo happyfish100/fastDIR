@@ -45,13 +45,13 @@
     DA_PIECE_FIELD_DELETE(fields + FDIR_PIECE_FIELD_INDEX_XATTR)
 
 typedef struct fdir_storage_inode_index_info {
-    int64_t version;
     uint64_t inode;
     DAPieceFieldStorage fields[FDIR_PIECE_FIELD_COUNT];
     int status;
 } FDIRStorageInodeIndexInfo;
 
 typedef struct fdir_storage_inode_field_info {
+    uint64_t inode;
     int index;
     DAPieceFieldStorage storage;
 } FDIRStorageInodeFieldInfo;

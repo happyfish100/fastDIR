@@ -27,10 +27,9 @@ extern "C" {
 
 static inline int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo
         *segment, const DABinlogOpType op_type,
-        const FDIRStorageInodeIndexInfo *inode_index)
+        const FDIRStorageInodeFieldInfo *field)
 {
-    return da_binlog_writer_log(&segment->writer,
-            op_type, (void *)inode_index);
+    return da_binlog_writer_log(&segment->writer, op_type, (void *)field);
 }
 
 static inline int inode_binlog_writer_synchronize(

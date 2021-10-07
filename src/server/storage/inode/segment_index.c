@@ -529,41 +529,48 @@ static FDIRInodeSegmentIndexInfo *find_segment_by_inode(const uint64_t inode)
     return (found != NULL ? *found : NULL);
 }
 
-int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
+int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field)
 {
     int result;
     FDIRInodeSegmentIndexInfo *segment;
+    pthread_mutex_t *lock;
 
     PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
     segment = segment_index_ctx.current_binlog.segment;
     if (segment == NULL) {
-        result = segment_array_inc(inode->inode);
+        result = segment_array_inc(field->inode);
         segment = segment_index_ctx.current_binlog.segment;
     } else {
         result = 0;
     }
 
     if (result == 0) {
-        PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
+        lock = &segment->lcp.lock;
+        PTHREAD_MUTEX_LOCK(lock);
         if (segment->inodes.array.counts.total + segment->inodes.array.
                 counts.adding >= FDIR_STORAGE_BATCH_INODE_COUNT)
         {
-            result = segment_array_inc(inode->inode);
+            PTHREAD_MUTEX_UNLOCK(lock);
+
+            result = segment_array_inc(field->inode);
             segment = segment_index_ctx.current_binlog.segment;
+
+            lock = &segment->lcp.lock;
+            PTHREAD_MUTEX_LOCK(lock);
         } else {
-            segment->inodes.last = inode->inode;
+            segment->inodes.last = field->inode;
             result = 0;
         }
         if (result == 0) {
             segment->inodes.array.counts.adding++;
         }
-        PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
+        PTHREAD_MUTEX_UNLOCK(lock);
     }
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
 
     if (result == 0) {
         return inode_binlog_writer_log(segment,
-                da_binlog_op_type_create, inode);
+                da_binlog_op_type_create, field);
     } else {
         return result;
     }
@@ -572,28 +579,27 @@ int inode_segment_index_add(const FDIRStorageInodeIndexInfo *inode)
 int inode_segment_index_delete(const uint64_t inode)
 {
     FDIRInodeSegmentIndexInfo *segment;
-    FDIRStorageInodeIndexInfo inode_index;
+    FDIRStorageInodeFieldInfo field;
 
     if ((segment=find_segment_by_inode(inode)) == NULL) {
         return ENOENT;
     }
 
-    inode_index.inode = inode;
+    field.inode = inode;
     return inode_binlog_writer_log(segment,
-            da_binlog_op_type_remove, &inode_index);
+            da_binlog_op_type_remove, &field);
 }
 
-int inode_segment_index_update(const FDIRStorageInodeIndexInfo *inode,
-        const int field_index)
+int inode_segment_index_update(const FDIRStorageInodeFieldInfo *field)
 {
     FDIRInodeSegmentIndexInfo *segment;
 
-    if ((segment=find_segment_by_inode(inode->inode)) == NULL) {
+    if ((segment=find_segment_by_inode(field->inode)) == NULL) {
         return ENOENT;
     }
 
     return inode_binlog_writer_log(segment,
-            da_binlog_op_type_update, inode);
+            da_binlog_op_type_update, field);
 }
 
 static int check_load(FDIRInodeSegmentIndexInfo *segment,
@@ -691,14 +697,14 @@ int inode_segment_index_batch_update(FDIRInodeSegmentIndexInfo *segment,
         for (record=records; record<end; record++) {
             if ((*record)->op_type == da_binlog_op_type_create) {
                 result = inode_index_array_add(&segment->inodes.array,
-                        (FDIRStorageInodeIndexInfo *)(*record)->args);
+                        (FDIRStorageInodeFieldInfo *)(*record)->args);
                 segment->inodes.array.counts.adding--;
             } else if ((*record)->op_type == da_binlog_op_type_update) {
                 result = inode_index_array_update(&segment->inodes.array,
-                        (FDIRStorageInodeIndexInfo *)(*record)->args);
+                        (FDIRStorageInodeFieldInfo *)(*record)->args);
             } else {
                 if ((result=inode_index_array_delete(&segment->inodes.array,
-                                ((FDIRStorageInodeIndexInfo *)
+                                ((FDIRStorageInodeFieldInfo *)
                                  (*record)->args)->inode)) == 0)
                 {
                     if (2 * segment->inodes.array.counts.deleted >=

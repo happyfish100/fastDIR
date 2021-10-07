@@ -23,21 +23,21 @@
 #include "binlog_writer.h"
 #include "binlog_reader.h"
 
-#define BINLOG_PIECE_FIELD_INDEX_BASE 3
-#define BINLOG_MIN_FIELD_COUNT        3
-#define BINLOG_MAX_FIELD_COUNT  (BINLOG_PIECE_FIELD_INDEX_BASE + \
-        4 * FDIR_PIECE_FIELD_COUNT)
+#define BINLOG_MIN_FIELD_COUNT         3
+#define BINLOG_MAX_FIELD_COUNT         7
 
-#define BINLOG_FIELD_INDEX_VERSION  0
-#define BINLOG_FIELD_INDEX_INODE    1
-#define BINLOG_FIELD_INDEX_OP_TYPE  2
+#define BINLOG_FIELD_INDEX_VERSION     0
+#define BINLOG_FIELD_INDEX_INODE       1
+#define BINLOG_FIELD_INDEX_OP_TYPE     2
+#define BINLOG_FIELD_INDEX_FINDEX      3
+#define BINLOG_FIELD_INDEX_TRUNK_ID    4
+#define BINLOG_FIELD_INDEX_OFFSET      5
+#define BINLOG_FIELD_INDEX_SIZE        6
 
 static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
-        FDIRStorageInodeIndexInfo *index, char *error_info)
+        FDIRStorageInodeFieldInfo *field, char *error_info)
 {
     int count;
-    int field_index;
-    int i;
     char *endptr;
     string_t cols[BINLOG_MAX_FIELD_COUNT];
 
@@ -49,9 +49,9 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
         return EINVAL;
     }
 
-    SF_BINLOG_PARSE_INT_SILENCE(index->version, "version",
-            BINLOG_FIELD_INDEX_VERSION, ' ', 0);
-    SF_BINLOG_PARSE_INT_SILENCE(index->inode, "inode",
+    SF_BINLOG_PARSE_INT_SILENCE(field->storage.version,
+            "version", BINLOG_FIELD_INDEX_VERSION, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(field->inode, "inode",
             BINLOG_FIELD_INDEX_INODE, ' ', 0);
     *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
     if (*op_type == da_binlog_op_type_create ||
@@ -63,25 +63,14 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
             return EINVAL;
         }
 
-        field_index = BINLOG_PIECE_FIELD_INDEX_BASE;
-        for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
-            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].version,
-                    "version", field_index, ' ', 0);
-            field_index++;
-
-            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].trunk_id,
-                    "file id", field_index, ' ', 0);
-            field_index++;
-
-            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].offset,
-                    "offset", field_index, ' ', 0);
-            field_index++;
-
-            SF_BINLOG_PARSE_INT_SILENCE(index->fields[i].size, "size",
-                    field_index, (i < FDIR_PIECE_FIELD_COUNT - 1 ?
-                        ' ' : '\n'), 0);
-            field_index++;
-        }
+        SF_BINLOG_PARSE_INT_SILENCE(field->index, "field index",
+                BINLOG_FIELD_INDEX_FINDEX, ' ', 0);
+        SF_BINLOG_PARSE_INT_SILENCE(field->storage.trunk_id,
+                "trunk id", BINLOG_FIELD_INDEX_TRUNK_ID, ' ', 0);
+        SF_BINLOG_PARSE_INT_SILENCE(field->storage.offset, "offset",
+                BINLOG_FIELD_INDEX_OFFSET, ' ', 0);
+        SF_BINLOG_PARSE_INT_SILENCE(field->storage.size, "size",
+                BINLOG_FIELD_INDEX_SIZE, '\n', 0);
     } else if (*op_type == da_binlog_op_type_remove) {
         if (count != BINLOG_MIN_FIELD_COUNT) {
             sprintf(error_info, "field count: %d != %d",
@@ -102,31 +91,29 @@ int inode_binlog_reader_unpack_record(const string_t *line,
 {
     int result;
     FDIRInodeSegmentIndexInfo *segment;
-    FDIRStorageInodeIndexInfo *inode;
+    FDIRStorageInodeFieldInfo field;
     DABinlogOpType op_type;
 
     segment = (FDIRInodeSegmentIndexInfo *)args;
-    inode = segment->inodes.array.inodes +
-        segment->inodes.array.counts.total;
-    if ((result=binlog_parse(line, &op_type, inode, error_info)) != 0) {
+    if ((result=binlog_parse(line, &op_type, &field, error_info)) != 0) {
         return result;
     }
 
     if (op_type == da_binlog_op_type_create) {
         if ((result=inode_index_array_add(&segment->
-                        inodes.array, inode)) != 0)
+                        inodes.array, &field)) != 0)
         {
             *error_info = '\0';
         }
     } else if (op_type == da_binlog_op_type_update) {
         if ((result=inode_index_array_update(&segment->
-                        inodes.array, inode)) != 0)
+                        inodes.array, &field)) != 0)
         {
             *error_info = '\0';
         }
     } else {
         if ((result=inode_index_array_delete(&segment->
-                        inodes.array, inode->inode)) != 0)
+                        inodes.array, field.inode)) != 0)
         {
             if (result == ENOENT) {
                 result = 0;
@@ -173,7 +160,7 @@ int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
     int64_t bytes;
     string_t line;
     DABinlogOpType op_type;
-    FDIRStorageInodeIndexInfo inode_index;
+    FDIRStorageInodeFieldInfo field;
 
     write_fd_cache_filename(binlog_id, filename, sizeof(filename));
 
@@ -191,7 +178,7 @@ int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
     } else {
         line.len = (line_end - line.str) + 1;
         if ((result=binlog_parse(&line, &op_type,
-                        &inode_index, error_info)) == 0)
+                        &field, error_info)) == 0)
         {
             if (op_type != da_binlog_op_type_create) {
                 result = EINVAL;
@@ -201,7 +188,7 @@ int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
     }
 
     if (result == 0) {
-        *inode = inode_index.inode;
+        *inode = field.inode;
     } else {
         logError("file: "__FILE__", line: %d, "
                 "get first inode fail, binlog id: %"PRId64", "
@@ -218,10 +205,10 @@ static inline int parse_created_inode(const uint64_t binlog_id,
     int result;
     char error_info[SF_ERROR_INFO_SIZE];
     DABinlogOpType op_type;
-    FDIRStorageInodeIndexInfo inode_index;
+    FDIRStorageInodeFieldInfo field;
 
     if ((result=binlog_parse(line, &op_type,
-                    &inode_index, error_info)) != 0)
+                    &field, error_info)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "parse last line fail, binlog id: %"PRId64", "
@@ -231,7 +218,7 @@ static inline int parse_created_inode(const uint64_t binlog_id,
     }
 
     if (op_type == da_binlog_op_type_create) {
-        *inode = inode_index.inode;
+        *inode = field.inode;
         return 0;
     } else {
         return EAGAIN;
