@@ -50,9 +50,6 @@ int inode_binlog_pack_record_callback(void *args,
 
 int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args);
 
-int inode_binlog_batch_update_callback(DABinlogWriter *writer,
-            DABinlogRecord **records, const int count);
-
 #ifdef __cplusplus
 }
 #endif

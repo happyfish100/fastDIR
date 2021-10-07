@@ -108,22 +108,8 @@ int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array)
     return 0;
 }
 
-int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
-        const uint64_t inode)
-{
-    FDIRStorageInodeIndexInfo *node;
-
-    if ((node=inode_index_array_get(array, inode)) == NULL) {
-        return ENOENT;
-    }
-
-    node->status = FDIR_STORAGE_INODE_STATUS_DELETED;
-    array->counts.deleted++;
-    return 0;
-}
-
-int inode_index_array_find(FDIRStorageInodeIndexArray *array,
-        FDIRStorageInodeIndexInfo *inode)
+static inline FDIRStorageInodeIndexInfo *inode_index_array_find_ex(
+        FDIRStorageInodeIndexArray *array, FDIRStorageInodeIndexInfo *inode)
 {
     FDIRStorageInodeIndexInfo *found;
 
@@ -131,22 +117,55 @@ int inode_index_array_find(FDIRStorageInodeIndexArray *array,
             array->counts.total, sizeof(FDIRStorageInodeIndexInfo),
             (int (*)(const void *, const void *))inode_index_array_compare);
     if (found == NULL || found->status != FDIR_STORAGE_INODE_STATUS_NORMAL) {
-        return ENOENT;
+        return NULL;
     }
 
     *inode = *found;
+    return found;
+}
+
+int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
+        FDIRStorageInodeIndexInfo *inode)
+{
+    FDIRStorageInodeIndexInfo *found;
+
+    if ((found=inode_index_array_find_ex(array, inode)) == NULL) {
+        return ENOENT;
+    }
+
+    found->status = FDIR_STORAGE_INODE_STATUS_DELETED;
+    array->counts.deleted++;
     return 0;
 }
 
+int inode_index_array_find(FDIRStorageInodeIndexArray *array,
+        FDIRStorageInodeIndexInfo *inode)
+{
+    return (inode_index_array_find_ex(array, inode) != NULL ? 0 : ENOENT);
+}
+
 int inode_index_array_update(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field)
+        const FDIRStorageInodeFieldInfo *field, const bool normal_update,
+        DAPieceFieldStorage *old, bool *modified)
 {
     FDIRStorageInodeIndexInfo *found;
 
     if ((found=inode_index_array_get(array, field->inode)) == NULL) {
+        *modified = false;
         return ENOENT;
     }
 
-    found->fields[field->index] = field->storage;
+    if (normal_update) {
+        *modified = (field->storage.version >
+                found->fields[field->index].version);
+    } else {  //space reclaim
+        *modified = (field->storage.version ==
+                found->fields[field->index].version);
+    }
+
+    if (*modified) {
+        *old = found->fields[field->index];
+        found->fields[field->index] = field->storage;
+    }
     return 0;
 }

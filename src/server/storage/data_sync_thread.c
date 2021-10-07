@@ -141,7 +141,7 @@ static int remove_dentry(FDIRDataSyncThreadInfo *thread,
     }
 
     //TODO check
-    return inode_segment_index_delete(index->inode);
+    return inode_segment_index_delete(index);
 }
 
 static int set_field(FDIRDataSyncThreadInfo *thread,

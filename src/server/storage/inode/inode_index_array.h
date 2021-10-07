@@ -51,10 +51,11 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
         const FDIRStorageInodeFieldInfo *field);
 
 int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
-        const uint64_t inode);
+        FDIRStorageInodeIndexInfo *inode);
 
 int inode_index_array_update(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field);
+        const FDIRStorageInodeFieldInfo *field, const bool normal_update,
+        DAPieceFieldStorage *old, bool *modified);
 
 int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array);
 

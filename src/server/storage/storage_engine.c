@@ -30,7 +30,6 @@ static int init_write_fd_cache()
             FDIR_STORAGE_BINLOG_TYPE_INODE, "inode",
             inode_binlog_pack_record_callback,
             inode_binlog_reader_unpack_record,
-            inode_binlog_batch_update_callback,
             inode_binlog_shrink_callback);
 
 

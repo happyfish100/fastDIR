@@ -89,10 +89,14 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
 int inode_binlog_reader_unpack_record(const string_t *line,
         void *args, char *error_info)
 {
+    const bool normal_update = true;
     int result;
     FDIRInodeSegmentIndexInfo *segment;
+    FDIRStorageInodeIndexInfo inode;
     FDIRStorageInodeFieldInfo field;
     DABinlogOpType op_type;
+    DAPieceFieldStorage old;
+    bool modified;
 
     segment = (FDIRInodeSegmentIndexInfo *)args;
     if ((result=binlog_parse(line, &op_type, &field, error_info)) != 0) {
@@ -106,14 +110,15 @@ int inode_binlog_reader_unpack_record(const string_t *line,
             *error_info = '\0';
         }
     } else if (op_type == da_binlog_op_type_update) {
-        if ((result=inode_index_array_update(&segment->
-                        inodes.array, &field)) != 0)
+        if ((result=inode_index_array_update(&segment->inodes.array,
+                        &field, normal_update, &old, &modified)) != 0)
         {
             *error_info = '\0';
         }
     } else {
+        inode.inode = field.inode;
         if ((result=inode_index_array_delete(&segment->
-                        inodes.array, field.inode)) != 0)
+                        inodes.array, &inode)) != 0)
         {
             if (result == ENOENT) {
                 result = 0;

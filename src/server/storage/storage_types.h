@@ -62,7 +62,6 @@ typedef struct fdir_storage_inode_index_array {
     struct {
         int total;
         int deleted;
-        int adding;
     } counts;
 } FDIRStorageInodeIndexArray;
 
