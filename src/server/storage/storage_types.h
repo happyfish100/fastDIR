@@ -53,7 +53,9 @@ typedef struct fdir_storage_inode_index_info {
 typedef struct fdir_storage_inode_field_info {
     uint64_t inode;
     int index;
+    DABinlogOpType op_type;
     DAPieceFieldStorage storage;
+    struct fdir_storage_inode_field_info *next;
 } FDIRStorageInodeFieldInfo;
 
 typedef struct fdir_storage_inode_index_array {
@@ -95,9 +97,11 @@ typedef struct fdir_inode_bid_journal_array {
 } FDIRInodeBidJournalArray;
 
 typedef struct fdir_data_sync_thread_info {
+    int thread_index;
     struct fc_queue queue;
     SFSynchronizeContext synchronize_ctx;
     struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
+    struct fc_queue_info inode_chain;  //element: FDIRStorageInodeFieldInfo
 } FDIRDataSyncThreadInfo;
 
 typedef struct fdir_data_sync_thread_array {

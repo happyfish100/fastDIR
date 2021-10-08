@@ -35,6 +35,7 @@ int data_sync_thread_init()
 
     end = DATA_SYNC_THREAD_ARRAY.threads + DATA_SYNC_THREAD_ARRAY.count;
     for (thread=DATA_SYNC_THREAD_ARRAY.threads; thread<end; thread++) {
+        thread->thread_index = thread - DATA_SYNC_THREAD_ARRAY.threads;
         if ((result=fc_queue_init(&thread->queue, (long)
                         (&((FDIRDBUpdateDentry *)NULL)->next))) != 0)
         {
@@ -59,16 +60,16 @@ int data_sync_thread_init()
         space_chain->tail = record; \
     } while (0)
 
-static inline int add_to_chain_ex(struct fc_queue_info *space_chain,
-        const int64_t version, FDIRStorageInodeIndexInfo *index,
-        const int field_index, const char op_type, const uint32_t trunk_id,
-        const uint32_t offset, const uint32_t size)
+static inline int add_to_space_log_chain_ex(struct fc_queue_info *space_chain,
+        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const char op_type, const uint32_t trunk_id, const uint32_t offset,
+        const uint32_t size)
 {
     DATrunkSpaceLogRecord *record;
 
-    if ((record=da_trunk_space_log_alloc_fill_record_ex(version,
-                    index->inode, field_index, op_type,
-                    trunk_id, offset, size)) == NULL)
+    if ((record=da_trunk_space_log_alloc_fill_record_ex(dentry->version,
+                    dentry->inode, field_index, op_type, trunk_id,
+                    offset, size)) == NULL)
     {
         return ENOMEM;
     }
@@ -77,15 +78,14 @@ static inline int add_to_chain_ex(struct fc_queue_info *space_chain,
     return 0;
 }
 
-static inline int add_to_chain(struct fc_queue_info *space_chain,
-        const int64_t version, FDIRStorageInodeIndexInfo *index,
-        const int field_index, const char op_type)
+static inline int add_to_space_log_chain(struct fc_queue_info *space_chain,
+        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const char op_type, const DAPieceFieldStorage *storage)
 {
     DATrunkSpaceLogRecord *record;
 
-    if ((record=da_trunk_space_log_alloc_fill_record(version,
-                    index->inode, field_index, op_type,
-                    index->fields + field_index)) == NULL)
+    if ((record=da_trunk_space_log_alloc_fill_record(dentry->version,
+                    dentry->inode, field_index, op_type, storage)) == NULL)
     {
         return ENOMEM;
     }
@@ -94,103 +94,135 @@ static inline int add_to_chain(struct fc_queue_info *space_chain,
     return 0;
 }
 
-static int remove_field_ex(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry, FDIRStorageInodeIndexInfo
-        *index, const int field_index, const bool clear_field)
+static int remove_field(FDIRDataSyncThreadInfo *thread,
+        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const DAPieceFieldStorage *storage)
 {
     int result;
 
-    if (DA_PIECE_FIELD_IS_EMPTY(index->fields + field_index)) {
+    if (DA_PIECE_FIELD_IS_EMPTY(storage)) {
         return 0;
     }
 
-    if ((result=add_to_chain(&thread->space_chain, dentry->version, index,
-                    field_index, da_binlog_op_type_reclaim_space)) != 0)
+    if ((result=add_to_space_log_chain(&thread->space_chain, dentry,
+                    field_index, da_binlog_op_type_reclaim_space,
+                    storage)) != 0)
     {
         return result;
     }
 
-    //TODO
-    if (clear_field) {
-        DA_PIECE_FIELD_DELETE(index->fields + field_index);
-        index->fields[field_index].version = dentry->version;
-    }
-
     return 0;
 }
 
-static inline int remove_field(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry, FDIRStorageInodeIndexInfo
-        *index, const int field_index)
-{
-    const bool clear_field = true;
-    return remove_field_ex(thread, dentry, index, field_index, clear_field);
-}
-
 static int remove_dentry(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry,
-        FDIRStorageInodeIndexInfo *index)
+        const FDIRDBUpdateDentry *dentry)
 {
     int result;
     int i;
+    FDIRStorageInodeIndexInfo index;
+    FDIRStorageInodeFieldInfo field;
+
+    index.inode = dentry->inode;
+    if ((result=inode_segment_index_delete(&index)) != 0) {
+        return result;
+    }
 
     for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
-        if ((result=remove_field(thread, dentry, index, i)) != 0) {
+        if ((result=remove_field(thread, dentry,
+                        i, index.fields + i)) != 0)
+        {
             return result;
         }
     }
 
-    //TODO check
-    return inode_segment_index_delete(index);
+    field.inode = dentry->inode;
+    field.index = FDIR_PIECE_FIELD_INDEX_BASIC;
+    field.storage.version = dentry->version;
+    field.op_type = da_binlog_op_type_remove;
+
+    //TODO
+    return 0;
 }
 
 static int set_field(FDIRDataSyncThreadInfo *thread,
         const FDIRDBUpdateDentry *dentry,
-        FDIRStorageInodeIndexInfo *index,
         const FDIRDBUpdateMessage *msg)
 {
+    const bool normal_update = true;
     DATrunkSpaceInfo space;
+    FDIRStorageInodeFieldInfo field;
+    DAPieceFieldStorage old;
+    bool modified;
     int count;
     int result;
 
-    count = 1;
-    if ((result=storage_allocator_normal_alloc(index->inode,
-                    msg->buffer->length, &space, &count)) != 0)
+    field.inode = dentry->inode;
+    field.index = msg->field_index;
+    field.storage.version = dentry->version;
+    if (msg->buffer == NULL) {
+        DA_PIECE_FIELD_DELETE(&field.storage);
+    } else {
+        count = 1;
+        if ((result=storage_allocator_normal_alloc(dentry->inode,
+                        msg->buffer->length, &space, &count)) != 0)
+        {
+            return result;
+        }
+
+        if ((result=trunk_write_thread_by_buff_synchronize(&space,
+                        msg->buffer->data, &thread->synchronize_ctx)) != 0)
+        {
+            return result;
+        }
+
+        field.storage.trunk_id = space.id_info.id;
+        field.storage.offset = space.offset;
+        field.storage.size = space.size;
+    }
+
+    if (dentry->op_type == da_binlog_op_type_create &&
+            msg->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+    {
+        if ((result=inode_segment_index_add(&field)) != 0) {
+            return result;
+        }
+        field.op_type = da_binlog_op_type_create;
+        modified = true;
+        DA_PIECE_FIELD_SET_EMPTY(&old);
+    } else {
+        if ((result=inode_segment_index_update(&field, normal_update,
+                        &old, &modified)) != 0)
+        {
+            return result;
+        }
+        field.op_type = da_binlog_op_type_update;
+    }
+
+    if (!modified) {
+        return result;
+    }
+
+    if ((result=remove_field(thread, dentry,
+                    msg->field_index, &old)) != 0)
     {
         return result;
     }
 
-    if ((result=trunk_write_thread_by_buff_synchronize(&space,
-                    msg->buffer->data, &thread->synchronize_ctx)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=remove_field_ex(thread, dentry, index,
-                    msg->field_index, false)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=add_to_chain_ex(&thread->space_chain, dentry->version, index,
-                    msg->field_index, da_binlog_op_type_consume_space,
-                    space.id_info.id, space.offset, space.size)) != 0)
-    {
-        return result;
+    if (msg->buffer != NULL) {
+        if ((result=add_to_space_log_chain_ex(&thread->space_chain, dentry,
+                        msg->field_index, da_binlog_op_type_consume_space,
+                        space.id_info.id, space.offset, space.size)) != 0)
+        {
+            return result;
+        }
     }
 
     //TODO
-    index->fields[msg->field_index].trunk_id = space.id_info.id;
-    index->fields[msg->field_index].offset = space.offset;
-    index->fields[msg->field_index].size = space.size;
-    index->fields[msg->field_index].version = dentry->version;
-
     return 0;
 }
 
 static int set_dentry_fields(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry,
-        FDIRStorageInodeIndexInfo *index)
+        const FDIRDBUpdateDentry *dentry)
 {
     const FDIRDBUpdateMessage *msg;
     const FDIRDBUpdateMessage *end;
@@ -198,54 +230,11 @@ static int set_dentry_fields(FDIRDataSyncThreadInfo *thread,
 
     end = dentry->mms.messages + dentry->mms.msg_count;
     for (msg=dentry->mms.messages; msg<end; msg++) {
-        if (msg->buffer != NULL) {
-            if ((result=set_field(thread, dentry, index, msg)) != 0) {
-                return result;
-            }
-        } else {
-            if ((result=remove_field(thread, dentry, index,
-                            msg->field_index)) != 0)
-            {
-                return result;
-            }
-        }
-    }
-
-    return 0;
-}
-
-static int sync_dentry(FDIRDataSyncThreadInfo *thread,
-        FDIRDBUpdateDentry *dentry)
-{
-    int result;
-    FDIRStorageInodeIndexInfo index;
-
-    index.inode = dentry->inode;
-    if ((result=inode_segment_index_get(&index)) != 0) {
-        if (result != ENOENT) {
+        if ((result=set_field(thread, dentry, msg)) != 0) {
             return result;
         }
     }
 
-    thread->space_chain.head = thread->space_chain.tail = NULL;
-    if (dentry->op_type == da_binlog_op_type_remove) {
-        if (result != 0) {
-            return result;
-        }
-
-        if ((result=remove_dentry(thread, dentry, &index)) != 0) {
-            return result;
-        }
-    } else {
-        if (result == ENOENT) {
-            FDIR_PIECE_FIELDS_CLEAR(index.fields);
-        }
-        if ((result=set_dentry_fields(thread, dentry, &index)) != 0) {
-            return result;
-        }
-    }
-
-    //TODO
     return 0;
 }
 
@@ -256,15 +245,24 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
     int count;
     int result;
 
+    thread->space_chain.head = thread->space_chain.tail = NULL;
     dentry = head;
     count = 0;
     do {
         ++count;
-        if ((result=sync_dentry(thread, dentry)) != 0) {
+
+        if (dentry->op_type == da_binlog_op_type_remove) {
+            result = remove_dentry(thread, dentry);
+        } else {
+            result = set_dentry_fields(thread, dentry);
+        }
+
+        if (result != 0) {
             return result;
         }
     } while ((dentry=dentry->next) != NULL);
 
+    //TODO
     fdir_data_sync_finish(count);
     return 0;
 }
