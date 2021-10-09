@@ -29,7 +29,7 @@ extern "C" {
 
     void fdir_storage_engine_terminate();
 
-    int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array);
+    int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array);
 
     int fdir_storage_engine_fetch(const int64_t inode,
             const int field_index, FastBuffer *buffer);

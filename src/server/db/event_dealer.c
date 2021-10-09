@@ -156,14 +156,7 @@ static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
             children->elts, &dentry->db_args->children->count, &inode);
 }
 
-static inline void copy_message(FDIRDBUpdateMessage *umsg,
-        const FDIRChangeNotifyMessage *nmsg)
-{
-    umsg->buffer = nmsg->buffer;
-    umsg->field_index = nmsg->field_index;
-}
-
-static int merge_children_messages(FDIRDBUpdateDentry *merged,
+static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
         FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
 {
     int result;
@@ -208,25 +201,46 @@ static int merge_children_messages(FDIRDBUpdateDentry *merged,
     }
 
     if ((result=dentry_serializer_pack((*start)->dentry, (*start)->
-                    field_index, &(*start)->buffer)) != 0)
+                    field_index, &merged->buffer)) != 0)
     {
         return result;
     }
 
-    copy_message(merged->mms.messages + merged->mms.msg_count++, *start);
     return 0;
 }
 
-static int merge_one_field_messages(FDIRDBUpdateDentry *merged,
-        FDIRChangeNotifyMessage **start, FDIRChangeNotifyMessage **end)
+static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
+        FDIRChangeNotifyMessage **end)
 {
     FDIRChangeNotifyMessage **last;
+    FDIRDBUpdateFieldInfo *merged;
 
-    if ((*start)->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
+    last = end - 1;
+    merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count++;
+    merged->version = ++event_dealer_ctx.updater_ctx.last_versions.field;
+    merged->inode = (*start)->dentry->inode;
+    merged->field_index = (*last)->field_index;
+    merged->args = (*start)->dentry;
+    merged->merge_count = end - start;
+
+    if ((*last)->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
+        merged->op_type = da_binlog_op_type_update;
         return merge_children_messages(merged, start, end);
     } else {
-        last = end - 1;
-        copy_message(merged->mms.messages + merged->mms.msg_count++, *last);
+        if ((*last)->op_type == da_binlog_op_type_remove &&
+                (*last)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+            merged->op_type = da_binlog_op_type_remove;
+        }
+        else if ((*start)->op_type == da_binlog_op_type_create &&
+                (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+            merged->op_type = da_binlog_op_type_create;
+        } else {
+            merged->op_type = da_binlog_op_type_update;
+        }
+
+        merged->buffer = (*last)->buffer;
         free_message_buffer(start, last);
         return 0;
     }
@@ -238,9 +252,10 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     int result;
     FDIRChangeNotifyMessage **last;
     FDIRChangeNotifyMessage **msg;
-    FDIRDBUpdateDentry *merged;
 
-    if (MERGED_DENTRY_ARRAY.count >= MERGED_DENTRY_ARRAY.alloc) {
+    if (MERGED_DENTRY_ARRAY.count + FDIR_PIECE_FIELD_COUNT >
+            MERGED_DENTRY_ARRAY.alloc)
+    {
         if ((result=db_updater_realloc_dentry_array(
                         &MERGED_DENTRY_ARRAY)) != 0)
         {
@@ -249,53 +264,31 @@ static int merge_one_dentry_messages(FDIRChangeNotifyMessage **start,
     }
 
     last = end - 1;
-    merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
-    merged->version = (*last)->version;
-    merged->inode = (*start)->dentry->inode;
-    merged->args = (*start)->dentry;
-    merged->mms.merge_count = end - start;
-    merged->mms.msg_count = 0;
-
     if ((*last)->op_type == da_binlog_op_type_remove && (*last)->
             field_index == FDIR_PIECE_FIELD_INDEX_FOR_REMOVE)
     {
         if ((*start)->op_type == da_binlog_op_type_create &&
                 (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
-            dentry_release_ex((*start)->dentry, merged->mms.merge_count);
+            dentry_release_ex((*start)->dentry, end - start);
+            free_message_buffer(start, last);
         } else {
-            merged->op_type = da_binlog_op_type_remove;
-            MERGED_DENTRY_ARRAY.count++;
+            (*last)->field_index = FDIR_PIECE_FIELD_INDEX_BASIC;
+            merge_one_field_messages(start, end);
         }
-        free_message_buffer(start, last);
         return 0;
-    }
-
-    if ((*start)->op_type == da_binlog_op_type_create &&
-            (*start)->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
-    {
-        merged->op_type = da_binlog_op_type_create;
-    } else {
-        merged->op_type = da_binlog_op_type_update;
     }
 
     for (msg=start + 1; msg<end; msg++) {
         if ((*msg)->field_index != (*start)->field_index) {
-            if ((result=merge_one_field_messages(merged,
-                            start, msg)) != 0)
-            {
+            if ((result=merge_one_field_messages(start, msg)) != 0) {
                 return result;
             }
             start = msg;
         }
     }
 
-    if ((result=merge_one_field_messages(merged, start, msg)) != 0) {
-        return result;
-    }
-
-    MERGED_DENTRY_ARRAY.count++;
-    return 0;
+    return merge_one_field_messages(start, msg);
 }
 
 static int merge_messages()
@@ -331,13 +324,13 @@ static int merge_messages()
 static int deal_merged_entries()
 {
     int result;
-    FDIRDBUpdateDentry *entry;
-    FDIRDBUpdateDentry *end;
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
 
     result = db_updater_deal(&event_dealer_ctx.updater_ctx);
     end = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     for (entry=MERGED_DENTRY_ARRAY.entries; entry<end; entry++) {
-        dentry_release_ex(entry->args, entry->mms.merge_count);
+        dentry_release_ex(entry->args, entry->merge_count);
     }
 
     return result;
@@ -373,7 +366,7 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
         return result;
     }
 
-    event_dealer_ctx.updater_ctx.last_version = last->version;
+    event_dealer_ctx.updater_ctx.last_versions.dentry = last->version;
     if ((result=deal_merged_entries()) != 0) {
         return result;
     }

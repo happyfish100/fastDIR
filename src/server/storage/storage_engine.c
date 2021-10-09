@@ -82,12 +82,12 @@ void fdir_storage_engine_terminate()
 {
 }
 
-int fdir_storage_engine_store(FDIRDBUpdateDentryArray *array)
+int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
 {
     int result;
     struct fc_queue_info chain;
-    FDIRDBUpdateDentry *entry;
-    FDIRDBUpdateDentry *end;
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
     SFWriterVersionEntry *ver;
 
     if ((result=sf_ordered_writer_alloc_versions(&ORDERED_WRITER_CTX,

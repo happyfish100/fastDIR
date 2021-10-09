@@ -63,6 +63,19 @@ extern "C" {
         return buffer;
     }
 
+    static inline FastBuffer *dentry_serializer_to_buffer(const string_t *s)
+    {
+        FastBuffer *buffer;
+
+        if ((buffer=dentry_serializer_alloc_buffer(s->len)) == NULL) {
+            return NULL;
+        }
+
+        memcpy(buffer->data, s->str, s->len);
+        buffer->length = s->len;
+        return buffer;
+    }
+
     void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
             const int count);
 

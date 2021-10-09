@@ -24,25 +24,15 @@
 #define REDO_TMP_FILENAME  ".dbstore.tmp"
 #define REDO_LOG_FILENAME  "dbstore.redo"
 
-#define REDO_HEADER_FIELD_ID_RECORD_COUNT   1
-#define REDO_HEADER_FIELD_ID_LAST_VERSION   2
+#define REDO_HEADER_FIELD_ID_RECORD_COUNT          1
+#define REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION    2
+#define REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION   3
 
 #define REDO_DENTRY_FIELD_ID_VERSION               1
 #define REDO_DENTRY_FIELD_ID_INODE                 2
 #define REDO_DENTRY_FIELD_ID_OP_TYPE               3
-#define REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES   4
-#define REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES  5
-#define REDO_DENTRY_FIELD_ID_PACKED_PIECE_SIZES    6
-
-typedef struct {
-    int8_t indexes[FDIR_PIECE_FIELD_COUNT];
-    int count;
-} FieldIndexArray;
-
-typedef struct {
-    int32_t sizes[FDIR_PIECE_FIELD_COUNT];
-    int count;
-} PiecesSizeArray;
+#define REDO_DENTRY_FIELD_ID_FIELD_INDEX           4
+#define REDO_DENTRY_FIELD_ID_FIELD_BUFFER          5
 
 typedef struct db_updater_ctx {
     struct {
@@ -85,15 +75,15 @@ void db_updater_destroy()
 {
 }
 
-static int compare_dentry_version(const FDIRDBUpdateDentry *entry1,
-        const FDIRDBUpdateDentry *entry2)
+static int compare_field_version(const FDIRDBUpdateFieldInfo *entry1,
+        const FDIRDBUpdateFieldInfo *entry2)
 {
     return fc_compare_int64(entry1->version, entry2->version);
 }
 
-int db_updater_realloc_dentry_array(FDIRDBUpdateDentryArray *array)
+int db_updater_realloc_dentry_array(FDIRDBUpdateFieldArray *array)
 {
-    FDIRDBUpdateDentry *entries;
+    FDIRDBUpdateFieldInfo *entries;
 
     if (array->alloc == 0) {
         array->alloc = 8 * 1024;
@@ -101,15 +91,15 @@ int db_updater_realloc_dentry_array(FDIRDBUpdateDentryArray *array)
         array->alloc *= 2;
     }
 
-    entries = (FDIRDBUpdateDentry *)fc_malloc(
-            sizeof(FDIRDBUpdateDentry) * array->alloc);
+    entries = (FDIRDBUpdateFieldInfo *)fc_malloc(
+            sizeof(FDIRDBUpdateFieldInfo) * array->alloc);
     if (entries == NULL) {
         return ENOMEM;
     }
 
     if (array->entries != NULL) {
         memcpy(entries, array->entries, sizeof(
-                    FDIRDBUpdateDentry) * array->count);
+                    FDIRDBUpdateFieldInfo) * array->count);
         free(array->entries);
     }
 
@@ -147,8 +137,15 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     }
 
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_HEADER_FIELD_ID_LAST_VERSION,
-                    ctx->last_version)) != 0)
+                    REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION,
+                    ctx->last_versions.field)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=sf_serializer_pack_int64(&ctx->buffer,
+                    REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION,
+                    ctx->last_versions.dentry)) != 0)
     {
         return result;
     }
@@ -158,27 +155,9 @@ static int write_header(FDIRDBUpdaterContext *ctx)
 }
 
 static int write_one_entry(FDIRDBUpdaterContext *ctx,
-        const FDIRDBUpdateDentry *entry)
+        const FDIRDBUpdateFieldInfo *entry)
 {
-    const FDIRDBUpdateMessage *msg;
-    const FDIRDBUpdateMessage *end;
-    FieldIndexArray packed_fields;
-    FieldIndexArray empty_fields;
-    PiecesSizeArray size_array;
     int result;
-
-    packed_fields.count = 0;
-    empty_fields.count = 0;
-    size_array.count = 0;
-    end = entry->mms.messages + entry->mms.msg_count;
-    for (msg=entry->mms.messages; msg<end; msg++) {
-        if (msg->buffer != NULL) {
-            packed_fields.indexes[packed_fields.count++] = msg->field_index;
-            size_array.sizes[size_array.count++] = msg->buffer->length;
-        } else {
-            empty_fields.indexes[empty_fields.count++] = msg->field_index;
-        }
-    }
 
     sf_serializer_pack_begin(&ctx->buffer);
 
@@ -201,51 +180,31 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
         return result;
     }
 
-    if ((packed_fields.count > 0) && (result=
-                sf_serializer_pack_int8_array(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES,
-                    packed_fields.indexes, packed_fields.count)) != 0)
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_FIELD_INDEX,
+                    entry->field_index)) != 0)
     {
         return result;
     }
 
-    if ((empty_fields.count > 0) && (result=
-                sf_serializer_pack_int8_array(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES,
-                    empty_fields.indexes, empty_fields.count)) != 0)
-    {
-        return result;
-    }
-
-    if ((size_array.count > 0) && (result=
-                sf_serializer_pack_int32_array(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_PACKED_PIECE_SIZES,
-                    size_array.sizes, size_array.count)) != 0)
-    {
-        return result;
-    }
-
-    sf_serializer_pack_end(&ctx->buffer);
-    if ((result=write_buffer_to_file(&ctx->buffer)) != 0) {
-        return result;
-    }
-
-    for (msg=entry->mms.messages; msg<end; msg++) {
-        if (msg->buffer != NULL) {
-            if ((result=write_buffer_to_file(msg->buffer)) != 0) {
-                return result;
-            }
+    if (entry->buffer != NULL) {
+        if ((result=sf_serializer_pack_buffer(&ctx->buffer,
+                        REDO_DENTRY_FIELD_ID_FIELD_BUFFER,
+                        entry->buffer)) != 0)
+        {
+            return result;
         }
     }
 
-    return 0;
+    sf_serializer_pack_end(&ctx->buffer);
+    return write_buffer_to_file(&ctx->buffer);
 }
 
 static int do_write(FDIRDBUpdaterContext *ctx)
 {
     int result;
-    FDIRDBUpdateDentry *entry;
-    FDIRDBUpdateDentry *last;
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *last;
 
     if ((result=write_header(ctx)) != 0) {
         return result;
@@ -345,7 +304,7 @@ static int unpack_header(SFSerializerIterator *it,
     const SFSerializerFieldValue *fv;
 
     *record_count = 0;
-    ctx->last_version = 0;
+    ctx->last_versions.field = ctx->last_versions.dentry = 0;
     if ((result=unpack_from_file(it)) != 0) {
         return result;
     }
@@ -355,19 +314,24 @@ static int unpack_header(SFSerializerIterator *it,
             case REDO_HEADER_FIELD_ID_RECORD_COUNT:
                 *record_count = fv->value.n;
                 break;
-            case REDO_HEADER_FIELD_ID_LAST_VERSION:
-                ctx->last_version = fv->value.n;
+            case REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION:
+                ctx->last_versions.field = fv->value.n;
+                break;
+            case REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION:
+                ctx->last_versions.dentry = fv->value.n;
                 break;
             default:
                 break;
         }
     }
-    if (*record_count == 0 || ctx->last_version == 0) {
+    if (*record_count == 0 || ctx->last_versions.field == 0 ||
+            ctx->last_versions.dentry == 0)
+    {
         logError("file: "__FILE__", line: %d, "
-                "file: %s, invalid packed header, "
-                "record_count: %d, last_version: %"PRId64,
-                __LINE__, db_updater_ctx.redo.filename,
-                *record_count, ctx->last_version);
+                "file: %s, invalid packed header, record_count: %d, "
+                "last_versions {field: %"PRId64", dentry: %"PRId64"}",
+                __LINE__, db_updater_ctx.redo.filename, *record_count,
+                ctx->last_versions.field, ctx->last_versions.dentry);
         return EINVAL;
     }
 
@@ -378,13 +342,8 @@ static int unpack_one_dentry(const int64_t start_version,
         SFSerializerIterator *it, FDIRDBUpdaterContext *ctx)
 {
     int result;
-    int i;
-    int read_bytes;
-    FDIRDBUpdateDentry *entry;
-    FDIRDBUpdateMessage *msg;
+    FDIRDBUpdateFieldInfo *entry;
     const SFSerializerFieldValue *fv;
-    FieldIndexArray packed_fields;
-    PiecesSizeArray size_array;
 
     if ((result=unpack_from_file(it)) != 0) {
         return result;
@@ -398,10 +357,8 @@ static int unpack_one_dentry(const int64_t start_version,
         }
     }
     entry = ctx->array.entries + ctx->array.count;
+    entry->buffer = NULL;
     entry->args = NULL;
-    entry->mms.msg_count = 0;
-    packed_fields.count = 0;
-    size_array.count = 0;
     while ((fv=sf_serializer_next(it)) != NULL) {
         switch (fv->fid) {
             case REDO_DENTRY_FIELD_ID_VERSION:
@@ -416,25 +373,15 @@ static int unpack_one_dentry(const int64_t start_version,
             case REDO_DENTRY_FIELD_ID_OP_TYPE:
                 entry->op_type = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_EMPTY_FIELD_INDEXES:
-                for (i=0; i<fv->value.int_array.count; i++) {
-                    msg = entry->mms.messages + entry->mms.msg_count++;
-                    msg->field_index = fv->value.int_array.elts[i];
-                    msg->buffer = NULL;
-                }
+            case REDO_DENTRY_FIELD_ID_FIELD_INDEX:
+                entry->field_index = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_PACKED_FIELD_INDEXES:
-                for (i=0; i<fv->value.int_array.count; i++) {
-                    packed_fields.indexes[i] = fv->value.int_array.elts[i];
+            case REDO_DENTRY_FIELD_ID_FIELD_BUFFER:
+                if ((entry->buffer=dentry_serializer_to_buffer(
+                                &fv->value.s)) == NULL)
+                {
+                    return ENOMEM;
                 }
-                packed_fields.count = fv->value.int_array.count;
-                break;
-            case REDO_DENTRY_FIELD_ID_PACKED_PIECE_SIZES:
-                for (i=0; i<fv->value.int_array.count; i++) {
-                    size_array.sizes[i] = fv->value.int_array.elts[i];
-                }
-                size_array.count = fv->value.int_array.count;
-                break;
             default:
                 break;
         }
@@ -447,30 +394,6 @@ static int unpack_one_dentry(const int64_t start_version,
                 __LINE__, db_updater_ctx.redo.filename,
                 it->error_no, it->error_info);
         return it->error_no;
-    }
-
-    for (i=0; i<packed_fields.count; i++) {
-        msg = entry->mms.messages + entry->mms.msg_count;
-        msg->field_index = packed_fields.indexes[i];
-        if ((msg->buffer=dentry_serializer_alloc_buffer(
-                        size_array.sizes[i])) == NULL)
-        {
-            return ENOMEM;
-        }
-
-        msg->buffer->length = size_array.sizes[i];
-        read_bytes = fc_safe_read(db_updater_ctx.redo.fd,
-                msg->buffer->data, msg->buffer->length);
-        if (read_bytes != msg->buffer->length) {
-            result = errno != 0 ? errno : EIO;
-            logError("file: "__FILE__", line: %d, "
-                    "try read %d bytes from file %s fail, real "
-                    "read bytes: %d, errno: %d, error info: %s",
-                    __LINE__, msg->buffer->length, db_updater_ctx.
-                    redo.filename, read_bytes, result, STRERROR(result));
-            return result;
-        }
-        entry->mms.msg_count++;
     }
 
     ctx->array.count++;
@@ -498,8 +421,8 @@ static int unpack_dentries(const int64_t start_version,
 
     if (ctx->array.count > 1) {
         qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdateDentry), (int (*)(const void *,
-                            const void *))compare_dentry_version);
+                    FDIRDBUpdateFieldInfo), (int (*)(const void *,
+                            const void *))compare_field_version);
     }
 
     return 0;
@@ -518,7 +441,7 @@ static int do_load(const int64_t start_version,
         return result;
     }
 
-    if (ctx->last_version >= start_version) {
+    if (ctx->last_versions.field >= start_version) {
         result = unpack_dentries(start_version,
                 &it, ctx, record_count);
     }
@@ -564,8 +487,8 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
 
     if (ctx->array.count > 1) {
         qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdateDentry), (int (*)(const void *,
-                            const void *))compare_dentry_version);
+                    FDIRDBUpdateFieldInfo), (int (*)(const void *,
+                            const void *))compare_field_version);
     }
 
     if ((result=write_redo_log(ctx)) != 0) {

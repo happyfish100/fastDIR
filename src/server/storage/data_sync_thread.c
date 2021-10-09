@@ -37,7 +37,7 @@ int data_sync_thread_init()
     for (thread=DATA_SYNC_THREAD_ARRAY.threads; thread<end; thread++) {
         thread->thread_index = thread - DATA_SYNC_THREAD_ARRAY.threads;
         if ((result=fc_queue_init(&thread->queue, (long)
-                        (&((FDIRDBUpdateDentry *)NULL)->next))) != 0)
+                        (&((FDIRDBUpdateFieldInfo *)NULL)->next))) != 0)
         {
             return result;
         }
@@ -61,7 +61,7 @@ int data_sync_thread_init()
     } while (0)
 
 static inline int add_to_space_log_chain_ex(struct fc_queue_info *space_chain,
-        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const FDIRDBUpdateFieldInfo *dentry, const int field_index,
         const char op_type, const uint32_t trunk_id, const uint32_t offset,
         const uint32_t size)
 {
@@ -79,7 +79,7 @@ static inline int add_to_space_log_chain_ex(struct fc_queue_info *space_chain,
 }
 
 static inline int add_to_space_log_chain(struct fc_queue_info *space_chain,
-        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const FDIRDBUpdateFieldInfo *dentry, const int field_index,
         const char op_type, const DAPieceFieldStorage *storage)
 {
     DATrunkSpaceLogRecord *record;
@@ -95,7 +95,7 @@ static inline int add_to_space_log_chain(struct fc_queue_info *space_chain,
 }
 
 static int remove_field(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry, const int field_index,
+        const FDIRDBUpdateFieldInfo *dentry, const int field_index,
         const DAPieceFieldStorage *storage)
 {
     int result;
@@ -115,7 +115,7 @@ static int remove_field(FDIRDataSyncThreadInfo *thread,
 }
 
 static int remove_dentry(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry)
+        const FDIRDBUpdateFieldInfo *dentry)
 {
     int result;
     int i;
@@ -145,7 +145,7 @@ static int remove_dentry(FDIRDataSyncThreadInfo *thread,
 }
 
 static int set_field(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry,
+        const FDIRDBUpdateFieldInfo *dentry,
         const FDIRDBUpdateMessage *msg)
 {
     const bool normal_update = true;
@@ -222,7 +222,7 @@ static int set_field(FDIRDataSyncThreadInfo *thread,
 }
 
 static int set_dentry_fields(FDIRDataSyncThreadInfo *thread,
-        const FDIRDBUpdateDentry *dentry)
+        const FDIRDBUpdateFieldInfo *dentry)
 {
     const FDIRDBUpdateMessage *msg;
     const FDIRDBUpdateMessage *end;
@@ -239,9 +239,9 @@ static int set_dentry_fields(FDIRDataSyncThreadInfo *thread,
 }
 
 static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
-        FDIRDBUpdateDentry *head)
+        FDIRDBUpdateFieldInfo *head)
 {
-    FDIRDBUpdateDentry *dentry;
+    FDIRDBUpdateFieldInfo *dentry;
     int count;
     int result;
 
@@ -270,7 +270,7 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
 static void *data_sync_thread_func(void *arg)
 {
     FDIRDataSyncThreadInfo *thread;
-    FDIRDBUpdateDentry *head;
+    FDIRDBUpdateFieldInfo *head;
 
     thread = arg;
 #ifdef OS_LINUX

@@ -32,30 +32,21 @@
     DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_CHILDREN]); \
     DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_XATTR])
 
-typedef struct fdir_db_update_message {
+typedef struct fdir_db_update_field_info {
+    int64_t version;   //field version, NOT data version!
+    uint64_t inode;
+    DABinlogOpType op_type;
+    int merge_count;
     int field_index;
     FastBuffer *buffer;
-} FDIRDBUpdateMessage;
-
-typedef struct fdir_dentry_merged_messages {
-    FDIRDBUpdateMessage messages[FDIR_PIECE_FIELD_COUNT];
-    int msg_count;
-    int merge_count;
-} FDIRDentryMergedMessages;
-
-typedef struct fdir_db_update_dentry {
-    int64_t version;
-    int64_t inode;
-    DABinlogOpType op_type;
-    FDIRDentryMergedMessages mms;
     void *args;
-    struct fdir_db_update_dentry *next;  //for queue
-} FDIRDBUpdateDentry;
+    struct fdir_db_update_field_info *next;  //for queue
+} FDIRDBUpdateFieldInfo;
 
-typedef struct fdir_db_update_dentry_array {
-    FDIRDBUpdateDentry *entries;
+typedef struct fdir_db_update_field_array {
+    FDIRDBUpdateFieldInfo *entries;
     int count;
     int alloc;
-} FDIRDBUpdateDentryArray;
+} FDIRDBUpdateFieldArray;
 
 #endif
