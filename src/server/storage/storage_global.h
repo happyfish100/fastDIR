@@ -25,7 +25,8 @@ typedef struct {
     int inode_index_dump_interval;
     TimeInfo inode_index_dump_base_time;
     FDIRDataSyncThreadArray data_sync_thread_array;
-    SFOrderedWriterContext ordered_writer_ctx;
+    FDIROrderdUpdateChain ordered_update_chain;
+    struct fast_mblock_man update_record_allocator;
     struct {
         int waitings;
         pthread_lock_cond_pair_t lcp;
@@ -40,7 +41,8 @@ typedef struct {
 #define INODE_INDEX_DUMP_INTERVAL  g_storage_global_vars.inode_index_dump_interval
 #define INODE_INDEX_DUMP_BASE_TIME g_storage_global_vars.inode_index_dump_base_time
 #define DATA_SYNC_THREAD_ARRAY     g_storage_global_vars.data_sync_thread_array
-#define ORDERED_WRITER_CTX         g_storage_global_vars.ordered_writer_ctx
+#define ORDERED_UPDATE_CHAIN       g_storage_global_vars.ordered_update_chain
+#define UPDATE_RECORD_ALLOCATOR    g_storage_global_vars.update_record_allocator
 
 #define DATA_SYNC_NOTIFY_WAITINGS  g_storage_global_vars.data_sync_notify.waitings
 #define DATA_SYNC_NOTIFY_LCP       g_storage_global_vars.data_sync_notify.lcp

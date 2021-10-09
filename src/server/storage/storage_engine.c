@@ -41,8 +41,6 @@ static int init_write_fd_cache()
 
 int fdir_storage_engine_init(IniFullContext *ini_ctx)
 {
-    const char *subdir_name = "inode";
-    const int buffer_size = 64 * FDIR_INODE_BINLOG_RECORD_MAX_SIZE;
     int result;
 
     if ((result=init_write_fd_cache()) != 0) {
@@ -53,9 +51,15 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx)
         return result;
     }
 
-    if ((result=sf_ordered_writer_init(&ORDERED_WRITER_CTX,
-                    STORAGE_PATH_STR, subdir_name, buffer_size,
-                    FDIR_INODE_BINLOG_RECORD_MAX_SIZE)) != 0)
+    if ((result=init_pthread_lock(&ORDERED_UPDATE_CHAIN.lock)) != 0) {
+        return result;
+    }
+    ORDERED_UPDATE_CHAIN.next_version = 1;
+    ORDERED_UPDATE_CHAIN.head = ORDERED_UPDATE_CHAIN.tail = NULL;
+
+    if ((result=fast_mblock_init_ex1(&UPDATE_RECORD_ALLOCATOR,
+                    "update-record", sizeof(FDIRInodeUpdateRecord),
+                    8 * 1024, 0, NULL, NULL, true)) != 0)
     {
         return result;
     }
@@ -84,30 +88,17 @@ void fdir_storage_engine_terminate()
 
 int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
 {
-    int result;
-    struct fc_queue_info chain;
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
-    SFWriterVersionEntry *ver;
-
-    if ((result=sf_ordered_writer_alloc_versions(&ORDERED_WRITER_CTX,
-                    array->count, &chain)) != 0)
-    {
-        return result;
-    }
 
     PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
     DATA_SYNC_NOTIFY_WAITINGS = array->count;
     PTHREAD_MUTEX_UNLOCK(&DATA_SYNC_NOTIFY_LCP.lock);
 
     end = array->entries + array->count;
-    for (entry=array->entries, ver=chain.head;
-            entry<end; entry++, ver=ver->next)
-    {
-        ver->version = entry->version;
+    for (entry=array->entries; entry<end; entry++) {
         data_sync_thread_push(entry);
     }
-    sf_ordered_writer_push_versions(&ORDERED_WRITER_CTX, &chain);
 
     PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
     if (DATA_SYNC_NOTIFY_WAITINGS > 0) {

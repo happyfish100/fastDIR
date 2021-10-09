@@ -85,6 +85,26 @@ typedef struct fdir_inode_segment_index_info {
     struct fc_list_head dlink;  //for FIFO elimination algorithm
 } FDIRInodeSegmentIndexInfo;
 
+typedef struct fdir_inode_update_result {
+    FDIRInodeSegmentIndexInfo *segment;
+    DAPieceFieldStorage old;
+    int64_t version;    //for sort
+} FDIRInodeUpdateResult;
+
+typedef struct fdir_inode_update_record {
+    int64_t version;    //for sort
+    FDIRStorageInodeFieldInfo field;
+    struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
+    struct fdir_inode_update_record *next;
+} FDIRInodeUpdateRecord;
+
+typedef struct fdir_ordered_update_chain {
+    pthread_mutex_t lock;
+    int64_t next_version;
+    FDIRInodeUpdateRecord *head;
+    FDIRInodeUpdateRecord *tail;
+} FDIROrderdUpdateChain;
+
 typedef struct fdir_inode_binlog_id_journal {
     uint64_t binlog_id;
     int64_t version;
@@ -100,8 +120,6 @@ typedef struct fdir_data_sync_thread_info {
     int thread_index;
     struct fc_queue queue;
     SFSynchronizeContext synchronize_ctx;
-    struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
-    struct fc_queue_info inode_chain;  //element: FDIRStorageInodeFieldInfo
 } FDIRDataSyncThreadInfo;
 
 typedef struct fdir_data_sync_thread_array {
