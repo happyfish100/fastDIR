@@ -127,4 +127,10 @@ typedef struct fdir_data_sync_thread_array {
     int count;
 } FDIRDataSyncThreadArray;
 
+typedef struct fdir_binlog_write_thread_context {
+    SafeWriteFileInfo field_redo;
+    SafeWriteFileInfo space_redo;
+    struct fc_queue queue;
+} FDIRBinlogWriteThreadContext;
+
 #endif

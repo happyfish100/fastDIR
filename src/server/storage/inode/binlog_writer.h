@@ -26,10 +26,9 @@ extern "C" {
 #endif
 
 static inline int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo
-        *segment, const DABinlogOpType op_type,
-        const FDIRStorageInodeFieldInfo *field)
+        *segment, const FDIRStorageInodeFieldInfo *field)
 {
-    return da_binlog_writer_log(&segment->writer, op_type, (void *)field);
+    return da_binlog_writer_log(&segment->writer, (void *)field);
 }
 
 static inline int inode_binlog_writer_synchronize(
@@ -44,8 +43,7 @@ static inline int inode_binlog_writer_shrink(
     return da_binlog_writer_shrink(&segment->writer, segment);
 }
 
-int inode_binlog_pack_record_callback(void *args,
-        const DABinlogOpType op_type,
+int inode_binlog_pack_record(FDIRStorageInodeFieldInfo *field,
         char *buff, const int size);
 
 int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args);

@@ -28,10 +28,9 @@ static int init_write_fd_cache()
 
     DA_BINLOG_SET_TYPE_SUBDIR_PAIR(pairs[FDIR_STORAGE_BINLOG_TYPE_INODE],
             FDIR_STORAGE_BINLOG_TYPE_INODE, "inode",
-            inode_binlog_pack_record_callback,
+            (da_binlog_pack_record_func)inode_binlog_pack_record,
             inode_binlog_reader_unpack_record,
             inode_binlog_shrink_callback);
-
 
     type_subdir_array.pairs = pairs;
     type_subdir_array.count = FDIR_STORAGE_BINLOG_TYPE_COUNT;

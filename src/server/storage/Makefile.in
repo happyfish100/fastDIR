@@ -6,16 +6,18 @@ LIB_PATH = $(LIBS) -lfastcommon -lserverframe -ldiskallocator
 TARGET_LIB = $(TARGET_PREFIX)/$(LIB_VERSION)
 
 FAST_SHARED_OBJS = inode/segment_index.lo inode/binlog_writer.lo \
-                   inode/binlog_reader.lo \
-                   inode/binlog_index.lo inode/inode_array_allocator.lo \
+                   inode/binlog_reader.lo inode/binlog_index.lo  \
+                   inode/inode_array_allocator.lo \
                    inode/inode_index_array.lo inode/bid_journal.lo \
-                   storage_engine.lo data_sync_thread.lo storage_global.lo
+                   storage_engine.lo storage_global.lo data_sync_thread.lo \
+                   binlog_write_thread.lo
 
 FAST_STATIC_OBJS = inode/segment_index.o inode/binlog_writer.o \
                    inode/binlog_reader.o inode/binlog_index.o  \
                    inode/inode_array_allocator.o \
                    inode/inode_index_array.o inode/bid_journal.o \
-                   storage_engine.o data_sync_thread.o storage_global.o
+                   storage_engine.o storage_global.o data_sync_thread.o \
+                   binlog_write_thread.o
 
 HEADER_FILES =
 

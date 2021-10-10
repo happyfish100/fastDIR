@@ -23,18 +23,19 @@
 #include "binlog_writer.h"
 #include "binlog_reader.h"
 
-#define BINLOG_MIN_FIELD_COUNT         3
-#define BINLOG_MAX_FIELD_COUNT         7
+#define BINLOG_MIN_FIELD_COUNT         4
+#define BINLOG_MAX_FIELD_COUNT         8
 
-#define BINLOG_FIELD_INDEX_VERSION     0
-#define BINLOG_FIELD_INDEX_INODE       1
-#define BINLOG_FIELD_INDEX_OP_TYPE     2
-#define BINLOG_FIELD_INDEX_FINDEX      3
-#define BINLOG_FIELD_INDEX_TRUNK_ID    4
-#define BINLOG_FIELD_INDEX_OFFSET      5
-#define BINLOG_FIELD_INDEX_SIZE        6
+#define BINLOG_FIELD_INDEX_TIMESTAMP   0
+#define BINLOG_FIELD_INDEX_VERSION     1
+#define BINLOG_FIELD_INDEX_INODE       2
+#define BINLOG_FIELD_INDEX_OP_TYPE     3
+#define BINLOG_FIELD_INDEX_FINDEX      4
+#define BINLOG_FIELD_INDEX_TRUNK_ID    5
+#define BINLOG_FIELD_INDEX_OFFSET      6
+#define BINLOG_FIELD_INDEX_SIZE        7
 
-static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
+int inode_binlog_parse_record(const string_t *line,
         FDIRStorageInodeFieldInfo *field, char *error_info)
 {
     int count;
@@ -53,9 +54,9 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
             "version", BINLOG_FIELD_INDEX_VERSION, ' ', 0);
     SF_BINLOG_PARSE_INT_SILENCE(field->inode, "inode",
             BINLOG_FIELD_INDEX_INODE, ' ', 0);
-    *op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
-    if (*op_type == da_binlog_op_type_create ||
-            *op_type == da_binlog_op_type_update)
+    field->op_type = cols[BINLOG_FIELD_INDEX_OP_TYPE].str[0];
+    if (field->op_type == da_binlog_op_type_create ||
+            field->op_type == da_binlog_op_type_update)
     {
         if (count != BINLOG_MAX_FIELD_COUNT) {
             sprintf(error_info, "field count: %d != %d",
@@ -71,7 +72,7 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
                 BINLOG_FIELD_INDEX_OFFSET, ' ', 0);
         SF_BINLOG_PARSE_INT_SILENCE(field->storage.size, "size",
                 BINLOG_FIELD_INDEX_SIZE, '\n', 0);
-    } else if (*op_type == da_binlog_op_type_remove) {
+    } else if (field->op_type == da_binlog_op_type_remove) {
         if (count != BINLOG_MIN_FIELD_COUNT) {
             sprintf(error_info, "field count: %d != %d",
                     count, BINLOG_MIN_FIELD_COUNT);
@@ -79,7 +80,7 @@ static int binlog_parse(const string_t *line, DABinlogOpType *op_type,
         }
     } else {
         sprintf(error_info, "unkown op type: %d (0x%02x)",
-                *op_type, (unsigned char)*op_type);
+                field->op_type, (unsigned char)field->op_type);
         return EINVAL;
     }
 
@@ -94,22 +95,23 @@ int inode_binlog_reader_unpack_record(const string_t *line,
     FDIRInodeSegmentIndexInfo *segment;
     FDIRStorageInodeIndexInfo inode;
     FDIRStorageInodeFieldInfo field;
-    DABinlogOpType op_type;
     DAPieceFieldStorage old;
     bool modified;
 
     segment = (FDIRInodeSegmentIndexInfo *)args;
-    if ((result=binlog_parse(line, &op_type, &field, error_info)) != 0) {
+    if ((result=inode_binlog_parse_record(line,
+                    &field, error_info)) != 0)
+    {
         return result;
     }
 
-    if (op_type == da_binlog_op_type_create) {
+    if (field.op_type == da_binlog_op_type_create) {
         if ((result=inode_index_array_add(&segment->
                         inodes.array, &field)) != 0)
         {
             *error_info = '\0';
         }
-    } else if (op_type == da_binlog_op_type_update) {
+    } else if (field.op_type == da_binlog_op_type_update) {
         if ((result=inode_index_array_update(&segment->inodes.array,
                         &field, normal_update, &old, &modified)) != 0)
         {
@@ -164,7 +166,6 @@ int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
     int result;
     int64_t bytes;
     string_t line;
-    DABinlogOpType op_type;
     FDIRStorageInodeFieldInfo field;
 
     write_fd_cache_filename(binlog_id, filename, sizeof(filename));
@@ -182,12 +183,12 @@ int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
         sprintf(error_info, "expect new line char(\\n)");
     } else {
         line.len = (line_end - line.str) + 1;
-        if ((result=binlog_parse(&line, &op_type,
+        if ((result=inode_binlog_parse_record(&line,
                         &field, error_info)) == 0)
         {
-            if (op_type != da_binlog_op_type_create) {
+            if (field.op_type != da_binlog_op_type_create) {
                 result = EINVAL;
-                sprintf(error_info, "unexpect op type: %c", op_type);
+                sprintf(error_info, "unexpect op type: %c", field.op_type);
             }
         }
     }
@@ -209,10 +210,9 @@ static inline int parse_created_inode(const uint64_t binlog_id,
 {
     int result;
     char error_info[SF_ERROR_INFO_SIZE];
-    DABinlogOpType op_type;
     FDIRStorageInodeFieldInfo field;
 
-    if ((result=binlog_parse(line, &op_type,
+    if ((result=inode_binlog_parse_record(line,
                     &field, error_info)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
@@ -222,7 +222,7 @@ static inline int parse_created_inode(const uint64_t binlog_id,
         return result;
     }
 
-    if (op_type == da_binlog_op_type_create) {
+    if (field.op_type == da_binlog_op_type_create) {
         *inode = field.inode;
         return 0;
     } else {

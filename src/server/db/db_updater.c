@@ -35,11 +35,7 @@
 #define REDO_DENTRY_FIELD_ID_FIELD_BUFFER          5
 
 typedef struct db_updater_ctx {
-    struct {
-        char *filename;
-        char *tmp_filename;
-        int fd;
-    } redo;
+    SafeWriteFileInfo redo;
 } DBUpdaterCtx;
 
 static DBUpdaterCtx db_updater_ctx;
@@ -48,23 +44,15 @@ static int resume_from_redo_log(const int64_t start_version);
 
 int db_updater_init()
 {
+    int result;
     int64_t start_version;
-    char full_filename[PATH_MAX];
 
-    snprintf(full_filename, sizeof(full_filename), "%s/%s",
-            DATA_PATH_STR, REDO_LOG_FILENAME);
-    db_updater_ctx.redo.filename = fc_strdup(full_filename);
-    if (db_updater_ctx.redo.filename == NULL) {
-        return ENOMEM;
+    if ((result=fc_safe_write_file_init(&db_updater_ctx.redo,
+                    DATA_PATH_STR, REDO_LOG_FILENAME,
+                    REDO_TMP_FILENAME)) != 0)
+    {
+        return result;
     }
-
-    snprintf(full_filename, sizeof(full_filename), "%s/%s",
-            DATA_PATH_STR, REDO_TMP_FILENAME);
-    db_updater_ctx.redo.tmp_filename = fc_strdup(full_filename);
-    if (db_updater_ctx.redo.tmp_filename == NULL) {
-        return ENOMEM;
-    }
-    db_updater_ctx.redo.fd = -1;
 
     //TODO
     start_version = 0;
@@ -233,37 +221,15 @@ static int write_redo_log(FDIRDBUpdaterContext *ctx)
 {
     int result;
 
-    if ((db_updater_ctx.redo.fd=open(db_updater_ctx.redo.tmp_filename,
-                    O_WRONLY | O_CREAT | O_TRUNC, 0644)) < 0)
-    {
-        result = errno != 0 ? errno : EIO;
-        logError("file: "__FILE__", line: %d, "
-                "open file %s fail, errno: %d, error info: %s",
-                __LINE__, db_updater_ctx.redo.tmp_filename,
-                result, STRERROR(result));
+    if ((result=fc_safe_write_file_open(&db_updater_ctx.redo)) != 0) {
         return result;
     }
 
-    result = do_write(ctx);
-    close(db_updater_ctx.redo.fd);
-    if (result != 0) {
+    if ((result=do_write(ctx)) != 0) {
         return result;
     }
 
-    if (rename(db_updater_ctx.redo.tmp_filename,
-                db_updater_ctx.redo.filename) != 0)
-    {
-        result = errno != 0 ? errno : EIO;
-        logError("file: "__FILE__", line: %d, "
-                "rename file \"%s\" to \"%s\" fail, "
-                "errno: %d, error info: %s", __LINE__,
-                db_updater_ctx.redo.tmp_filename,
-                db_updater_ctx.redo.filename,
-                result, STRERROR(result));
-        return result;
-    }
-
-    return 0;
+    return fc_safe_write_file_close(&db_updater_ctx.redo);
 }
 
 static int unpack_from_file(SFSerializerIterator *it)

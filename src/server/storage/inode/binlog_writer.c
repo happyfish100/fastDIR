@@ -24,23 +24,21 @@
 #include "segment_index.h"
 #include "binlog_writer.h"
 
-int inode_binlog_pack_record_callback(void *args,
-        const DABinlogOpType op_type,
+int inode_binlog_pack_record(FDIRStorageInodeFieldInfo *field,
         char *buff, const int size)
 {
-    FDIRStorageInodeFieldInfo *field;
-
-    field = (FDIRStorageInodeFieldInfo *)args;
-    if (op_type == da_binlog_op_type_create ||
-            op_type == da_binlog_op_type_update)
+    if (field->op_type == da_binlog_op_type_create ||
+            field->op_type == da_binlog_op_type_update)
     {
-        return snprintf(buff, size, "%"PRId64" %"PRId64" %c %d "
-                "%u %u %u\n", field->storage.version, field->inode,
-                op_type, field->index, field->storage.trunk_id,
+        return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c %d "
+                "%u %u %u\n", (uint32_t)g_current_time,
+                field->storage.version, field->inode, field->op_type,
+                field->index, field->storage.trunk_id,
                 field->storage.offset, field->storage.size);
     } else {
-        return snprintf(buff, size, "%"PRId64" %"PRId64" %c\n",
-                field->storage.version, field->inode, op_type);
+        return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c\n",
+                (uint32_t)g_current_time, field->storage.version,
+                field->inode, field->op_type);
     }
 }
 
@@ -50,7 +48,6 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     int result;
     int i;
     int count;
-    DABinlogOpType op_type;
     FDIRStorageInodeFieldInfo field;
 
     if (cache->buff_end - cache->current < FDIR_PIECE_FIELD_COUNT *
@@ -65,14 +62,13 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     field.inode = index->inode;
     for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
         if (!DA_PIECE_FIELD_IS_EMPTY(index->fields + i)) {
-            op_type = (++count == 1) ?
+            field.op_type = (++count == 1) ?
                 da_binlog_op_type_create :
                 da_binlog_op_type_update;
             field.index = i;
             field.storage = index->fields[i];
-            cache->current += inode_binlog_pack_record_callback(
-                    &field, op_type, cache->current,
-                    cache->buff_end - cache->current);
+            cache->current += inode_binlog_pack_record(&field,
+                    cache->current, cache->buff_end - cache->current);
         }
     }
 

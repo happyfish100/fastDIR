@@ -27,6 +27,7 @@ typedef struct {
     FDIRDataSyncThreadArray data_sync_thread_array;
     FDIROrderdUpdateChain ordered_update_chain;
     struct fast_mblock_man update_record_allocator;
+    FDIRBinlogWriteThreadContext binlog_write_thread_ctx;
     struct {
         int waitings;
         pthread_lock_cond_pair_t lcp;
@@ -43,6 +44,7 @@ typedef struct {
 #define DATA_SYNC_THREAD_ARRAY     g_storage_global_vars.data_sync_thread_array
 #define ORDERED_UPDATE_CHAIN       g_storage_global_vars.ordered_update_chain
 #define UPDATE_RECORD_ALLOCATOR    g_storage_global_vars.update_record_allocator
+#define BINLOG_WRITE_THREAD_CTX    g_storage_global_vars.binlog_write_thread_ctx
 
 #define DATA_SYNC_NOTIFY_WAITINGS  g_storage_global_vars.data_sync_notify.waitings
 #define DATA_SYNC_NOTIFY_LCP       g_storage_global_vars.data_sync_notify.lcp

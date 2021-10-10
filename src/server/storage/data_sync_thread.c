@@ -55,7 +55,8 @@ int data_sync_thread_init()
         if (space_chain->head == NULL) { \
             space_chain->head = record;  \
         } else { \
-            ((DATrunkSpaceLogRecord *)(space_chain->tail))->next = record; \
+            FC_SET_CHAIN_TAIL_NEXT(*space_chain,    \
+                    DATrunkSpaceLogRecord, record); \
         } \
         space_chain->tail = record; \
     } while (0)
@@ -228,8 +229,8 @@ static void push_record_to_update_chain(FDIRInodeUpdateRecord *record)
                 ORDERED_UPDATE_CHAIN.head->version ==
                 ORDERED_UPDATE_CHAIN.next_version)
         {
-            ((FDIRInodeUpdateRecord *)qinfo.tail)->next =
-                ORDERED_UPDATE_CHAIN.head;
+            FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord,
+                    ORDERED_UPDATE_CHAIN.head);
             qinfo.tail = ORDERED_UPDATE_CHAIN.head;
 
             ++ORDERED_UPDATE_CHAIN.next_version;
@@ -239,7 +240,7 @@ static void push_record_to_update_chain(FDIRInodeUpdateRecord *record)
             ORDERED_UPDATE_CHAIN.tail = NULL;
         }
 
-        ((FDIRInodeUpdateRecord *)qinfo.tail)->next = NULL;
+        FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord, NULL);
         //TODO  push qinfo to queue
     } else {
         if (ORDERED_UPDATE_CHAIN.head == NULL) {
@@ -298,8 +299,8 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
         }
 
         if (record->version > 0) {
-            ((DATrunkSpaceLogRecord *)(record->
-                space_chain.tail))->next = NULL;
+            FC_SET_CHAIN_TAIL_NEXT(record->space_chain,
+                    DATrunkSpaceLogRecord, NULL);
             push_record_to_update_chain(record);
         } else {
             fast_mblock_free_object(&UPDATE_RECORD_ALLOCATOR, record);

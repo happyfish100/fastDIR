@@ -13,30 +13,24 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//binlog_reader.h
 
-#ifndef _INODE_BINLOG_READER_H_
-#define _INODE_BINLOG_READER_H_
+#ifndef _FDIR_BINLOG_WRITE_THREAD_H
+#define _FDIR_BINLOG_WRITE_THREAD_H
 
-#include "inode_types.h"
+#include "storage_global.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int inode_binlog_parse_record(const string_t *line,
-        FDIRStorageInodeFieldInfo *field, char *error_info);
+    int binlog_write_thread_init();
+    void binlog_write_thread_destroy();
 
-int inode_binlog_reader_unpack_record(const string_t *line,
-        void *args, char *error_info);
-
-int inode_binlog_reader_load(FDIRInodeSegmentIndexInfo *segment);
-
-int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
-        int64_t *inode);
-
-int inode_binlog_reader_get_last_inode(const uint64_t binlog_id,
-        int64_t *inode);
+    static inline void binlog_write_thread_push_to_queue(
+            struct fc_queue_info *qinfo)
+    {
+        fc_queue_push_queue_to_tail(&BINLOG_WRITE_THREAD_CTX.queue, qinfo);
+    }
 
 #ifdef __cplusplus
 }
