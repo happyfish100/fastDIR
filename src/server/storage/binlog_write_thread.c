@@ -16,6 +16,8 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "sf/sf_func.h"
+#include "diskallocator/binlog/trunk/trunk_space_log.h"
+#include "inode/binlog_writer.h"
 #include "binlog_write_thread.h"
 
 #define FIELD_TMP_FILENAME  ".field.tmp"
@@ -23,25 +25,142 @@
 #define SPACE_TMP_FILENAME  ".space.tmp"
 #define SPACE_REDO_FILENAME  "space.redo"
 
+static inline int buffer_to_file(FDIRBinlogWriteFileBufferPair *pair)
+{
+    int len;
+    if ((len=pair->buffer.length) == 0) {
+        return 0;
+    }
+
+    pair->buffer.length = 0;
+    return fc_safe_write(pair->fi.fd, pair->buffer.data, len);
+}
+
+static int write_field_log(FDIRInodeUpdateRecord *record)
+{
+    int result;
+
+    if (BINLOG_WRITE_THREAD_CTX.field_redo.buffer.alloc_size -
+            BINLOG_WRITE_THREAD_CTX.field_redo.buffer.length <
+            FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
+    {
+        if ((result=buffer_to_file(&BINLOG_WRITE_THREAD_CTX.
+                        field_redo)) != 0)
+        {
+            return result;
+        }
+    }
+
+    inode_binlog_pack(&record->inode.field, &record->inode.buffer);
+    memcpy(BINLOG_WRITE_THREAD_CTX.field_redo.buffer.data +
+            BINLOG_WRITE_THREAD_CTX.field_redo.buffer.length,
+            record->inode.buffer.buff, record->inode.buffer.length);
+    BINLOG_WRITE_THREAD_CTX.field_redo.buffer.length +=
+        record->inode.buffer.length;
+    return 0;
+}
+
+static int write_space_log(struct fc_queue_info *space_chain)
+{
+    int result;
+    DATrunkSpaceLogRecord *space_log;
+
+    space_log = space_chain->head;
+    while (space_log != NULL) {
+
+        if (BINLOG_WRITE_THREAD_CTX.space_redo.buffer.alloc_size -
+                BINLOG_WRITE_THREAD_CTX.space_redo.buffer.length <
+                FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
+        {
+            if ((result=buffer_to_file(&BINLOG_WRITE_THREAD_CTX.
+                            space_redo)) != 0)
+            {
+                return result;
+            }
+        }
+
+        da_trunk_space_log_pack(space_log,
+                &BINLOG_WRITE_THREAD_CTX.
+                space_redo.buffer);
+        space_log = space_log->next;
+    }
+
+    return 0;
+}
+
+static inline int write_update_record(FDIRInodeUpdateRecord *record)
+{
+    int result;
+
+    if ((result=write_field_log(record)) != 0) {
+        return result;
+    }
+
+    return write_space_log(&record->space_chain);
+}
+
+static inline int open_redo_logs()
+{
+    int result;
+
+    if ((result=fc_safe_write_file_open(&BINLOG_WRITE_THREAD_CTX.
+                    field_redo.fi)) != 0)
+    {
+        return result;
+    }
+
+    return fc_safe_write_file_open(&BINLOG_WRITE_THREAD_CTX.space_redo.fi);
+}
+
+static inline int close_redo_log(FDIRBinlogWriteFileBufferPair *pair)
+{
+    int result;
+
+    if ((result=buffer_to_file(pair)) != 0) {
+        return result;
+    }
+
+    return fc_safe_write_file_close(&pair->fi);
+}
+
+static inline int close_redo_logs()
+{
+    int result;
+
+    if ((result=close_redo_log(&BINLOG_WRITE_THREAD_CTX.field_redo)) != 0) {
+        return result;
+    }
+    return close_redo_log(&BINLOG_WRITE_THREAD_CTX.space_redo);
+}
+
 static int write_redo_logs(struct fc_queue_info *qinfo)
 {
     int result;
     FDIRInodeUpdateRecord *record;
 
-    if ((result=fc_safe_write_file_open(&BINLOG_WRITE_THREAD_CTX.
-                    field_redo)) != 0)
-    {
-        return result;
-    }
-    if ((result=fc_safe_write_file_open(&BINLOG_WRITE_THREAD_CTX.
-                    space_redo)) != 0)
-    {
+    if ((result=open_redo_logs()) != 0) {
         return result;
     }
 
     record = (FDIRInodeUpdateRecord *)qinfo->head;
     do {
+        if ((result=write_update_record(record)) != 0) {
+            return result;
+        }
+    } while ((record=record->next) != NULL);
 
+    return close_redo_logs();
+}
+
+static int push_to_log_queues(struct fc_queue_info *qinfo)
+{
+    FDIRInodeUpdateRecord *record;
+
+    record = (FDIRInodeUpdateRecord *)qinfo->head;
+    do {
+        inode_binlog_writer_log(record->inode.segment,
+                &record->inode.buffer);
+        da_trunk_space_log_push_chain(&record->space_chain);
     } while ((record=record->next) != NULL);
 
     return 0;
@@ -54,6 +173,10 @@ static int deal_records(struct fc_queue_info *qinfo)
     if ((result=write_redo_logs(qinfo)) != 0) {
         return result;
     }
+
+    push_to_log_queues(qinfo);
+
+    //TODO waiting log done
 
     fc_queue_free_chain(&BINLOG_WRITE_THREAD_CTX.queue,
             &UPDATE_RECORD_ALLOCATOR, qinfo);
@@ -83,19 +206,36 @@ static void *binlog_write_thread_func(void *arg)
     return NULL;
 }
 
+
+static int init_file_buffer_pair(FDIRBinlogWriteFileBufferPair *pair,
+        const char *file_path, const char *redo_filename,
+        const char *tmp_filename)
+{
+    const int buffer_size = 64 * 1024;
+    int result;
+
+    if ((result=fc_safe_write_file_init(&pair->fi, file_path,
+                    redo_filename, tmp_filename)) != 0)
+    {
+        return result;
+    }
+
+    return fast_buffer_init_ex(&pair->buffer, buffer_size);
+}
+
 int binlog_write_thread_init()
 {
     int result;
     pthread_t tid;
 
-    if ((result=fc_safe_write_file_init(&BINLOG_WRITE_THREAD_CTX.
+    if ((result=init_file_buffer_pair(&BINLOG_WRITE_THREAD_CTX.
                     field_redo, STORAGE_PATH_STR, FIELD_REDO_FILENAME,
                     FIELD_TMP_FILENAME)) != 0)
     {
         return result;
     }
 
-    if ((result=fc_safe_write_file_init(&BINLOG_WRITE_THREAD_CTX.
+    if ((result=init_file_buffer_pair(&BINLOG_WRITE_THREAD_CTX.
                     space_redo, STORAGE_PATH_STR, SPACE_REDO_FILENAME,
                     SPACE_TMP_FILENAME)) != 0)
     {

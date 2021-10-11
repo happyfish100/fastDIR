@@ -38,9 +38,27 @@ static int init_write_fd_cache()
             max_idle_time, capacity);
 }
 
+static int update_record_alloc_init(FDIRInodeUpdateRecord *record, void *args)
+{
+    record->inode.buffer.buff = (char *)(record + 1);
+    record->inode.buffer.alloc_size = FDIR_INODE_BINLOG_RECORD_MAX_SIZE;
+    return 0;
+}
+
 int fdir_storage_engine_init(IniFullContext *ini_ctx)
 {
     int result;
+
+    if ((result=da_binlog_writer_global_init()) != 0) {
+        return result;
+    }
+
+    if ((result=da_binlog_writer_init(&INODE_BINLOG_WRITER,
+                    FDIR_STORAGE_BINLOG_TYPE_INODE,
+                    FDIR_INODE_BINLOG_RECORD_MAX_SIZE)) != 0)
+    {
+        return result;
+    }
 
     if ((result=init_write_fd_cache()) != 0) {
         return result;
@@ -57,8 +75,10 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx)
     ORDERED_UPDATE_CHAIN.head = ORDERED_UPDATE_CHAIN.tail = NULL;
 
     if ((result=fast_mblock_init_ex1(&UPDATE_RECORD_ALLOCATOR,
-                    "update-record", sizeof(FDIRInodeUpdateRecord),
-                    8 * 1024, 0, NULL, NULL, true)) != 0)
+                    "update-record", sizeof(FDIRInodeUpdateRecord) +
+                    FDIR_INODE_BINLOG_RECORD_MAX_SIZE,
+                    8 * 1024, 0, (fast_mblock_alloc_init_func)
+                    update_record_alloc_init, NULL, true)) != 0)
     {
         return result;
     }

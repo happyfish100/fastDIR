@@ -135,10 +135,11 @@ static int remove_dentry(const FDIRDBUpdateFieldInfo *entry,
     }
 
     record->version = r.version;
-    record->field.inode = entry->inode;
-    record->field.index = FDIR_PIECE_FIELD_INDEX_BASIC;
-    record->field.storage.version = entry->version;
-    record->field.op_type = da_binlog_op_type_remove;
+    record->inode.segment = r.segment;
+    record->inode.field.inode = entry->inode;
+    record->inode.field.index = FDIR_PIECE_FIELD_INDEX_BASIC;
+    record->inode.field.storage.version = entry->version;
+    record->inode.field.op_type = da_binlog_op_type_remove;
     return 0;
 }
 
@@ -152,11 +153,11 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     int count;
     int result;
 
-    record->field.inode = entry->inode;
-    record->field.index = entry->field_index;
-    record->field.storage.version = entry->version;
+    record->inode.field.inode = entry->inode;
+    record->inode.field.index = entry->field_index;
+    record->inode.field.storage.version = entry->version;
     if (entry->buffer == NULL) {
-        DA_PIECE_FIELD_DELETE(&record->field.storage);
+        DA_PIECE_FIELD_DELETE(&record->inode.field.storage);
     } else {
         count = 1;
         if ((result=storage_allocator_normal_alloc(entry->inode,
@@ -171,22 +172,22 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
             return result;
         }
 
-        record->field.storage.trunk_id = space.id_info.id;
-        record->field.storage.offset = space.offset;
-        record->field.storage.size = space.size;
+        record->inode.field.storage.trunk_id = space.id_info.id;
+        record->inode.field.storage.offset = space.offset;
+        record->inode.field.storage.size = space.size;
     }
 
     if (entry->op_type == da_binlog_op_type_create &&
             entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
     {
-        record->field.op_type = da_binlog_op_type_create;
-        if ((result=inode_segment_index_add(&record->field, &r)) != 0) {
+        record->inode.field.op_type = da_binlog_op_type_create;
+        if ((result=inode_segment_index_add(&record->inode.field, &r)) != 0) {
             return result;
         }
         DA_PIECE_FIELD_SET_EMPTY(&r.old);
     } else {
-        record->field.op_type = da_binlog_op_type_update;
-        if ((result=inode_segment_index_update(&record->field,
+        record->inode.field.op_type = da_binlog_op_type_update;
+        if ((result=inode_segment_index_update(&record->inode.field,
                         normal_update, &r)) != 0)
         {
             return result;
@@ -194,6 +195,7 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     }
 
     record->version = r.version;
+    record->inode.segment = r.segment;
     if (r.version == 0) {
         return result;
     }

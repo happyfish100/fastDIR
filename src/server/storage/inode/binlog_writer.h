@@ -19,32 +19,40 @@
 #define _INODE_BINLOG_WRITER_H_
 
 #include "diskallocator/binlog/common/binlog_writer.h"
-#include "../storage_types.h"
+#include "../storage_global.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 static inline int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo
-        *segment, const FDIRStorageInodeFieldInfo *field)
+        *segment, const BufferInfo *buffer)
 {
-    return da_binlog_writer_log(&segment->writer, (void *)field);
+    return da_binlog_writer_log(&INODE_BINLOG_WRITER,
+            segment->binlog_id, buffer);
 }
 
 static inline int inode_binlog_writer_synchronize(
         FDIRInodeSegmentIndexInfo *segment)
 {
-    return da_binlog_writer_synchronize(&segment->writer);
+    return da_binlog_writer_synchronize(&INODE_BINLOG_WRITER);
 }
 
 static inline int inode_binlog_writer_shrink(
         FDIRInodeSegmentIndexInfo *segment)
 {
-    return da_binlog_writer_shrink(&segment->writer, segment);
+    return da_binlog_writer_shrink(&INODE_BINLOG_WRITER, segment);
 }
 
-int inode_binlog_pack_record(FDIRStorageInodeFieldInfo *field,
+int inode_binlog_pack_record(const FDIRStorageInodeFieldInfo *field,
         char *buff, const int size);
+
+static inline void inode_binlog_pack(const FDIRStorageInodeFieldInfo
+        *field, BufferInfo *buffer)
+{
+    buffer->length = inode_binlog_pack_record(field,
+            buffer->buff, buffer->alloc_size);
+}
 
 int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args);
 

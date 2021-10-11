@@ -136,6 +136,7 @@ int inode_binlog_reader_unpack_record(const string_t *line,
 int inode_binlog_reader_load(FDIRInodeSegmentIndexInfo *segment)
 {
     int result;
+    DABinlogIdTypePair id_type_pair;
 
     if ((result=inode_index_array_alloc(&segment->inodes.array,
                     FDIR_STORAGE_BATCH_INODE_COUNT)) != 0)
@@ -143,7 +144,9 @@ int inode_binlog_reader_load(FDIRInodeSegmentIndexInfo *segment)
         return result;
     }
 
-    if ((result=da_binlog_reader_load(&segment->writer.key, segment)) != 0) {
+    DA_SET_BINLOG_ID_TYPE(id_type_pair, segment->binlog_id,
+            FDIR_STORAGE_BINLOG_TYPE_INODE);
+    if ((result=da_binlog_reader_load(&id_type_pair, segment)) != 0) {
         return result;
     }
 

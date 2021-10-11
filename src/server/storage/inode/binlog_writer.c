@@ -24,7 +24,7 @@
 #include "segment_index.h"
 #include "binlog_writer.h"
 
-int inode_binlog_pack_record(FDIRStorageInodeFieldInfo *field,
+int inode_binlog_pack_record(const FDIRStorageInodeFieldInfo *field,
         char *buff, const int size)
 {
     if (field->op_type == da_binlog_op_type_create ||
@@ -79,6 +79,7 @@ int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args)
 {
     int result;
     FDIRInodeSegmentIndexInfo *segment;
+    DABinlogIdTypePair id_type_pair;
     DABinlogWriterCache cache;
     FDIRStorageInodeIndexInfo *inode;
     FDIRStorageInodeIndexInfo *end;
@@ -90,13 +91,15 @@ int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args)
         return result;
     }
 
-    da_write_fd_cache_filename(&segment->writer.key,
+    DA_SET_BINLOG_ID_TYPE(id_type_pair, segment->binlog_id,
+            FDIR_STORAGE_BINLOG_TYPE_INODE);
+    da_write_fd_cache_filename(&id_type_pair,
             full_filename, sizeof(full_filename));
     if (segment->inodes.array.counts.total == 0) {
         if ((result=fc_delete_file_ex(full_filename, "inode binlog")) != 0) {
             return result;
         } else {
-            return bid_journal_log(segment->writer.key.id,
+            return bid_journal_log(segment->binlog_id,
                     inode_binlog_id_op_type_remove);
         }
     }

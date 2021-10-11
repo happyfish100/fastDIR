@@ -172,8 +172,7 @@ static int convert_to_segement_array(SFBinlogIndexContext *bctx)
             return ENOMEM;
         }
 
-        DA_SET_BINLOG_ID_TYPE((*segment)->writer.key, binlog->
-                binlog_id, FDIR_STORAGE_BINLOG_TYPE_INODE);
+        (*segment)->binlog_id = binlog->binlog_id;
         (*segment)->inodes.first = binlog->inodes.first;
         (*segment)->inodes.last = binlog->inodes.last;
         (*segment)->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
@@ -186,7 +185,7 @@ static int convert_to_segement_array(SFBinlogIndexContext *bctx)
 static int segment_index_compare_bid(const FDIRInodeSegmentIndexInfo
         **segment1, const FDIRInodeSegmentIndexInfo **segment2)
 {
-    return fc_compare_int64((*segment1)->writer.key.id, (*segment2)->writer.key.id);
+    return fc_compare_int64((*segment1)->binlog_id, (*segment2)->binlog_id);
 }
 
 static FDIRInodeSegmentIndexInfo *find_segment_by_bid(const uint64_t binlog_id)
@@ -197,7 +196,7 @@ static FDIRInodeSegmentIndexInfo *find_segment_by_bid(const uint64_t binlog_id)
     } target;
     FDIRInodeSegmentIndexInfo **found;
 
-    target.holder.writer.key.id = binlog_id;
+    target.holder.binlog_id = binlog_id;
     target.ptr = &target.holder;
     found = (FDIRInodeSegmentIndexInfo **)bsearch(&target.ptr,
             segment_index_ctx.si_array.segments,
@@ -226,8 +225,7 @@ static int segment_array_add(const uint64_t binlog_id,
         return result;
     }
 
-    DA_SET_BINLOG_ID_TYPE(segment->writer.key, binlog_id,
-            FDIR_STORAGE_BINLOG_TYPE_INODE);
+    segment->binlog_id = binlog_id;
     segment->inodes.first = first_inode;
     segment->inodes.last = last_inode;
     segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_CLEAN;
@@ -248,13 +246,13 @@ static int set_last_segment_inode(uint64_t *last_bid)
 
     segment = segment_index_ctx.si_array.segments[
         segment_index_ctx.si_array.count - 1];
-    if (segment->writer.key.id == *last_bid) {
+    if (segment->binlog_id == *last_bid) {
         return 0;
     }
 
-    *last_bid = segment->writer.key.id;
+    *last_bid = segment->binlog_id;
     if ((result=inode_binlog_reader_get_last_inode(segment->
-                    writer.key.id, &last_inode)) != 0)
+                    binlog_id, &last_inode)) != 0)
     {
         return result == ENOENT ? 0 : result;
     }
@@ -344,8 +342,7 @@ static int segment_array_inc(const uint64_t first_inode)
         }
     }
 
-    DA_SET_BINLOG_ID_TYPE(segment->writer.key, segment_index_ctx.
-            current_binlog.binlog_id, FDIR_STORAGE_BINLOG_TYPE_INODE);
+    segment->binlog_id = segment_index_ctx.current_binlog.binlog_id;
     segment->inodes.first = first_inode;
     segment->inodes.last = first_inode;
     segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
@@ -353,7 +350,7 @@ static int segment_array_inc(const uint64_t first_inode)
     segment_index_ctx.current_binlog.segment = segment;
 
     locked_list_add_tail(&segment->dlink, &segment_index_ctx.fifo);
-    return bid_journal_log(segment->writer.key.id,
+    return bid_journal_log(segment->binlog_id,
             inode_binlog_id_op_type_create);
 }
 
@@ -387,7 +384,7 @@ static int convert_to_index_array(SFBinlogIndexContext *bctx)
             binlog = bctx->index_array.indexes + bctx->index_array.count;
         }
 
-        binlog->binlog_id = (*segment)->writer.key.id;
+        binlog->binlog_id = (*segment)->binlog_id;
         binlog->inodes.first = (*segment)->inodes.first;
         binlog->inodes.last = (*segment)->inodes.last;
         binlog++;
@@ -405,7 +402,7 @@ static int set_current_binlog()
     if (segment_index_ctx.si_array.count > 0) {
         segment = segment_index_ctx.si_array.segments[
             segment_index_ctx.si_array.count - 1];
-        if (segment->writer.key.id == segment_index_ctx.
+        if (segment->binlog_id == segment_index_ctx.
                 current_binlog.binlog_id)
         {
             segment_index_ctx.current_binlog.segment = segment;
@@ -647,8 +644,8 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
         switch (segment->inodes.status) {
             case FDIR_STORAGE_SEGMENT_STATUS_CLEAN:
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_LOADING;
-                if (synchronized && FC_ATOMIC_GET(segment->
-                            writer.updating_count) > 0)
+                if (synchronized && FC_ATOMIC_GET(INODE_BINLOG_WRITER.
+                            updating_count) > 0)
                 {
                     PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
                     result = inode_binlog_writer_synchronize(segment);
@@ -697,7 +694,9 @@ int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode)
             break;
         }
 
-        if (!new_load && FC_ATOMIC_GET(segment->writer.updating_count) > 0) {
+        if (!new_load && FC_ATOMIC_GET(INODE_BINLOG_WRITER.
+                    updating_count) > 0)
+        {
             PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
             result = inode_binlog_writer_synchronize(segment);
             PTHREAD_MUTEX_LOCK(&segment->lcp.lock);

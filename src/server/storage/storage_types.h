@@ -73,7 +73,7 @@ typedef enum fdir_inode_binlog_id_op_type {
 } FDIRInodeBinlogIdOpType;
 
 typedef struct fdir_inode_segment_index_info {
-    DABinlogWriter writer;
+    uint64_t binlog_id;
     struct {
         uint64_t first;
         uint64_t last;
@@ -93,7 +93,11 @@ typedef struct fdir_inode_update_result {
 
 typedef struct fdir_inode_update_record {
     int64_t version;    //for sort
-    FDIRStorageInodeFieldInfo field;
+    struct {
+        FDIRInodeSegmentIndexInfo *segment;
+        FDIRStorageInodeFieldInfo field;
+        BufferInfo buffer;
+    } inode;
     struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
     struct fdir_inode_update_record *next;
 } FDIRInodeUpdateRecord;
@@ -127,9 +131,14 @@ typedef struct fdir_data_sync_thread_array {
     int count;
 } FDIRDataSyncThreadArray;
 
+typedef struct fdir_binlog_write_file_buffer_pair {
+    SafeWriteFileInfo fi;
+    FastBuffer buffer;
+} FDIRBinlogWriteFileBufferPair;
+
 typedef struct fdir_binlog_write_thread_context {
-    SafeWriteFileInfo field_redo;
-    SafeWriteFileInfo space_redo;
+    FDIRBinlogWriteFileBufferPair field_redo;
+    FDIRBinlogWriteFileBufferPair space_redo;
     struct fc_queue queue;
 } FDIRBinlogWriteThreadContext;
 
