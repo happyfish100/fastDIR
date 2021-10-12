@@ -53,7 +53,7 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     if (cache->buff_end - cache->current < FDIR_PIECE_FIELD_COUNT *
             FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
     {
-        if ((result=da_binlog_writer_cache_write(cache)) != 0) {
+        if ((result=da_binlog_writer_cache_write(cache, false)) != 0) {
             return result;
         }
     }
@@ -127,7 +127,7 @@ int inode_binlog_shrink_callback(DABinlogWriter *writer, void *args)
         }
     }
 
-    result = da_binlog_writer_cache_write(&cache);
+    result = da_binlog_writer_cache_write(&cache, true);
     close(cache.fd);
     if (result != 0) {
         return result;

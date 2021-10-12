@@ -57,6 +57,7 @@ static int write_field_log(FDIRInodeUpdateRecord *record)
             record->inode.buffer.buff, record->inode.buffer.length);
     BINLOG_WRITE_THREAD_CTX.field_redo.buffer.length +=
         record->inode.buffer.length;
+    BINLOG_WRITE_THREAD_CTX.field_redo.record_count++;
     return 0;
 }
 
@@ -67,7 +68,6 @@ static int write_space_log(struct fc_queue_info *space_chain)
 
     space_log = space_chain->head;
     while (space_log != NULL) {
-
         if (BINLOG_WRITE_THREAD_CTX.space_redo.buffer.alloc_size -
                 BINLOG_WRITE_THREAD_CTX.space_redo.buffer.length <
                 FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
@@ -82,6 +82,7 @@ static int write_space_log(struct fc_queue_info *space_chain)
         da_trunk_space_log_pack(space_log,
                 &BINLOG_WRITE_THREAD_CTX.
                 space_redo.buffer);
+        BINLOG_WRITE_THREAD_CTX.space_redo.record_count++;
         space_log = space_log->next;
     }
 
@@ -170,16 +171,25 @@ static int deal_records(struct fc_queue_info *qinfo)
 {
     int result;
 
+    BINLOG_WRITE_THREAD_CTX.field_redo.record_count = 0;
+    BINLOG_WRITE_THREAD_CTX.space_redo.record_count = 0;
     if ((result=write_redo_logs(qinfo)) != 0) {
         return result;
     }
 
-    push_to_log_queues(qinfo);
+    da_binlog_writer_inc_waiting_count(&INODE_BINLOG_WRITER,
+            BINLOG_WRITE_THREAD_CTX.field_redo.record_count);
+    da_trunk_space_log_inc_waiting_count(BINLOG_WRITE_THREAD_CTX.
+            space_redo.record_count);
 
-    //TODO waiting log done
+    push_to_log_queues(qinfo);
 
     fc_queue_free_chain(&BINLOG_WRITE_THREAD_CTX.queue,
             &UPDATE_RECORD_ALLOCATOR, qinfo);
+
+    da_binlog_writer_wait(&INODE_BINLOG_WRITER);
+    da_trunk_space_log_wait();
+
     return 0;
 }
 

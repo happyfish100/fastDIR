@@ -644,8 +644,8 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
         switch (segment->inodes.status) {
             case FDIR_STORAGE_SEGMENT_STATUS_CLEAN:
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_LOADING;
-                if (synchronized && FC_ATOMIC_GET(INODE_BINLOG_WRITER.
-                            updating_count) > 0)
+                if (synchronized && da_binlog_writer_get_waiting_count(
+                            &INODE_BINLOG_WRITER) > 0)
                 {
                     PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
                     result = inode_binlog_writer_synchronize(segment);
@@ -694,8 +694,8 @@ int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode)
             break;
         }
 
-        if (!new_load && FC_ATOMIC_GET(INODE_BINLOG_WRITER.
-                    updating_count) > 0)
+        if (!new_load && da_binlog_writer_get_waiting_count(
+                    &INODE_BINLOG_WRITER) > 0)
         {
             PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
             result = inode_binlog_writer_synchronize(segment);

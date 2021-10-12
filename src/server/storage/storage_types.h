@@ -134,6 +134,7 @@ typedef struct fdir_data_sync_thread_array {
 typedef struct fdir_binlog_write_file_buffer_pair {
     SafeWriteFileInfo fi;
     FastBuffer buffer;
+    int record_count;
 } FDIRBinlogWriteFileBufferPair;
 
 typedef struct fdir_binlog_write_thread_context {
