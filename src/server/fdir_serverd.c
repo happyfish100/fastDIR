@@ -55,6 +55,7 @@
 #include "service_handler.h"
 #include "cluster_handler.h"
 #include "shared_thread_pool.h"
+#include "server_storage.h"
 
 static int setup_server_env(const char *config_filename);
 static int setup_mblock_stat_task();
@@ -240,6 +241,10 @@ int main(int argc, char *argv[])
         }
 
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
+            break;
+        }
+
+        if (STORAGE_ENABLED && (result=server_storage_init()) != 0) {
             break;
         }
 

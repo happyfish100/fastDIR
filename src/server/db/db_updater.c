@@ -18,6 +18,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
 #include "../server_global.h"
+#include "../storage/storage_engine.h"
 #include "dentry_serializer.h"
 #include "db_updater.h"
 
@@ -461,7 +462,5 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
-    //TODO
-
-    return 0;
+    return fdir_storage_engine_store(&ctx->array);
 }
