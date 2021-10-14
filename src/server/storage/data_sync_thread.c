@@ -18,6 +18,7 @@
 #include "diskallocator/binlog/trunk/trunk_space_log.h"
 #include "diskallocator/dio/trunk_write_thread.h"
 #include "inode/segment_index.h"
+#include "binlog_write_thread.h"
 #include "data_sync_thread.h"
 
 int data_sync_thread_init()
@@ -218,7 +219,7 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     return 0;
 }
 
-static void push_record_to_update_chain(FDIRInodeUpdateRecord *record)
+static void push_to_binlog_write_chain(FDIRInodeUpdateRecord *record)
 {
     FDIRInodeUpdateRecord *previous;
     struct fc_queue_info qinfo;
@@ -243,7 +244,7 @@ static void push_record_to_update_chain(FDIRInodeUpdateRecord *record)
         }
 
         FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord, NULL);
-        //TODO  push qinfo to queue
+        binlog_write_thread_push_to_queue(&qinfo);
     } else {
         if (ORDERED_UPDATE_CHAIN.head == NULL) {
             ORDERED_UPDATE_CHAIN.head = record;
@@ -303,7 +304,7 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
         if (record->version > 0) {
             FC_SET_CHAIN_TAIL_NEXT(record->space_chain,
                     DATrunkSpaceLogRecord, NULL);
-            push_record_to_update_chain(record);
+            push_to_binlog_write_chain(record);
         } else {
             fast_mblock_free_object(&UPDATE_RECORD_ALLOCATOR, record);
         }

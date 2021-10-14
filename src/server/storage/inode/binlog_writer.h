@@ -32,12 +32,6 @@ static inline int inode_binlog_writer_log(FDIRInodeSegmentIndexInfo
             segment->binlog_id, buffer);
 }
 
-static inline int inode_binlog_writer_synchronize(
-        FDIRInodeSegmentIndexInfo *segment)
-{
-    return da_binlog_writer_synchronize(&INODE_BINLOG_WRITER);
-}
-
 static inline int inode_binlog_writer_shrink(
         FDIRInodeSegmentIndexInfo *segment)
 {

@@ -528,137 +528,20 @@ static FDIRInodeSegmentIndexInfo *find_segment_by_inode(const uint64_t inode)
     return (found != NULL ? *found : NULL);
 }
 
-int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
-        FDIRInodeUpdateResult *r)
-{
-    int result;
-    pthread_mutex_t *lock;
-
-    PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
-    r->segment = segment_index_ctx.current_binlog.segment;
-    if (r->segment == NULL) {
-        result = segment_array_inc(field->inode);
-        r->segment = segment_index_ctx.current_binlog.segment;
-    } else {
-        result = 0;
-    }
-
-    //TODO
-    if (r->segment->inodes.status == FDIR_STORAGE_SEGMENT_STATUS_READY) {
-    }
-
-    if (result == 0) {
-        lock = &r->segment->lcp.lock;
-        PTHREAD_MUTEX_LOCK(lock);
-        if (r->segment->inodes.array.counts.total >=
-                FDIR_STORAGE_BATCH_INODE_COUNT)
-        {
-            PTHREAD_MUTEX_UNLOCK(lock);
-
-            result = segment_array_inc(field->inode);
-            r->segment = segment_index_ctx.current_binlog.segment;
-
-            lock = &r->segment->lcp.lock;
-            PTHREAD_MUTEX_LOCK(lock);
-        } else {
-            r->segment->inodes.last = field->inode;
-            result = 0;
-        }
-
-        if (result == 0) {
-            if ((result=inode_index_array_add(&r->segment->
-                            inodes.array, field)) == 0)
-            {
-                r->version = __sync_add_and_fetch(&segment_index_ctx.
-                        current_version, 1);
-            }
-        }
-        PTHREAD_MUTEX_UNLOCK(lock);
-    }
-    PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
-
-    return result;
-}
-
-int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
-        FDIRInodeUpdateResult *r)
-{
-    int result;
-
-    if ((r->segment=find_segment_by_inode(inode->inode)) == NULL) {
-        return ENOENT;
-    }
-
-    PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
-    if ((result=inode_index_array_delete(&r->segment->
-                    inodes.array, inode)) == 0)
-    {
-        if (2 * r->segment->inodes.array.counts.deleted >=
-                r->segment->inodes.array.counts.total)
-        {
-            result = inode_binlog_writer_shrink(r->segment);
-        }
-
-        if (result == 0) {
-            r->version = __sync_add_and_fetch(&segment_index_ctx.
-                    current_version, 1);
-        }
-    }
-    PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
-
-    return result;
-}
-
-int inode_segment_index_update(const FDIRStorageInodeFieldInfo *field,
-        const bool normal_update, FDIRInodeUpdateResult *r)
-{
-    int result;
-    bool modified;
-
-    if ((r->segment=find_segment_by_inode(field->inode)) == NULL) {
-        return ENOENT;
-    }
-
-    PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
-    if ((result=inode_index_array_update(&r->segment->inodes.array,
-                    field, normal_update, &r->old, &modified)) == 0)
-    {
-        r->version = (modified ? __sync_add_and_fetch(&segment_index_ctx.
-                    current_version, 1) : 0);
-    }
-    PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
-
-    return result;
-}
-
-static int check_load(FDIRInodeSegmentIndexInfo *segment,
-        const bool synchronized, bool *new_load)
+static int check_load(FDIRInodeSegmentIndexInfo *segment)
 {
     int result;
 
     result = 0;
-    *new_load = false;
     while (result == 0 && segment->inodes.status !=
             FDIR_STORAGE_SEGMENT_STATUS_READY)
     {
         switch (segment->inodes.status) {
             case FDIR_STORAGE_SEGMENT_STATUS_CLEAN:
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_LOADING;
-                if (synchronized && da_binlog_writer_get_waiting_count(
-                            &INODE_BINLOG_WRITER) > 0)
-                {
-                    PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
-                    result = inode_binlog_writer_synchronize(segment);
-                    PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
-                    if (result != 0) {
-                        break;
-                    }
-                }
-
                 if ((result=inode_binlog_reader_load(segment)) != 0) {
                     break;
                 }
-                *new_load = true;
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
                 locked_list_add_tail(&segment->dlink, &segment_index_ctx.fifo);
                 pthread_cond_broadcast(&segment->lcp.cond);
@@ -678,37 +561,140 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment,
     return result;
 }
 
+int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
+        FDIRInodeUpdateResult *r)
+{
+    int result;
+    pthread_mutex_t *lock;
+
+    PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
+    r->segment = segment_index_ctx.current_binlog.segment;
+    if (r->segment == NULL) {
+        result = segment_array_inc(field->inode);
+        r->segment = segment_index_ctx.current_binlog.segment;
+    } else {
+        result = 0;
+    }
+
+    if (result == 0) {
+        lock = &r->segment->lcp.lock;
+        PTHREAD_MUTEX_LOCK(lock);
+        do {
+            if ((result=check_load(r->segment)) != 0) {
+                break;
+            }
+
+            if (r->segment->inodes.array.counts.total >=
+                    FDIR_STORAGE_BATCH_INODE_COUNT)
+            {
+                PTHREAD_MUTEX_UNLOCK(lock);
+                result = segment_array_inc(field->inode);
+                r->segment = segment_index_ctx.current_binlog.segment;
+                lock = &r->segment->lcp.lock;
+                PTHREAD_MUTEX_LOCK(lock);
+            } else {
+                r->segment->inodes.last = field->inode;
+            }
+
+            if (result != 0) {
+                break;
+            }
+
+            if ((result=inode_index_array_add(&r->segment->
+                            inodes.array, field)) != 0)
+            {
+                break;
+            }
+
+            r->version = __sync_add_and_fetch(&segment_index_ctx.
+                    current_version, 1);
+        } while (0);
+        PTHREAD_MUTEX_UNLOCK(lock);
+    }
+
+    PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
+
+    return result;
+}
+
+int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
+        FDIRInodeUpdateResult *r)
+{
+    int result;
+
+    if ((r->segment=find_segment_by_inode(inode->inode)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
+    do {
+        if ((result=check_load(r->segment)) != 0) {
+            break;
+        }
+
+        if ((result=inode_index_array_delete(&r->segment->
+                        inodes.array, inode)) != 0)
+        {
+            break;
+        }
+
+        if (2 * r->segment->inodes.array.counts.deleted >=
+                r->segment->inodes.array.counts.total)
+        {
+            if ((result=inode_binlog_writer_shrink(r->segment)) != 0) {
+                break;
+            }
+        }
+
+        r->version = __sync_add_and_fetch(&segment_index_ctx.
+                current_version, 1);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
+
+    return result;
+}
+
+int inode_segment_index_update(const FDIRStorageInodeFieldInfo *field,
+        const bool normal_update, FDIRInodeUpdateResult *r)
+{
+    int result;
+    bool modified;
+
+    if ((r->segment=find_segment_by_inode(field->inode)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
+    do {
+        if ((result=check_load(r->segment)) != 0) {
+            break;
+        }
+
+        if ((result=inode_index_array_update(&r->segment->inodes.array,
+                        field, normal_update, &r->old, &modified)) != 0)
+        {
+            break;
+        }
+        r->version = (modified ? __sync_add_and_fetch(&segment_index_ctx.
+                    current_version, 1) : 0);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
+
+    return result;
+}
+
 int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode)
 {
     FDIRInodeSegmentIndexInfo *segment;
     int result;
-    bool new_load;
 
     if ((segment=find_segment_by_inode(inode->inode)) == NULL) {
         return ENOENT;
     }
 
     PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
-    while (1) {
-        if ((result=check_load(segment, true, &new_load)) != 0) {
-            break;
-        }
-
-        if (!new_load && da_binlog_writer_get_waiting_count(
-                    &INODE_BINLOG_WRITER) > 0)
-        {
-            PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
-            result = inode_binlog_writer_synchronize(segment);
-            PTHREAD_MUTEX_LOCK(&segment->lcp.lock);
-            if (result != 0) {
-                break;
-            }
-        }
-
-        if (segment->inodes.status == FDIR_STORAGE_SEGMENT_STATUS_READY) {
-            result = inode_index_array_find(&segment->inodes.array, inode);
-            break;
-        }
+    if ((result=check_load(segment)) == 0) {
+        result = inode_index_array_find(&segment->inodes.array, inode);
     }
     PTHREAD_MUTEX_UNLOCK(&segment->lcp.lock);
 
@@ -718,9 +704,8 @@ int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode)
 int inode_segment_index_shrink(FDIRInodeSegmentIndexInfo *segment)
 {
     int result;
-    bool new_load;
 
-    if ((result=check_load(segment, false, &new_load)) != 0) {
+    if ((result=check_load(segment)) != 0) {
         return result;
     }
 
