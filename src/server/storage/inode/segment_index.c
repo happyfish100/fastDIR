@@ -479,7 +479,7 @@ int inode_segment_index_init()
     }
 
     INIT_SCHEDULE_ENTRY_EX(scheduleEntries[0], sched_generate_next_id(),
-            INODE_INDEX_DUMP_BASE_TIME, INODE_INDEX_DUMP_INTERVAL,
+            INDEX_DUMP_BASE_TIME, INDEX_DUMP_INTERVAL,
             binlog_index_dump, NULL);
     scheduleArray.entries = scheduleEntries;
     scheduleArray.count = 1;

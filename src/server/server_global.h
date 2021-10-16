@@ -75,6 +75,7 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
+        bool load_done;
     } data;  //for binlog
 
     struct {
@@ -82,8 +83,8 @@ typedef struct server_global_vars {
         int batch_store_on_modifies;
         int batch_store_interval;
         int inode_binlog_subdirs;
-        int inode_index_dump_interval;
-        TimeInfo inode_index_dump_base_time;
+        int index_dump_interval;
+        TimeInfo index_dump_base_time;
         string_t path;   //data path
         double memory_limit;   //ratio
     } storage;
@@ -135,6 +136,7 @@ typedef struct server_global_vars {
 #define INODE_HASHTABLE_CAPACITY g_server_global_vars.inode.entries.hashtable_capacity
 #define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
 #define DATA_THREAD_COUNT       g_server_global_vars.data.thread_count
+#define DATA_LOAD_DONE          g_server_global_vars.data.load_done
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
@@ -145,12 +147,12 @@ typedef struct server_global_vars {
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
-#define BATCH_STORE_INTERVAL       g_server_global_vars.storage.batch_store_interval
-#define BATCH_STORE_ON_MODIFIES    g_server_global_vars.storage.batch_store_on_modifies
-#define INODE_BINLOG_SUBDIRS       g_server_global_vars.storage.inode_binlog_subdirs
-#define INODE_INDEX_DUMP_INTERVAL  g_server_global_vars.storage.inode_index_dump_interval
-#define INODE_INDEX_DUMP_BASE_TIME g_server_global_vars.storage.inode_index_dump_base_time
-#define STORAGE_MEMORY_LIMIT       g_server_global_vars.storage.memory_limit
+#define BATCH_STORE_INTERVAL    g_server_global_vars.storage.batch_store_interval
+#define BATCH_STORE_ON_MODIFIES g_server_global_vars.storage.batch_store_on_modifies
+#define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.inode_binlog_subdirs
+#define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.index_dump_interval
+#define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.index_dump_base_time
+#define STORAGE_MEMORY_LIMIT    g_server_global_vars.storage.memory_limit
 
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg

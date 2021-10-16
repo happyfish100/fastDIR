@@ -236,15 +236,16 @@ int main(int argc, char *argv[])
             break;
         }
 
+        if (STORAGE_ENABLED && (result=server_storage_init()) != 0) {
+            break;
+        }
+
         if ((result=server_load_data()) != 0) {
             break;
         }
+        DATA_LOAD_DONE = true;
 
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
-            break;
-        }
-
-        if (STORAGE_ENABLED && (result=server_storage_init()) != 0) {
             break;
         }
 

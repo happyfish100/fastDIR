@@ -702,14 +702,14 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             thread_ctx->update_notify.last_version = record->data_version;
         }
 
-        if (record->type == fdir_record_type_update) {
+        //if (record->type == fdir_record_type_update) {
             if ((result=push_to_update_queue(thread_ctx, record)) != 0) {
                 logCrit("file: "__FILE__", line: %d, "
                         "push_to_update_queue fail, "
                         "program exit!", __LINE__);
                 sf_terminate_myself();
             }
-        }
+        //}
     }
 
     if (record->notify.func != NULL) {

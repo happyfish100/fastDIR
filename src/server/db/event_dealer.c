@@ -141,12 +141,15 @@ static inline void free_message_buffer(
 
 static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
 {
+    int target_count;
     if (dentry->db_args->children == NULL || dentry->db_args->
             children->alloc <= dentry->db_args->children->count)
     {
+        target_count = dentry->db_args->children != NULL ?
+            dentry->db_args->children->count + 1 : 1;
         dentry->db_args->children = i64_array_allocator_realloc(
-                &I64_ARRAY_ALLOCATOR_CTX, dentry->db_args->children,
-                dentry->db_args->children->count + 1);
+                &I64_ARRAY_ALLOCATOR_CTX, dentry->db_args->
+                children, target_count);
         if (dentry->db_args->children == NULL) {
             return ENOMEM;
         }

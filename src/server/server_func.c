@@ -29,6 +29,7 @@
 #include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
+#include "storage/storage_engine.h"
 #include "server_global.h"
 #include "cluster_info.h"
 #include "server_func.h"
@@ -38,7 +39,7 @@
 #define INODE_BINLOG_MAX_SUBDIRS              256
 #define DEFAULT_BATCH_STORE_ON_MODIFIES    102400
 #define DEFAULT_BATCH_STORE_INTERVAL           60
-#define DEFAULT_INODE_INDEX_DUMP_INTERVAL     600
+#define DEFAULT_INDEX_DUMP_INTERVAL     600
 
 static void log_cluster_server_config()
 {
@@ -248,13 +249,13 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
             "batch_store_interval", ini_ctx->context,
             DEFAULT_BATCH_STORE_INTERVAL);
 
-    INODE_INDEX_DUMP_INTERVAL = iniGetIntValue(ini_ctx->section_name,
-            "inode_index_dump_interval", ini_ctx->context,
-            DEFAULT_INODE_INDEX_DUMP_INTERVAL);
+    INDEX_DUMP_INTERVAL = iniGetIntValue(ini_ctx->section_name,
+            "index_dump_interval", ini_ctx->context,
+            DEFAULT_INDEX_DUMP_INTERVAL);
 
     if ((result=get_time_item_from_conf_ex(ini_ctx,
-                    "inode_index_dump_base_time",
-                    &INODE_INDEX_DUMP_BASE_TIME,
+                    "index_dump_base_time",
+                    &INDEX_DUMP_BASE_TIME,
                     0, 0, false)) != 0)
     {
         return result;
@@ -320,13 +321,13 @@ static void server_log_configs()
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
                 ", data_path: %s, inode_binlog_subdirs: %d"
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
-                ", inode_index_dump_interval: %d s"
-                ", inode_index_dump_base_time: %02d:%02d"
+                ", index_dump_interval: %d s"
+                ", index_dump_base_time: %02d:%02d"
                 ", memory_limit: %.2f%%}", STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
-                BATCH_STORE_INTERVAL, INODE_INDEX_DUMP_INTERVAL,
-                INODE_INDEX_DUMP_BASE_TIME.hour,
-                INODE_INDEX_DUMP_BASE_TIME.minute,
+                BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
+                INDEX_DUMP_BASE_TIME.hour,
+                INDEX_DUMP_BASE_TIME.minute,
                 STORAGE_MEMORY_LIMIT * 100);
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
@@ -366,6 +367,7 @@ int server_load_config(const char *filename)
     IniFullContext ini_ctx;
     IniContext ini_context;
     char full_cluster_filename[PATH_MAX];
+    DADataGlobalConfig data_cfg;
     int result;
 
     if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
@@ -460,6 +462,7 @@ int server_load_config(const char *filename)
         INODE_SHARED_LOCKS_COUNT = FDIR_INODE_SHARED_LOCKS_DEFAULT_COUNT;
     }
 
+    load_local_host_ip_addrs();
     if ((result=load_cluster_config(&ini_ctx,
                     full_cluster_filename)) != 0)
     {
@@ -483,6 +486,17 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    data_cfg.path = STORAGE_PATH;
+    data_cfg.binlog_buffer_size = BINLOG_BUFFER_SIZE;
+    data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
+    data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
+    data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
+    if (STORAGE_ENABLED && (result=fdir_storage_engine_init(&ini_ctx,
+                    CLUSTER_MY_SERVER_ID, &data_cfg)) != 0)
+    {
+        return result;
+    }
+
     iniFreeContext(&ini_context);
 
     if ((SYSTEM_CPU_COUNT=get_sys_cpu_count()) <= 0) {
@@ -491,7 +505,6 @@ int server_load_config(const char *filename)
         return EINVAL;
     }
 
-    load_local_host_ip_addrs();
     server_log_configs();
 
     return 0;

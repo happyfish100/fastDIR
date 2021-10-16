@@ -77,8 +77,12 @@ static void *change_notify_func(void *arg)
 
         last_data_versions.data_thread = data_thread_get_last_data_version();
         last_data_versions.binlog_writer = binlog_writer_get_last_version();
-        less_than.version = FC_MIN(last_data_versions.data_thread,
-                last_data_versions.binlog_writer);
+        if (DATA_LOAD_DONE) {
+            less_than.version = FC_MIN(last_data_versions.data_thread,
+                    last_data_versions.binlog_writer);
+        } else {
+            less_than.version = last_data_versions.data_thread;
+        }
         sorted_queue_try_pop_to_queue(&change_notify_ctx.
                 queue, &less_than, &qinfo);
         if (qinfo.head != NULL) {

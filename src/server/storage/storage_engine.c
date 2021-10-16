@@ -17,7 +17,12 @@
 #include "inode/binlog_reader.h"
 #include "inode/binlog_writer.h"
 #include "data_sync_thread.h"
+#include "binlog_write_thread.h"
 #include "storage_engine.h"
+
+#define DATA_SYNC_THREAD_DEFAULT_COUNT  4
+#define DATA_SYNC_THREAD_MIN_COUNT      1
+#define DATA_SYNC_THREAD_MAX_COUNT     64
 
 static int init_write_fd_cache()
 {
@@ -44,8 +49,12 @@ static int update_record_alloc_init(FDIRInodeUpdateRecord *record, void *args)
     return 0;
 }
 
-int fdir_storage_engine_init(IniFullContext *ini_ctx)
+int fdir_storage_engine_init(IniFullContext *ini_ctx,
+        const int my_server_id, const DADataGlobalConfig *data_cfg)
 {
+    const int file_block_size = 4 * 1024 * 1024;
+    char *storage_config_filename;
+    char full_storage_filename[PATH_MAX];
     int result;
 
     if ((result=da_binlog_writer_global_init()) != 0) {
@@ -63,6 +72,9 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx)
         return result;
     }
 
+    DATA_SYNC_THREAD_ARRAY.count = iniGetIntCorrectValue(ini_ctx,
+            "data_sync_thread_count", DATA_SYNC_THREAD_DEFAULT_COUNT,
+            DATA_SYNC_THREAD_MIN_COUNT, DATA_SYNC_THREAD_MAX_COUNT);
     if ((result=data_sync_thread_init()) != 0) {
         return result;
     }
@@ -86,6 +98,23 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx)
         return result;
     }
 
+    storage_config_filename = iniGetStrValue(ini_ctx->section_name,
+            "storage_config_filename", ini_ctx->context);
+    if (storage_config_filename == NULL || *storage_config_filename == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, section: %s, item "
+                "\"storage_config_filename\" not exist or empty",
+                __LINE__, ini_ctx->filename, ini_ctx->section_name);
+        return ENOENT;
+    }
+    resolve_path(ini_ctx->filename, storage_config_filename,
+            full_storage_filename, sizeof(full_storage_filename));
+    if ((result=da_load_config(my_server_id, file_block_size,
+            data_cfg, full_storage_filename)) != 0)
+    {
+        return result;
+    }
+
     return 0;
 }
 
@@ -93,7 +122,19 @@ int fdir_storage_engine_start()
 {
     int result;
 
+    if ((result=da_binlog_writer_start()) != 0) {
+        return result;
+    }
+
     if ((result=data_sync_thread_start()) != 0) {
+        return result;
+    }
+
+    if ((result=binlog_write_thread_init()) != 0) {
+        return result;
+    }
+
+    if ((result=da_init_start()) != 0) {
         return result;
     }
 

@@ -164,6 +164,11 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
         if ((result=storage_allocator_normal_alloc(entry->inode,
                         entry->buffer->length, &space, &count)) != 0)
         {
+            logError("file: "__FILE__", line: %d, "
+                    "alloc disk space %d bytes fail, "
+                    "errno: %d, error info: %s",
+                    __LINE__, entry->buffer->length,
+                    result, STRERROR(result));
             return result;
         }
 
@@ -280,6 +285,8 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
     int count;
     int result;
 
+    logInfo("data_sync_thread deal start, head: %p", head);
+
     entry = head;
     count = 0;
     do {
@@ -310,6 +317,9 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
         }
     } while ((entry=entry->next) != NULL);
 
+
+    logInfo("data_sync_thread deal count: %d", count);
+
     fdir_data_sync_finish(count);
     return 0;
 }
@@ -318,6 +328,7 @@ static void *data_sync_thread_func(void *arg)
 {
     FDIRDataSyncThreadInfo *thread;
     FDIRDBUpdateFieldInfo *head;
+    int result;
 
     thread = arg;
 #ifdef OS_LINUX
@@ -330,11 +341,12 @@ static void *data_sync_thread_func(void *arg)
 
     while (1) {
         if ((head=fc_queue_pop_all(&thread->queue)) != NULL) {
-            if (data_sync_thread_deal(thread, head) != 0) {
+            if ((result=data_sync_thread_deal(thread, head)) != 0) {
                 logCrit("file: "__FILE__", line: %d, "
-                        "deal dentry fail, program exit!",
-                        __LINE__);
+                        "deal dentry fail, result: %d, program exit!",
+                        __LINE__, result);
                 sf_terminate_myself();
+                break;
             }
         }
     }
