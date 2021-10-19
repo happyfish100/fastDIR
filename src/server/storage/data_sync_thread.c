@@ -62,23 +62,6 @@ int data_sync_thread_init()
         space_chain->tail = record; \
     } while (0)
 
-static inline int add_to_space_log_chain_ex(struct fc_queue_info *space_chain,
-        const FDIRDBUpdateFieldInfo *dentry, const int field_index,
-        const char op_type, const uint32_t trunk_id, const uint32_t offset,
-        const uint32_t size)
-{
-    DATrunkSpaceLogRecord *record;
-
-    if ((record=da_trunk_space_log_alloc_fill_record_ex(dentry->version,
-                    dentry->inode, field_index, op_type, trunk_id,
-                    offset, size)) == NULL)
-    {
-        return ENOMEM;
-    }
-
-    ADD_TO_SPACE_CHAIN(space_chain, record);
-    return 0;
-}
 
 static inline int add_to_space_log_chain(struct fc_queue_info *space_chain,
         const FDIRDBUpdateFieldInfo *entry, const int field_index,
@@ -179,6 +162,7 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
         }
 
         record->inode.field.storage.trunk_id = space.id_info.id;
+        record->inode.field.storage.length = entry->buffer->length;
         record->inode.field.storage.offset = space.offset;
         record->inode.field.storage.size = space.size;
     }
@@ -213,9 +197,9 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     }
 
     if (entry->buffer != NULL) {
-        if ((result=add_to_space_log_chain_ex(&record->space_chain, entry,
+        if ((result=add_to_space_log_chain(&record->space_chain, entry,
                         entry->field_index, da_binlog_op_type_consume_space,
-                        space.id_info.id, space.offset, space.size)) != 0)
+                        &record->inode.field.storage)) != 0)
         {
             return result;
         }
