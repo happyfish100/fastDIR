@@ -26,13 +26,13 @@ extern "C" {
 
 int inode_segment_index_init();
 
-int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
+int inode_segment_index_add(const DAPieceFieldInfo *field,
         FDIRInodeUpdateResult *r);
 
 int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
         FDIRInodeUpdateResult *r);
 
-int inode_segment_index_update(const FDIRStorageInodeFieldInfo *field,
+int inode_segment_index_update(const DAPieceFieldInfo *field,
         const bool normal_update, FDIRInodeUpdateResult *r);
 
 int inode_segment_index_get(FDIRStorageInodeIndexInfo *inode);

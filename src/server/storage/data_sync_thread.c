@@ -120,8 +120,8 @@ static int remove_dentry(const FDIRDBUpdateFieldInfo *entry,
 
     record->version = r.version;
     record->inode.segment = r.segment;
-    record->inode.field.inode = entry->inode;
-    record->inode.field.index = FDIR_PIECE_FIELD_INDEX_BASIC;
+    record->inode.field.oid = entry->inode;
+    record->inode.field.fid = FDIR_PIECE_FIELD_INDEX_BASIC;
     record->inode.field.storage.version = entry->version;
     record->inode.field.op_type = da_binlog_op_type_remove;
     return 0;
@@ -137,8 +137,8 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     int count;
     int result;
 
-    record->inode.field.inode = entry->inode;
-    record->inode.field.index = entry->field_index;
+    record->inode.field.oid = entry->inode;
+    record->inode.field.fid = entry->field_index;
     record->inode.field.storage.version = entry->version;
     if (entry->buffer == NULL) {
         DA_PIECE_FIELD_DELETE(&record->inode.field.storage);
@@ -233,7 +233,7 @@ static void push_to_binlog_write_chain(FDIRInodeUpdateRecord *record)
         }
 
         FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord, NULL);
-        binlog_write_thread_push_to_queue(&qinfo);
+        binlog_write_thread_push_queue(&qinfo);
     } else {
         if (ORDERED_UPDATE_CHAIN.head == NULL) {
             ORDERED_UPDATE_CHAIN.head = record;
@@ -300,7 +300,6 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
             fast_mblock_free_object(&UPDATE_RECORD_ALLOCATOR, record);
         }
     } while ((entry=entry->next) != NULL);
-
 
     logInfo("data_sync_thread deal count: %d", count);
 

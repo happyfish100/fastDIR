@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 int inode_binlog_parse_record(const string_t *line,
-        FDIRStorageInodeFieldInfo *field, char *error_info);
+        DAPieceFieldInfo *field, char *error_info);
 
 int inode_binlog_reader_unpack_record(const string_t *line,
         void *args, char *error_info);

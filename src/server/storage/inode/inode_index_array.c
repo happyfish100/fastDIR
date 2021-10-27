@@ -30,7 +30,7 @@
 #include "inode_index_array.h"
 
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field)
+        const DAPieceFieldInfo *field)
 {
     FDIRStorageInodeIndexInfo *dest;
 
@@ -43,8 +43,8 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
 
     dest = array->inodes + array->counts.total++;
     memset(dest, 0, sizeof(*dest));
-    dest->inode = field->inode;
-    dest->fields[field->index] = field->storage;
+    dest->inode = field->oid;
+    dest->fields[field->fid] = field->storage;
     dest->status = FDIR_STORAGE_INODE_STATUS_NORMAL;
     return 0;
 }
@@ -145,27 +145,27 @@ int inode_index_array_find(FDIRStorageInodeIndexArray *array,
 }
 
 int inode_index_array_update(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field, const bool normal_update,
+        const DAPieceFieldInfo *field, const bool normal_update,
         DAPieceFieldStorage *old, bool *modified)
 {
     FDIRStorageInodeIndexInfo *found;
 
-    if ((found=inode_index_array_get(array, field->inode)) == NULL) {
+    if ((found=inode_index_array_get(array, field->oid)) == NULL) {
         *modified = false;
         return ENOENT;
     }
 
     if (normal_update) {
         *modified = (field->storage.version >
-                found->fields[field->index].version);
+                found->fields[field->fid].version);
     } else {  //space reclaim
         *modified = (field->storage.version ==
-                found->fields[field->index].version);
+                found->fields[field->fid].version);
     }
 
     if (*modified) {
-        *old = found->fields[field->index];
-        found->fields[field->index] = field->storage;
+        *old = found->fields[field->fid];
+        found->fields[field->fid] = field->storage;
     }
     return 0;
 }

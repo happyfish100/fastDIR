@@ -26,7 +26,10 @@ extern "C" {
     int binlog_write_thread_init();
     void binlog_write_thread_destroy();
 
-    static inline void binlog_write_thread_push_to_queue(
+    int binlog_write_thread_push(const DAPieceFieldInfo *field,
+            struct fc_queue_info *space_chain);
+
+    static inline void binlog_write_thread_push_queue(
             struct fc_queue_info *qinfo)
     {
         fc_queue_push_queue_to_tail(&BINLOG_WRITE_THREAD_CTX.queue, qinfo);

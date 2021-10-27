@@ -134,7 +134,7 @@ int fdir_storage_engine_start()
         return result;
     }
 
-    if ((result=da_init_start()) != 0) {
+    if ((result=da_init_start(binlog_write_thread_push)) != 0) {
         return result;
     }
 

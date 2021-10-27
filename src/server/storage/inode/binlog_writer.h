@@ -38,10 +38,10 @@ static inline int inode_binlog_writer_shrink(
     return da_binlog_writer_shrink(&INODE_BINLOG_WRITER, segment);
 }
 
-int inode_binlog_pack_record(const FDIRStorageInodeFieldInfo *field,
+int inode_binlog_pack_record(const DAPieceFieldInfo *field,
         char *buff, const int size);
 
-static inline void inode_binlog_pack(const FDIRStorageInodeFieldInfo
+static inline void inode_binlog_pack(const DAPieceFieldInfo
         *field, BufferInfo *buffer)
 {
     buffer->length = inode_binlog_pack_record(field,

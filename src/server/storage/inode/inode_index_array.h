@@ -48,13 +48,13 @@ static inline void inode_index_array_free(FDIRStorageInodeIndexArray *array)
 }
 
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field);
+        const DAPieceFieldInfo *field);
 
 int inode_index_array_delete(FDIRStorageInodeIndexArray *array,
         FDIRStorageInodeIndexInfo *inode);
 
 int inode_index_array_update(FDIRStorageInodeIndexArray *array,
-        const FDIRStorageInodeFieldInfo *field, const bool normal_update,
+        const DAPieceFieldInfo *field, const bool normal_update,
         DAPieceFieldStorage *old, bool *modified);
 
 int inode_index_array_check_shrink(FDIRStorageInodeIndexArray *array);

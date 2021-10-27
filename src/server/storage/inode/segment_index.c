@@ -561,7 +561,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment)
     return result;
 }
 
-int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
+int inode_segment_index_add(const DAPieceFieldInfo *field,
         FDIRInodeUpdateResult *r)
 {
     int result;
@@ -570,7 +570,7 @@ int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
     PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
     r->segment = segment_index_ctx.current_binlog.segment;
     if (r->segment == NULL) {
-        result = segment_array_inc(field->inode);
+        result = segment_array_inc(field->oid);
         r->segment = segment_index_ctx.current_binlog.segment;
     } else {
         result = 0;
@@ -588,12 +588,12 @@ int inode_segment_index_add(const FDIRStorageInodeFieldInfo *field,
                     FDIR_STORAGE_BATCH_INODE_COUNT)
             {
                 PTHREAD_MUTEX_UNLOCK(lock);
-                result = segment_array_inc(field->inode);
+                result = segment_array_inc(field->oid);
                 r->segment = segment_index_ctx.current_binlog.segment;
                 lock = &r->segment->lcp.lock;
                 PTHREAD_MUTEX_LOCK(lock);
             } else {
-                r->segment->inodes.last = field->inode;
+                r->segment->inodes.last = field->oid;
             }
 
             if (result != 0) {
@@ -654,13 +654,13 @@ int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
     return result;
 }
 
-int inode_segment_index_update(const FDIRStorageInodeFieldInfo *field,
+int inode_segment_index_update(const DAPieceFieldInfo *field,
         const bool normal_update, FDIRInodeUpdateResult *r)
 {
     int result;
     bool modified;
 
-    if ((r->segment=find_segment_by_inode(field->inode)) == NULL) {
+    if ((r->segment=find_segment_by_inode(field->oid)) == NULL) {
         return ENOENT;
     }
 

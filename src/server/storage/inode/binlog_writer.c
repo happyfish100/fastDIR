@@ -24,7 +24,7 @@
 #include "segment_index.h"
 #include "binlog_writer.h"
 
-int inode_binlog_pack_record(const FDIRStorageInodeFieldInfo *field,
+int inode_binlog_pack_record(const DAPieceFieldInfo *field,
         char *buff, const int size)
 {
     if (field->op_type == da_binlog_op_type_create ||
@@ -32,13 +32,13 @@ int inode_binlog_pack_record(const FDIRStorageInodeFieldInfo *field,
     {
         return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c %d "
                 "%u %u %u\n", (uint32_t)g_current_time,
-                field->storage.version, field->inode, field->op_type,
-                field->index, field->storage.trunk_id,
+                field->storage.version, field->oid, field->op_type,
+                field->fid, field->storage.trunk_id,
                 field->storage.offset, field->storage.size);
     } else {
         return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c\n",
                 (uint32_t)g_current_time, field->storage.version,
-                field->inode, field->op_type);
+                field->oid, field->op_type);
     }
 }
 
@@ -48,7 +48,7 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     int result;
     int i;
     int count;
-    FDIRStorageInodeFieldInfo field;
+    DAPieceFieldInfo field;
 
     if (cache->buff_end - cache->current < FDIR_PIECE_FIELD_COUNT *
             FDIR_INODE_BINLOG_RECORD_MAX_SIZE)
@@ -59,13 +59,13 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
     }
 
     count = 0;
-    field.inode = index->inode;
+    field.oid = index->inode;
     for (i=0; i<FDIR_PIECE_FIELD_COUNT; i++) {
         if (!DA_PIECE_FIELD_IS_EMPTY(index->fields + i)) {
             field.op_type = (++count == 1) ?
                 da_binlog_op_type_create :
                 da_binlog_op_type_update;
-            field.index = i;
+            field.fid = i;
             field.storage = index->fields[i];
             cache->current += inode_binlog_pack_record(&field,
                     cache->current, cache->buff_end - cache->current);

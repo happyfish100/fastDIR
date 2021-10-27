@@ -50,14 +50,6 @@ typedef struct fdir_storage_inode_index_info {
     int status;
 } FDIRStorageInodeIndexInfo;
 
-typedef struct fdir_storage_inode_field_info {
-    uint64_t inode;
-    int index;
-    DABinlogOpType op_type;
-    DAPieceFieldStorage storage;
-    struct fdir_storage_inode_field_info *next;
-} FDIRStorageInodeFieldInfo;
-
 typedef struct fdir_storage_inode_index_array {
     FDIRStorageInodeIndexInfo *inodes;
     int alloc;
@@ -95,7 +87,7 @@ typedef struct fdir_inode_update_record {
     int64_t version;    //for sort
     struct {
         FDIRInodeSegmentIndexInfo *segment;
-        FDIRStorageInodeFieldInfo field;
+        DAPieceFieldInfo field;
         BufferInfo buffer;
     } inode;
     struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord

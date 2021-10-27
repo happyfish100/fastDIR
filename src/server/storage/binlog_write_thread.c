@@ -265,3 +265,20 @@ int binlog_write_thread_init()
 void binlog_write_thread_destroy()
 {
 }
+
+int binlog_write_thread_push(const DAPieceFieldInfo *field,
+        struct fc_queue_info *space_chain)
+{
+    FDIRInodeUpdateRecord *record;
+
+    if ((record=(FDIRInodeUpdateRecord *)fast_mblock_alloc_object(
+                    &UPDATE_RECORD_ALLOCATOR)) == NULL)
+    {
+        return ENOMEM;
+    }
+
+    record->inode.field = *field;
+    record->space_chain = *space_chain;
+    fc_queue_push(&BINLOG_WRITE_THREAD_CTX.queue, record);
+    return 0;
+}
