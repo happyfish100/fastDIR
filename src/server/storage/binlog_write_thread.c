@@ -18,6 +18,7 @@
 #include "sf/sf_func.h"
 #include "diskallocator/binlog/trunk/trunk_space_log.h"
 #include "inode/binlog_writer.h"
+#include "inode/segment_index.h"
 #include "binlog_write_thread.h"
 
 #define FIELD_TMP_FILENAME  ".field.tmp"
@@ -167,6 +168,35 @@ static int push_to_log_queues(struct fc_queue_info *qinfo)
     return 0;
 }
 
+static void notify_all(struct fc_queue_info *qinfo)
+{
+    FDIRInodeUpdateRecord *record;
+    SFSynchronizeContext *sctx;
+    int count;
+
+    sctx = NULL;
+    count = 0;
+    record = (FDIRInodeUpdateRecord *)qinfo->head;
+    do {
+        if (record->sctx != NULL) {
+            if (sctx != record->sctx) {
+                if (sctx != NULL) {
+                    sf_synchronize_counter_notify(sctx, count);
+                }
+
+                sctx = record->sctx;
+                count = 1;
+            } else {
+                ++count;
+            }
+        }
+    } while ((record=record->next) != NULL);
+
+    if (sctx != NULL) {
+        sf_synchronize_counter_notify(sctx, count);
+    }
+}
+
 static int deal_records(struct fc_queue_info *qinfo)
 {
     int result;
@@ -184,12 +214,13 @@ static int deal_records(struct fc_queue_info *qinfo)
 
     push_to_log_queues(qinfo);
 
-    fc_queue_free_chain(&BINLOG_WRITE_THREAD_CTX.queue,
-            &UPDATE_RECORD_ALLOCATOR, qinfo);
-
     da_binlog_writer_wait(&INODE_BINLOG_WRITER);
     da_trunk_space_log_wait();
 
+    notify_all(qinfo);
+
+    fc_queue_free_chain(&BINLOG_WRITE_THREAD_CTX.queue,
+            &UPDATE_RECORD_ALLOCATOR, qinfo);
     return 0;
 }
 
@@ -267,9 +298,22 @@ void binlog_write_thread_destroy()
 }
 
 int binlog_write_thread_push(const DAPieceFieldInfo *field,
-        struct fc_queue_info *space_chain)
+        struct fc_queue_info *space_chain, SFSynchronizeContext *sctx)
 {
+    const bool normal_update = false;
+    int result;
     FDIRInodeUpdateRecord *record;
+    FDIRInodeUpdateResult r;
+
+    if ((result=inode_segment_index_update(field, normal_update, &r)) != 0) {
+        return result;
+    }
+
+    if (r.version == 0) {  //NOT modified
+        da_trunk_space_log_free_chain(space_chain);
+        sf_synchronize_counter_notify(sctx, 1);
+        return 0;
+    }
 
     if ((record=(FDIRInodeUpdateRecord *)fast_mblock_alloc_object(
                     &UPDATE_RECORD_ALLOCATOR)) == NULL)
@@ -277,6 +321,9 @@ int binlog_write_thread_push(const DAPieceFieldInfo *field,
         return ENOMEM;
     }
 
+    record->sctx = sctx;
+    record->version = r.version;
+    record->inode.segment = r.segment;
     record->inode.field = *field;
     record->space_chain = *space_chain;
     fc_queue_push(&BINLOG_WRITE_THREAD_CTX.queue, record);

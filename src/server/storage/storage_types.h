@@ -84,13 +84,14 @@ typedef struct fdir_inode_update_result {
 } FDIRInodeUpdateResult;
 
 typedef struct fdir_inode_update_record {
-    int64_t version;    //for sort
+    int64_t version;    //for sort only
     struct {
         FDIRInodeSegmentIndexInfo *segment;
         DAPieceFieldInfo field;
         BufferInfo buffer;
     } inode;
     struct fc_queue_info space_chain;  //element: DATrunkSpaceLogRecord
+    SFSynchronizeContext *sctx;
     struct fdir_inode_update_record *next;
 } FDIRInodeUpdateRecord;
 

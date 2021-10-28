@@ -281,6 +281,8 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
         {
             return ENOMEM;
         }
+
+        record->sctx = NULL;
         record->space_chain.head = record->space_chain.tail = NULL;
         if (entry->op_type == da_binlog_op_type_remove) {
             result = remove_dentry(entry, record);

@@ -675,8 +675,13 @@ int inode_segment_index_update(const DAPieceFieldInfo *field,
         {
             break;
         }
-        r->version = (modified ? __sync_add_and_fetch(&segment_index_ctx.
-                    current_version, 1) : 0);
+        if (modified) {
+            r->version = (normal_update ? __sync_add_and_fetch(
+                        &segment_index_ctx.current_version, 1) :
+                    field->storage.version);
+        } else {
+            r->version = 0;
+        }
     } while (0);
     PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
 
