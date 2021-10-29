@@ -16,6 +16,7 @@
 #include "diskallocator/binlog/common/write_fd_cache.h"
 #include "inode/binlog_reader.h"
 #include "inode/binlog_writer.h"
+#include "inode/segment_index.h"
 #include "data_sync_thread.h"
 #include "binlog_write_thread.h"
 #include "storage_engine.h"
@@ -50,13 +51,15 @@ static int update_record_alloc_init(FDIRInodeUpdateRecord *record, void *args)
 }
 
 int fdir_storage_engine_init(IniFullContext *ini_ctx,
-        const int my_server_id, const DADataGlobalConfig *data_cfg)
+        const int my_server_id, const FDIRStorageEngineConfig *db_cfg,
+        const DADataGlobalConfig *data_cfg)
 {
     const int file_block_size = 4 * 1024 * 1024;
     char *storage_config_filename;
     char full_storage_filename[PATH_MAX];
     int result;
 
+    g_storage_global_vars.db_cfg = db_cfg;
     if ((result=da_binlog_writer_global_init()) != 0) {
         return result;
     }
@@ -95,6 +98,10 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx,
     }
 
     if ((result=init_pthread_lock_cond_pair(&DATA_SYNC_NOTIFY_LCP)) != 0) {
+        return result;
+    }
+
+    if ((result=inode_segment_index_init()) != 0) {
         return result;
     }
 

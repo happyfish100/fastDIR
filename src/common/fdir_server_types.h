@@ -49,4 +49,11 @@ typedef struct fdir_db_update_field_array {
     int alloc;
 } FDIRDBUpdateFieldArray;
 
+typedef struct fdir_storage_engine_config {
+    int inode_binlog_subdirs;
+    int index_dump_interval;
+    TimeInfo index_dump_base_time;
+    string_t path;   //data path
+} FDIRStorageEngineConfig;
+
 #endif

@@ -25,7 +25,9 @@ extern "C" {
 #endif
 
     int fdir_storage_engine_init(IniFullContext *ini_ctx,
-            const int my_server_id, const DADataGlobalConfig *data_cfg);
+            const int my_server_id, const FDIRStorageEngineConfig *db_cfg,
+            const DADataGlobalConfig *data_cfg);
+
 
     int fdir_storage_engine_start();
 

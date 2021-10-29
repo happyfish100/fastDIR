@@ -492,7 +492,8 @@ int server_load_config(const char *filename)
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
     if (STORAGE_ENABLED && (result=fdir_storage_engine_init(&ini_ctx,
-                    CLUSTER_MY_SERVER_ID, &data_cfg)) != 0)
+                    CLUSTER_MY_SERVER_ID, &g_server_global_vars.
+                    storage.cfg, &data_cfg)) != 0)
     {
         return result;
     }

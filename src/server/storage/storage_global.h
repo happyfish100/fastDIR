@@ -20,10 +20,7 @@
 #include "storage_types.h"
 
 typedef struct {
-    string_t path;   //data path
-    int inode_binlog_subdirs;
-    int index_dump_interval;
-    TimeInfo index_dump_base_time;
+    const FDIRStorageEngineConfig *db_cfg;
     FDIRDataSyncThreadArray data_sync_thread_array;
     FDIROrderdUpdateChain ordered_update_chain;
     struct fast_mblock_man update_record_allocator;
@@ -35,18 +32,18 @@ typedef struct {
     } data_sync_notify;
 } FDIRStorageGlobalVars;
 
-#define STORAGE_PATH            g_storage_global_vars.path
+#define STORAGE_PATH            g_storage_global_vars.db_cfg->path
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
-#define INODE_BINLOG_SUBDIRS       g_storage_global_vars.inode_binlog_subdirs
-#define INDEX_DUMP_INTERVAL  g_storage_global_vars.index_dump_interval
-#define INDEX_DUMP_BASE_TIME g_storage_global_vars.index_dump_base_time
-#define DATA_SYNC_THREAD_ARRAY     g_storage_global_vars.data_sync_thread_array
-#define ORDERED_UPDATE_CHAIN       g_storage_global_vars.ordered_update_chain
-#define UPDATE_RECORD_ALLOCATOR    g_storage_global_vars.update_record_allocator
-#define BINLOG_WRITE_THREAD_CTX    g_storage_global_vars.binlog_write_thread_ctx
-#define INODE_BINLOG_WRITER        g_storage_global_vars.inode_binlog_writer
+#define INODE_BINLOG_SUBDIRS    g_storage_global_vars.db_cfg->inode_binlog_subdirs
+#define INDEX_DUMP_INTERVAL     g_storage_global_vars.db_cfg->index_dump_interval
+#define INDEX_DUMP_BASE_TIME    g_storage_global_vars.db_cfg->index_dump_base_time
+#define DATA_SYNC_THREAD_ARRAY  g_storage_global_vars.data_sync_thread_array
+#define ORDERED_UPDATE_CHAIN    g_storage_global_vars.ordered_update_chain
+#define UPDATE_RECORD_ALLOCATOR g_storage_global_vars.update_record_allocator
+#define BINLOG_WRITE_THREAD_CTX g_storage_global_vars.binlog_write_thread_ctx
+#define INODE_BINLOG_WRITER     g_storage_global_vars.inode_binlog_writer
 
 #define DATA_SYNC_NOTIFY_WAITINGS  g_storage_global_vars.data_sync_notify.waitings
 #define DATA_SYNC_NOTIFY_LCP       g_storage_global_vars.data_sync_notify.lcp

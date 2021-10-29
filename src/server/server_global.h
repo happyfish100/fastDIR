@@ -82,10 +82,7 @@ typedef struct server_global_vars {
         bool enabled;
         int batch_store_on_modifies;
         int batch_store_interval;
-        int inode_binlog_subdirs;
-        int index_dump_interval;
-        TimeInfo index_dump_base_time;
-        string_t path;   //data path
+        FDIRStorageEngineConfig cfg;
         double memory_limit;   //ratio
     } storage;
 
@@ -143,15 +140,15 @@ typedef struct server_global_vars {
 
 
 #define STORAGE_ENABLED         g_server_global_vars.storage.enabled
-#define STORAGE_PATH            g_server_global_vars.storage.path
+#define STORAGE_PATH            g_server_global_vars.storage.cfg.path
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
 #define BATCH_STORE_INTERVAL    g_server_global_vars.storage.batch_store_interval
 #define BATCH_STORE_ON_MODIFIES g_server_global_vars.storage.batch_store_on_modifies
-#define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.inode_binlog_subdirs
-#define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.index_dump_interval
-#define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.index_dump_base_time
+#define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.cfg.inode_binlog_subdirs
+#define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.cfg.index_dump_interval
+#define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.cfg.index_dump_base_time
 #define STORAGE_MEMORY_LIMIT    g_server_global_vars.storage.memory_limit
 
 #define SLOW_LOG                g_server_global_vars.slow_log
