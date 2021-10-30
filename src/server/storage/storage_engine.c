@@ -16,6 +16,7 @@
 #include "diskallocator/binlog/common/write_fd_cache.h"
 #include "inode/binlog_reader.h"
 #include "inode/binlog_writer.h"
+#include "inode/bid_journal.h"
 #include "inode/segment_index.h"
 #include "data_sync_thread.h"
 #include "binlog_write_thread.h"
@@ -98,6 +99,10 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx,
     }
 
     if ((result=init_pthread_lock_cond_pair(&DATA_SYNC_NOTIFY_LCP)) != 0) {
+        return result;
+    }
+
+    if ((result=bid_journal_init()) != 0) {
         return result;
     }
 

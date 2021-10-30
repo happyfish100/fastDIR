@@ -29,12 +29,22 @@
 static inline int buffer_to_file(FDIRBinlogWriteFileBufferPair *pair)
 {
     int len;
+    int result;
+
     if ((len=pair->buffer.length) == 0) {
         return 0;
     }
 
     pair->buffer.length = 0;
-    return fc_safe_write(pair->fi.fd, pair->buffer.data, len);
+    if (fc_safe_write(pair->fi.fd, pair->buffer.data, len) != len) {
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "write to fd: %d fail, errno: %d, error info: %s",
+                __LINE__, pair->fi.fd, result, STRERROR(result));
+        return result;
+    } else {
+        return 0;
+    }
 }
 
 static int write_field_log(FDIRInodeUpdateRecord *record)

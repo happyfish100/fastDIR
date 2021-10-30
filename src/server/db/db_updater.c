@@ -239,21 +239,21 @@ static int write_redo_log(FDIRDBUpdaterContext *ctx)
     return fc_safe_write_file_close(&db_updater_ctx.redo);
 }
 
-static int unpack_from_file(SFSerializerIterator *it)
+static int unpack_from_file(SFSerializerIterator *it,
+        char *buff, const int size)
 {
     int result;
     int length;
-    char buff[1024];
     string_t content;
 
     if ((length=sf_serializer_read_message(db_updater_ctx.
-                    redo.fd, buff, sizeof(buff))) < 0)
+                    redo.fd, buff, size)) < 0)
     {
         result = errno != 0 ? errno : EIO;
         logError("file: "__FILE__", line: %d, "
-                "open file %s fail, errno: %d, error info: %s",
-                __LINE__, db_updater_ctx.redo.filename,
-                result, STRERROR(result));
+                "read message from file %s fail, "
+                "errno: %d, error info: %s", __LINE__,
+                db_updater_ctx.redo.filename, result, STRERROR(result));
         return result;
     }
 
@@ -274,11 +274,12 @@ static int unpack_header(SFSerializerIterator *it,
         FDIRDBUpdaterContext *ctx, int *record_count)
 {
     int result;
+    char buff[1024];
     const SFSerializerFieldValue *fv;
 
     *record_count = 0;
     ctx->last_versions.field = ctx->last_versions.dentry = 0;
-    if ((result=unpack_from_file(it)) != 0) {
+    if ((result=unpack_from_file(it, buff, sizeof(buff))) != 0) {
         return result;
     }
 
@@ -315,10 +316,11 @@ static int unpack_one_dentry(const int64_t start_version,
         SFSerializerIterator *it, FDIRDBUpdaterContext *ctx)
 {
     int result;
+    char buff[1024];
     FDIRDBUpdateFieldInfo *entry;
     const SFSerializerFieldValue *fv;
 
-    if ((result=unpack_from_file(it)) != 0) {
+    if ((result=unpack_from_file(it, buff, sizeof(buff))) != 0) {
         return result;
     }
 

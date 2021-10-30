@@ -154,11 +154,20 @@ int bid_journal_log(const uint64_t binlog_id,
 {
     char buff[BID_JOURNAL_RECORD_MAX_SIZE];
     int len;
+    int result;
 
     len = sprintf(buff, "%"PRId64" %"PRId64" %c\n",
             __sync_add_and_fetch(&journal_ctx.version, 1),
             binlog_id, op_type);
-    return fc_safe_write(journal_ctx.fd, buff, len);
+    if (fc_safe_write(journal_ctx.fd, buff, len) != len) {
+        result = errno != 0 ? errno : EIO;
+        logError("file: "__FILE__", line: %d, "
+                "write to fd: %d fail, errno: %d, error info: %s",
+                __LINE__, journal_ctx.fd, result, STRERROR(result));
+        return result;
+    } else {
+        return 0;
+    }
 }
 
 static int parse_buffer(FDIRInodeBidJournalArray *jarray,

@@ -144,6 +144,7 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
         DA_PIECE_FIELD_DELETE(&record->inode.field.storage);
     } else {
         count = 1;
+
         if ((result=storage_allocator_normal_alloc(entry->inode,
                         entry->buffer->length, &space, &count)) != 0)
         {
