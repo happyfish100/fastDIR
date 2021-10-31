@@ -561,59 +561,83 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment)
     return result;
 }
 
-int inode_segment_index_add(const DAPieceFieldInfo *field,
-        FDIRInodeUpdateResult *r)
+int inode_segment_index_pre_add(const int64_t inode)
 {
     int result;
+    FDIRInodeSegmentIndexInfo *segment;
     pthread_mutex_t *lock;
 
     PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
-    r->segment = segment_index_ctx.current_binlog.segment;
-    if (r->segment == NULL) {
-        result = segment_array_inc(field->oid);
-        r->segment = segment_index_ctx.current_binlog.segment;
+    segment = segment_index_ctx.current_binlog.segment;
+    if (segment == NULL) {
+        result = segment_array_inc(inode);
+        segment = segment_index_ctx.current_binlog.segment;
     } else {
         result = 0;
     }
 
     if (result == 0) {
-        lock = &r->segment->lcp.lock;
+        lock = &segment->lcp.lock;
         PTHREAD_MUTEX_LOCK(lock);
         do {
-            if ((result=check_load(r->segment)) != 0) {
+            if ((result=check_load(segment)) != 0) {
                 break;
             }
 
-            if (r->segment->inodes.array.counts.total >=
+            if (segment->inodes.array.counts.total >=
                     FDIR_STORAGE_BATCH_INODE_COUNT)
             {
                 PTHREAD_MUTEX_UNLOCK(lock);
-                result = segment_array_inc(field->oid);
-                r->segment = segment_index_ctx.current_binlog.segment;
-                lock = &r->segment->lcp.lock;
+                result = segment_array_inc(inode);
+                segment = segment_index_ctx.current_binlog.segment;
+                lock = &segment->lcp.lock;
                 PTHREAD_MUTEX_LOCK(lock);
             } else {
-                r->segment->inodes.last = field->oid;
+                segment->inodes.last = inode;
             }
 
             if (result != 0) {
                 break;
             }
 
-            if ((result=inode_index_array_add(&r->segment->
-                            inodes.array, field)) != 0)
+            if ((result=inode_index_array_pre_add(&segment->
+                            inodes.array, inode)) != 0)
             {
                 break;
             }
-
-            r->version = __sync_add_and_fetch(&segment_index_ctx.
-                    current_version, 1);
         } while (0);
         PTHREAD_MUTEX_UNLOCK(lock);
     }
-
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
 
+    return result;
+}
+
+int inode_segment_index_real_add(const DAPieceFieldInfo *field,
+        FDIRInodeUpdateResult *r)
+{
+    int result;
+
+    if ((r->segment=find_segment_by_inode(field->oid)) == NULL) {
+        return ENOENT;
+    }
+
+    PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
+    do {
+        if ((result=check_load(r->segment)) != 0) {
+            break;
+        }
+
+        if ((result=inode_index_array_real_add(&r->segment->
+                        inodes.array, field)) != 0)
+        {
+            break;
+        }
+
+        r->version = __sync_add_and_fetch(&segment_index_ctx.
+                current_version, 1);
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
     return result;
 }
 

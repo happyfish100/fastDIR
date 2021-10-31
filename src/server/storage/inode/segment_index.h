@@ -26,7 +26,9 @@ extern "C" {
 
 int inode_segment_index_init();
 
-int inode_segment_index_add(const DAPieceFieldInfo *field,
+int inode_segment_index_pre_add(const int64_t inode);
+
+int inode_segment_index_real_add(const DAPieceFieldInfo *field,
         FDIRInodeUpdateResult *r);
 
 int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,

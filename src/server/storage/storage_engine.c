@@ -161,6 +161,7 @@ int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
 {
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
+    int result;
 
     PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
     DATA_SYNC_NOTIFY_WAITINGS = array->count;
@@ -168,6 +169,14 @@ int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
 
     end = array->entries + array->count;
     for (entry=array->entries; entry<end; entry++) {
+        if (entry->op_type == da_binlog_op_type_create &&
+                entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+            if ((result=inode_segment_index_pre_add(entry->inode)) != 0) {
+                return result;
+            }
+        }
+
         data_sync_thread_push(entry);
     }
 

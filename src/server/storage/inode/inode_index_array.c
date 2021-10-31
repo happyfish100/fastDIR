@@ -29,6 +29,52 @@
 #include "fastcommon/shared_func.h"
 #include "inode_index_array.h"
 
+static int inode_index_array_compare(const FDIRStorageInodeIndexInfo *node1,
+        const FDIRStorageInodeIndexInfo *node2)
+{
+    return fc_compare_int64(node1->inode, node2->inode);
+}
+
+int inode_index_array_pre_add(FDIRStorageInodeIndexArray *array,
+        const int64_t inode)
+{
+    FDIRStorageInodeIndexInfo *dest;
+
+    if (array->alloc <= array->counts.total) {
+        logError("file: "__FILE__", line: %d, "
+                "too many inodes exceeds allocated: %d",
+                __LINE__, array->alloc);
+        return EOVERFLOW;
+    }
+
+    dest = array->inodes + array->counts.total++;
+    memset(dest, 0, sizeof(*dest));
+    dest->inode = inode;
+    dest->status = FDIR_STORAGE_INODE_STATUS_DELETED;
+    return 0;
+}
+
+int inode_index_array_real_add(FDIRStorageInodeIndexArray *array,
+        const DAPieceFieldInfo *field)
+{
+    FDIRStorageInodeIndexInfo target;
+    FDIRStorageInodeIndexInfo *found;
+
+    target.inode = field->oid;
+    found = (FDIRStorageInodeIndexInfo *)bsearch(&target, array->inodes,
+            array->counts.total, sizeof(FDIRStorageInodeIndexInfo),
+            (int (*)(const void *, const void *))inode_index_array_compare);
+    if (found == NULL) {
+        return ENOENT;
+    } if (found->status == FDIR_STORAGE_INODE_STATUS_NORMAL) {
+        return EEXIST;
+    }
+
+    found->fields[field->fid] = field->storage;
+    found->status = FDIR_STORAGE_INODE_STATUS_NORMAL;
+    return 0;
+}
+
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
         const DAPieceFieldInfo *field)
 {
@@ -47,12 +93,6 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
     dest->fields[field->fid] = field->storage;
     dest->status = FDIR_STORAGE_INODE_STATUS_NORMAL;
     return 0;
-}
-
-static int inode_index_array_compare(const FDIRStorageInodeIndexInfo *node1,
-        const FDIRStorageInodeIndexInfo *node2)
-{
-    return fc_compare_int64(node1->inode, node2->inode);
 }
 
 static inline FDIRStorageInodeIndexInfo *inode_index_array_get(

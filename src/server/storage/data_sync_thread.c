@@ -172,7 +172,9 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
             entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
     {
         record->inode.field.op_type = da_binlog_op_type_create;
-        if ((result=inode_segment_index_add(&record->inode.field, &r)) != 0) {
+        if ((result=inode_segment_index_real_add(&record->
+                        inode.field, &r)) != 0)
+        {
             return result;
         }
         DA_PIECE_FIELD_SET_EMPTY(&r.old);
