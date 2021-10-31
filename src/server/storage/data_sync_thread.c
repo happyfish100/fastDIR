@@ -270,7 +270,8 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
     int count;
     int result;
 
-    logInfo("data_sync_thread deal start, head: %p", head);
+    logInfo("data_sync_thread deal start, thread index: %d, head: %p",
+            thread->thread_index, head);
 
     entry = head;
     count = 0;
@@ -291,6 +292,10 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
             result = set_dentry_field(thread, entry, record);
         }
 
+        logInfo("file: "__FILE__", line: %d, "
+                "thread index: %d, dentry inode: %"PRId64", op_type: %c, "
+                "field_index: %d, result: %d", __LINE__, thread->thread_index,
+                entry->inode, entry->op_type, entry->field_index, result);
         if (result != 0) {
             return result;
         }

@@ -72,6 +72,23 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx,
         return result;
     }
 
+    storage_config_filename = iniGetStrValue(ini_ctx->section_name,
+            "storage_config_filename", ini_ctx->context);
+    if (storage_config_filename == NULL || *storage_config_filename == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, section: %s, item "
+                "\"storage_config_filename\" not exist or empty",
+                __LINE__, ini_ctx->filename, ini_ctx->section_name);
+        return ENOENT;
+    }
+    resolve_path(ini_ctx->filename, storage_config_filename,
+            full_storage_filename, sizeof(full_storage_filename));
+    if ((result=da_load_config(my_server_id, file_block_size,
+            data_cfg, full_storage_filename)) != 0)
+    {
+        return result;
+    }
+
     if ((result=init_write_fd_cache()) != 0) {
         return result;
     }
@@ -107,23 +124,6 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx,
     }
 
     if ((result=inode_segment_index_init()) != 0) {
-        return result;
-    }
-
-    storage_config_filename = iniGetStrValue(ini_ctx->section_name,
-            "storage_config_filename", ini_ctx->context);
-    if (storage_config_filename == NULL || *storage_config_filename == '\0') {
-        logError("file: "__FILE__", line: %d, "
-                "config file: %s, section: %s, item "
-                "\"storage_config_filename\" not exist or empty",
-                __LINE__, ini_ctx->filename, ini_ctx->section_name);
-        return ENOENT;
-    }
-    resolve_path(ini_ctx->filename, storage_config_filename,
-            full_storage_filename, sizeof(full_storage_filename));
-    if ((result=da_load_config(my_server_id, file_block_size,
-            data_cfg, full_storage_filename)) != 0)
-    {
         return result;
     }
 
