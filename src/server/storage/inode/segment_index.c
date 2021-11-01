@@ -433,10 +433,9 @@ static int binlog_index_dump(void *args)
 
 int inode_segment_index_init()
 {
+    const int64_t memory_limit = 0;  //TODO
     int result;
     uint64_t last_bid;
-    ScheduleArray scheduleArray;
-    ScheduleEntry scheduleEntries[1];
 
     if ((result=init_pthread_rwlock(&segment_index_ctx.rwlock)) != 0) {
         return result;
@@ -451,6 +450,10 @@ int inode_segment_index_init()
     }
 
     if ((result=locked_list_init(&segment_index_ctx.fifo)) != 0) {
+        return result;
+    }
+
+    if ((result=inode_array_allocator_init(memory_limit)) != 0) {
         return result;
     }
 
@@ -477,6 +480,14 @@ int inode_segment_index_init()
     if ((result=set_current_binlog()) != 0) {
         return result;
     }
+
+    return 0;
+}
+
+int inode_segment_index_start()
+{
+    ScheduleArray scheduleArray;
+    ScheduleEntry scheduleEntries[1];
 
     INIT_SCHEDULE_ENTRY_EX(scheduleEntries[0], sched_generate_next_id(),
             INDEX_DUMP_BASE_TIME, INDEX_DUMP_INTERVAL,
@@ -506,7 +517,8 @@ static int segment_index_compare_inode(const FDIRInodeSegmentIndexInfo
     }
 }
 
-static FDIRInodeSegmentIndexInfo *find_segment_by_inode(const uint64_t inode)
+static FDIRInodeSegmentIndexInfo *find_segment_by_inode_ex(
+        const uint64_t inode, bool *is_last_segment)
 {
     struct {
         FDIRInodeSegmentIndexInfo holder;
@@ -524,9 +536,15 @@ static FDIRInodeSegmentIndexInfo *find_segment_by_inode(const uint64_t inode)
             sizeof(FDIRInodeSegmentIndexInfo *),
             (int (*)(const void *, const void *))
             segment_index_compare_inode);
+    if (is_last_segment != NULL) {
+        *is_last_segment = (found == NULL ? false : (*found ==
+                    segment_index_ctx.current_binlog.segment));
+    }
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
     return (found != NULL ? *found : NULL);
 }
+#define find_segment_by_inode(inode) \
+    find_segment_by_inode_ex(inode, NULL)
 
 static int check_load(FDIRInodeSegmentIndexInfo *segment)
 {
@@ -561,7 +579,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment)
     return result;
 }
 
-int inode_segment_index_pre_add(const int64_t inode)
+int inode_segment_index_pre_add(const uint64_t inode)
 {
     int result;
     FDIRInodeSegmentIndexInfo *segment;
@@ -593,6 +611,10 @@ int inode_segment_index_pre_add(const int64_t inode)
                 lock = &segment->lcp.lock;
                 PTHREAD_MUTEX_LOCK(lock);
             } else {
+                if (segment->inodes.last > inode) {
+                    logError("segment->inodes.last:%"PRId64" > inode: %"PRId64,
+                            segment->inodes.last, inode);
+                }
                 segment->inodes.last = inode;
             }
 
@@ -610,6 +632,12 @@ int inode_segment_index_pre_add(const int64_t inode)
     }
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
 
+    /*
+    logInfo("===pre add, count: %d, segment: %p, array: %p, alloc: %d, count: %d, [%"PRId64", %"PRId64"], inode: %"PRId64,
+            segment_index_ctx.si_array.count, segment, segment->inodes.array.inodes, segment->inodes.array.alloc,
+            segment->inodes.array.counts.total, segment->inodes.first, segment->inodes.last, inode);
+            */
+
     return result;
 }
 
@@ -619,8 +647,16 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
     int result;
 
     if ((r->segment=find_segment_by_inode(field->oid)) == NULL) {
+        logError("===== find_segment_by_inode: %"PRId64" fail =====",
+                field->oid);
         return ENOENT;
     }
+
+    /*
+    logInfo("@@@real add, count: %d,  segment: %p, array: %p, count: %d, [%"PRId64", %"PRId64"], inode: %"PRId64,
+            segment_index_ctx.si_array.count, r->segment, r->segment->inodes.array.inodes, r->segment->inodes.array.counts.total,
+            r->segment->inodes.first, r->segment->inodes.last, field->oid);
+            */
 
     PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
     do {
@@ -631,6 +667,8 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
         if ((result=inode_index_array_real_add(&r->segment->
                         inodes.array, field)) != 0)
         {
+            logError("===== inode_index_array_real_add: %"PRId64" fail =====",
+                    field->oid);
             break;
         }
 
@@ -645,8 +683,11 @@ int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
         FDIRInodeUpdateResult *r)
 {
     int result;
+    bool is_last_segment;
 
-    if ((r->segment=find_segment_by_inode(inode->inode)) == NULL) {
+    if ((r->segment=find_segment_by_inode_ex(inode->inode,
+                    &is_last_segment)) == NULL)
+    {
         return ENOENT;
     }
 
@@ -662,8 +703,8 @@ int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
             break;
         }
 
-        if (2 * r->segment->inodes.array.counts.deleted >=
-                r->segment->inodes.array.counts.total)
+        if (!is_last_segment && 2 * r->segment->inodes.array.counts.
+                deleted >= r->segment->inodes.array.counts.total)
         {
             if ((result=inode_binlog_writer_shrink(r->segment)) != 0) {
                 break;

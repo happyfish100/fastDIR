@@ -150,6 +150,10 @@ int fdir_storage_engine_start()
         return result;
     }
 
+    if ((result=inode_segment_index_start()) != 0) {
+        return result;
+    }
+
     return 0;
 }
 

@@ -36,7 +36,7 @@ static int inode_index_array_compare(const FDIRStorageInodeIndexInfo *node1,
 }
 
 int inode_index_array_pre_add(FDIRStorageInodeIndexArray *array,
-        const int64_t inode)
+        const uint64_t inode)
 {
     FDIRStorageInodeIndexInfo *dest;
 

@@ -294,17 +294,20 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
             result = set_dentry_field(thread, entry, record);
         }
 
-        logInfo("file: "__FILE__", line: %d, "
-                "thread index: %d, dentry inode: %"PRId64", op_type: %c, "
-                "field_index: %d, result: %d", __LINE__, thread->thread_index,
-                entry->inode, entry->op_type, entry->field_index, result);
         if (result != 0) {
             return result;
         }
 
         if (record->version > 0) {
-            FC_SET_CHAIN_TAIL_NEXT(record->space_chain,
-                    DATrunkSpaceLogRecord, NULL);
+            if (record->space_chain.tail != NULL) {
+                FC_SET_CHAIN_TAIL_NEXT(record->space_chain,
+                        DATrunkSpaceLogRecord, NULL);
+            } else {
+                logError("file: "__FILE__", line: %d, "
+                        "thread index: %d, dentry inode: %"PRId64", op_type: %c, "
+                        "field_index: %d, buffer: %p", __LINE__, thread->thread_index,
+                        entry->inode, entry->op_type, entry->field_index, entry->buffer);
+            }
             push_to_binlog_write_chain(record);
         } else {
             fast_mblock_free_object(&UPDATE_RECORD_ALLOCATOR, record);

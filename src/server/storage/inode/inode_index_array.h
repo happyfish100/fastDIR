@@ -48,7 +48,7 @@ static inline void inode_index_array_free(FDIRStorageInodeIndexArray *array)
 }
 
 int inode_index_array_pre_add(FDIRStorageInodeIndexArray *array,
-        const int64_t inode);
+        const uint64_t inode);
 
 int inode_index_array_real_add(FDIRStorageInodeIndexArray *array,
         const DAPieceFieldInfo *field);

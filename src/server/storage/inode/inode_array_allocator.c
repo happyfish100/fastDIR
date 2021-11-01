@@ -34,7 +34,7 @@ int inode_array_allocator_init(const int64_t memory_limit)
     int step;
 
     start = 0;
-    alloc_elements_once = FDIR_STORAGE_BATCH_INODE_BITS;
+    alloc_elements_once = 2 * FDIR_STORAGE_BATCH_INODE_BITS;
     for (bit=STORAGE_BATCH_INODE_START_BIT, region=regions;
             bit<=FDIR_STORAGE_BATCH_INODE_BITS;
             bit++, region++)
@@ -46,6 +46,7 @@ int inode_array_allocator_init(const int64_t memory_limit)
         if ((bit + 1) % 2 == 0 && alloc_elements_once >= 2) {
             alloc_elements_once /= 2;
         }
+
         start = end;
     }
 
