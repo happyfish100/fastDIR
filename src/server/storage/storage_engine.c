@@ -154,6 +154,10 @@ int fdir_storage_engine_start()
         return result;
     }
 
+    if ((result=binlog_write_thread_start()) != 0) {
+        return result;
+    }
+
     return 0;
 }
 

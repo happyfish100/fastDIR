@@ -277,7 +277,6 @@ static int init_file_buffer_pair(FDIRBinlogWriteFileBufferPair *pair,
 int binlog_write_thread_init()
 {
     int result;
-    pthread_t tid;
 
     if ((result=init_file_buffer_pair(&BINLOG_WRITE_THREAD_CTX.
                     field_redo, STORAGE_PATH_STR, FIELD_REDO_FILENAME,
@@ -297,6 +296,31 @@ int binlog_write_thread_init()
                     (&((FDIRInodeUpdateRecord *)NULL)->next))) != 0)
     {
         return result;
+    }
+
+    return 0;
+}
+
+int binlog_write_thread_start()
+{
+    int result;
+    char space_log_filename[PATH_MAX];
+    pthread_t tid;
+
+    snprintf(space_log_filename, sizeof(space_log_filename),
+            "%s/%s", STORAGE_PATH_STR, SPACE_REDO_FILENAME);
+    if (access(space_log_filename, F_OK) == 0) {
+        if ((result=da_trunk_space_log_redo(space_log_filename)) != 0) {
+            return result;
+        }
+    } else {
+        result = errno != 0 ? errno : EPERM;
+        if (result != ENOENT) {
+            logError("file: "__FILE__", line: %d, "
+                    "access file: %s fail, errno: %d, error info: %s",
+                    __LINE__, space_log_filename, result, STRERROR(result));
+            return result;
+        }
     }
 
     return fc_create_thread(&tid, binlog_write_thread_func,

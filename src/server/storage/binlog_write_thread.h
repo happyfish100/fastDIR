@@ -26,6 +26,8 @@ extern "C" {
     int binlog_write_thread_init();
     void binlog_write_thread_destroy();
 
+    int binlog_write_thread_start();
+
     int binlog_write_thread_push(const DAPieceFieldInfo *field,
             struct fc_queue_info *space_chain, SFSynchronizeContext *sctx);
 
