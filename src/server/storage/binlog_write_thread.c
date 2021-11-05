@@ -17,6 +17,7 @@
 #include "fastcommon/logger.h"
 #include "sf/sf_func.h"
 #include "diskallocator/binlog/trunk/trunk_space_log.h"
+#include "inode/binlog_reader.h"
 #include "inode/binlog_writer.h"
 #include "inode/segment_index.h"
 #include "binlog_write_thread.h"
@@ -25,6 +26,16 @@
 #define FIELD_REDO_FILENAME  "field.redo"
 #define SPACE_TMP_FILENAME  ".space.tmp"
 #define SPACE_REDO_FILENAME  "space.redo"
+
+typedef struct piece_field_with_version {
+    DAPieceFieldInfo *field;
+    int version;
+} PieceFieldWithVersion;
+
+typedef struct piece_field_with_version_array {
+    PieceFieldWithVersion *records;
+    int count;
+} PieceFieldWithVersionArray;
 
 static inline int buffer_to_file(FDIRBinlogWriteFileBufferPair *pair)
 {
@@ -47,7 +58,7 @@ static inline int buffer_to_file(FDIRBinlogWriteFileBufferPair *pair)
     }
 }
 
-static int write_field_log(FDIRInodeUpdateRecord *record)
+static int write_field_redo_log(FDIRInodeUpdateRecord *record)
 {
     int result;
 
@@ -72,7 +83,7 @@ static int write_field_log(FDIRInodeUpdateRecord *record)
     return 0;
 }
 
-static int write_space_log(struct fc_queue_info *space_chain)
+static int write_space_redo_log(struct fc_queue_info *space_chain)
 {
     int result;
     DATrunkSpaceLogRecord *space_log;
@@ -100,15 +111,15 @@ static int write_space_log(struct fc_queue_info *space_chain)
     return 0;
 }
 
-static inline int write_update_record(FDIRInodeUpdateRecord *record)
+static inline int write_record_redo_log(FDIRInodeUpdateRecord *record)
 {
     int result;
 
-    if ((result=write_field_log(record)) != 0) {
+    if ((result=write_field_redo_log(record)) != 0) {
         return result;
     }
 
-    return write_space_log(&record->space_chain);
+    return write_space_redo_log(&record->space_chain);
 }
 
 static inline int open_redo_logs()
@@ -156,7 +167,7 @@ static int write_redo_logs(struct fc_queue_info *qinfo)
 
     record = (FDIRInodeUpdateRecord *)qinfo->head;
     do {
-        if ((result=write_update_record(record)) != 0) {
+        if ((result=write_record_redo_log(record)) != 0) {
             return result;
         }
     } while ((record=record->next) != NULL);
@@ -301,26 +312,182 @@ int binlog_write_thread_init()
     return 0;
 }
 
-int binlog_write_thread_start()
+static void field_log_to_ptr_array(const DAPieceFieldArray *array,
+        PieceFieldWithVersionArray *parray)
+{
+    FDIRStorageInodeIndexInfo index;
+    bool found;
+    bool keep;
+    DAPieceFieldInfo *field;
+    DAPieceFieldInfo *end;
+    PieceFieldWithVersion *dest;
+
+    dest = parray->records;
+    end = array->records + array->count;
+    for (field=array->records; field<end; field++) {
+        index.inode = field->oid;
+        found = inode_segment_index_get(&index) == 0;
+        switch (field->op_type) {
+            case da_binlog_op_type_create:
+                keep = !found;
+                break;
+            case da_binlog_op_type_remove:
+                keep = found;
+                break;
+            case da_binlog_op_type_update:
+                if (found) {
+                    if (field->source == DA_FIELD_UPDATE_SOURCE_NORMAL) {
+                        keep = (field->storage.version > index.
+                                fields[field->fid].version);
+                    } else {
+                        keep = ((field->storage.version == index.
+                                    fields[field->fid].version) &&
+                                (field->storage.trunk_id != index.
+                                 fields[field->fid].trunk_id));
+                    }
+                } else {
+                    keep = false;
+                }
+                break;
+            default:
+                keep = false;
+                break;
+        }
+
+        if (keep) {
+            dest->field = field;
+            dest->version = dest - parray->records;
+            dest++;
+        }
+    }
+
+    parray->count = dest - parray->records;
+}
+
+static int field_with_version_compare(const PieceFieldWithVersion *record1,
+        const PieceFieldWithVersion *record2)
+{
+    int sub;
+
+    if ((sub=fc_compare_int64(record1->field->oid,
+                    record2->field->oid)) != 0)
+    {
+        return sub;
+    }
+
+    return record1->version - record2->version;
+}
+
+static int redo_by_ptr_array(const PieceFieldWithVersionArray *parray)
+{
+    int result;
+    bool normal_update;
+    PieceFieldWithVersion *record;
+    PieceFieldWithVersion *end;
+    FDIRStorageInodeIndexInfo index;
+    FDIRInodeUpdateResult r;
+    char buff[FDIR_INODE_BINLOG_RECORD_MAX_SIZE];
+    BufferInfo buffer;
+
+    if (parray->count == 0) {
+        return 0;
+    } else if (parray->count > 1) {
+        qsort(parray->records, parray->count,
+                sizeof(PieceFieldWithVersion),
+                (int (*)(const void *, const void *))
+                field_with_version_compare);
+    }
+
+    buffer.buff = buff;
+    buffer.alloc_size = sizeof(buff);
+    end = parray->records + parray->count;
+    for (record=parray->records; record<end; record++) {
+        switch (record->field->op_type) {
+            case da_binlog_op_type_create:
+                result = inode_segment_index_add(record->field, &r);
+                break;
+            case da_binlog_op_type_remove:
+                index.inode = record->field->oid;
+                result = inode_segment_index_delete(&index, &r);
+                break;
+            case da_binlog_op_type_update:
+                normal_update = (record->field->source ==
+                        DA_FIELD_UPDATE_SOURCE_NORMAL);
+                result = inode_segment_index_update(record->field,
+                        normal_update, &r);
+                break;
+            default:
+                result = EINVAL;
+                break;
+        }
+
+        if (result != 0) {
+            break;
+        }
+
+        inode_binlog_pack(record->field, &buffer);
+        inode_binlog_writer_log(r.segment, &buffer);
+    }
+
+    return result;
+}
+
+static int inode_field_log_redo(const char *field_log_filename)
+{
+    int result;
+    DAPieceFieldArray array;
+    PieceFieldWithVersionArray parray;
+
+    if ((result=inode_binlog_reader_load(field_log_filename, &array)) != 0) {
+        return result;
+    }
+
+    if (array.count == 0) {
+        return 0;
+    }
+
+    parray.records = (PieceFieldWithVersion *)fc_malloc(
+            sizeof(PieceFieldWithVersion) * array.count);
+    if (parray.records == NULL) {
+        result = ENOMEM;
+    } else {
+        field_log_to_ptr_array(&array, &parray);
+        result = redo_by_ptr_array(&parray);
+        free(parray.records);
+    }
+
+    free(array.records);
+    return result;
+}
+
+static int binlog_write_thread_redo()
 {
     int result;
     char space_log_filename[PATH_MAX];
-    pthread_t tid;
+    char field_log_filename[PATH_MAX];
 
     snprintf(space_log_filename, sizeof(space_log_filename),
             "%s/%s", STORAGE_PATH_STR, SPACE_REDO_FILENAME);
-    if (access(space_log_filename, F_OK) == 0) {
-        if ((result=da_trunk_space_log_redo(space_log_filename)) != 0) {
-            return result;
-        }
-    } else {
-        result = errno != 0 ? errno : EPERM;
-        if (result != ENOENT) {
-            logError("file: "__FILE__", line: %d, "
-                    "access file: %s fail, errno: %d, error info: %s",
-                    __LINE__, space_log_filename, result, STRERROR(result));
-            return result;
-        }
+    if ((result=da_trunk_space_log_redo(space_log_filename)) != 0) {
+        return result;
+    }
+
+    snprintf(field_log_filename, sizeof(field_log_filename),
+            "%s/%s", STORAGE_PATH_STR, FIELD_REDO_FILENAME);
+    if ((result=inode_field_log_redo(field_log_filename)) != 0) {
+        return result;
+    }
+
+    return 0;
+}
+
+int binlog_write_thread_start()
+{
+    int result;
+    pthread_t tid;
+
+    if ((result=binlog_write_thread_redo()) != 0) {
+        return result;
     }
 
     return fc_create_thread(&tid, binlog_write_thread_func,

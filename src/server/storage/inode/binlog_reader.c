@@ -24,16 +24,18 @@
 #include "binlog_reader.h"
 
 #define BINLOG_MIN_FIELD_COUNT         4
-#define BINLOG_MAX_FIELD_COUNT         8
+#define BINLOG_MAX_FIELD_COUNT        10
 
 #define BINLOG_FIELD_INDEX_TIMESTAMP   0
 #define BINLOG_FIELD_INDEX_VERSION     1
 #define BINLOG_FIELD_INDEX_INODE       2
 #define BINLOG_FIELD_INDEX_OP_TYPE     3
-#define BINLOG_FIELD_INDEX_FINDEX      4
-#define BINLOG_FIELD_INDEX_TRUNK_ID    5
-#define BINLOG_FIELD_INDEX_OFFSET      6
-#define BINLOG_FIELD_INDEX_SIZE        7
+#define BINLOG_FIELD_INDEX_SOURCE      4
+#define BINLOG_FIELD_INDEX_FINDEX      5
+#define BINLOG_FIELD_INDEX_TRUNK_ID    6
+#define BINLOG_FIELD_INDEX_LENGTH      7
+#define BINLOG_FIELD_INDEX_OFFSET      8
+#define BINLOG_FIELD_INDEX_SIZE        9
 
 int inode_binlog_parse_record(const string_t *line,
         DAPieceFieldInfo *field, char *error_info)
@@ -64,10 +66,21 @@ int inode_binlog_parse_record(const string_t *line,
             return EINVAL;
         }
 
+        field->source = cols[BINLOG_FIELD_INDEX_SOURCE].str[0];
+        if (!(field->source == DA_FIELD_UPDATE_SOURCE_NORMAL ||
+                    field->source == DA_FIELD_UPDATE_SOURCE_RECLAIM))
+        {
+            sprintf(error_info, "unkown source: %d (0x%02x)",
+                    field->source, field->source);
+            return EINVAL;
+        }
+
         SF_BINLOG_PARSE_INT_SILENCE(field->fid, "field index",
                 BINLOG_FIELD_INDEX_FINDEX, ' ', 0);
         SF_BINLOG_PARSE_INT_SILENCE(field->storage.trunk_id,
                 "trunk id", BINLOG_FIELD_INDEX_TRUNK_ID, ' ', 0);
+        SF_BINLOG_PARSE_INT_SILENCE(field->storage.length, "length",
+                BINLOG_FIELD_INDEX_LENGTH, ' ', 0);
         SF_BINLOG_PARSE_INT_SILENCE(field->storage.offset, "offset",
                 BINLOG_FIELD_INDEX_OFFSET, ' ', 0);
         SF_BINLOG_PARSE_INT_SILENCE(field->storage.size, "size",
@@ -92,6 +105,7 @@ int inode_binlog_reader_unpack_record(const string_t *line,
 {
     const bool normal_update = true;
     int result;
+    const char *caption = NULL;
     FDIRInodeSegmentIndexInfo *segment;
     FDIRStorageInodeIndexInfo inode;
     DAPieceFieldInfo field;
@@ -109,13 +123,13 @@ int inode_binlog_reader_unpack_record(const string_t *line,
         if ((result=inode_index_array_add(&segment->
                         inodes.array, &field)) != 0)
         {
-            *error_info = '\0';
+            caption = "add";
         }
     } else if (field.op_type == da_binlog_op_type_update) {
         if ((result=inode_index_array_update(&segment->inodes.array,
                         &field, normal_update, &old, &modified)) != 0)
         {
-            *error_info = '\0';
+            caption = "update";
         }
     } else {
         inode.inode = field.oid;
@@ -125,15 +139,19 @@ int inode_binlog_reader_unpack_record(const string_t *line,
             if (result == ENOENT) {
                 result = 0;
             } else {
-                *error_info = '\0';
+                caption = "delete";
             }
         }
     }
 
+    if (result != 0) {
+        sprintf(error_info, "%s inode fail, errno: %d, error info: %s",
+                caption, result, STRERROR(result));
+    }
     return result;
 }
 
-int inode_binlog_reader_load(FDIRInodeSegmentIndexInfo *segment)
+int inode_binlog_reader_load_segment(FDIRInodeSegmentIndexInfo *segment)
 {
     int result;
     DABinlogIdTypePair id_type_pair;
@@ -350,4 +368,89 @@ int inode_binlog_reader_get_last_inode(const uint64_t binlog_id,
     }
 
     return detect_last_created_inode(binlog_id, filename, file_size, inode);
+}
+
+static int load(const char *filename, const string_t *context,
+        DAPieceFieldArray *array)
+{
+    int result;
+    int line_count;
+    string_t line;
+    char *line_start;
+    char *buff_end;
+    char *line_end;
+    DAPieceFieldInfo *field;
+    char error_info[256];
+
+    line_count = 0;
+    result = 0;
+    *error_info = '\0';
+    field = array->records;
+    line_start = context->str;
+    buff_end = context->str + context->len;
+    while (line_start < buff_end) {
+        line_end = (char *)memchr(line_start, '\n', buff_end - line_start);
+        if (line_end == NULL) {
+            break;
+        }
+
+        ++line_count;
+        ++line_end;
+        line.str = line_start;
+        line.len = line_end - line_start;
+        if ((result=inode_binlog_parse_record(&line,
+                        field, error_info)) != 0)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "parse record fail, filename: %s, line no: %d%s%s",
+                    __LINE__, filename, line_count, (*error_info != '\0' ?
+                        ", error info: " : ""), error_info);
+            break;
+        }
+
+        line_start = line_end;
+        field++;
+    }
+
+    array->count = field - array->records;
+    return result;
+}
+
+int inode_binlog_reader_load(const char *filename, DAPieceFieldArray *array)
+{
+    int result;
+    int row_count;
+    int64_t file_size;
+    string_t context;
+
+    if (access(filename, F_OK) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        if (result == ENOENT) {
+            array->records = NULL;
+            array->count = 0;
+            return 0;
+        } else {
+            logError("file: "__FILE__", line: %d, "
+                    "access file %s fail, errno: %d, error info: %s",
+                    __LINE__, filename, result,STRERROR(result));
+            return result;
+        }
+    }
+
+    if ((result=getFileContent(filename, &context.str, &file_size)) != 0) {
+        return result;
+    }
+    context.len = file_size;
+
+    row_count = getOccurCount(context.str, '\n');
+    array->records = (DAPieceFieldInfo *)fc_malloc(
+            sizeof(DAPieceFieldInfo) * row_count);
+    if (array->records == NULL) {
+        result = ENOMEM;
+    } else {
+        result = load(filename, &context, array);
+    }
+
+    free(context.str);
+    return result;
 }

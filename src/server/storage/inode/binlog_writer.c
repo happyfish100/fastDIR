@@ -30,11 +30,12 @@ int inode_binlog_pack_record(const DAPieceFieldInfo *field,
     if (field->op_type == da_binlog_op_type_create ||
             field->op_type == da_binlog_op_type_update)
     {
-        return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c %d "
-                "%u %u %u\n", (uint32_t)g_current_time,
+        return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c %c "
+                "%d %u %u %u %u\n", (uint32_t)g_current_time,
                 field->storage.version, field->oid, field->op_type,
-                field->fid, field->storage.trunk_id,
-                field->storage.offset, field->storage.size);
+                field->source, field->fid, field->storage.trunk_id,
+                field->storage.length, field->storage.offset,
+                field->storage.size);
     } else {
         return snprintf(buff, size, "%u %"PRId64" %"PRId64" %c\n",
                 (uint32_t)g_current_time, field->storage.version,

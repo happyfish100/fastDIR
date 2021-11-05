@@ -49,7 +49,7 @@ int db_updater_init()
     int64_t start_version;
 
     if ((result=fc_safe_write_file_init(&db_updater_ctx.redo,
-                    DATA_PATH_STR, REDO_LOG_FILENAME,
+                    STORAGE_PATH_STR, REDO_LOG_FILENAME,
                     REDO_TMP_FILENAME)) != 0)
     {
         return result;

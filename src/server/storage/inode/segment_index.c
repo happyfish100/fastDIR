@@ -363,8 +363,8 @@ static int convert_to_index_array(SFBinlogIndexContext *bctx)
     FDIRInodeBinlogIndexInfo *binlog;
 
     result = 0;
+    bctx->index_array.count = 0;
     si_array = &segment_index_ctx.si_array;
-
     PTHREAD_RWLOCK_RDLOCK(&segment_index_ctx.rwlock);
     end = si_array->segments + si_array->count;
     for (segment=si_array->segments,
@@ -381,7 +381,8 @@ static int convert_to_index_array(SFBinlogIndexContext *bctx)
             if ((result=binlog_index_expand()) != 0) {
                 break;
             }
-            binlog = bctx->index_array.indexes + bctx->index_array.count;
+            binlog = (FDIRInodeBinlogIndexInfo *)bctx->index_array.
+                indexes + bctx->index_array.count;
         }
 
         binlog->binlog_id = (*segment)->binlog_id;
@@ -557,7 +558,7 @@ static int check_load(FDIRInodeSegmentIndexInfo *segment)
         switch (segment->inodes.status) {
             case FDIR_STORAGE_SEGMENT_STATUS_CLEAN:
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_LOADING;
-                if ((result=inode_binlog_reader_load(segment)) != 0) {
+                if ((result=inode_binlog_reader_load_segment(segment)) != 0) {
                     break;
                 }
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
@@ -632,12 +633,6 @@ int inode_segment_index_pre_add(const uint64_t inode)
     }
     PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
 
-    /*
-    logInfo("===pre add, count: %d, segment: %p, array: %p, alloc: %d, count: %d, [%"PRId64", %"PRId64"], inode: %"PRId64,
-            segment_index_ctx.si_array.count, segment, segment->inodes.array.inodes, segment->inodes.array.alloc,
-            segment->inodes.array.counts.total, segment->inodes.first, segment->inodes.last, inode);
-            */
-
     return result;
 }
 
@@ -651,12 +646,6 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
                 field->oid);
         return ENOENT;
     }
-
-    /*
-    logInfo("@@@real add, count: %d,  segment: %p, array: %p, count: %d, [%"PRId64", %"PRId64"], inode: %"PRId64,
-            segment_index_ctx.si_array.count, r->segment, r->segment->inodes.array.inodes, r->segment->inodes.array.counts.total,
-            r->segment->inodes.first, r->segment->inodes.last, field->oid);
-            */
 
     PTHREAD_MUTEX_LOCK(&r->segment->lcp.lock);
     do {
@@ -676,6 +665,58 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
                 current_version, 1);
     } while (0);
     PTHREAD_MUTEX_UNLOCK(&r->segment->lcp.lock);
+    return result;
+}
+
+int inode_segment_index_add(const DAPieceFieldInfo *field,
+        FDIRInodeUpdateResult *r)
+{
+    int result;
+    pthread_mutex_t *lock;
+
+    PTHREAD_RWLOCK_WRLOCK(&segment_index_ctx.rwlock);
+    r->segment = segment_index_ctx.current_binlog.segment;
+    if (r->segment == NULL) {
+        result = segment_array_inc(field->oid);
+        r->segment = segment_index_ctx.current_binlog.segment;
+    } else {
+        result = 0;
+    }
+
+    if (result == 0) {
+        lock = &r->segment->lcp.lock;
+        PTHREAD_MUTEX_LOCK(lock);
+        do {
+            if ((result=check_load(r->segment)) != 0) {
+                break;
+            }
+
+            if (r->segment->inodes.array.counts.total >=
+                    FDIR_STORAGE_BATCH_INODE_COUNT)
+            {
+                PTHREAD_MUTEX_UNLOCK(lock);
+                result = segment_array_inc(field->oid);
+                r->segment = segment_index_ctx.current_binlog.segment;
+                lock = &r->segment->lcp.lock;
+                PTHREAD_MUTEX_LOCK(lock);
+            } else {
+                r->segment->inodes.last = field->oid;
+            }
+
+            if (result != 0) {
+                break;
+            }
+
+            if ((result=inode_index_array_add(&r->segment->
+                            inodes.array, field)) != 0)
+            {
+                break;
+            }
+        } while (0);
+        PTHREAD_MUTEX_UNLOCK(lock);
+    }
+    PTHREAD_RWLOCK_UNLOCK(&segment_index_ctx.rwlock);
+
     return result;
 }
 
