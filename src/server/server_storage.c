@@ -24,10 +24,6 @@ int server_storage_init()
         return result;
     }
 
-    if ((result=event_dealer_init()) != 0) {
-        return result;
-    }
-
     if ((result=change_notify_init()) != 0) {
         return result;
     }
@@ -36,7 +32,7 @@ int server_storage_init()
         return result;
     }
 
-    if ((result=db_updater_init()) != 0) {
+    if ((result=event_dealer_init()) != 0) {
         return result;
     }
 

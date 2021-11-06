@@ -66,6 +66,7 @@ static inline int log4create(const FDIRStorageInodeIndexInfo *index,
             field.op_type = (++count == 1) ?
                 da_binlog_op_type_create :
                 da_binlog_op_type_update;
+            field.source = DA_FIELD_UPDATE_SOURCE_NORMAL;
             field.fid = i;
             field.storage = index->fields[i];
             cache->current += inode_binlog_pack_record(&field,

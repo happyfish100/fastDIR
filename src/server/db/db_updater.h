@@ -32,7 +32,7 @@ typedef struct fdir_db_updater_context {
 extern "C" {
 #endif
 
-    int db_updater_init();
+    int db_updater_init(FDIRDBUpdaterContext *ctx);
     void db_updater_destroy();
 
     int db_updater_realloc_dentry_array(FDIRDBUpdateFieldArray *array);

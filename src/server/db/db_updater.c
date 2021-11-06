@@ -371,13 +371,10 @@ static int do_load(FDIRDBUpdaterContext *ctx)
     return result;
 }
 
-static int resume_from_redo_log()
+static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
 {
-    FDIRDBUpdaterContext ctx;
     int result;
 
-    ctx.array.entries = NULL;
-    ctx.array.count = ctx.array.alloc = 0;
     if ((db_updater_ctx.redo.fd=open(db_updater_ctx.
                     redo.filename, O_RDONLY)) < 0)
     {
@@ -392,18 +389,20 @@ static int resume_from_redo_log()
         return result;
     }
 
-    result = do_load(&ctx);
+    result = do_load(ctx);
     close(db_updater_ctx.redo.fd);
 
+    logInfo("last_versions {field: %"PRId64", dentry: %"PRId64"}",
+            ctx->last_versions.field, ctx->last_versions.dentry);
+
     if (result == 0) {
-        result = fdir_storage_engine_redo(&ctx.array);
+        result = fdir_storage_engine_redo(&ctx->array);
     }
 
-    free(ctx.array.entries);
     return result;
 }
 
-int db_updater_init()
+int db_updater_init(FDIRDBUpdaterContext *ctx)
 {
     int result;
 
@@ -414,7 +413,7 @@ int db_updater_init()
         return result;
     }
 
-    return resume_from_redo_log();
+    return resume_from_redo_log(ctx);
 }
 
 void db_updater_destroy()

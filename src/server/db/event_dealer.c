@@ -50,7 +50,12 @@ int event_dealer_init()
         return result;
     }
 
-    return 0;
+    return db_updater_init(&event_dealer_ctx.updater_ctx);
+}
+
+int64_t event_dealer_get_last_data_version()
+{
+    return event_dealer_ctx.updater_ctx.last_versions.dentry;
 }
 
 static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)

@@ -75,10 +75,38 @@ int inode_index_array_real_add(FDIRStorageInodeIndexArray *array,
     return 0;
 }
 
+static FDIRStorageInodeIndexInfo *find_insert_position(
+        FDIRStorageInodeIndexArray *array, const uint64_t inode)
+{
+    int low;
+    int high;
+    int mid;
+    int insert_pos;
+
+    insert_pos = 0;
+    low = 0;
+    high = array->counts.total - 1;
+    while (low <= high) {
+        mid = (low + high) / 2;
+        if (array->inodes[mid].inode < inode) {
+            low = mid + 1;
+            insert_pos = low;
+        } else if (array->inodes[mid].inode == inode) {
+            return NULL;
+        } else {
+            high = mid - 1;
+            insert_pos = mid;
+        }
+    }
+
+    return array->inodes + insert_pos;
+}
+
 int inode_index_array_add(FDIRStorageInodeIndexArray *array,
         const DAPieceFieldInfo *field)
 {
     FDIRStorageInodeIndexInfo *dest;
+    FDIRStorageInodeIndexInfo *end;
 
     if (array->alloc <= array->counts.total) {
         logError("file: "__FILE__", line: %d, "
@@ -87,11 +115,27 @@ int inode_index_array_add(FDIRStorageInodeIndexArray *array,
         return EOVERFLOW;
     }
 
-    dest = array->inodes + array->counts.total++;
+    end = array->inodes + array->counts.total;
+    if (array->counts.total == 0 || field->oid > array->
+            inodes[array->counts.total - 1].inode)
+    {
+        dest = end;
+    } else if ((dest=find_insert_position(array, field->oid)) == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "inode %"PRId64" alread exist",
+                __LINE__, field->oid);
+        return EEXIST;
+    }
+
+    if (dest < end) {
+        memmove(dest + 1, dest, sizeof(*dest) * (end - dest));
+    }
+
     memset(dest, 0, sizeof(*dest));
     dest->inode = field->oid;
     dest->fields[field->fid] = field->storage;
     dest->status = FDIR_STORAGE_INODE_STATUS_NORMAL;
+    array->counts.total++;
     return 0;
 }
 
@@ -191,6 +235,18 @@ int inode_index_array_update(FDIRStorageInodeIndexArray *array,
     FDIRStorageInodeIndexInfo *found;
 
     if ((found=inode_index_array_get(array, field->oid)) == NULL) {
+        /*
+        {
+            FDIRStorageInodeIndexInfo *node;
+            FDIRStorageInodeIndexInfo *end;
+
+            end = array->inodes + array->counts.total;
+            for (node=array->inodes; node<end; node++) {
+                logInfo("%"PRId64", status: %d", node->inode, node->status);
+            }
+        }
+        */
+
         *modified = false;
         return ENOENT;
     }

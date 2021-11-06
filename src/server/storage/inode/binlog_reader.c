@@ -145,8 +145,9 @@ int inode_binlog_reader_unpack_record(const string_t *line,
     }
 
     if (result != 0) {
-        sprintf(error_info, "%s inode fail, errno: %d, error info: %s",
-                caption, result, STRERROR(result));
+        sprintf(error_info, "%s inode %"PRId64" fail, "
+                "errno: %d, error info: %s", caption,
+                field.oid, result, STRERROR(result));
     }
     return result;
 }

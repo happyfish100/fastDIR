@@ -26,6 +26,8 @@ extern "C" {
 
     int event_dealer_init();
 
+    int64_t event_dealer_get_last_data_version();
+
     int event_dealer_do(FDIRChangeNotifyEvent *head, int *count);
 
 #ifdef __cplusplus
