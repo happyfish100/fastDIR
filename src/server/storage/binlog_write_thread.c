@@ -326,7 +326,7 @@ static void field_log_to_ptr_array(const DAPieceFieldArray *array,
     end = array->records + array->count;
     for (field=array->records; field<end; field++) {
         index.inode = field->oid;
-        found = inode_segment_index_get(&index) == 0;
+        found = (inode_segment_index_get(&index) == 0);
         switch (field->op_type) {
             case da_binlog_op_type_create:
                 keep = !found;

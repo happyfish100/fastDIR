@@ -28,12 +28,13 @@ extern "C" {
             const int my_server_id, const FDIRStorageEngineConfig *db_cfg,
             const DADataGlobalConfig *data_cfg);
 
-
     int fdir_storage_engine_start();
 
     void fdir_storage_engine_terminate();
 
-    int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array);
+    int fdir_storage_engine_store(const FDIRDBUpdateFieldArray *array);
+
+    int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array);
 
     int fdir_storage_engine_fetch(const int64_t inode,
             const int field_index, FastBuffer *buffer);

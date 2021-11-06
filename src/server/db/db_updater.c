@@ -41,29 +41,6 @@ typedef struct db_updater_ctx {
 
 static DBUpdaterCtx db_updater_ctx;
 
-static int resume_from_redo_log(const int64_t start_version);
-
-int db_updater_init()
-{
-    int result;
-    int64_t start_version;
-
-    if ((result=fc_safe_write_file_init(&db_updater_ctx.redo,
-                    STORAGE_PATH_STR, REDO_LOG_FILENAME,
-                    REDO_TMP_FILENAME)) != 0)
-    {
-        return result;
-    }
-
-    //TODO
-    start_version = 0;
-    return resume_from_redo_log(start_version);
-}
-
-void db_updater_destroy()
-{
-}
-
 static int compare_field_version(const FDIRDBUpdateFieldInfo *entry1,
         const FDIRDBUpdateFieldInfo *entry2)
 {
@@ -199,14 +176,14 @@ static int do_write(FDIRDBUpdaterContext *ctx)
 {
     int result;
     FDIRDBUpdateFieldInfo *entry;
-    FDIRDBUpdateFieldInfo *last;
+    FDIRDBUpdateFieldInfo *end;
 
     if ((result=write_header(ctx)) != 0) {
         return result;
     }
 
-    last = ctx->array.entries + ctx->array.count - 1;
-    for (entry = last; entry >= ctx->array.entries; entry--) {
+    end = ctx->array.entries + ctx->array.count;
+    for (entry=ctx->array.entries; entry<end; entry++) {
         if ((result=write_one_entry(ctx, entry)) != 0) {
             return result;
         }
@@ -312,8 +289,8 @@ static int unpack_header(SFSerializerIterator *it,
     return 0;
 }
 
-static int unpack_one_dentry(const int64_t start_version,
-        SFSerializerIterator *it, FDIRDBUpdaterContext *ctx)
+static int unpack_one_dentry(SFSerializerIterator *it,
+        FDIRDBUpdaterContext *ctx)
 {
     int result;
     char buff[1024];
@@ -325,12 +302,11 @@ static int unpack_one_dentry(const int64_t start_version,
     }
 
     if (ctx->array.count >= ctx->array.alloc) {
-        if ((result=db_updater_realloc_dentry_array(
-                        &ctx->array)) != 0)
-        {
+        if ((result=db_updater_realloc_dentry_array(&ctx->array)) != 0) {
             return result;
         }
     }
+
     entry = ctx->array.entries + ctx->array.count;
     entry->buffer = NULL;
     entry->args = NULL;
@@ -338,9 +314,6 @@ static int unpack_one_dentry(const int64_t start_version,
         switch (fv->fid) {
             case REDO_DENTRY_FIELD_ID_VERSION:
                 entry->version = fv->value.n;
-                if (entry->version < start_version) {
-                    return ENOENT;
-                }
                 break;
             case REDO_DENTRY_FIELD_ID_INODE:
                 entry->inode = fv->value.n;
@@ -375,38 +348,10 @@ static int unpack_one_dentry(const int64_t start_version,
     return 0;
 }
 
-static int unpack_dentries(const int64_t start_version,
-        SFSerializerIterator *it, FDIRDBUpdaterContext *ctx,
-        const int record_count)
+static int do_load(FDIRDBUpdaterContext *ctx)
 {
     int result;
     int i;
-
-    for (i=0; i<record_count; i++) {
-        if ((result=unpack_one_dentry(start_version,
-                        it, ctx)) != 0)
-        {
-            if (result == ENOENT) {
-                result = 0;
-                break;
-            }
-            return result;
-        }
-    }
-
-    if (ctx->array.count > 1) {
-        qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdateFieldInfo), (int (*)(const void *,
-                            const void *))compare_field_version);
-    }
-
-    return 0;
-}
-
-static int do_load(const int64_t start_version,
-        FDIRDBUpdaterContext *ctx)
-{
-    int result;
     int record_count;
     SFSerializerIterator it;
 
@@ -416,16 +361,17 @@ static int do_load(const int64_t start_version,
         return result;
     }
 
-    if (ctx->last_versions.field >= start_version) {
-        result = unpack_dentries(start_version,
-                &it, ctx, record_count);
+    for (i=0; i<record_count; i++) {
+        if ((result=unpack_one_dentry(&it, ctx)) != 0) {
+            break;
+        }
     }
 
     sf_serializer_iterator_destroy(&it);
     return result;
 }
 
-static int resume_from_redo_log(const int64_t start_version)
+static int resume_from_redo_log()
 {
     FDIRDBUpdaterContext ctx;
     int result;
@@ -446,14 +392,33 @@ static int resume_from_redo_log(const int64_t start_version)
         return result;
     }
 
-    result = do_load(start_version, &ctx);
+    result = do_load(&ctx);
     close(db_updater_ctx.redo.fd);
 
     if (result == 0) {
+        result = fdir_storage_engine_redo(&ctx.array);
     }
 
     free(ctx.array.entries);
     return result;
+}
+
+int db_updater_init()
+{
+    int result;
+
+    if ((result=fc_safe_write_file_init(&db_updater_ctx.redo,
+                    STORAGE_PATH_STR, REDO_LOG_FILENAME,
+                    REDO_TMP_FILENAME)) != 0)
+    {
+        return result;
+    }
+
+    return resume_from_redo_log();
+}
+
+void db_updater_destroy()
+{
 }
 
 int db_updater_deal(FDIRDBUpdaterContext *ctx)

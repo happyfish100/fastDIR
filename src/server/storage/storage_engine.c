@@ -127,6 +127,10 @@ int fdir_storage_engine_init(IniFullContext *ini_ctx,
         return result;
     }
 
+    if ((result=binlog_write_thread_init()) != 0) {
+        return result;
+    }
+
     return 0;
 }
 
@@ -139,10 +143,6 @@ int fdir_storage_engine_start()
     }
 
     if ((result=data_sync_thread_start()) != 0) {
-        return result;
-    }
-
-    if ((result=binlog_write_thread_init()) != 0) {
         return result;
     }
 
@@ -165,7 +165,7 @@ void fdir_storage_engine_terminate()
 {
 }
 
-int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
+int fdir_storage_engine_store(const FDIRDBUpdateFieldArray *array)
 {
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
@@ -196,6 +196,64 @@ int fdir_storage_engine_store(FDIRDBUpdateFieldArray *array)
     PTHREAD_MUTEX_UNLOCK(&DATA_SYNC_NOTIFY_LCP.lock);
 
     return 0;
+}
+
+int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
+{
+    int result;
+    bool found;
+    bool keep;
+    FDIRStorageInodeIndexInfo index;
+    FDIRDBUpdateFieldArray redo_array;
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
+    FDIRDBUpdateFieldInfo *dest;
+
+    redo_array.entries = (FDIRDBUpdateFieldInfo *)fc_malloc(
+            sizeof(FDIRDBUpdateFieldInfo) * array->count);
+    if (redo_array.entries == NULL) {
+        return ENOMEM;
+    }
+
+    dest = redo_array.entries;
+    end = array->entries + array->count;
+    for (entry=array->entries; entry<end; entry++) {
+        index.inode = entry->inode;
+        found = (inode_segment_index_get(&index) == 0);
+        if (entry->op_type == da_binlog_op_type_remove) {
+            keep = found;
+        } else if (entry->op_type == da_binlog_op_type_create &&
+                entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+            keep = !found;
+        } else {
+            if (found) {
+                keep = (entry->version > index.fields
+                        [entry->field_index].version);
+            } else {
+                keep = false;
+            }
+        }
+
+        if (keep) {
+            *dest++ = *entry;
+        }
+    }
+
+    redo_array.count = dest - redo_array.entries;
+
+    logInfo("file: "__FILE__", line: %d, "
+            "record count: %d, redo count: %d",
+            __LINE__, array->count, redo_array.count);
+
+    if (redo_array.count > 0) {
+        result = fdir_storage_engine_store(&redo_array);
+    } else {
+        result = 0;
+    }
+
+    free(redo_array.entries);
+    return result;
 }
 
 int fdir_storage_engine_fetch(const int64_t inode,

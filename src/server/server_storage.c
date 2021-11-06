@@ -23,17 +23,20 @@ int server_storage_init()
     if ((result=dentry_serializer_init()) != 0) {
         return result;
     }
+
     if ((result=event_dealer_init()) != 0) {
         return result;
     }
+
     if ((result=change_notify_init()) != 0) {
-        return result;
-    }
-    if ((result=db_updater_init()) != 0) {
         return result;
     }
 
     if ((result=fdir_storage_engine_start()) != 0) {
+        return result;
+    }
+
+    if ((result=db_updater_init()) != 0) {
         return result;
     }
 
