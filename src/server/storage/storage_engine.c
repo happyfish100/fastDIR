@@ -208,6 +208,8 @@ int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
     FDIRDBUpdateFieldInfo *dest;
+    int remove_count = 0;
+    int create_count = 0;
 
     redo_array.entries = (FDIRDBUpdateFieldInfo *)fc_malloc(
             sizeof(FDIRDBUpdateFieldInfo) * array->count);
@@ -222,10 +224,12 @@ int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
         found = (inode_segment_index_get(&index) == 0);
         if (entry->op_type == da_binlog_op_type_remove) {
             keep = found;
+            if (keep) remove_count++;
         } else if (entry->op_type == da_binlog_op_type_create &&
                 entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
             keep = !found;
+            if (keep) create_count++;
         } else {
             if (found) {
                 keep = (entry->version > index.fields
@@ -243,8 +247,9 @@ int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
     redo_array.count = dest - redo_array.entries;
 
     logInfo("file: "__FILE__", line: %d, "
-            "record count: %d, redo count: %d",
-            __LINE__, array->count, redo_array.count);
+            "record count: %d, redo {total: %d, create: %d, remove: %d, update: %d}",
+            __LINE__, array->count, redo_array.count, create_count, remove_count,
+            redo_array.count - (create_count + remove_count));
 
     if (redo_array.count > 0) {
         result = fdir_storage_engine_store(&redo_array);

@@ -178,199 +178,6 @@ int inode_binlog_reader_load_segment(FDIRInodeSegmentIndexInfo *segment)
     return 0;
 }
 
-int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
-        int64_t *inode)
-{
-    char filename[PATH_MAX];
-    char buff[FDIR_INODE_BINLOG_RECORD_MAX_SIZE];
-    char error_info[SF_ERROR_INFO_SIZE];
-    char *line_end;
-    int result;
-    int64_t bytes;
-    string_t line;
-    DAPieceFieldInfo field;
-
-    write_fd_cache_filename(binlog_id, filename, sizeof(filename));
-
-    *error_info = '\0';
-    bytes = sizeof(buff);
-    if ((result=getFileContentEx(filename, buff, 0, &bytes)) != 0) {
-        return result;
-    }
-    
-    line.str = buff;
-    line_end = memchr(buff, '\n', bytes);
-    if (line_end == NULL) {
-        result = EINVAL;
-        sprintf(error_info, "expect new line char(\\n)");
-    } else {
-        line.len = (line_end - line.str) + 1;
-        if ((result=inode_binlog_parse_record(&line,
-                        &field, error_info)) == 0)
-        {
-            if (field.op_type != da_binlog_op_type_create) {
-                result = EINVAL;
-                sprintf(error_info, "unexpect op type: %c", field.op_type);
-            }
-        }
-    }
-
-    if (result == 0) {
-        *inode = field.oid;
-    } else {
-        logError("file: "__FILE__", line: %d, "
-                "get first inode fail, binlog id: %"PRId64", "
-                "binlog file: %s, error info: %s",
-                __LINE__, binlog_id, filename, error_info);
-    }
-
-    return result;
-}
-
-static inline int parse_created_inode(const uint64_t binlog_id,
-        const char *filename, string_t *line, int64_t *inode)
-{
-    int result;
-    char error_info[SF_ERROR_INFO_SIZE];
-    DAPieceFieldInfo field;
-
-    if ((result=inode_binlog_parse_record(line,
-                    &field, error_info)) != 0)
-    {
-        logError("file: "__FILE__", line: %d, "
-                "parse last line fail, binlog id: %"PRId64", "
-                "binlog file: %s, error info: %s",
-                __LINE__, binlog_id, filename, error_info);
-        return result;
-    }
-
-    if (field.op_type == da_binlog_op_type_create) {
-        *inode = field.oid;
-        return 0;
-    } else {
-        return EAGAIN;
-    }
-}
-
-static int reverse_detect_created_inode(const uint64_t binlog_id,
-        const char *filename, string_t *content, int64_t *inode)
-{
-    string_t line;
-    char *line_end;
-    int remain_len;
-    int result;
-
-    remain_len = content->len - 1;  //skip last \n
-    line_end = content->str + remain_len;
-    while (remain_len > 0) {
-        line.str = (char *)fc_memrchr(content->str, '\n', remain_len);
-        if (line.str == NULL) {
-            line.str = content->str;
-        }
-
-        line.len = (line_end - line.str) + 1;
-        result = parse_created_inode(binlog_id, filename, &line, inode);
-        if (result != EAGAIN) {
-            return result;
-        }
-
-        remain_len = line.str - content->str;
-        line_end = line.str;
-    }
-
-    return EAGAIN;
-}
-
-static int detect_last_created_inode(const uint64_t binlog_id,
-        const char *filename, const int64_t file_size, int64_t *inode)
-{
-    char buff[16 * 1024];
-    string_t content;
-    int64_t offset;
-    int64_t read_bytes;
-    int remain_len;
-    int fd;
-    int result;
-
-    fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        result = errno != 0 ? errno : ENOENT;
-        logError("file: "__FILE__", line: %d, "
-                "open file %s fail, errno: %d, error info: %s",
-                __LINE__, filename, result, STRERROR(result));
-        return result;
-    }
-
-    result = EAGAIN;
-    remain_len = file_size;
-    while (remain_len > 0) {
-        if (remain_len >= sizeof(buff)) {
-            offset = (remain_len - sizeof(buff)) + 1;
-        } else {
-            offset = 0;
-        }
-        read_bytes = (remain_len - offset) + 1;
-        if ((result=getFileContentEx1(fd, filename, buff,
-                        offset, &read_bytes)) != 0)
-        {
-            break;
-        }
-
-        if (offset == 0) {
-            content.str = buff;
-            content.len = read_bytes;
-        } else {
-            content.str = memchr(buff, '\n', read_bytes);
-            if (content.str == NULL) {
-                logError("file: "__FILE__", line: %d, "
-                        "binlog id: %"PRId64", binlog file: %s, "
-                        "offset: %"PRId64", length: %"PRId64", "
-                        "expect new line char (\\n)", __LINE__,
-                        binlog_id, filename, offset, read_bytes);
-                result = EINVAL;
-                break;
-            }
-            content.str += 1;  //skip new line
-            content.len = read_bytes - (content.str - buff);
-        }
-
-        if ((result=reverse_detect_created_inode(binlog_id,
-                        filename, &content, inode)) != EAGAIN)
-        {
-            break;
-        }
-
-        remain_len -= content.len;
-    }
-
-    close(fd);
-    return result;
-}
-
-int inode_binlog_reader_get_last_inode(const uint64_t binlog_id,
-        int64_t *inode)
-{
-    char filename[PATH_MAX];
-    char buff[FDIR_INODE_BINLOG_RECORD_MAX_SIZE];
-    string_t line;
-    int result;
-    int64_t file_size;
-
-    write_fd_cache_filename(binlog_id, filename, sizeof(filename));
-    if ((result=fc_get_last_line(filename, buff, sizeof(buff),
-                    &file_size, &line)) != 0)
-    {
-        return result;
-    }
-
-    result = parse_created_inode(binlog_id, filename, &line, inode);
-    if (result != EAGAIN) {
-        return result;
-    }
-
-    return detect_last_created_inode(binlog_id, filename, file_size, inode);
-}
-
 static int load(const char *filename, const string_t *context,
         DAPieceFieldArray *array)
 {
@@ -454,4 +261,42 @@ int inode_binlog_reader_load(const char *filename, DAPieceFieldArray *array)
 
     free(context.str);
     return result;
+}
+
+int inode_binlog_reader_get_inode_range(const uint64_t binlog_id,
+        uint64_t *first_inode, uint64_t *last_inode)
+{
+    int result;
+    DAPieceFieldArray array;
+    DAPieceFieldInfo *field;
+    DAPieceFieldInfo *end;
+    char filename[PATH_MAX];
+    write_fd_cache_filename(binlog_id, filename, sizeof(filename));
+
+    if ((result=inode_binlog_reader_load(filename, &array)) != 0) {
+        return result;
+    }
+
+    if (array.count == 0) {
+        *first_inode = *last_inode = 0;
+        return ENOENT;
+    }
+
+    *first_inode = UINT64_MAX;
+    *last_inode = 0;
+    end = array.records + array.count;
+    for (field=array.records; field<end; field++) {
+        if (field->op_type == da_binlog_op_type_create) {
+            if (field->oid < *first_inode) {
+                *first_inode = field->oid;
+            }
+
+            if (field->oid > *last_inode) {
+                *last_inode = field->oid;
+            }
+        }
+    }
+
+    free(array.records);
+    return 0;
 }

@@ -237,7 +237,6 @@ static int segment_array_add(const uint64_t binlog_id,
 static int set_last_segment_inode(uint64_t *last_bid)
 {
     int result;
-    int64_t last_inode;
     FDIRInodeSegmentIndexInfo *segment;
 
     if (segment_index_ctx.si_array.count == 0) {
@@ -251,13 +250,22 @@ static int set_last_segment_inode(uint64_t *last_bid)
     }
 
     *last_bid = segment->binlog_id;
-    if ((result=inode_binlog_reader_get_last_inode(segment->
-                    binlog_id, &last_inode)) != 0)
+    if ((result=inode_binlog_reader_get_inode_range(segment->
+                    binlog_id, &segment->inodes.first,
+                    &segment->inodes.last)) != 0)
     {
-        return result == ENOENT ? 0 : result;
+        if (result != ENOENT) {
+            return result;
+        }
+
+        segment_index_ctx.si_array.count--;
+        if (segment_index_ctx.si_array.count == 0) {
+            *last_bid = 0;
+        } else {
+            *last_bid = (segment - 1)->binlog_id;
+        }
     }
 
-    segment->inodes.last = last_inode;
     return 0;
 }
 
@@ -268,8 +276,8 @@ static int replay_with_bid_journal()
     FDIRInodeBinlogIdJournal *journal;
     FDIRInodeBinlogIdJournal *end;
     FDIRInodeSegmentIndexInfo *segment;
-    int64_t first_inode;
-    int64_t last_inode;
+    uint64_t first_inode;
+    uint64_t last_inode;
 
     result = bid_journal_fetch(&jarray, g_binlog_index_ctx.last_version + 1);
     if (result != 0) {
@@ -281,8 +289,8 @@ static int replay_with_bid_journal()
         segment = find_segment_by_bid(journal->binlog_id);
         if (journal->op_type == inode_binlog_id_op_type_create) {
             if (segment == NULL) {
-                result = inode_binlog_reader_get_first_inode(
-                        journal->binlog_id, &first_inode);
+                result = inode_binlog_reader_get_inode_range(journal->
+                        binlog_id, &first_inode, &last_inode);
                 if (result != 0) {
                     if (result == ENOENT) {
                         result = 0;
@@ -290,18 +298,14 @@ static int replay_with_bid_journal()
                     }
                     break;
                 }
-                if ((result=inode_binlog_reader_get_last_inode(journal->
-                                binlog_id, &last_inode)) != 0)
-                {
-                    break;
-                }
+
                 if ((result=segment_array_add(journal->binlog_id,
                                 first_inode, last_inode)) != 0)
                 {
                     break;
                 }
             }
-        } else {
+        } else {  //delete
             if (segment != NULL) {
                 segment->inodes.status = FDIR_STORAGE_SEGMENT_STATUS_READY;
             }
@@ -467,6 +471,18 @@ int inode_segment_index_init()
         return result;
     }
 
+    {
+        FDIRInodeBinlogIndexInfo *index;
+        FDIRInodeBinlogIndexInfo *end;
+
+        end = (FDIRInodeBinlogIndexInfo *)g_binlog_index_ctx.
+            index_array.indexes + g_binlog_index_ctx.index_array.count;
+        for (index=g_binlog_index_ctx.index_array.indexes; index<end; index++) {
+            logInfo("==== binlog id: %"PRId64", first: %"PRId64", last: %"PRId64,
+                    index->binlog_id, index->inodes.first, index->inodes.last);
+        }
+    }
+
     last_bid = 0;
     set_last_segment_inode(&last_bid);
     if ((result=convert_to_segement_array(&g_binlog_index_ctx)) != 0) {
@@ -480,6 +496,17 @@ int inode_segment_index_init()
 
     if ((result=set_current_binlog()) != 0) {
         return result;
+    }
+
+    {
+        FDIRInodeSegmentIndexInfo **segment;
+        FDIRInodeSegmentIndexInfo **end;
+
+        end = segment_index_ctx.si_array.segments + segment_index_ctx.si_array.count;
+        for (segment=segment_index_ctx.si_array.segments; segment<end; segment++) {
+            logInfo("binlog id: %"PRId64", first: %"PRId64", last: %"PRId64,
+                    (*segment)->binlog_id, (*segment)->inodes.first, (*segment)->inodes.last);
+        }
     }
 
     return 0;

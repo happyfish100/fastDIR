@@ -34,11 +34,8 @@ int inode_binlog_reader_load_segment(FDIRInodeSegmentIndexInfo *segment);
 
 int inode_binlog_reader_load(const char *filename, DAPieceFieldArray *array);
 
-int inode_binlog_reader_get_first_inode(const uint64_t binlog_id,
-        int64_t *inode);
-
-int inode_binlog_reader_get_last_inode(const uint64_t binlog_id,
-        int64_t *inode);
+int inode_binlog_reader_get_inode_range(const uint64_t binlog_id,
+        uint64_t *first_inode, uint64_t *last_inode);
 
 #ifdef __cplusplus
 }
