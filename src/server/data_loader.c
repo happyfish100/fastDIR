@@ -61,12 +61,14 @@ int server_load_data()
     }
 
     if (STORAGE_ENABLED) {
-        hint_pos = &pos;
-        binlog_get_current_write_position(hint_pos);
         last_data_version = event_dealer_get_last_data_version();
-
-        logInfo("current_write_position: {%d, %"PRId64"}, last_data_version: %"PRId64,
-                hint_pos->index, hint_pos->offset, last_data_version);
+        if (last_data_version > 0) {
+            hint_pos = &pos;
+            binlog_get_current_write_position(hint_pos);
+            FC_ATOMIC_SET(DATA_CURRENT_VERSION, last_data_version);
+        } else {
+            hint_pos = NULL;
+        }
     } else {
         hint_pos = NULL;
         last_data_version = 0;
@@ -76,12 +78,16 @@ int server_load_data()
                     last_data_version, BINLOG_BUFFER_SIZE,
                     parse_threads * 2)) != 0)
     {
+        logError("file: "__FILE__", line: %d, "
+                "binlog_read_thread_init fail, "
+                "errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
         return result;
     }
 
     if ((result=binlog_replay_mt_init(&replay_ctx, &reader_ctx,
                     parse_threads)) != 0)
-   {
+    {
         return result;
     }
 
