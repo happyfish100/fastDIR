@@ -156,7 +156,46 @@ static inline int close_redo_logs()
     return close_redo_log(&BINLOG_WRITE_THREAD_CTX.space_redo);
 }
 
-static int write_redo_logs(struct fc_queue_info *qinfo)
+/*
+static void write_debug(FDIRInodeUpdateRecord *record)
+{
+    const char *filename = "/tmp/wqueue.log";
+    const char *bak_filename = "/tmp/wqueue.txt";
+    static FILE *fp = NULL;
+    int result;
+
+    if (fp == NULL) {
+        if (access(filename, F_OK) == 0) {
+            rename(filename, bak_filename);
+        }
+
+        fp = fopen(filename, "w");
+        if (fp == NULL) {
+            result = errno != 0 ? errno : EIO;
+            logError("file: "__FILE__", line: %d, "
+                    "open file to write fail, error info: %s",
+                    __LINE__, STRERROR(result));
+            return;
+        }
+    }
+
+    fprintf(fp, "%"PRId64". %"PRId64" %c %d\n", record->version,
+            record->inode.field.oid, record->inode.field.op_type,
+            record->inode.field.fid);
+}
+
+static void queue_debug(const struct fc_queue_info *qinfo)
+{
+    FDIRInodeUpdateRecord *record;
+
+    record = (FDIRInodeUpdateRecord *)qinfo->head;
+    do {
+        write_debug(record);
+    } while ((record=record->next) != NULL);
+}
+*/
+
+static int write_redo_logs(const struct fc_queue_info *qinfo)
 {
     int result;
     FDIRInodeUpdateRecord *record;
@@ -222,6 +261,8 @@ static int deal_records(struct fc_queue_info *qinfo)
 {
     int result;
 
+    //queue_debug(qinfo);
+
     BINLOG_WRITE_THREAD_CTX.field_redo.record_count = 0;
     BINLOG_WRITE_THREAD_CTX.space_redo.record_count = 0;
     if ((result=write_redo_logs(qinfo)) != 0) {
@@ -254,7 +295,7 @@ static void *binlog_write_thread_func(void *arg)
 #endif
 
     while (SF_G_CONTINUE_FLAG) {
-        fc_queue_try_pop_to_queue(&BINLOG_WRITE_THREAD_CTX.queue, &qinfo);
+        fc_queue_pop_to_queue(&BINLOG_WRITE_THREAD_CTX.queue, &qinfo);
         if (qinfo.head != NULL) {
             if (deal_records(&qinfo) != 0) {
                 logCrit("file: "__FILE__", line: %d, "
@@ -453,6 +494,9 @@ static int inode_field_log_redo(const char *field_log_filename)
     } else {
         field_log_to_ptr_array(&array, &parray);
         result = redo_by_ptr_array(&parray);
+
+        logInfo("field record count: %d, redo count: %d", array.count, parray.count);
+
         free(parray.records);
     }
 

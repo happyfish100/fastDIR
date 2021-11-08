@@ -209,6 +209,8 @@ static int write_redo_log(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
+    logInfo("write redo log count =====: %d", ctx->array.count);
+
     if ((result=do_write(ctx)) != 0) {
         return result;
     }

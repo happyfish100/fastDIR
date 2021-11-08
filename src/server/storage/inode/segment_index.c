@@ -669,8 +669,9 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
     int result;
 
     if ((r->segment=find_segment_by_inode(field->oid)) == NULL) {
-        logError("===== find_segment_by_inode: %"PRId64" fail =====",
-                field->oid);
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", segment not exist",
+                __LINE__, field->oid);
         return ENOENT;
     }
 
@@ -683,8 +684,9 @@ int inode_segment_index_real_add(const DAPieceFieldInfo *field,
         if ((result=inode_index_array_real_add(&r->segment->
                         inodes.array, field)) != 0)
         {
-            logError("===== inode_index_array_real_add: %"PRId64" fail =====",
-                    field->oid);
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", error info: %s",
+                    __LINE__, field->oid, STRERROR(result));
             break;
         }
 
@@ -756,6 +758,9 @@ int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
     if ((r->segment=find_segment_by_inode_ex(inode->inode,
                     &is_last_segment)) == NULL)
     {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", segment not exist",
+                __LINE__, inode->inode);
         return ENOENT;
     }
 
@@ -768,6 +773,9 @@ int inode_segment_index_delete(FDIRStorageInodeIndexInfo *inode,
         if ((result=inode_index_array_delete(&r->segment->
                         inodes.array, inode)) != 0)
         {
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64" not exist",
+                    __LINE__, inode->inode);
             break;
         }
 
@@ -794,6 +802,9 @@ int inode_segment_index_update(const DAPieceFieldInfo *field,
     bool modified;
 
     if ((r->segment=find_segment_by_inode(field->oid)) == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", segment not exist",
+                __LINE__, field->oid);
         return ENOENT;
     }
 
@@ -806,6 +817,9 @@ int inode_segment_index_update(const DAPieceFieldInfo *field,
         if ((result=inode_index_array_update(&r->segment->inodes.array,
                         field, normal_update, &r->old, &modified)) != 0)
         {
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", error info: %s",
+                    __LINE__, field->oid, STRERROR(result));
             break;
         }
         if (modified) {

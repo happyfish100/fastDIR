@@ -43,7 +43,10 @@ int data_sync_thread_init()
             return result;
         }
 
-        if ((result=sf_synchronize_ctx_init(&thread->synchronize_ctx)) != 0) {
+        if ((result=sf_synchronize_ctx_init(&thread->sctxs.data)) != 0) {
+            return result;
+        }
+        if ((result=sf_synchronize_ctx_init(&thread->sctxs.binlog)) != 0) {
             return result;
         }
     }
@@ -157,7 +160,7 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
         }
 
         if ((result=trunk_write_thread_by_buff_synchronize(&space,
-                        entry->buffer->data, &thread->synchronize_ctx)) != 0)
+                        entry->buffer->data, &thread->sctxs.data)) != 0)
         {
             return result;
         }
@@ -211,6 +214,42 @@ static int set_dentry_field(FDIRDataSyncThreadInfo *thread,
     return 0;
 }
 
+/*
+static void write_debug(struct fc_queue_info *qinfo)
+{
+    const char *filename = "/tmp/record.log";
+    const char *bak_filename = "/tmp/record.txt";
+    static FILE *fp = NULL;
+    FDIRInodeUpdateRecord *record;
+    static int count = 0;
+    int result;
+
+    if (fp == NULL) {
+        if (access(filename, F_OK) == 0) {
+            rename(filename, bak_filename);
+        }
+
+        fp = fopen(filename, "w");
+        if (fp == NULL) {
+            result = errno != 0 ? errno : EIO;
+            logError("file: "__FILE__", line: %d, "
+                    "open file to write fail, error info: %s",
+                    __LINE__, STRERROR(result));
+            return;
+        }
+    }
+
+    ++count;
+    record = qinfo->head;
+    do {
+        fprintf(fp, "[%d] %"PRId64" %"PRId64" %c %d\n", count,
+                record->version, record->inode.field.oid,
+                record->inode.field.op_type, record->inode.field.fid);
+        fflush(fp);
+    } while ((record=record->next) != NULL);
+}
+*/
+
 static void push_to_binlog_write_chain(FDIRInodeUpdateRecord *record)
 {
     FDIRInodeUpdateRecord *previous;
@@ -224,6 +263,8 @@ static void push_to_binlog_write_chain(FDIRInodeUpdateRecord *record)
                 ORDERED_UPDATE_CHAIN.head->version ==
                 ORDERED_UPDATE_CHAIN.next_version)
         {
+            ORDERED_UPDATE_CHAIN.waiting_count--;
+
             FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord,
                     ORDERED_UPDATE_CHAIN.head);
             qinfo.tail = ORDERED_UPDATE_CHAIN.head;
@@ -236,8 +277,10 @@ static void push_to_binlog_write_chain(FDIRInodeUpdateRecord *record)
         }
 
         FC_SET_CHAIN_TAIL_NEXT(qinfo, FDIRInodeUpdateRecord, NULL);
+        //write_debug(&qinfo);
         binlog_write_thread_push_queue(&qinfo);
     } else {
+        ORDERED_UPDATE_CHAIN.waiting_count++;
         if (ORDERED_UPDATE_CHAIN.head == NULL) {
             ORDERED_UPDATE_CHAIN.head = record;
             ORDERED_UPDATE_CHAIN.tail = record;
@@ -269,24 +312,31 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
 {
     FDIRDBUpdateFieldInfo *entry;
     FDIRInodeUpdateRecord *record;
-    int count;
+    struct {
+        int total;
+        int skip;
+    } counts;
     int result;
 
-    logInfo("data_sync_thread deal start, thread index: %d, head: %p",
-            thread->thread_index, head);
+    counts.total = counts.skip = 0;
+    entry = head;
+    do {
+        ++counts.total;
+    } while ((entry=entry->next) != NULL);
+    sf_synchronize_counter_add(&thread->sctxs.binlog, counts.total);
+
+    logInfo("data_sync_thread deal start, thread index: %d, count: %d",
+            thread->thread_index, counts.total);
 
     entry = head;
-    count = 0;
     do {
-        ++count;
-
         if ((record=(FDIRInodeUpdateRecord *)fast_mblock_alloc_object(
                         &UPDATE_RECORD_ALLOCATOR)) == NULL)
         {
             return ENOMEM;
         }
 
-        record->sctx = NULL;
+        record->sctx = &thread->sctxs.binlog;
         record->inode.field.source = DA_FIELD_UPDATE_SOURCE_NORMAL;
         record->space_chain.head = record->space_chain.tail = NULL;
         if (entry->op_type == da_binlog_op_type_remove) {
@@ -311,13 +361,22 @@ static int data_sync_thread_deal(FDIRDataSyncThreadInfo *thread,
             }
             push_to_binlog_write_chain(record);
         } else {
+            ++counts.skip;
             fast_mblock_free_object(&UPDATE_RECORD_ALLOCATOR, record);
         }
     } while ((entry=entry->next) != NULL);
 
-    logInfo("data_sync_thread deal count: %d", count);
+    if (counts.skip > 0) {
+        sf_synchronize_counter_sub(&thread->sctxs.binlog, counts.skip);
+    }
 
-    fdir_data_sync_finish(count);
+    PTHREAD_MUTEX_LOCK(&ORDERED_UPDATE_CHAIN.lock);
+    logInfo("data_sync_thread deal count: %d, skip: %d, ORDERED_UPDATE_CHAIN "
+            "waiting: %d", counts.total, counts.skip, ORDERED_UPDATE_CHAIN.waiting_count);
+    PTHREAD_MUTEX_UNLOCK(&ORDERED_UPDATE_CHAIN.lock);
+
+    sf_synchronize_counter_wait(&thread->sctxs.binlog);
+    fdir_data_sync_finish(counts.total);
     return 0;
 }
 

@@ -235,18 +235,6 @@ int inode_index_array_update(FDIRStorageInodeIndexArray *array,
     FDIRStorageInodeIndexInfo *found;
 
     if ((found=inode_index_array_get(array, field->oid)) == NULL) {
-        /*
-        {
-            FDIRStorageInodeIndexInfo *node;
-            FDIRStorageInodeIndexInfo *end;
-
-            end = array->inodes + array->counts.total;
-            for (node=array->inodes; node<end; node++) {
-                logInfo("%"PRId64", status: %d", node->inode, node->status);
-            }
-        }
-        */
-
         *modified = false;
         return ENOENT;
     }

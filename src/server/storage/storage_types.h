@@ -97,6 +97,7 @@ typedef struct fdir_inode_update_record {
 typedef struct fdir_ordered_update_chain {
     pthread_mutex_t lock;
     int64_t next_version;
+    int waiting_count;
     FDIRInodeUpdateRecord *head;
     FDIRInodeUpdateRecord *tail;
 } FDIROrderdUpdateChain;
@@ -115,7 +116,10 @@ typedef struct fdir_inode_bid_journal_array {
 typedef struct fdir_data_sync_thread_info {
     int thread_index;
     struct fc_queue queue;
-    SFSynchronizeContext synchronize_ctx;
+    struct {
+        SFSynchronizeContext data;   //for write data
+        SFSynchronizeContext binlog; //for write binlog
+    } sctxs;
 } FDIRDataSyncThreadInfo;
 
 typedef struct fdir_data_sync_thread_array {

@@ -171,9 +171,7 @@ int fdir_storage_engine_store(const FDIRDBUpdateFieldArray *array)
     FDIRDBUpdateFieldInfo *end;
     int result;
 
-    PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
-    DATA_SYNC_NOTIFY_WAITINGS = array->count;
-    PTHREAD_MUTEX_UNLOCK(&DATA_SYNC_NOTIFY_LCP.lock);
+    sf_synchronize_counter_add(&DATA_SYNC_NOTIFY, array->count);
 
     end = array->entries + array->count;
     for (entry=array->entries; entry<end; entry++) {
@@ -181,6 +179,10 @@ int fdir_storage_engine_store(const FDIRDBUpdateFieldArray *array)
                 entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
             if ((result=inode_segment_index_pre_add(entry->inode)) != 0) {
+                logCrit("file: "__FILE__", line: %d, "
+                        "inode_segment_index_pre_add fail, result: %d, "
+                        "program exit!", __LINE__, result);
+                sf_terminate_myself();
                 return result;
             }
         }
@@ -188,13 +190,7 @@ int fdir_storage_engine_store(const FDIRDBUpdateFieldArray *array)
         data_sync_thread_push(entry);
     }
 
-    PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
-    if (DATA_SYNC_NOTIFY_WAITINGS > 0) {
-        pthread_cond_wait(&DATA_SYNC_NOTIFY_LCP.cond,
-                &DATA_SYNC_NOTIFY_LCP.lock);
-    }
-    PTHREAD_MUTEX_UNLOCK(&DATA_SYNC_NOTIFY_LCP.lock);
-
+    sf_synchronize_counter_wait(&DATA_SYNC_NOTIFY);
     return 0;
 }
 
@@ -222,6 +218,7 @@ int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
     for (entry=array->entries; entry<end; entry++) {
         index.inode = entry->inode;
         found = (inode_segment_index_get(&index) == 0);
+
         if (entry->op_type == da_binlog_op_type_remove) {
             keep = found;
             if (keep) remove_count++;
@@ -238,6 +235,9 @@ int fdir_storage_engine_redo(const FDIRDBUpdateFieldArray *array)
                 keep = false;
             }
         }
+
+        logInfo("inode: %"PRId64", op_type: %c, field: %d, found: %d, keep: %d",
+                entry->inode, entry->op_type, entry->field_index, found, keep);
 
         if (keep) {
             *dest++ = *entry;

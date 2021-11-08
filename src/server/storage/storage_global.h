@@ -16,6 +16,7 @@
 #ifndef _STORAGE_GLOBAL_H
 #define _STORAGE_GLOBAL_H
 
+#include "sf/sf_func.h"
 #include "sf/sf_ordered_writer.h"
 #include "storage_types.h"
 
@@ -26,10 +27,7 @@ typedef struct {
     struct fast_mblock_man update_record_allocator;
     FDIRBinlogWriteThreadContext binlog_write_thread_ctx;
     DABinlogWriter inode_binlog_writer;
-    struct {
-        int waitings;
-        pthread_lock_cond_pair_t lcp;
-    } data_sync_notify;
+    SFSynchronizeContext data_sync_notify;
 } FDIRStorageGlobalVars;
 
 #define STORAGE_PATH            g_storage_global_vars.db_cfg->path
@@ -45,8 +43,9 @@ typedef struct {
 #define BINLOG_WRITE_THREAD_CTX g_storage_global_vars.binlog_write_thread_ctx
 #define INODE_BINLOG_WRITER     g_storage_global_vars.inode_binlog_writer
 
-#define DATA_SYNC_NOTIFY_WAITINGS  g_storage_global_vars.data_sync_notify.waitings
-#define DATA_SYNC_NOTIFY_LCP       g_storage_global_vars.data_sync_notify.lcp
+#define DATA_SYNC_NOTIFY           g_storage_global_vars.data_sync_notify
+#define DATA_SYNC_NOTIFY_WAITINGS  DATA_SYNC_NOTIFY.waiting_count
+#define DATA_SYNC_NOTIFY_LCP       DATA_SYNC_NOTIFY.lcp
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,12 +55,7 @@ extern "C" {
 
     static inline void fdir_data_sync_finish(const int count)
     {
-        PTHREAD_MUTEX_LOCK(&DATA_SYNC_NOTIFY_LCP.lock);
-        DATA_SYNC_NOTIFY_WAITINGS -= count;
-        if (DATA_SYNC_NOTIFY_WAITINGS == 0) {
-            pthread_cond_signal(&DATA_SYNC_NOTIFY_LCP.cond);
-        }
-        PTHREAD_MUTEX_UNLOCK(&DATA_SYNC_NOTIFY_LCP.lock);
+        sf_synchronize_counter_notify(&DATA_SYNC_NOTIFY, count);
     }
 
 #ifdef __cplusplus
