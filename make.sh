@@ -118,15 +118,6 @@ perl -pi -e "s#\\\$\(TARGET_PREFIX\)#$TARGET_PREFIX#g" Makefile
 perl -pi -e "s#\\\$\(TARGET_CONF_PATH\)#$TARGET_CONF_PATH#g" Makefile
 make $1 $2
 
-cd storage 
-cp Makefile.in Makefile
-perl -pi -e "s#\\\$\(CFLAGS\)#$CFLAGS#g" Makefile
-perl -pi -e "s#\\\$\(LIBS\)#$LIBS#g" Makefile
-perl -pi -e "s#\\\$\(TARGET_PREFIX\)#$TARGET_PREFIX#g" Makefile
-perl -pi -e "s#\\\$\(LIB_VERSION\)#$LIB_VERSION#g" Makefile
-make $1 $2
-cd ..
-
 cd ../client
 cp Makefile.in Makefile
 perl -pi -e "s#\\\$\(CFLAGS\)#$CFLAGS#g" Makefile

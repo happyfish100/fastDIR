@@ -22,6 +22,7 @@
 #include "fastcommon/thread_pool.h"
 #include "sf/sf_global.h"
 #include "sf/sf_cluster_cfg.h"
+#include "db/db_interface.h"
 #include "fastcfs/auth/client_types.h"
 #include "common/fdir_global.h"
 #include "server_types.h"
@@ -80,10 +81,12 @@ typedef struct server_global_vars {
 
     struct {
         bool enabled;
+        char *library;
         int batch_store_on_modifies;
         int batch_store_interval;
         FDIRStorageEngineConfig cfg;
         double memory_limit;   //ratio
+        FDIRStorageEngineInterface api;
     } storage;
 
     SFSlowLogContext slow_log;
@@ -144,12 +147,20 @@ typedef struct server_global_vars {
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
+#define STORAGE_ENGINE_LIBRARY  g_server_global_vars.storage.library
 #define BATCH_STORE_INTERVAL    g_server_global_vars.storage.batch_store_interval
 #define BATCH_STORE_ON_MODIFIES g_server_global_vars.storage.batch_store_on_modifies
 #define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.cfg.inode_binlog_subdirs
 #define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.cfg.index_dump_interval
 #define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.cfg.index_dump_base_time
 #define STORAGE_MEMORY_LIMIT    g_server_global_vars.storage.memory_limit
+
+#define STORAGE_ENGINE_INIT_API      g_server_global_vars.storage.api.init
+#define STORAGE_ENGINE_START_API     g_server_global_vars.storage.api.start
+#define STORAGE_ENGINE_TERMINATE_API g_server_global_vars.storage.api.terminate
+#define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
+#define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
+#define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
 
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg

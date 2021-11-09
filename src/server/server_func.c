@@ -16,6 +16,7 @@
 
 #include <sys/stat.h>
 #include <limits.h>
+#include <dlfcn.h>
 #include "fastcommon/ini_file_reader.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
@@ -29,7 +30,6 @@
 #include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
-#include "storage/storage_engine.h"
 #include "server_global.h"
 #include "cluster_info.h"
 #include "server_func.h"
@@ -214,15 +214,67 @@ static int load_dentry_max_data_size(IniFullContext *ini_ctx)
     return 0;
 }
 
+#define LOAD_API(var, fname) \
+    do { \
+        var = (fname##_func)dlsym(dlhandle, #fname); \
+        if (var == NULL) {  \
+            logError("file: "__FILE__", line: %d, "  \
+                    "dlsym api %s fail, error info: %s", \
+                    __LINE__, #fname, dlerror()); \
+            return ENOENT; \
+        } \
+    } while (0)
+
+
+static int load_storage_engine_apis()
+{
+    void *dlhandle;
+
+    dlhandle = dlopen(STORAGE_ENGINE_LIBRARY, RTLD_LAZY);
+    if (dlhandle == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "dlopen %s fail, error info: %s", __LINE__,
+                STORAGE_ENGINE_LIBRARY, dlerror());
+        return EFAULT;
+    }
+
+    LOAD_API(STORAGE_ENGINE_INIT_API, fdir_storage_engine_init);
+    LOAD_API(STORAGE_ENGINE_START_API, fdir_storage_engine_start);
+    LOAD_API(STORAGE_ENGINE_TERMINATE_API, fdir_storage_engine_terminate);
+    LOAD_API(STORAGE_ENGINE_STORE_API, fdir_storage_engine_store);
+    LOAD_API(STORAGE_ENGINE_REDO_API, fdir_storage_engine_redo);
+    LOAD_API(STORAGE_ENGINE_FETCH_API, fdir_storage_engine_fetch);
+
+    return 0;
+}
+
 static int load_storage_engine_parames(IniFullContext *ini_ctx)
 {
     int result;
+    char *library;
 
     ini_ctx->section_name = "storage-engine";
     STORAGE_ENABLED = iniGetBoolValue(ini_ctx->section_name,
             "enabled", ini_ctx->context, false);
     if (!STORAGE_ENABLED) {
         return 0;
+    }
+
+    library = iniGetStrValue(ini_ctx->section_name,
+            "library", ini_ctx->context);
+    if (library == NULL) {
+        library = "libfdirstorage.so";
+    } else if (*library == '\0') {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s, section: %s, empty library!",
+                __LINE__, ini_ctx->filename, ini_ctx->section_name);
+        return EINVAL;
+    }
+    if ((STORAGE_ENGINE_LIBRARY=fc_strdup(library)) == NULL) {
+        return ENOMEM;
+    }
+    if ((result=load_storage_engine_apis()) != 0) {
+        return result;
     }
 
     if ((result=load_data_path_config(ini_ctx, &STORAGE_PATH)) != 0) {
@@ -319,15 +371,15 @@ static void server_log_configs()
 
     if (STORAGE_ENABLED) {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
-                ", data_path: %s, inode_binlog_subdirs: %d"
+                ", library: %s, data_path: %s, inode_binlog_subdirs: %d"
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", memory_limit: %.2f%%}", STORAGE_PATH_STR,
+                ", memory_limit: %.2f%%}",
+                STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
-                INDEX_DUMP_BASE_TIME.hour,
-                INDEX_DUMP_BASE_TIME.minute,
+                INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
                 STORAGE_MEMORY_LIMIT * 100);
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
@@ -491,7 +543,7 @@ int server_load_config(const char *filename)
     data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
-    if (STORAGE_ENABLED && (result=fdir_storage_engine_init(&ini_ctx,
+    if (STORAGE_ENABLED && (result=STORAGE_ENGINE_INIT_API(&ini_ctx,
                     CLUSTER_MY_SERVER_ID, &g_server_global_vars.
                     storage.cfg, &data_cfg)) != 0)
     {

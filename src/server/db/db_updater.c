@@ -18,7 +18,6 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
 #include "../server_global.h"
-#include "../storage/storage_engine.h"
 #include "dentry_serializer.h"
 #include "db_updater.h"
 
@@ -398,7 +397,7 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
             ctx->last_versions.field, ctx->last_versions.dentry);
 
     if (result == 0) {
-        result = fdir_storage_engine_redo(&ctx->array);
+        result = STORAGE_ENGINE_REDO_API(&ctx->array);
     }
 
     return result;
@@ -436,5 +435,5 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
-    return fdir_storage_engine_store(&ctx->array);
+    return STORAGE_ENGINE_STORE_API(&ctx->array);
 }

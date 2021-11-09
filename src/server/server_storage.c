@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include "storage/storage_engine.h"
+#include "server_global.h"
 #include "server_storage.h"
 
 int server_storage_init()
@@ -28,7 +28,7 @@ int server_storage_init()
         return result;
     }
 
-    if ((result=fdir_storage_engine_start()) != 0) {
+    if ((result=STORAGE_ENGINE_START_API()) != 0) {
         return result;
     }
 
