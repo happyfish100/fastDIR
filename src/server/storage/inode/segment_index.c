@@ -162,8 +162,10 @@ static int convert_to_segement_array(SFBinlogIndexContext *bctx)
         return result;
     }
 
-    end = bctx->index_array.indexes + bctx->index_array.count;
-    for (binlog=bctx->index_array.indexes, segment=si_array->segments;
+    end = (FDIRInodeBinlogIndexInfo *)bctx->index_array.
+        indexes + bctx->index_array.count;
+    for (binlog=bctx->index_array.indexes,
+            segment=si_array->segments;
             binlog<end; binlog++, segment++)
     {
         *segment = (FDIRInodeSegmentIndexInfo *)fast_mblock_alloc_object(

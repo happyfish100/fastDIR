@@ -157,11 +157,11 @@ static inline int close_redo_logs()
 }
 
 /*
+static FILE *fp = NULL;
 static void write_debug(FDIRInodeUpdateRecord *record)
 {
     const char *filename = "/tmp/wqueue.log";
     const char *bak_filename = "/tmp/wqueue.txt";
-    static FILE *fp = NULL;
     int result;
 
     if (fp == NULL) {
@@ -192,6 +192,10 @@ static void queue_debug(const struct fc_queue_info *qinfo)
     do {
         write_debug(record);
     } while ((record=record->next) != NULL);
+
+    if (fp != NULL) {
+        fflush(fp);
+    }
 }
 */
 

@@ -245,8 +245,8 @@ static void write_debug(struct fc_queue_info *qinfo)
         fprintf(fp, "[%d] %"PRId64" %"PRId64" %c %d\n", count,
                 record->version, record->inode.field.oid,
                 record->inode.field.op_type, record->inode.field.fid);
-        fflush(fp);
     } while ((record=record->next) != NULL);
+    fflush(fp);
 }
 */
 
@@ -390,8 +390,9 @@ static void *data_sync_thread_func(void *arg)
 #ifdef OS_LINUX
     {
         char thread_name[16];
-        prctl(PR_SET_NAME, "data-sync%02d", (int)(thread -
-                    DATA_SYNC_THREAD_ARRAY.threads));
+        snprintf(thread_name, sizeof(thread_name), "data-sync%02d",
+                (int)(thread - DATA_SYNC_THREAD_ARRAY.threads));
+        prctl(PR_SET_NAME, thread_name);
     }
 #endif
 
