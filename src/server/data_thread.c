@@ -561,8 +561,7 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
     return 0;
 }
 
-static int push_to_update_queue(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
+int push_to_db_update_queue(FDIRBinlogRecord *record)
 {
     int result;
     FDIRChangeNotifyEvent *event;
@@ -698,18 +697,16 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     }
 
     if (result == 0 && STORAGE_ENABLED) {
-        if (record->data_version > thread_ctx->update_notify.last_version) {
-            thread_ctx->update_notify.last_version = record->data_version;
+        if (record->data_version > thread_ctx->DATA_THREAD_LAST_VERSION) {
+            thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
         }
 
-        //if (record->type == fdir_record_type_update) {
-            if ((result=push_to_update_queue(thread_ctx, record)) != 0) {
-                logCrit("file: "__FILE__", line: %d, "
-                        "push_to_update_queue fail, "
-                        "program exit!", __LINE__);
-                sf_terminate_myself();
-            }
-        //}
+        if ((result=push_to_db_update_queue(record)) != 0) {
+            logCrit("file: "__FILE__", line: %d, "
+                    "push_to_db_update_queue fail, "
+                    "program exit!", __LINE__);
+            sf_terminate_myself();
+        }
     }
 
     if (record->notify.func != NULL) {

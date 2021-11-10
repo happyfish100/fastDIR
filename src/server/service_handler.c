@@ -2275,6 +2275,9 @@ static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 static inline int binlog_produce_directly(struct fast_task_info *task)
 {
     RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
+    if (STORAGE_ENABLED) {
+        push_to_db_update_queue_by_service(RECORD);
+    }
     sf_hold_task(task);
     return server_binlog_produce(task);
 }
@@ -2492,6 +2495,10 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         (*record)->timestamp = g_current_time;
         if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
             break;
+        }
+
+        if (STORAGE_ENABLED) {
+            push_to_db_update_queue_by_service(*record);
         }
     }
 
