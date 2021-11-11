@@ -64,6 +64,8 @@ extern "C" {
 
     void change_notify_push_to_queue(FDIRChangeNotifyEvent *event);
 
+    void change_notify_load_done_signal();
+
 #ifdef __cplusplus
 }
 #endif

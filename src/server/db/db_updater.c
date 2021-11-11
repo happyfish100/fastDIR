@@ -421,6 +421,26 @@ void db_updater_destroy()
 {
 }
 
+/*
+static int update_namespaces(FDIRDBUpdaterContext *ctx)
+{
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
+    //int result;
+
+    end = ctx->array.entries + ctx->array.count;
+    for (entry=ctx->array.entries; entry<end; entry++) {
+        if (entry->op_type == da_binlog_op_type_create &&
+                entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+        } else if (entry->op_type == da_binlog_op_type_remove) {
+        }
+    }
+
+    return 0;
+}
+*/
+
 int db_updater_deal(FDIRDBUpdaterContext *ctx)
 {
     int result;
