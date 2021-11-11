@@ -21,11 +21,20 @@
 #include "ns_subscribe.h"
 #include "data_thread.h"
 
+typedef struct fdir_namespace_info {
+    struct fdir_server_dentry *root;
+    struct {
+        volatile int64_t dir;
+        volatile int64_t file;
+    } counts;
+    volatile int64_t used_bytes;
+} FDIRNamespaceInfo;
+
 typedef struct fdir_namespace_entry {
     string_t name;
-    struct fdir_server_dentry *dentry_root;
-    volatile int64_t dentry_count;
-    volatile int64_t used_bytes;
+    FDIRNamespaceInfo current;
+    FDIRNamespaceInfo delay;   //for storage engine
+
     struct {
         struct fdir_namespace_entry *htable; //for hashtable
         struct fdir_namespace_entry *list;   //for chain list

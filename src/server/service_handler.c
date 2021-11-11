@@ -453,7 +453,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
             break;
         }
 
-        long2buff(__sync_add_and_fetch(&current->ns->used_bytes, 0),
+        long2buff(__sync_add_and_fetch(&current->ns->current.used_bytes, 0),
                 body_part->used_bytes);
         body_part->ns_name.len = current->ns->name.len;
         memcpy(body_part->ns_name.str, current->ns->name.str,

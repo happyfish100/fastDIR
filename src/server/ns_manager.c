@@ -105,15 +105,16 @@ int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat)
     if ((ns_entry=fdir_namespace_get(NULL, ns, false, &result)) == NULL) {
         return ENOENT;
     }
-    stat->used_inodes = __sync_add_and_fetch(&ns_entry->dentry_count, 0);
-    stat->used_bytes = __sync_add_and_fetch(&ns_entry->used_bytes, 0);
+    stat->used_inodes = FC_ATOMIC_GET(ns_entry->current.counts.dir) +
+        FC_ATOMIC_GET(ns_entry->current.counts.file);
+    stat->used_bytes = FC_ATOMIC_GET(ns_entry->current.used_bytes);
     return 0;
 }
 
 void fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
         const int64_t inc_alloc)
 {
-    __sync_add_and_fetch(&ns_entry->used_bytes, inc_alloc);
+    __sync_add_and_fetch(&ns_entry->current.used_bytes, inc_alloc);
     ns_subscribe_notify_all(ns_entry);
 }
 
@@ -138,9 +139,10 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
             entry->name.len, entry->name.str);
             */
 
-    entry->dentry_count = 0;
-    entry->used_bytes = 0;
-    entry->dentry_root = NULL;
+    entry->current.counts.dir = 0;
+    entry->current.counts.file = 0;
+    entry->current.used_bytes = 0;
+    entry->current.root = NULL;
     entry->nexts.htable = *bucket;
     *bucket = entry;
 

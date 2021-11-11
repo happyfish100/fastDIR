@@ -325,7 +325,7 @@ static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
     FDIRServerDentry *current;
     FDIRServerDentry target;
 
-    current = ns_entry->dentry_root;
+    current = ns_entry->current.root;
     end = paths + count;
     for (p=paths; p<end; p++) {
         if (!S_ISDIR(current->stat.mode)) {
@@ -374,7 +374,7 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
         return result;
     }
 
-    if (ns_entry->dentry_root == NULL) {
+    if (ns_entry->current.root == NULL) {
         *parent = NULL;
         my_name->len = 0;
         my_name->str = "";
@@ -392,7 +392,7 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
 
     *my_name = path_info.paths[path_info.count - 1];
     if (path_info.count == 1) {
-        *parent = ns_entry->dentry_root;
+        *parent = ns_entry->current.root;
     } else {
         *parent = (FDIRServerDentry *)do_find_ex(ns_entry,
                 path_info.paths, path_info.count - 1);
@@ -431,7 +431,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         return result;
     }
 
-    if ((*ns_entry)->dentry_root == NULL) {
+    if ((*ns_entry)->current.root == NULL) {
         *parent = *me = NULL;
         return ENOENT;
     }
@@ -440,7 +440,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
             path_info->paths, FDIR_MAX_PATH_COUNT, true);
     if (path_info->count == 0) {
         *parent = NULL;
-        *me = (*ns_entry)->dentry_root;
+        *me = (*ns_entry)->current.root;
         my_name->len = 0;
         my_name->str = "";
         return 0;
@@ -448,7 +448,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
 
     *my_name = path_info->paths[path_info->count - 1];
     if (path_info->count == 1) {
-        *parent = (*ns_entry)->dentry_root;
+        *parent = (*ns_entry)->current.root;
     } else {
         *parent = (FDIRServerDentry *)do_find_ex(*ns_entry,
                 path_info->paths, path_info->count - 1);
@@ -482,12 +482,12 @@ static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
             return result;
         }
 
-        if ((*ns_entry)->dentry_root == NULL) {
+        if ((*ns_entry)->current.root == NULL) {
             return ENOENT;
         }
 
         if (rec_entry->pname.name.len == 0) {
-            rec_entry->dentry = (*ns_entry)->dentry_root;
+            rec_entry->dentry = (*ns_entry)->current.root;
             return 0;
         } else {
             return ENOENT;
@@ -617,7 +617,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
 
     if (current->parent == NULL) {
-        ns_entry->dentry_root = current;
+        ns_entry->current.root = current;
     } else if ((result=uniq_skiplist_insert(current->
                     parent->children, current)) == 0)
     {
@@ -633,10 +633,11 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if (is_dir) {
         db_context->dentry_context.counters.dir++;
+        __sync_add_and_fetch(&ns_entry->current.counts.dir, 1);
     } else {
         db_context->dentry_context.counters.file++;
+        __sync_add_and_fetch(&ns_entry->current.counts.file, 1);
     }
-    __sync_add_and_fetch(&ns_entry->dentry_count, 1);
     return 0;
 }
 
@@ -649,9 +650,15 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    if (S_ISDIR(dentry->stat.mode)) {
+        __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
+        db_context->dentry_context.counters.dir--;
+    } else {
+        __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
+        db_context->dentry_context.counters.file--;
+    }
+
     dentry_free_func(dentry, FDIR_DELAY_FREE_SECONDS);
-    db_context->dentry_context.counters.file--;
-    __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
     return 0;
 }
 
@@ -701,11 +708,11 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
     if (*free_dentry) {
         if (S_ISDIR(dentry->stat.mode)) {
             db_context->dentry_context.counters.dir--;
+            __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
         } else {
             db_context->dentry_context.counters.file--;
+            __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
         }
-
-        __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
     }
 
     return 0;
@@ -742,7 +749,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     }
 
     if (record->me.parent == NULL) {
-        ns_entry->dentry_root = NULL;
+        ns_entry->current.root = NULL;
         if (free_dentry) {
             dentry_free_func(record->me.dentry, FDIR_DELAY_FREE_SECONDS);
         }
