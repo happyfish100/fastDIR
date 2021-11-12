@@ -221,6 +221,7 @@ static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
         FDIRChangeNotifyMessage **end)
 {
     FDIRChangeNotifyMessage **last;
+    FDIRChangeNotifyMessage **msg;
     FDIRDBUpdateFieldInfo *merged;
 
     last = end - 1;
@@ -230,6 +231,7 @@ static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
     merged->field_index = (*last)->field_index;
     merged->args = (*start)->dentry;
     merged->merge_count = end - start;
+    merged->inc_alloc = 0;
 
     if ((*last)->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
         merged->op_type = da_binlog_op_type_update;
@@ -246,6 +248,10 @@ static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
             merged->op_type = da_binlog_op_type_create;
         } else {
             merged->op_type = da_binlog_op_type_update;
+        }
+
+        for (msg=start; msg<end; msg++) {
+            merged->inc_alloc += (*msg)->inc_alloc;
         }
 
         merged->buffer = (*last)->buffer;

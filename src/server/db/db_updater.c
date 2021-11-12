@@ -30,9 +30,10 @@
 
 #define REDO_DENTRY_FIELD_ID_VERSION               1
 #define REDO_DENTRY_FIELD_ID_INODE                 2
-#define REDO_DENTRY_FIELD_ID_OP_TYPE               3
-#define REDO_DENTRY_FIELD_ID_FIELD_INDEX           4
-#define REDO_DENTRY_FIELD_ID_FIELD_BUFFER          5
+#define REDO_DENTRY_FIELD_ID_INC_ALLOC             3
+#define REDO_DENTRY_FIELD_ID_OP_TYPE               4
+#define REDO_DENTRY_FIELD_ID_FIELD_INDEX           5
+#define REDO_DENTRY_FIELD_ID_FIELD_BUFFER          6
 
 typedef struct db_updater_ctx {
     SafeWriteFileInfo redo;
@@ -141,6 +142,12 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
                     REDO_DENTRY_FIELD_ID_INODE,
                     entry->inode)) != 0)
+    {
+        return result;
+    }
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_DENTRY_FIELD_ID_INC_ALLOC,
+                    entry->inc_alloc)) != 0)
     {
         return result;
     }
@@ -318,6 +325,9 @@ static int unpack_one_dentry(SFSerializerIterator *it,
                 break;
             case REDO_DENTRY_FIELD_ID_INODE:
                 entry->inode = fv->value.n;
+                break;
+            case REDO_DENTRY_FIELD_ID_INC_ALLOC:
+                entry->inc_alloc = fv->value.n;
                 break;
             case REDO_DENTRY_FIELD_ID_OP_TYPE:
                 entry->op_type = fv->value.n;

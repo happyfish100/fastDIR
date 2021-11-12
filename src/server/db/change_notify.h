@@ -28,6 +28,7 @@ typedef struct fdir_change_notify_message {
     int field_index;
     FastBuffer *buffer;
     int64_t child;  //child inodes
+    int64_t inc_alloc;  //inode allocate/deallocate space increment
 } FDIRChangeNotifyMessage;
 
 typedef struct fdir_change_notify_message_array {
@@ -47,13 +48,14 @@ typedef struct fdir_change_notify_event {
     struct fdir_change_notify_event *next; //for queue
 } FDIRChangeNotifyEvent;
 
-#define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index) \
+#define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index, alloc) \
     (message)->dentry = ent;   \
     (message)->op_type = type; \
-    (message)->field_index = index
+    (message)->field_index = index; \
+    (message)->inc_alloc = alloc
 
-#define FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(message, ent, type, index) \
-    FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index); (message)++
+#define FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(message, ent, type, index, alloc) \
+    FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index, alloc); (message)++
 
 #ifdef __cplusplus
 extern "C" {

@@ -21,6 +21,7 @@
 #include "fastcommon/logger.h"
 #include "sf/sf_global.h"
 #include "server_global.h"
+#include "ns_manager.h"
 #include "dentry.h"
 #include "inode_index.h"
 
@@ -228,6 +229,11 @@ int inode_index_del_dentry(FDIRServerDentry *dentry)
         result = ENOENT;
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+
+    if (deleted != NULL && deleted->stat.alloc > 0) {
+        fdir_namespace_inc_alloc_bytes(deleted->ns_entry,
+                -1 * deleted->stat.alloc);
+    }
 
     return result;
 }

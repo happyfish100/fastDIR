@@ -35,11 +35,12 @@
 typedef struct fdir_db_update_field_info {
     int64_t version;   //field version, NOT data version!
     uint64_t inode;
+    int64_t inc_alloc;
     DABinlogOpType op_type;
     int merge_count;
     int field_index;
     FastBuffer *buffer;
-    void *args;
+    void *args;   //dentry
     struct fdir_db_update_field_info *next;  //for queue
 } FDIRDBUpdateFieldInfo;
 

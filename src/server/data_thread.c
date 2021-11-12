@@ -440,7 +440,7 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
 #define GENERATE_MODIFY_PARENT_MESSAGE(msg, parent, inode, op_type)  \
     if (parent != NULL) {  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, parent, op_type, \
-                FDIR_PIECE_FIELD_INDEX_CHILDREN); \
+                FDIR_PIECE_FIELD_INDEX_CHILDREN, 0); \
         (msg)->child = inode;  \
         (msg)++; \
     }
@@ -456,12 +456,13 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg,    \
                 (dentry)->parent, (dentry)->inode); \
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
-                op_type, FDIR_PIECE_FIELD_INDEX_FOR_REMOVE); \
+                op_type, FDIR_PIECE_FIELD_INDEX_FOR_REMOVE,  \
+                ((dentry)->stat.alloc > 0 ? -1 * (dentry)->stat.alloc : 0)); \
     } else { \
         GENERATE_ADD_TO_PARENT_MESSAGE(msg,         \
                 (dentry)->parent, (dentry)->inode); \
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
-                op_type, FDIR_PIECE_FIELD_INDEX_BASIC); \
+                op_type, FDIR_PIECE_FIELD_INDEX_BASIC, 0); \
     }
 
 
@@ -490,7 +491,7 @@ static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
                 dentry->parent, record->me.dentry->inode);
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                 me.dentry, da_binlog_op_type_update,
-                FDIR_PIECE_FIELD_INDEX_BASIC);
+                FDIR_PIECE_FIELD_INDEX_BASIC, 0);
     }
 }
 
@@ -506,10 +507,10 @@ static void generate_rename_messages(FDIRChangeNotifyMessage **msg,
         {
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                     rename.src.dentry, da_binlog_op_type_update,
-                    FDIR_PIECE_FIELD_INDEX_BASIC);
+                    FDIR_PIECE_FIELD_INDEX_BASIC, 0);
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                     rename.dest.dentry, da_binlog_op_type_update,
-                    FDIR_PIECE_FIELD_INDEX_BASIC);
+                    FDIR_PIECE_FIELD_INDEX_BASIC, 0);
         } else {
             GENERATE_MOVE_DENTRY_MESSAGES(*msg, record->rename.
                     dest.dentry->parent, record->rename.src.dentry);
@@ -532,7 +533,7 @@ static void generate_rename_messages(FDIRChangeNotifyMessage **msg,
     } else {
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                 rename.src.dentry, da_binlog_op_type_update,
-                FDIR_PIECE_FIELD_INDEX_BASIC);
+                FDIR_PIECE_FIELD_INDEX_BASIC, 0);
     }
 }
 
@@ -581,21 +582,21 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
             if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
                 FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
                         hdlink.src_dentry, da_binlog_op_type_update,
-                        FDIR_PIECE_FIELD_INDEX_BASIC);
+                        FDIR_PIECE_FIELD_INDEX_BASIC, 0);
             }
             GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
                     da_binlog_op_type_create);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
-                    me.dentry, da_binlog_op_type_update,
-                    FDIR_PIECE_FIELD_INDEX_BASIC);
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->me.dentry,
+                    da_binlog_op_type_update, FDIR_PIECE_FIELD_INDEX_BASIC,
+                    (record->options.inc_alloc ? record->stat.alloc : 0));
             break;
         case BINLOG_OP_SET_XATTR_INT:
         case BINLOG_OP_REMOVE_XATTR_INT:
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
                     me.dentry, da_binlog_op_type_update,
-                    FDIR_PIECE_FIELD_INDEX_XATTR);
+                    FDIR_PIECE_FIELD_INDEX_XATTR, 0);
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
             generate_remove_messages(&msg, record);
