@@ -29,6 +29,17 @@
 #include "data_thread.h"
 #include "ns_manager.h"
 
+#define NAMESPACE_DUMP_FILENAME  "namespaces.dat"
+
+#define NAMESPACE_FIELD_MAX               8
+#define NAMESPACE_FIELD_COUNT             5
+
+#define NAMESPACE_FIELD_INDEX_ID          0
+#define NAMESPACE_FIELD_INDEX_ROOT        1
+#define NAMESPACE_FIELD_INDEX_DIRS        2
+#define NAMESPACE_FIELD_INDEX_FILES       3
+#define NAMESPACE_FIELD_INDEX_USED_BYTES  4
+
 typedef struct fdir_namespace_hashtable {
     int count;
     FDIRNamespaceEntry **buckets;
@@ -44,6 +55,7 @@ typedef struct fdir_manager {
 
     struct fast_mblock_man ns_allocator;  //element: FDIRNamespaceEntry
     pthread_mutex_t lock;  //for create namespace
+    int current_id;
 } FDIRManager;
 
 static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
@@ -142,7 +154,8 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     entry->current.counts.dir = 0;
     entry->current.counts.file = 0;
     entry->current.used_bytes = 0;
-    entry->current.root = NULL;
+    entry->current.root.ptr = NULL;
+    entry->id = ++fdir_manager.current_id;
     entry->nexts.htable = *bucket;
     *bucket = entry;
 
@@ -237,4 +250,200 @@ void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
         fc_queue_push_queue_to_tail_silence(subscriber->queues +
                 FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING, &qinfo);
     }
+}
+
+static int realloc_namespace_ptr_array(FDIRNamespaceDumpContext *ctx)
+{
+    FDIRNamespaceEntry **entries;
+
+    if (ctx->alloc == 0) {
+        ctx->alloc = 64;
+    }
+    do {
+        ctx->alloc *= 2;
+    } while (ctx->alloc < fdir_manager.ns_allocator.
+            info.element_used_count);
+
+    entries = (FDIRNamespaceEntry **)fc_malloc(sizeof(
+                FDIRNamespaceEntry *) * ctx->alloc);
+    if (entries == NULL) {
+        return ENOMEM;
+    }
+
+    if (ctx->entries != NULL) {
+        free(ctx->entries);
+    }
+    ctx->entries = entries;
+
+    return 0;
+}
+
+static int realloc_buffer(BufferInfo *buffer, const int alloc_bytes)
+{
+    char *buff;
+
+    if (buffer->alloc_size == 0) {
+        buffer->alloc_size = 512;
+    }
+    do {
+        buffer->alloc_size *= 2;
+    } while (buffer->alloc_size < alloc_bytes);
+
+    buff = (char *)fc_malloc(buffer->alloc_size);
+    if (buff == NULL) {
+        return ENOMEM;
+    }
+
+    if (buffer->buff != NULL) {
+        free(buffer->buff);
+    }
+    buffer->buff = buff;
+
+    return 0;
+}
+
+static int dump_namespaces(FDIRNamespaceDumpContext *ctx)
+{
+    char filename[PATH_MAX];
+    int result;
+    int alloc_bytes;
+    char *p;
+    FDIRNamespaceEntry **entry;
+    FDIRNamespaceEntry **end;
+
+    alloc_bytes = ctx->count * 64 + 32;
+    if (ctx->buffer.alloc_size < alloc_bytes) {
+        if ((result=realloc_buffer(&ctx->buffer, alloc_bytes)) != 0) {
+            return result;
+        }
+    }
+
+    p = ctx->buffer.buff;
+    p += sprintf(p, "%d %"PRId64"\n", ctx->count, ctx->last_version);
+
+    end = ctx->entries + ctx->count;
+    for (entry=ctx->entries; entry<end; entry++) {
+        p += sprintf(p, "%d %"PRId64" %"PRId64" %"PRId64" %"PRId64"\n",
+                (*entry)->id, (*entry)->delay.root.inode,
+                (*entry)->delay.counts.dir, (*entry)->delay.counts.file,
+                (*entry)->delay.used_bytes);
+    }
+    ctx->buffer.length = p - ctx->buffer.buff;
+
+    snprintf(filename, sizeof(filename), "%s/%s",
+            STORAGE_PATH_STR, NAMESPACE_DUMP_FILENAME);
+    return safeWriteToFile(filename, ctx->buffer.buff, ctx->buffer.length);
+}
+
+int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx)
+{
+    int result;
+    FDIRNamespaceEntry *ns_entry;
+    FDIRNamespaceEntry **dest;
+
+    PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
+    do {
+        if (ctx->alloc <= fdir_manager.ns_allocator.info.element_used_count) {
+            if ((result=realloc_namespace_ptr_array(ctx)) != 0) {
+                break;
+            }
+        }
+
+        dest = ctx->entries;
+        ns_entry = fdir_manager.chain.head;
+        while (ns_entry != NULL) {
+            *dest++ = ns_entry;
+            ns_entry = ns_entry->nexts.list;
+        }
+        ctx->count = dest - ctx->entries;
+        result = 0;
+    } while (0);
+    PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
+
+    if (result != 0) {
+        return result;
+    }
+    return dump_namespaces(ctx);
+}
+
+int fdir_namespace_load(int64_t *last_version)
+{
+    const bool ignore_empty = true;
+    char filename[PATH_MAX];
+    string_t content;
+    int64_t file_size;
+    string_t *rows;
+    string_t *line;
+    string_t *end;
+    string_t cols[NAMESPACE_FIELD_MAX];
+    int row_count;
+    int col_count;
+    int header_count;
+    int count;
+    int result;
+
+    snprintf(filename, sizeof(filename), "%s/%s",
+            STORAGE_PATH_STR, NAMESPACE_DUMP_FILENAME);
+    if (access(filename, F_OK) != 0) {
+        if (errno == ENOENT) {
+            return 0;
+        }
+    }
+
+    if ((result=getFileContent(filename, &content.str, &file_size)) != 0) {
+        return result;
+    }
+
+    row_count = getOccurCount(content.str, '\n');
+    if (row_count < 1) {
+        logError("file: "__FILE__", line: %d, "
+                "namespace file: %s, invalid data format",
+                __LINE__, filename);
+        return EINVAL;
+    }
+
+    rows = (string_t *)fc_malloc(sizeof(string_t) * row_count);
+    if (rows == NULL) {
+        return ENOMEM;
+    }
+
+    count = split_string_ex(&content, '\n', rows, row_count, ignore_empty);
+    col_count = split_string_ex(rows + 0, ' ', cols,
+            NAMESPACE_FIELD_MAX, ignore_empty);
+    if (col_count != 2) {
+        logError("file: "__FILE__", line: %d, "
+                "namespace file: %s, first line is invalid, column "
+                "count: %d != 2", __LINE__, filename, col_count);
+        return EINVAL;
+    }
+
+    header_count = strtol(cols[0].str, NULL, 10);
+    if (count - 1 != header_count) {
+        logError("file: "__FILE__", line: %d, "
+                "namespace file: %s, record count: %d != "
+                "header count: %d", __LINE__, filename,
+                count - 1, header_count);
+        return EINVAL;
+    }
+    *last_version = strtoll(cols[1].str, NULL, 10);
+
+    end = rows + count;
+    for (line=rows+1; line<end; line++) {
+        col_count = split_string_ex(line, ' ', cols,
+                NAMESPACE_FIELD_MAX, ignore_empty);
+        if (col_count != NAMESPACE_FIELD_COUNT) {
+            logError("file: "__FILE__", line: %d, "
+                    "namespace file: %s, line no. %d, "
+                    "column count: %d != %d", __LINE__,
+                    filename, (int)(line - rows) + 1,
+                    col_count, NAMESPACE_FIELD_COUNT);
+            return EINVAL;
+        }
+
+        //TODO
+    }
+
+    free(content.str);
+    free(rows);
+    return 0;
 }

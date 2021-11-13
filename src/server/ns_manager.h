@@ -22,7 +22,10 @@
 #include "data_thread.h"
 
 typedef struct fdir_namespace_info {
-    struct fdir_server_dentry *root;
+    union {
+        struct fdir_server_dentry *ptr;  //for current
+        int64_t inode;  //for delay
+    } root;
     struct {
         volatile int64_t dir;
         volatile int64_t file;
@@ -31,6 +34,7 @@ typedef struct fdir_namespace_info {
 } FDIRNamespaceInfo;
 
 typedef struct fdir_namespace_entry {
+    int id;
     string_t name;
     FDIRNamespaceInfo current;
     FDIRNamespaceInfo delay;   //for storage engine
@@ -42,6 +46,14 @@ typedef struct fdir_namespace_entry {
 
     FDIRNSSubscribeEntry subs_entries[0];
 } FDIRNamespaceEntry;
+
+typedef struct fdir_namespace_dump_context {
+    FDIRNamespaceEntry **entries;
+    int alloc;
+    int count;
+    BufferInfo buffer;
+    int64_t last_version;
+} FDIRNamespaceDumpContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -60,6 +72,9 @@ extern "C" {
 
     void fdir_namespace_push_all_to_holding_queue(
             FDIRNSSubscriber *subscriber);
+
+    int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx);
+    int fdir_namespace_load(int64_t *last_version);
 
 #ifdef __cplusplus
 }

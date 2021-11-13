@@ -18,6 +18,7 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
 #include "../server_global.h"
+#include "../ns_manager.h"
 #include "dentry_serializer.h"
 #include "db_updater.h"
 
@@ -368,6 +369,7 @@ static int do_load(FDIRDBUpdaterContext *ctx)
 
     sf_serializer_iterator_init(&it);
 
+    ctx->array.count = 0;
     if ((result=unpack_header(&it, ctx, &record_count)) != 0) {
         return result;
     }
@@ -380,6 +382,55 @@ static int do_load(FDIRDBUpdaterContext *ctx)
 
     sf_serializer_iterator_destroy(&it);
     return result;
+}
+
+static int dump_namespaces(FDIRDBUpdaterContext *ctx)
+{
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
+    FDIRServerDentry *dentry;
+    int change_count;
+
+    change_count = 0;
+    end = ctx->array.entries + ctx->array.count;
+    for (entry=ctx->array.entries; entry<end; entry++) {
+        dentry = (FDIRServerDentry *)entry->args;
+        if (entry->op_type == da_binlog_op_type_create &&
+                entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
+        {
+            if (dentry->ns_entry->delay.root.inode == 0) {
+                dentry->ns_entry->delay.root.inode = dentry->inode;
+            }
+
+            if (S_ISDIR(dentry->stat.mode)) {
+                dentry->ns_entry->delay.counts.dir += 1;
+            } else {
+                dentry->ns_entry->delay.counts.file += 1;
+            }
+            ++change_count;
+        } else if (entry->op_type == da_binlog_op_type_remove) {
+            if (dentry->ns_entry->delay.root.inode == dentry->inode) {
+                dentry->ns_entry->delay.root.inode = 0;
+            }
+
+            if (S_ISDIR(dentry->stat.mode)) {
+                dentry->ns_entry->delay.counts.dir -= 1;
+            } else {
+                dentry->ns_entry->delay.counts.file -= 1;
+            }
+            ++change_count;
+        }
+
+        if (entry->inc_alloc != 0) {
+            dentry->ns_entry->delay.used_bytes += entry->inc_alloc;
+            ++change_count;
+        }
+    }
+
+    if (change_count > 0) {
+    }
+
+    return 0;
 }
 
 static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
@@ -430,26 +481,6 @@ int db_updater_init(FDIRDBUpdaterContext *ctx)
 void db_updater_destroy()
 {
 }
-
-/*
-static int update_namespaces(FDIRDBUpdaterContext *ctx)
-{
-    FDIRDBUpdateFieldInfo *entry;
-    FDIRDBUpdateFieldInfo *end;
-    //int result;
-
-    end = ctx->array.entries + ctx->array.count;
-    for (entry=ctx->array.entries; entry<end; entry++) {
-        if (entry->op_type == da_binlog_op_type_create &&
-                entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
-        {
-        } else if (entry->op_type == da_binlog_op_type_remove) {
-        }
-    }
-
-    return 0;
-}
-*/
 
 int db_updater_deal(FDIRDBUpdaterContext *ctx)
 {
