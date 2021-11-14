@@ -144,6 +144,13 @@ extern "C" {
     int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
             void *ptr, server_free_func free_func);
 
+    static inline FDIRDataThreadContext *get_data_thread_context(
+            const unsigned int hash_code)
+    {
+        return g_data_thread_vars.thread_array.contexts +
+            hash_code % g_data_thread_vars.thread_array.count;
+    }
+
     static inline void set_data_thread_index(FDIRBinlogRecord *record)
     {
         record->extra.data_thread_index = record->hash_code %

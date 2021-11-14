@@ -18,6 +18,7 @@
 #define _FDIR_DENTRY_H
 
 #include "server_types.h"
+#include "ns_manager.h"
 #include "data_thread.h"
 
 #define FDIR_GET_REAL_DENTRY(dentry)  \

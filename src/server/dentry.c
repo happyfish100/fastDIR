@@ -29,7 +29,6 @@
 #include "service_handler.h"
 #include "inode_generator.h"
 #include "inode_index.h"
-#include "ns_manager.h"
 #include "db/change_notify.h"
 #include "dentry.h"
 

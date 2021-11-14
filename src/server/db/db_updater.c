@@ -29,18 +29,23 @@
 #define REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION    2
 #define REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION   3
 
-#define REDO_DENTRY_FIELD_ID_VERSION               1
-#define REDO_DENTRY_FIELD_ID_INODE                 2
-#define REDO_DENTRY_FIELD_ID_INC_ALLOC             3
-#define REDO_DENTRY_FIELD_ID_OP_TYPE               4
-#define REDO_DENTRY_FIELD_ID_FIELD_INDEX           5
-#define REDO_DENTRY_FIELD_ID_FIELD_BUFFER          6
+#define REDO_ENTRY_FIELD_ID_VERSION               1
+#define REDO_ENTRY_FIELD_ID_INODE                 2
+#define REDO_ENTRY_FIELD_ID_INC_ALLOC             3
+#define REDO_ENTRY_FIELD_ID_NAMESPACE_ID          4
+#define REDO_ENTRY_FIELD_ID_MODE                  5
+#define REDO_ENTRY_FIELD_ID_OP_TYPE               6
+#define REDO_ENTRY_FIELD_ID_FIELD_INDEX           7
+#define REDO_ENTRY_FIELD_ID_FIELD_BUFFER          8
 
 typedef struct db_updater_ctx {
     SafeWriteFileInfo redo;
+    FDIRNamespaceDumpContext ns_dump_ctx;
 } DBUpdaterCtx;
 
 static DBUpdaterCtx db_updater_ctx;
+
+#define NS_DUMP_CTX  db_updater_ctx.ns_dump_ctx
 
 static int compare_field_version(const FDIRDBUpdateFieldInfo *entry1,
         const FDIRDBUpdateFieldInfo *entry2)
@@ -135,32 +140,44 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
     sf_serializer_pack_begin(&ctx->buffer);
 
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_VERSION,
+                    REDO_ENTRY_FIELD_ID_VERSION,
                     entry->version)) != 0)
     {
         return result;
     }
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_INODE,
+                    REDO_ENTRY_FIELD_ID_INODE,
                     entry->inode)) != 0)
     {
         return result;
     }
     if ((result=sf_serializer_pack_integer(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_INC_ALLOC,
+                    REDO_ENTRY_FIELD_ID_INC_ALLOC,
                     entry->inc_alloc)) != 0)
     {
         return result;
     }
     if ((result=sf_serializer_pack_integer(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_OP_TYPE,
+                    REDO_ENTRY_FIELD_ID_NAMESPACE_ID,
+                    entry->namespace_id)) != 0)
+    {
+        return result;
+    }
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_ENTRY_FIELD_ID_MODE,
+                    entry->mode)) != 0)
+    {
+        return result;
+    }
+    if ((result=sf_serializer_pack_integer(&ctx->buffer,
+                    REDO_ENTRY_FIELD_ID_OP_TYPE,
                     entry->op_type)) != 0)
     {
         return result;
     }
 
     if ((result=sf_serializer_pack_integer(&ctx->buffer,
-                    REDO_DENTRY_FIELD_ID_FIELD_INDEX,
+                    REDO_ENTRY_FIELD_ID_FIELD_INDEX,
                     entry->field_index)) != 0)
     {
         return result;
@@ -168,7 +185,7 @@ static int write_one_entry(FDIRDBUpdaterContext *ctx,
 
     if (entry->buffer != NULL) {
         if ((result=sf_serializer_pack_buffer(&ctx->buffer,
-                        REDO_DENTRY_FIELD_ID_FIELD_BUFFER,
+                        REDO_ENTRY_FIELD_ID_FIELD_BUFFER,
                         entry->buffer)) != 0)
         {
             return result;
@@ -321,22 +338,28 @@ static int unpack_one_dentry(SFSerializerIterator *it,
     entry->args = NULL;
     while ((fv=sf_serializer_next(it)) != NULL) {
         switch (fv->fid) {
-            case REDO_DENTRY_FIELD_ID_VERSION:
+            case REDO_ENTRY_FIELD_ID_VERSION:
                 entry->version = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_INODE:
+            case REDO_ENTRY_FIELD_ID_INODE:
                 entry->inode = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_INC_ALLOC:
+            case REDO_ENTRY_FIELD_ID_INC_ALLOC:
                 entry->inc_alloc = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_OP_TYPE:
+            case REDO_ENTRY_FIELD_ID_NAMESPACE_ID:
+                entry->namespace_id = fv->value.n;
+                break;
+            case REDO_ENTRY_FIELD_ID_MODE:
+                entry->mode = fv->value.n;
+                break;
+            case REDO_ENTRY_FIELD_ID_OP_TYPE:
                 entry->op_type = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_FIELD_INDEX:
+            case REDO_ENTRY_FIELD_ID_FIELD_INDEX:
                 entry->field_index = fv->value.n;
                 break;
-            case REDO_DENTRY_FIELD_ID_FIELD_BUFFER:
+            case REDO_ENTRY_FIELD_ID_FIELD_BUFFER:
                 if ((entry->buffer=dentry_serializer_to_buffer(
                                 &fv->value.s)) == NULL)
                 {
@@ -388,49 +411,62 @@ static int dump_namespaces(FDIRDBUpdaterContext *ctx)
 {
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
-    FDIRServerDentry *dentry;
+    FDIRNamespaceEntry *ns_entry;
     int change_count;
 
     change_count = 0;
     end = ctx->array.entries + ctx->array.count;
     for (entry=ctx->array.entries; entry<end; entry++) {
-        dentry = (FDIRServerDentry *)entry->args;
+        if (entry->args != NULL) {
+            ns_entry = ((FDIRServerDentry *)entry->args)->ns_entry;
+        } else {
+            ns_entry = fdir_namespace_get_by_id(entry->namespace_id);
+            if (ns_entry == NULL) {
+                logError("file: "__FILE__", line: %d, "
+                        "namespace id: %d not exist",
+                        __LINE__, entry->namespace_id);
+                return ENOENT;
+            }
+        }
+
         if (entry->op_type == da_binlog_op_type_create &&
                 entry->field_index == FDIR_PIECE_FIELD_INDEX_BASIC)
         {
-            if (dentry->ns_entry->delay.root.inode == 0) {
-                dentry->ns_entry->delay.root.inode = dentry->inode;
+            if (ns_entry->delay.root.inode == 0) {
+                ns_entry->delay.root.inode = entry->inode;
             }
 
-            if (S_ISDIR(dentry->stat.mode)) {
-                dentry->ns_entry->delay.counts.dir += 1;
+            if (S_ISDIR(entry->mode)) {
+                ns_entry->delay.counts.dir += 1;
             } else {
-                dentry->ns_entry->delay.counts.file += 1;
+                ns_entry->delay.counts.file += 1;
             }
             ++change_count;
         } else if (entry->op_type == da_binlog_op_type_remove) {
-            if (dentry->ns_entry->delay.root.inode == dentry->inode) {
-                dentry->ns_entry->delay.root.inode = 0;
+            if (ns_entry->delay.root.inode == entry->inode) {
+                ns_entry->delay.root.inode = 0;
             }
 
-            if (S_ISDIR(dentry->stat.mode)) {
-                dentry->ns_entry->delay.counts.dir -= 1;
+            if (S_ISDIR(entry->mode)) {
+                ns_entry->delay.counts.dir -= 1;
             } else {
-                dentry->ns_entry->delay.counts.file -= 1;
+                ns_entry->delay.counts.file -= 1;
             }
             ++change_count;
         }
 
         if (entry->inc_alloc != 0) {
-            dentry->ns_entry->delay.used_bytes += entry->inc_alloc;
+            ns_entry->delay.used_bytes += entry->inc_alloc;
             ++change_count;
         }
     }
 
-    if (change_count > 0) {
+    if (change_count == 0) {
+        return 0;
     }
 
-    return 0;
+    NS_DUMP_CTX.last_version = ctx->last_versions.field;
+    return fdir_namespace_dump(&NS_DUMP_CTX);
 }
 
 static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
@@ -457,11 +493,20 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
     logInfo("last_versions {field: %"PRId64", dentry: %"PRId64"}",
             ctx->last_versions.field, ctx->last_versions.dentry);
 
-    if (result == 0) {
-        result = STORAGE_ENGINE_REDO_API(&ctx->array);
+    if (result != 0) {
+        return result;
+    }
+    if ((result=fdir_namespace_load(&NS_DUMP_CTX.last_version)) != 0) {
+        return result;
     }
 
-    return result;
+    if (NS_DUMP_CTX.last_version != ctx->last_versions.field) {
+        if ((result=dump_namespaces(ctx)) != 0) {
+            return result;
+        }
+    }
+
+    return STORAGE_ENGINE_REDO_API(&ctx->array);
 }
 
 int db_updater_init(FDIRDBUpdaterContext *ctx)
@@ -493,6 +538,10 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
     }
 
     if ((result=write_redo_log(ctx)) != 0) {
+        return result;
+    }
+
+    if ((result=dump_namespaces(ctx)) != 0) {
         return result;
     }
 

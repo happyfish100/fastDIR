@@ -47,6 +47,12 @@ typedef struct fdir_namespace_entry {
     FDIRNSSubscribeEntry subs_entries[0];
 } FDIRNamespaceEntry;
 
+typedef struct fdir_namespace_ptr_array {
+    FDIRNamespaceEntry **namespaces;
+    int count;
+    int alloc;
+} FDIRNamespacePtrArray;
+
 typedef struct fdir_namespace_dump_context {
     FDIRNamespaceEntry **entries;
     int alloc;
@@ -64,6 +70,8 @@ extern "C" {
 
     FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
             const string_t *ns, const bool create_ns, int *err_no);
+
+    FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id);
 
     int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat);
 

@@ -24,12 +24,15 @@
 #include "fastcommon/hash.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
+#include "fastcommon/char_converter.h"
+#include "sf/sf_binlog_index.h"
 #include "common/fdir_types.h"
 #include "server_global.h"
 #include "data_thread.h"
 #include "ns_manager.h"
 
-#define NAMESPACE_DUMP_FILENAME  "namespaces.dat"
+#define NAMESPACE_DUMP_FILENAME    "namespaces.dump"
+#define NAMESPACE_BINLOG_FILENAME  "namespaces.binlog"
 
 #define NAMESPACE_FIELD_MAX               8
 #define NAMESPACE_FIELD_COUNT             5
@@ -39,6 +42,10 @@
 #define NAMESPACE_FIELD_INDEX_DIRS        2
 #define NAMESPACE_FIELD_INDEX_FILES       3
 #define NAMESPACE_FIELD_INDEX_USED_BYTES  4
+
+#define BINLOG_FIELD_COUNT             2
+#define BINLOG_FIELD_INDEX_ID          0
+#define BINLOG_FIELD_INDEX_NAME        1
 
 typedef struct fdir_namespace_hashtable {
     int count;
@@ -52,9 +59,12 @@ typedef struct fdir_manager {
     } chain;
 
     FDIRNamespaceHashtable hashtable;
+    FDIRNamespacePtrArray array;  //sorted by id
 
     struct fast_mblock_man ns_allocator;  //element: FDIRNamespaceEntry
     pthread_mutex_t lock;  //for create namespace
+    FastCharConverter char_converter;
+    int fd;  //for namespace create/delete binlog write
     int current_id;
 } FDIRManager;
 
@@ -72,11 +82,18 @@ static int ns_alloc_init_func(FDIRNamespaceEntry *ns_entry, void *args)
     return 0;
 }
 
+static inline void get_binlog_filename(char *filename, const int size)
+{
+    snprintf(filename, size, "%s/%s", STORAGE_PATH_STR,
+            NAMESPACE_BINLOG_FILENAME);
+}
+
 int ns_manager_init()
 {
     int result;
     int element_size;
     int bytes;
+    char filename[PATH_MAX];
 
     memset(&fdir_manager, 0, sizeof(fdir_manager));
     element_size = sizeof(FDIRNamespaceEntry) +
@@ -99,6 +116,24 @@ int ns_manager_init()
     memset(fdir_manager.hashtable.buckets, 0, bytes);
 
     if ((result=init_pthread_lock(&fdir_manager.lock)) != 0) {
+        return result;
+    }
+
+    if ((result=std_spaces_add_backslash_converter_init(
+                    &fdir_manager.char_converter)) != 0)
+    {
+        return result;
+    }
+
+    get_binlog_filename(filename, sizeof(filename));
+    if ((fdir_manager.fd=open(filename, O_WRONLY |
+                    O_CREAT | O_APPEND, 0644)) < 0)
+    {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "open binlog file: %s to write fail, "
+                "errno: %d, error info: %s", __LINE__,
+                filename, result, STRERROR(result));
         return result;
     }
 
@@ -130,10 +165,80 @@ void fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,
     ns_subscribe_notify_all(ns_entry);
 }
 
+static int write_binlog(const FDIRNamespaceEntry *entry)
+{
+    char filename[PATH_MAX];
+    char buff[2 * NAME_MAX + 64];
+    char escaped[2 * NAME_MAX];
+    string_t name;
+    int len;
+    int result;
+
+    name.str = escaped;
+    fast_char_escape(&fdir_manager.char_converter,  entry->name.str,
+            entry->name.len, name.str, &name.len, sizeof(escaped));
+    len = sprintf(buff, "%d %.*s\n", entry->id, name.len, name.str);
+    if (fc_safe_write(fdir_manager.fd, buff, len) != len) {
+        result = errno != 0 ? errno : EIO;
+        get_binlog_filename(filename, sizeof(filename));
+        logError("file: "__FILE__", line: %d, "
+                "write to file \"%s\" fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+        return result;
+    }
+
+    if (fsync(fdir_manager.fd) != 0) {
+        result = errno != 0 ? errno : EIO;
+        get_binlog_filename(filename, sizeof(filename));
+        logError("file: "__FILE__", line: %d, "
+                "fsync file \"%s\" fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+        return result;
+    }
+
+    return 0;
+}
+
+static int realloc_namespace_array(FDIRNamespacePtrArray *array)
+{
+    FDIRNamespaceEntry **namespaces;
+    int alloc;
+    int bytes;
+
+    if (array->alloc == 0) {
+        alloc = 128;
+    } else {
+        alloc = array->alloc * 2;
+    }
+
+    bytes = sizeof(FDIRNamespaceEntry *) * alloc;
+    namespaces = (FDIRNamespaceEntry **)fc_malloc(bytes);
+    if (namespaces == NULL) {
+        return ENOMEM;
+    }
+
+    if (array->namespaces != NULL) {
+        bytes = sizeof(FDIRNamespaceEntry *) * array->count;
+        memcpy(namespaces, array->namespaces, bytes);
+        free(array->namespaces);
+    }
+
+    array->namespaces = namespaces;
+    array->alloc = alloc;
+    return 0;
+}
+
 static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
-        FDIRNamespaceEntry **bucket, const string_t *ns, int *err_no)
+        FDIRNamespaceEntry **bucket, const int id, const string_t *name,
+        int *err_no)
 {
     FDIRNamespaceEntry *entry;
+
+    if (fdir_manager.array.count == fdir_manager.array.alloc) {
+        if ((*err_no=realloc_namespace_array(&fdir_manager.array)) != 0) {
+            return NULL;
+        }
+    }
 
     entry = (FDIRNamespaceEntry *)fast_mblock_alloc_object(
             &fdir_manager.ns_allocator);
@@ -142,20 +247,15 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
-    if ((*err_no=dentry_strdup(context, &entry->name, ns)) != 0) {
+    memset(entry, 0, sizeof(*entry));
+    if ((*err_no=dentry_strdup(context, &entry->name, name)) != 0) {
         return NULL;
     }
 
-    /*
-    logInfo("ns: %.*s, create_namespace: %.*s", ns->len, ns->str,
+    logInfo("ns: %.*s, create_namespace: %.*s", name->len, name->str,
             entry->name.len, entry->name.str);
-            */
 
-    entry->current.counts.dir = 0;
-    entry->current.counts.file = 0;
-    entry->current.used_bytes = 0;
-    entry->current.root.ptr = NULL;
-    entry->id = ++fdir_manager.current_id;
+    entry->id = id;
     entry->nexts.htable = *bucket;
     *bucket = entry;
 
@@ -167,22 +267,26 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     }
     fdir_manager.chain.tail = entry;
 
+    fdir_manager.array.namespaces[fdir_manager.array.count++] = entry;
     context->counters.ns++;
-    *err_no = 0;
     return entry;
 }
+
+#define NAMESPACE_SET_HT_BUCKET(ns) \
+    FDIRNamespaceEntry **bucket; \
+    int hash_code; \
+    \
+    hash_code = simple_hash((ns)->str, (ns)->len);  \
+    bucket = fdir_manager.hashtable.buckets + ((unsigned int)hash_code) % \
+        g_server_global_vars.namespace_hashtable_capacity
+
 
 FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
         const string_t *ns, const bool create_ns, int *err_no)
 {
     FDIRNamespaceEntry *entry;
-    FDIRNamespaceEntry **bucket;
-    int hash_code;
 
-    hash_code = simple_hash(ns->str, ns->len);
-    bucket = fdir_manager.hashtable.buckets + ((unsigned int)hash_code) %
-        g_server_global_vars.namespace_hashtable_capacity;
-
+    NAMESPACE_SET_HT_BUCKET(ns);
     entry = *bucket;
     while (entry != NULL && !fc_string_equal(ns, &entry->name)) {
         entry = entry->nexts.htable;
@@ -203,13 +307,45 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
     }
 
     if (entry == NULL) {
-        entry = create_namespace(context, bucket, ns, err_no);
+        if ((entry=create_namespace(context, bucket, ++fdir_manager.
+                        current_id, ns, err_no)) != NULL)
+        {
+            if ((*err_no=write_binlog(entry)) != 0) {
+                entry = NULL;
+            }
+        }
     } else {
         *err_no = 0;
     }
     PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
 
     return entry;
+}
+
+static int namespace_compare_by_id(const FDIRNamespaceEntry **ns1,
+        const FDIRNamespaceEntry **ns2)
+{
+    return (int)(*ns1)->id - (int)(*ns2)->id;
+}
+
+FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id)
+{
+    FDIRNamespaceEntry holder;
+    FDIRNamespaceEntry *target;
+    FDIRNamespaceEntry **found;
+
+    if ((id >= 1 && id <= fdir_manager.array.count) && (fdir_manager.
+                array.namespaces[id - 1]->id == id))
+    {
+        return fdir_manager.array.namespaces[id - 1];
+    }
+
+    target = &holder;
+    target->id = id;
+    found = bsearch(&target, fdir_manager.array.namespaces,
+            fdir_manager.array.count, sizeof(FDIRNamespaceEntry *),
+            (int (*)(const void *, const void *))namespace_compare_by_id);
+    return (found != NULL ? (*found) : NULL);
 }
 
 void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
@@ -366,10 +502,180 @@ int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx)
     return dump_namespaces(ctx);
 }
 
+static int parse_binlog_line(const string_t *line, char *error_info)
+{
+    const bool ignore_empty = true;
+    int result;
+    int id;
+    string_t name;
+    int col_count;
+    char *endptr;
+    string_t cols[NAMESPACE_FIELD_MAX];
+    char buff[2 * NAME_MAX];
+
+    col_count = split_string_ex(line, ' ', cols,
+            NAMESPACE_FIELD_MAX, ignore_empty);
+    if (col_count != BINLOG_FIELD_COUNT) {
+        sprintf(error_info, "column count: %d != %d",
+                col_count, BINLOG_FIELD_COUNT);
+        return EINVAL;
+    }
+
+    SF_BINLOG_PARSE_INT_SILENCE(id, "namespace id",
+            BINLOG_FIELD_INDEX_ID, ' ', 1);
+
+    if (cols[BINLOG_FIELD_INDEX_NAME].len > sizeof(buff)) {
+        sprintf(error_info, "namespace length: %d is too large",
+                cols[BINLOG_FIELD_INDEX_NAME].len);
+        return EOVERFLOW;
+    }
+
+    memcpy(buff, cols[BINLOG_FIELD_INDEX_NAME].str,
+            cols[BINLOG_FIELD_INDEX_NAME].len);
+    FC_SET_STRING_EX(name, buff, cols[BINLOG_FIELD_INDEX_NAME].len);
+    fast_char_unescape(&fdir_manager.char_converter, name.str, &name.len);
+
+    {
+        FDIRDataThreadContext *context;
+        NAMESPACE_SET_HT_BUCKET(&name);
+
+        context = get_data_thread_context(hash_code);
+        create_namespace(&context->dentry_context,
+                bucket, id, &name, &result);
+    }
+
+    return result;
+}
+
+static int do_load(const char *filename, const string_t *content)
+{
+    int result;
+    int line_count;
+    string_t line;
+    char *line_start;
+    char *buff_end;
+    char *line_end;
+    char error_info[256];
+
+    line_count = 0;
+    result = 0;
+    *error_info = '\0';
+    line_start = content->str;
+    buff_end = content->str + content->len;
+    while (line_start < buff_end) {
+        line_end = (char *)memchr(line_start, '\n', buff_end - line_start);
+        if (line_end == NULL) {
+            break;
+        }
+
+        ++line_count;
+        ++line_end;
+        line.str = line_start;
+        line.len = line_end - line_start;
+        if ((result=parse_binlog_line(&line, error_info)) != 0) {
+            logError("file: "__FILE__", line: %d, "
+                    "parse namespace binlog fail, filename: %s, "
+                    "line no: %d, error info: %s", __LINE__,
+                    filename, line_count, error_info);
+            break;
+        }
+
+        line_start = line_end;
+    }
+
+    return result;
+}
+
+static int alloc_namespace_array(FDIRNamespacePtrArray *array,
+        const int target_count)
+{
+    array->alloc = 128;
+    while (array->alloc < target_count) {
+        array->alloc *= 2;
+    }
+
+    array->namespaces = (FDIRNamespaceEntry **)fc_malloc(
+            sizeof(FDIRNamespaceEntry *) * array->alloc);
+    return (array->namespaces != NULL ? 0 : ENOMEM);
+}
+
+static int load_namespaces()
+{
+    char filename[PATH_MAX];
+    string_t content;
+    int64_t file_size;
+    int row_count;
+    int result;
+
+    get_binlog_filename(filename, sizeof(filename));
+    if (access(filename, F_OK) != 0) {
+        if (errno == ENOENT) {
+            return 0;
+        }
+    }
+
+    if ((result=getFileContent(filename, &content.str, &file_size)) != 0) {
+        return result;
+    }
+
+    if (file_size > 0) {
+        content.len = file_size;
+        row_count = getOccurCount(content.str, '\n');
+        if ((result=alloc_namespace_array(&fdir_manager.
+                        array, row_count)) == 0)
+        {
+            result = do_load(filename, &content);
+        }
+    }
+    free(content.str);
+    return result;
+}
+
+static int parse_dump_line(const string_t *line, char *error_info)
+{
+    const bool ignore_empty = true;
+    int id;
+    int col_count;
+    char *endptr;
+    FDIRNamespaceEntry *entry;
+    string_t cols[NAMESPACE_FIELD_MAX];
+
+    col_count = split_string_ex(line, ' ', cols,
+            NAMESPACE_FIELD_MAX, ignore_empty);
+    if (col_count != NAMESPACE_FIELD_COUNT) {
+        sprintf(error_info, "column count: %d != %d",
+                col_count, NAMESPACE_FIELD_COUNT);
+        return EINVAL;
+    }
+
+    SF_BINLOG_PARSE_INT_SILENCE(id, "namespace id",
+            NAMESPACE_FIELD_INDEX_ID, ' ', 1);
+
+    if ((entry=fdir_namespace_get_by_id(id)) == NULL) {
+        sprintf(error_info, "namespace id: %d not exist", id);
+        return ENOENT;
+    }
+
+    SF_BINLOG_PARSE_INT_SILENCE(entry->delay.root.inode,
+            "root inode", NAMESPACE_FIELD_INDEX_ROOT, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(entry->delay.counts.dir,
+            "directory count", NAMESPACE_FIELD_INDEX_DIRS, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(entry->delay.counts.file,
+            "file count", NAMESPACE_FIELD_INDEX_FILES, ' ', 0);
+    SF_BINLOG_PARSE_INT_SILENCE(entry->delay.used_bytes,
+            "used bytes", NAMESPACE_FIELD_INDEX_USED_BYTES, '\n', 0);
+
+    entry->current.counts.dir = entry->delay.counts.dir;
+    entry->current.counts.file = entry->delay.counts.file;
+    entry->current.used_bytes = entry->delay.used_bytes;
+    return 0;
+}
+
 int fdir_namespace_load(int64_t *last_version)
 {
     const bool ignore_empty = true;
     char filename[PATH_MAX];
+    char error_info[256];
     string_t content;
     int64_t file_size;
     string_t *rows;
@@ -381,6 +687,10 @@ int fdir_namespace_load(int64_t *last_version)
     int header_count;
     int count;
     int result;
+
+    if ((result=load_namespaces()) != 0) {
+        return result;
+    }
 
     snprintf(filename, sizeof(filename), "%s/%s",
             STORAGE_PATH_STR, NAMESPACE_DUMP_FILENAME);
@@ -394,6 +704,7 @@ int fdir_namespace_load(int64_t *last_version)
         return result;
     }
 
+    content.len = file_size;
     row_count = getOccurCount(content.str, '\n');
     if (row_count < 1) {
         logError("file: "__FILE__", line: %d, "
@@ -427,23 +738,18 @@ int fdir_namespace_load(int64_t *last_version)
     }
     *last_version = strtoll(cols[1].str, NULL, 10);
 
+    *error_info = '\0';
     end = rows + count;
     for (line=rows+1; line<end; line++) {
-        col_count = split_string_ex(line, ' ', cols,
-                NAMESPACE_FIELD_MAX, ignore_empty);
-        if (col_count != NAMESPACE_FIELD_COUNT) {
+        if ((result=parse_dump_line(line, error_info)) != 0) {
             logError("file: "__FILE__", line: %d, "
-                    "namespace file: %s, line no. %d, "
-                    "column count: %d != %d", __LINE__,
-                    filename, (int)(line - rows) + 1,
-                    col_count, NAMESPACE_FIELD_COUNT);
-            return EINVAL;
+                    "namespace dump file: %s, line no. %d, %s", __LINE__,
+                    filename, (int)(line - rows) + 1, error_info);
+            break;
         }
-
-        //TODO
     }
 
     free(content.str);
     free(rows);
-    return 0;
+    return result;
 }
