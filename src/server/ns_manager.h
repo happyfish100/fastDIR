@@ -35,13 +35,13 @@ typedef struct fdir_namespace_info {
 
 typedef struct fdir_namespace_entry {
     int id;
+    unsigned int hash_code;
     string_t name;
     FDIRNamespaceInfo current;
     FDIRNamespaceInfo delay;   //for storage engine
 
     struct {
         struct fdir_namespace_entry *htable; //for hashtable
-        struct fdir_namespace_entry *list;   //for chain list
     } nexts;
 
     FDIRNSSubscribeEntry subs_entries[0];

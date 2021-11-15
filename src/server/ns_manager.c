@@ -53,11 +53,6 @@ typedef struct fdir_namespace_hashtable {
 } FDIRNamespaceHashtable;
 
 typedef struct fdir_manager {
-    struct {
-        FDIRNamespaceEntry *head;
-        FDIRNamespaceEntry *tail;
-    } chain;
-
     FDIRNamespaceHashtable hashtable;
     FDIRNamespacePtrArray array;  //sorted by id
 
@@ -68,7 +63,7 @@ typedef struct fdir_manager {
     int current_id;
 } FDIRManager;
 
-static FDIRManager fdir_manager = {{NULL, NULL}, {0, NULL}};
+static FDIRManager fdir_manager = {{0, NULL}};
 
 static int ns_alloc_init_func(FDIRNamespaceEntry *ns_entry, void *args)
 {
@@ -125,16 +120,18 @@ int ns_manager_init()
         return result;
     }
 
-    get_binlog_filename(filename, sizeof(filename));
-    if ((fdir_manager.fd=open(filename, O_WRONLY |
-                    O_CREAT | O_APPEND, 0644)) < 0)
-    {
-        result = errno != 0 ? errno : EPERM;
-        logError("file: "__FILE__", line: %d, "
-                "open binlog file: %s to write fail, "
-                "errno: %d, error info: %s", __LINE__,
-                filename, result, STRERROR(result));
-        return result;
+    if (STORAGE_ENABLED) {
+        get_binlog_filename(filename, sizeof(filename));
+        if ((fdir_manager.fd=open(filename, O_WRONLY |
+                        O_CREAT | O_APPEND, 0644)) < 0)
+        {
+            result = errno != 0 ? errno : EPERM;
+            logError("file: "__FILE__", line: %d, "
+                    "open binlog file: %s to write fail, "
+                    "errno: %d, error info: %s", __LINE__,
+                    filename, result, STRERROR(result));
+            return result;
+        }
     }
 
     return 0;
@@ -173,6 +170,10 @@ static int write_binlog(const FDIRNamespaceEntry *entry)
     string_t name;
     int len;
     int result;
+
+    if (!STORAGE_ENABLED) {
+        return 0;
+    }
 
     name.str = escaped;
     fast_char_escape(&fdir_manager.char_converter,  entry->name.str,
@@ -252,20 +253,15 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         return NULL;
     }
 
-    logInfo("ns: %.*s, create_namespace: %.*s", name->len, name->str,
-            entry->name.len, entry->name.str);
+    /*
+    logInfo("ns: %.*s(%d), create_namespace: %.*s(%d)", name->len, name->str,
+            name->len, entry->name.len, entry->name.str, entry->name.len);
+            */
 
     entry->id = id;
+    entry->hash_code = simple_hash(name->str, name->len);
     entry->nexts.htable = *bucket;
     *bucket = entry;
-
-    entry->nexts.list = NULL;
-    if (fdir_manager.chain.head == NULL) {
-        fdir_manager.chain.head = entry;
-    } else {
-        fdir_manager.chain.tail->nexts.list = entry;
-    }
-    fdir_manager.chain.tail = entry;
 
     fdir_manager.array.namespaces[fdir_manager.array.count++] = entry;
     context->counters.ns++;
@@ -274,10 +270,10 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
 
 #define NAMESPACE_SET_HT_BUCKET(ns) \
     FDIRNamespaceEntry **bucket; \
-    int hash_code; \
+    unsigned int hash_code; \
     \
     hash_code = simple_hash((ns)->str, (ns)->len);  \
-    bucket = fdir_manager.hashtable.buckets + ((unsigned int)hash_code) % \
+    bucket = fdir_manager.hashtable.buckets + (hash_code) % \
         g_server_global_vars.namespace_hashtable_capacity
 
 
@@ -350,16 +346,19 @@ FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id)
 
 void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
 {
-    FDIRNamespaceEntry *ns_entry;
+    FDIRNamespaceEntry **ns_entry;
+    FDIRNamespaceEntry **ns_end;
     FDIRNSSubscribeEntry *entry;
     FDIRNSSubscribeEntry *head;
     FDIRNSSubscribeEntry *tail;
 
     head = tail = NULL;
     PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
-    ns_entry = fdir_manager.chain.head;
-    while (ns_entry != NULL) {
-        entry = ns_entry->subs_entries + subscriber->index;
+    ns_end = fdir_manager.array.namespaces + fdir_manager.array.count;
+    for (ns_entry=fdir_manager.array.namespaces;
+            ns_entry<ns_end; ns_entry++)
+    {
+        entry = (*ns_entry)->subs_entries + subscriber->index;
         if (__sync_bool_compare_and_swap(&entry->entries[
                     FDIR_NS_SUBSCRIBE_QUEUE_INDEX_HOLDING].
                     in_queue, 0, 1))
@@ -372,8 +371,6 @@ void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
             }
             tail = entry;
         }
-
-        ns_entry = ns_entry->nexts.list;
     }
     PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
 
@@ -388,7 +385,8 @@ void fdir_namespace_push_all_to_holding_queue(FDIRNSSubscriber *subscriber)
     }
 }
 
-static int realloc_namespace_ptr_array(FDIRNamespaceDumpContext *ctx)
+static int realloc_namespace_ptr_array(FDIRNamespaceDumpContext *ctx,
+        const int target_count)
 {
     FDIRNamespaceEntry **entries;
 
@@ -397,8 +395,7 @@ static int realloc_namespace_ptr_array(FDIRNamespaceDumpContext *ctx)
     }
     do {
         ctx->alloc *= 2;
-    } while (ctx->alloc < fdir_manager.ns_allocator.
-            info.element_used_count);
+    } while (ctx->alloc < target_count);
 
     entries = (FDIRNamespaceEntry **)fc_malloc(sizeof(
                 FDIRNamespaceEntry *) * ctx->alloc);
@@ -474,24 +471,21 @@ static int dump_namespaces(FDIRNamespaceDumpContext *ctx)
 int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx)
 {
     int result;
-    FDIRNamespaceEntry *ns_entry;
-    FDIRNamespaceEntry **dest;
+    int bytes;
 
     PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
     do {
-        if (ctx->alloc <= fdir_manager.ns_allocator.info.element_used_count) {
-            if ((result=realloc_namespace_ptr_array(ctx)) != 0) {
+        if (ctx->alloc <= fdir_manager.array.count) {
+            if ((result=realloc_namespace_ptr_array(ctx,
+                            fdir_manager.array.count)) != 0)
+            {
                 break;
             }
         }
 
-        dest = ctx->entries;
-        ns_entry = fdir_manager.chain.head;
-        while (ns_entry != NULL) {
-            *dest++ = ns_entry;
-            ns_entry = ns_entry->nexts.list;
-        }
-        ctx->count = dest - ctx->entries;
+        bytes = sizeof(FDIRNamespaceEntry *) * fdir_manager.array.count;
+        memcpy(ctx->entries, fdir_manager.array.namespaces, bytes);
+        ctx->count = fdir_manager.array.count;
         result = 0;
     } while (0);
     PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
@@ -538,7 +532,6 @@ static int parse_binlog_line(const string_t *line, char *error_info)
     {
         FDIRDataThreadContext *context;
         NAMESPACE_SET_HT_BUCKET(&name);
-
         context = get_data_thread_context(hash_code);
         create_namespace(&context->dentry_context,
                 bucket, id, &name, &result);
@@ -569,7 +562,6 @@ static int do_load(const char *filename, const string_t *content)
         }
 
         ++line_count;
-        ++line_end;
         line.str = line_start;
         line.len = line_end - line_start;
         if ((result=parse_binlog_line(&line, error_info)) != 0) {
@@ -580,7 +572,7 @@ static int do_load(const char *filename, const string_t *content)
             break;
         }
 
-        line_start = line_end;
+        line_start = line_end + 1;
     }
 
     return result;
@@ -638,6 +630,7 @@ static int parse_dump_line(const string_t *line, char *error_info)
     int col_count;
     char *endptr;
     FDIRNamespaceEntry *entry;
+    FDIRDataThreadContext *context;
     string_t cols[NAMESPACE_FIELD_MAX];
 
     col_count = split_string_ex(line, ' ', cols,
@@ -668,6 +661,10 @@ static int parse_dump_line(const string_t *line, char *error_info)
     entry->current.counts.dir = entry->delay.counts.dir;
     entry->current.counts.file = entry->delay.counts.file;
     entry->current.used_bytes = entry->delay.used_bytes;
+
+    context = get_data_thread_context(entry->hash_code);
+    context->dentry_context.counters.dir += entry->current.counts.dir;
+    context->dentry_context.counters.file += entry->current.counts.file;
     return 0;
 }
 
