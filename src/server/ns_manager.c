@@ -231,7 +231,7 @@ static int realloc_namespace_array(FDIRNamespacePtrArray *array)
 
 static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         FDIRNamespaceEntry **bucket, const int id, const string_t *name,
-        int *err_no)
+        const unsigned int hash_code, int *err_no)
 {
     FDIRNamespaceEntry *entry;
 
@@ -259,7 +259,7 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
             */
 
     entry->id = id;
-    entry->hash_code = simple_hash(name->str, name->len);
+    entry->hash_code = hash_code;
     entry->nexts.htable = *bucket;
     *bucket = entry;
 
@@ -304,7 +304,7 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
 
     if (entry == NULL) {
         if ((entry=create_namespace(context, bucket, ++fdir_manager.
-                        current_id, ns, err_no)) != NULL)
+                        current_id, ns, hash_code, err_no)) != NULL)
         {
             if ((*err_no=write_binlog(entry)) != 0) {
                 entry = NULL;
@@ -533,8 +533,8 @@ static int parse_binlog_line(const string_t *line, char *error_info)
         FDIRDataThreadContext *context;
         NAMESPACE_SET_HT_BUCKET(&name);
         context = get_data_thread_context(hash_code);
-        create_namespace(&context->dentry_context,
-                bucket, id, &name, &result);
+        create_namespace(&context->dentry_context, bucket,
+                id, &name, hash_code, &result);
     }
 
     return result;

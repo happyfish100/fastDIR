@@ -775,6 +775,7 @@ static void *data_thread_func(void *arg)
             deal_immediate_free_queue(thread_ctx);
         }
     }
+
     __sync_sub_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     return NULL;
 }

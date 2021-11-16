@@ -38,7 +38,7 @@
 #define DENTRY_FIELD_ID_SPACE_END    19
 #define DENTRY_FIELD_ID_NLINK        20
 #define DENTRY_FIELD_ID_XATTR        30
-#define DENTRY_FIELD_ID_HASH_CODE    40
+#define DENTRY_FIELD_ID_NAMESPACE_ID 40
 #define DENTRY_FIELD_ID_CHILDREN     50
 
 #define FIXED_INODES_ARRAY_SIZE  1024
@@ -222,8 +222,8 @@ static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
     }
 
     if ((result=sf_serializer_pack_int32(buffer,
-                    DENTRY_FIELD_ID_HASH_CODE,
-                    dentry->hash_code)) != 0)
+                    DENTRY_FIELD_ID_NAMESPACE_ID,
+                    dentry->ns_entry->id)) != 0)
     {
         return result;
     }
