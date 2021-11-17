@@ -74,6 +74,11 @@ typedef enum {
     fdir_record_type_update = 'u'
 } FDIRRecordType;
 
+typedef struct {
+    FDIRServerDentry *dentry;
+    DABinlogOpType op_type;
+} FDIRAffectedDentry;
+
 typedef struct fdir_binlog_record {
     uint64_t data_version;
     int64_t inode;
@@ -101,11 +106,11 @@ typedef struct fdir_binlog_record {
         FDIRRecordDEntry me;  //for create and remove
     };
 
-    /* removed dentries for rename and remove operation */
+    /* affected dentries for rename and remove operation */
     struct {
-        FDIRServerDentry *dentries[2];
+        FDIRAffectedDentry entries[2];
         int count;
-    } removed;
+    } affected;
 
     FDIRDEntryStat stat;
 

@@ -477,28 +477,49 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg, old_parent, (dentry)->inode); \
         GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update)
 
+static void generate_affected_messages(FDIRChangeNotifyMessage **msg,
+        FDIRBinlogRecord *record)
+{
+    FDIRAffectedDentry *current;
+    FDIRAffectedDentry *end;
+
+    end = record->affected.entries + record->affected.count;
+    for (current=record->affected.entries; current<end; current++) {
+        if (current->op_type == da_binlog_op_type_remove) {
+            GENERATE_REOMVE_DENTRY_MESSAGES(*msg, current->dentry);
+        } else {  //update
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg,
+                    current->dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_BASIC, 0);
+        }
+    }
+}
+
 static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
-    FDIRServerDentry **dentry;
-    FDIRServerDentry **end;
+    FDIRAffectedDentry *current;
+    FDIRAffectedDentry *end;
     bool removed;
 
     removed = false;
-    end = record->removed.dentries + record->removed.count;
-    for (dentry=record->removed.dentries; dentry<end; dentry++) {
-        GENERATE_REOMVE_DENTRY_MESSAGES(*msg, *dentry);
-        if (*dentry == record->me.dentry) {
-            removed = true;
+    end = record->affected.entries + record->affected.count;
+    for (current=record->affected.entries; current<end; current++) {
+        if (current->op_type == da_binlog_op_type_remove) {
+            if (current->dentry == record->me.dentry) {
+                removed = true;
+            }
+            GENERATE_REOMVE_DENTRY_MESSAGES(*msg, current->dentry);
+        } else {  //update
+            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg,
+                    current->dentry, da_binlog_op_type_update,
+                    FDIR_PIECE_FIELD_INDEX_BASIC, 0);
         }
     }
 
     if (!removed) {
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
                 dentry->parent, record->me.dentry->inode);
-        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
-                me.dentry, da_binlog_op_type_update,
-                FDIR_PIECE_FIELD_INDEX_BASIC, 0);
     }
 }
 
@@ -506,8 +527,6 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
     int result;
-    FDIRServerDentry **dentry;
-    FDIRServerDentry **end;
 
     if ((record->flags & RENAME_EXCHANGE)) {
         if (record->rename.src.parent == record->rename.dest.parent) {
@@ -531,11 +550,9 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
         return 0;
     }
 
-    end = record->removed.dentries + record->removed.count;
-    for (dentry=record->removed.dentries; dentry<end; dentry++) {
-        GENERATE_REOMVE_DENTRY_MESSAGES(*msg, *dentry);
+    if (record->affected.count > 0) {
+        generate_affected_messages(msg, record);
     }
-
     if (record->rename.src.dentry->parent ==
             record->rename.src.parent)
     {
@@ -594,10 +611,8 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
 
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
-            if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
-                FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
-                        hdlink.src_dentry, da_binlog_op_type_update,
-                        FDIR_PIECE_FIELD_INDEX_BASIC, 0);
+            if (record->affected.count > 0) {
+                generate_affected_messages(&msg, record);
             }
             GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
                     da_binlog_op_type_create);
@@ -642,7 +657,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     bool set_data_verson;
     bool is_error;
 
-    record->removed.count = 0;
+    record->affected.count = 0;
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:

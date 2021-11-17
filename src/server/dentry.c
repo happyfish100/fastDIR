@@ -501,6 +501,13 @@ static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
     return 0;
 }
 
+#define AFFECTED_DENTRIES_ADD(record, _dentry, _op_type) \
+    do { \
+        record->affected.entries[record->affected.count].dentry = _dentry;   \
+        record->affected.entries[record->affected.count].op_type = _op_type; \
+        record->affected.count++;  \
+    } while (0)
+
 int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
@@ -608,6 +615,8 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;
+        AFFECTED_DENTRIES_ADD(record, current->src_dentry,
+                da_binlog_op_type_update);
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
             dentry_free(current);
@@ -666,6 +675,7 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
         bool *free_dentry)
 {
     int result;
+    DABinlogOpType op_type;
 
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
         if (--(dentry->src_dentry->stat.nlink) == 0) {
@@ -680,11 +690,14 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
             {
                 return result;
             }
-            record->removed.dentries[record->removed.count++] =
-                dentry->src_dentry;
+
+            op_type = da_binlog_op_type_remove;
+        } else {
+            op_type = da_binlog_op_type_update;
         }
 
-        record->removed.dentries[record->removed.count++] = dentry;
+        AFFECTED_DENTRIES_ADD(record, dentry->src_dentry, op_type);
+        AFFECTED_DENTRIES_ADD(record, dentry, da_binlog_op_type_remove);
         *free_dentry = true;
     } else {
         if (--(dentry->stat.nlink) == 0) {
@@ -692,7 +705,7 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                 return result;
             }
 
-            record->removed.dentries[record->removed.count++] = dentry;
+            op_type = da_binlog_op_type_remove;
             *free_dentry = true;
         } else {
             /*
@@ -700,8 +713,11 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                "dentry: %"PRId64", nlink: %d > 0, skip remove",
                __LINE__, dentry->inode, dentry->stat.nlink);
              */
+
+            op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }
+        AFFECTED_DENTRIES_ADD(record, dentry, op_type);
     }
 
     if (*free_dentry) {
