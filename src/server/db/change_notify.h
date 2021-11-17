@@ -22,13 +22,13 @@
 #define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
 
 typedef struct fdir_change_notify_message {
-    int64_t version;
+    int64_t id;  //for stable sort
     FDIRServerDentry *dentry;
-    DABinlogOpType op_type;
     int field_index;
+    DABinlogOpType op_type;
     FastBuffer *buffer;
-    int64_t child;  //child inodes
-    int64_t inc_alloc;  //inode allocate/deallocate space increment
+    id_name_pair_t child; //child inodes
+    int64_t inc_alloc;    //inode allocate/deallocate space increment
 } FDIRChangeNotifyMessage;
 
 typedef struct fdir_change_notify_message_array {

@@ -112,7 +112,7 @@ struct flock_entry;
 
 typedef struct fdir_server_dentry_db_args {
     volatile int reffer_count;
-    I64Array *children;  //children inodes for update event dealer
+    IdNameArray *children;  //children inodes for update event dealer
 } FDIRServerDentryDBArgs;
 
 #define FDIR_DENTRY_BASE_FIELDS \

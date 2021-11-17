@@ -24,12 +24,12 @@
 typedef struct
 {
     struct fast_mblock_man buffer_allocator;
-    struct array_allocator_context i64_array_allocator_ctx;
-    struct sorted_array_context i64_sorted_array_ctx;
+    struct array_allocator_context id_name_array_allocator_ctx;
+    struct sorted_array_context id_name_sorted_array_ctx;
 } DentrySerializerContext;
 
-#define I64_ARRAY_ALLOCATOR_CTX g_serializer_ctx.i64_array_allocator_ctx
-#define I64_SORTED_ARRAY_CTX    g_serializer_ctx.i64_sorted_array_ctx
+#define ID_NAME_ARRAY_ALLOCATOR_CTX g_serializer_ctx.id_name_array_allocator_ctx
+#define ID_NAME_SORTED_ARRAY_CTX    g_serializer_ctx.id_name_sorted_array_ctx
 
 #ifdef __cplusplus
 extern "C" {

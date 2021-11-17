@@ -120,7 +120,7 @@ static int compare_msg_ptr_func(const FDIRChangeNotifyMessage **msg1,
         return sub;
     }
 
-    return fc_compare_int64((*msg1)->version, (*msg2)->version);
+    return fc_compare_int64((*msg1)->id, (*msg2)->id);
 }
 
 static inline void free_message_buffer(
@@ -144,7 +144,8 @@ static inline void free_message_buffer(
     }
 }
 
-static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
+static int insert_children(FDIRServerDentry *dentry,
+        const id_name_pair_t *pair)
 {
     int target_count;
     if (dentry->db_args->children == NULL || dentry->db_args->
@@ -152,16 +153,16 @@ static int insert_children(FDIRServerDentry *dentry, const int64_t inode)
     {
         target_count = dentry->db_args->children != NULL ?
             dentry->db_args->children->count + 1 : 1;
-        dentry->db_args->children = i64_array_allocator_realloc(
-                &I64_ARRAY_ALLOCATOR_CTX, dentry->db_args->
+        dentry->db_args->children = id_name_array_allocator_realloc(
+                &ID_NAME_ARRAY_ALLOCATOR_CTX, dentry->db_args->
                 children, target_count);
         if (dentry->db_args->children == NULL) {
             return ENOMEM;
         }
     }
 
-    return sorted_array_insert(&I64_SORTED_ARRAY_CTX, dentry->db_args->
-            children->elts, &dentry->db_args->children->count, &inode);
+    return sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX, dentry->db_args->
+            children->elts, &dentry->db_args->children->count, pair);
 }
 
 static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
@@ -173,7 +174,7 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
     for (msg=start; msg<end; msg++) {
         if ((*msg)->op_type == da_binlog_op_type_create) {
             if ((result=insert_children((*msg)->dentry,
-                            (*msg)->child)) != 0)
+                            &(*msg)->child)) != 0)
             {
                 if (result == ENOMEM) {
                     return result;
@@ -181,29 +182,43 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
                     logWarning("file: "__FILE__", line: %d, "
                             "inode: %"PRId64", insert child %"PRId64" "
                             "fail, errno: %d, error info: %s", __LINE__,
-                            (*msg)->dentry->inode, (*msg)->child,
+                            (*msg)->dentry->inode, (*msg)->child.id,
                             result, STRERROR(result));
                 }
             }
         } else {
+            id_name_pair_t *found;
+
             if ((*msg)->dentry->db_args->children == NULL) {
                 logWarning("file: "__FILE__", line: %d, "
                         "inode: %"PRId64", child inode: %"PRId64", "
                         "the children array is NULL!", __LINE__,
-                        (*msg)->dentry->inode, (*msg)->child);
+                        (*msg)->dentry->inode, (*msg)->child.id);
                 continue;
             }
 
-            if ((result=sorted_array_delete(&I64_SORTED_ARRAY_CTX,
+            if ((found=sorted_array_find(&ID_NAME_SORTED_ARRAY_CTX,
                             (*msg)->dentry->db_args->children->elts,
-                            &(*msg)->dentry->db_args->children->count,
-                            &(*msg)->child)) != 0)
+                            (*msg)->dentry->db_args->children->count,
+                            &(*msg)->child)) == NULL)
             {
                 logWarning("file: "__FILE__", line: %d, "
                         "inode: %"PRId64", delete child %"PRId64" fail, "
                         "errno: %d, error info: %s", __LINE__,
-                        (*msg)->dentry->inode, (*msg)->child,
+                        (*msg)->dentry->inode, (*msg)->child.id,
                         result, STRERROR(result));
+                continue;
+            }
+
+            server_immediate_free_str((*msg)->dentry->context, found->name.str);
+            if ((*msg)->op_type == da_binlog_op_type_remove) {
+                sorted_array_delete_by_index(&ID_NAME_SORTED_ARRAY_CTX,
+                        (*msg)->dentry->db_args->children->elts,
+                        &(*msg)->dentry->db_args->children->count,
+                        found - (id_name_pair_t *)(*msg)->dentry->
+                        db_args->children->elts);
+            } else { //update
+                found->name = (*msg)->child.name;
             }
         }
     }

@@ -858,8 +858,8 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
         return 0;
     }
 
-    if ((result=dentry_strdup(&dentry->context->db_context->
-                    dentry_context, &cloned_name, new_name)) != 0)
+    if ((result=dentry_strdup(dentry->context,
+                    &cloned_name, new_name)) != 0)
     {
         return result;
     }

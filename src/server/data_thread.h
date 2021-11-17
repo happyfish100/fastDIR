@@ -96,6 +96,7 @@ typedef struct fdir_data_thread_variables {
     FDIRDataThreadArray thread_array;
     volatile int running_count;
     int error_mode;
+    volatile int64_t current_event_id;
     struct fast_mblock_man event_allocator;  //for change notify when data persistency
 } FDIRDataThreadVariables;
 
@@ -129,6 +130,12 @@ extern "C" {
             void *ctx, void *ptr, server_free_func_ex free_func_ex,
             const int delay_seconds);
 
+    int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
+            void *ctx, void *ptr, server_free_func_ex free_func_ex);
+
+    int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
+            void *ptr, server_free_func free_func);
+
     static inline void server_delay_free_str(FDIRDentryContext
             *context, char *str)
     {
@@ -138,11 +145,13 @@ extern "C" {
                 FDIR_DELAY_FREE_SECONDS);
     }
 
-    int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
-            void *ctx, void *ptr, server_free_func_ex free_func_ex);
-
-    int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
-            void *ptr, server_free_func free_func);
+    static inline void server_immediate_free_str(FDIRDentryContext
+            *context, char *str)
+    {
+        server_add_to_immediate_free_queue_ex(&context->db_context->
+                free_context, &context->name_acontext, str,
+                (server_free_func_ex)fast_allocator_free);
+    }
 
     static inline FDIRDataThreadContext *get_data_thread_context(
             const unsigned int hash_code)

@@ -72,13 +72,13 @@ int dentry_serializer_init()
         return result;
     }
 
-    if ((result=i64_array_allocator_init(&I64_ARRAY_ALLOCATOR_CTX,
+    if ((result=id_name_array_allocator_init(&ID_NAME_ARRAY_ALLOCATOR_CTX,
                     min_bits, max_bits)) != 0)
     {
         return result;
     }
 
-    sorted_i64_array_init(&I64_SORTED_ARRAY_CTX, allow_duplication);
+    sorted_id_name_array_init(&ID_NAME_SORTED_ARRAY_CTX, allow_duplication);
     return 0;
 }
 
@@ -264,7 +264,7 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
             break;
         case FDIR_PIECE_FIELD_INDEX_CHILDREN:
             if (S_ISDIR(dentry->stat.mode)) {
-                result = sf_serializer_pack_int64_array(*buffer,
+                result = sf_serializer_pack_id_name_array(*buffer,
                         DENTRY_FIELD_ID_CHILDREN,
                         dentry->db_args->children->elts,
                         dentry->db_args->children->count);
