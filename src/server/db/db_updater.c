@@ -243,29 +243,27 @@ static int write_redo_log(FDIRDBUpdaterContext *ctx)
 }
 
 static int unpack_from_file(SFSerializerIterator *it,
-        char *buff, const int size)
+        const char *caption, BufferInfo *buffer)
 {
+    const int max_size = 256 * 1024 * 1024;
     int result;
-    int length;
     string_t content;
 
-    if ((length=sf_serializer_read_message(db_updater_ctx.
-                    redo.fd, buff, size)) < 0)
+    if ((result=sf_serializer_read_message(db_updater_ctx.
+                    redo.fd, buffer, max_size)) != 0)
     {
-        result = errno != 0 ? errno : EIO;
         logError("file: "__FILE__", line: %d, "
-                "read message from file %s fail, "
-                "errno: %d, error info: %s", __LINE__,
+                "read %s message from file %s fail, "
+                "errno: %d, error info: %s", __LINE__, caption,
                 db_updater_ctx.redo.filename, result, STRERROR(result));
         return result;
     }
 
-    FC_SET_STRING_EX(content, buff, length);
+    FC_SET_STRING_EX(content, buffer->buff, buffer->length);
     if ((result=sf_serializer_unpack(it, &content)) != 0) {
         logError("file: "__FILE__", line: %d, "
-                "file: %s, unpack header fail, "
-                "errno: %d, error info: %s",
-                __LINE__, db_updater_ctx.redo.filename,
+                "file: %s, unpack %s fail, errno: %d, error info: %s",
+                __LINE__, db_updater_ctx.redo.filename, caption,
                 it->error_no, it->error_info);
         return result;
     }
@@ -274,15 +272,15 @@ static int unpack_from_file(SFSerializerIterator *it,
 }
 
 static int unpack_header(SFSerializerIterator *it,
-        FDIRDBUpdaterContext *ctx, int *record_count)
+        FDIRDBUpdaterContext *ctx, BufferInfo *buffer,
+        int *record_count)
 {
     int result;
-    char buff[1024];
     const SFSerializerFieldValue *fv;
 
     *record_count = 0;
     ctx->last_versions.field = ctx->last_versions.dentry = 0;
-    if ((result=unpack_from_file(it, buff, sizeof(buff))) != 0) {
+    if ((result=unpack_from_file(it, "header", buffer)) != 0) {
         return result;
     }
 
@@ -316,14 +314,16 @@ static int unpack_header(SFSerializerIterator *it,
 }
 
 static int unpack_one_dentry(SFSerializerIterator *it,
-        FDIRDBUpdaterContext *ctx)
+        FDIRDBUpdaterContext *ctx, BufferInfo *buffer,
+        const int rowno)
 {
     int result;
-    char buff[1024];
+    char caption[32];
     FDIRDBUpdateFieldInfo *entry;
     const SFSerializerFieldValue *fv;
 
-    if ((result=unpack_from_file(it, buff, sizeof(buff))) != 0) {
+    sprintf(caption, "dentry #%d", rowno);
+    if ((result=unpack_from_file(it, caption, buffer)) != 0) {
         return result;
     }
 
@@ -388,21 +388,27 @@ static int do_load(FDIRDBUpdaterContext *ctx)
     int result;
     int i;
     int record_count;
+    BufferInfo buffer;
     SFSerializerIterator it;
+
+    if ((result=fc_init_buffer(&buffer, 4 * 1024)) != 0) {
+        return result;
+    }
 
     sf_serializer_iterator_init(&it);
 
     ctx->array.count = 0;
-    if ((result=unpack_header(&it, ctx, &record_count)) != 0) {
+    if ((result=unpack_header(&it, ctx, &buffer, &record_count)) != 0) {
         return result;
     }
 
     for (i=0; i<record_count; i++) {
-        if ((result=unpack_one_dentry(&it, ctx)) != 0) {
+        if ((result=unpack_one_dentry(&it, ctx, &buffer, i + 1)) != 0) {
             break;
         }
     }
 
+    fc_free_buffer(&buffer);
     sf_serializer_iterator_destroy(&it);
     return result;
 }
