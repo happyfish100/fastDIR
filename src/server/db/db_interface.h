@@ -17,6 +17,7 @@
 #define _FDIR_DB_INTERFACE_H
 
 #include "fastcommon/ini_file_reader.h"
+#include "diskallocator/dio/trunk_read_thread.h"
 #include "diskallocator/global.h"
 #include "common/fdir_server_types.h"
 
@@ -33,7 +34,7 @@ typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *arra
 typedef int (*fdir_storage_engine_redo_func)(const FDIRDBUpdateFieldArray *array);
 
 typedef int (*fdir_storage_engine_fetch_func)(const int64_t inode,
-        const int field_index, FastBuffer *buffer);
+        const int field_index, DASynchronizedReadContext *ctx);
 
 typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_init_func init;

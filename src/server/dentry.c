@@ -24,6 +24,7 @@
 #include "fastcommon/hash.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
+#include "sf/sf_func.h"
 #include "common/fdir_types.h"
 #include "server_global.h"
 #include "service_handler.h"
@@ -374,6 +375,9 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
     }
 
     if (ns_entry->current.root.ptr == NULL) {
+        if (STORAGE_ENABLED && ns_entry->delay.root.inode != 0) {
+        }
+
         *parent = NULL;
         my_name->len = 0;
         my_name->str = "";
@@ -1246,5 +1250,49 @@ int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
 
     *p = '\0';
     full_path->length = p - full_path->buff;
+    return 0;
+}
+
+int dentry_load_one(FDIRDataThreadContext *thread_ctx,
+        FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
+        const int64_t inode, const string_t *name, FDIRServerDentry
+        **dentry, DentrySerializerExtraFields *extra_fields)
+{
+    int result;
+    string_t content;
+
+    if ((result=STORAGE_ENGINE_FETCH_API(inode,
+                    FDIR_PIECE_FIELD_INDEX_BASIC,
+                    &thread_ctx->read_ctx)) != 0)
+    {
+        return result;
+    }
+
+    *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(
+            &thread_ctx->dentry_context.dentry_allocator);
+    if (*dentry == NULL) {
+        return ENOMEM;
+    }
+
+    memset(*dentry, 0, sizeof(FDIRServerDentry));
+    (*dentry)->inode = inode;
+    (*dentry)->ns_entry = ns_entry;
+    (*dentry)->parent = parent;
+    if (name != NULL) {
+        (*dentry)->name = *name;
+    }
+
+    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(thread_ctx->read_ctx.
+                op_ctx), DA_OP_CTX_BUFFER_LEN(thread_ctx->read_ctx.op_ctx));
+    if ((result=dentry_serializer_unpack_basic(thread_ctx,
+            &content, *dentry, extra_fields)) != 0)
+    {
+        logCrit("file: "__FILE__", line: %d, "
+                "dentry unpack basic info fail, "
+                "program exit!", __LINE__);
+        sf_terminate_myself();
+        return result;
+    }
+
     return 0;
 }

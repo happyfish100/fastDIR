@@ -19,10 +19,16 @@
 
 #include "sf/sf_serializer.h"
 #include "../server_types.h"
+#include "../data_thread.h"
 #include "change_notify.h"
 
-typedef struct
-{
+typedef struct {
+    int64_t parent_inode;
+    int64_t src_inode;
+    int64_t namespace_id;
+} DentrySerializerExtraFields;
+
+typedef struct {
     struct fast_mblock_man buffer_allocator;
     struct array_allocator_context id_name_array_allocator_ctx;
     struct sorted_array_context id_name_sorted_array_ctx;
@@ -78,6 +84,10 @@ extern "C" {
 
     void dentry_serializer_batch_free_buffer(FastBuffer **buffers,
             const int count);
+
+    int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
+            const string_t *content, FDIRServerDentry *dentry,
+            DentrySerializerExtraFields *extra_fields);
 
 #ifdef __cplusplus
 }

@@ -20,6 +20,7 @@
 
 #include "fastcommon/fc_queue.h"
 #include "fastcommon/server_id_func.h"
+#include "diskallocator/dio/trunk_read_thread.h"
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
 #include "server_global.h"
@@ -85,6 +86,7 @@ typedef struct fdir_data_thread_context {
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerFreeContext free_context;
+    DASynchronizedReadContext read_ctx;  //for storage engine
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {
