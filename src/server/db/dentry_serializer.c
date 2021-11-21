@@ -105,6 +105,13 @@ static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
     int result;
     int64_t parent_inode;
 
+    if ((result=sf_serializer_pack_int32(buffer,
+                    DENTRY_FIELD_ID_NAMESPACE_ID,
+                    dentry->ns_entry->id)) != 0)
+    {
+        return result;
+    }
+
     if ((result=sf_serializer_pack_int64(buffer,
                     DENTRY_FIELD_ID_INODE,
                     dentry->inode)) != 0)
@@ -221,13 +228,6 @@ static int pack_basic(const FDIRServerDentry *dentry, FastBuffer *buffer)
         return result;
     }
 
-    if ((result=sf_serializer_pack_int32(buffer,
-                    DENTRY_FIELD_ID_NAMESPACE_ID,
-                    dentry->ns_entry->id)) != 0)
-    {
-        return result;
-    }
-
     return 0;
 }
 
@@ -301,17 +301,18 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
         DentrySerializerExtraFields *extra_fields)
 {
     int result;
+    int namespace_id;
     bool found_inode;
     bool found_mode;
     bool found_size;
     bool found_nlink;
-    SFSerializerIterator it;
     const SFSerializerFieldValue *fv;
 
-    if ((result=sf_serializer_unpack(&it, content)) != 0) {
+    if ((result=sf_serializer_unpack(&thread_ctx->it, content)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "unpack inode %"PRId64" fail, errno: %d, error info: %s",
-                __LINE__, dentry->inode, it.error_no, it.error_info);
+                __LINE__, dentry->inode, thread_ctx->it.error_no,
+                thread_ctx->it.error_info);
         return result;
     }
 
@@ -321,8 +322,8 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
     found_nlink = false;
     extra_fields->parent_inode = -1;
     extra_fields->src_inode = 0;
-    extra_fields->namespace_id = -1;
-    while ((fv=sf_serializer_next(&it)) != NULL) {
+    namespace_id = -1;
+    while ((fv=sf_serializer_next(&thread_ctx->it)) != NULL) {
         switch (fv->fid) {
             case DENTRY_FIELD_ID_INODE:
                 if (fv->value.n != dentry->inode) {
@@ -375,23 +376,22 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
                 }
                 break;
             case DENTRY_FIELD_ID_NAMESPACE_ID:
-                extra_fields->namespace_id = fv->value.n;
+                namespace_id = fv->value.n;
                 if (dentry->ns_entry == NULL) {
                     if ((dentry->ns_entry=fdir_namespace_get_by_id(
-                                    extra_fields->namespace_id)) == NULL)
+                                    namespace_id)) == NULL)
                     {
                         logError("file: "__FILE__", line: %d, "
                                 "inode: %"PRId64", unpacked namespace "
                                 "id: %d not exist", __LINE__, dentry->inode,
-                                (int)extra_fields->namespace_id);
+                                (int)namespace_id);
                         return ENOENT;
                     }
-                } else if (extra_fields->namespace_id != dentry->ns_entry->id) {
+                } else if (namespace_id != dentry->ns_entry->id) {
                     logError("file: "__FILE__", line: %d, "
                             "inode: %"PRId64", unpacked namespace id: %d "
                             "!= input id: %d", __LINE__, dentry->inode,
-                            (int)extra_fields->namespace_id,
-                            dentry->ns_entry->id);
+                            namespace_id, dentry->ns_entry->id);
                     return EINVAL;
                 }
                 break;
@@ -474,7 +474,7 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
         return ENOENT;
     }
 
-    if (extra_fields->namespace_id == -1) {
+    if (namespace_id == -1) {
         logError("file: "__FILE__", line: %d, "
                 "inode: %"PRId64", field namespace_id not exist",
                 __LINE__, dentry->inode);
@@ -498,4 +498,38 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
     }
 
     return 0;
+}
+
+FDIRNamespaceEntry *dentry_serializer_extract_namespace(
+        const string_t *content, const int64_t inode)
+{
+    int result;
+    int namespace_id;
+    SFSerializerIterator it;
+    const SFSerializerFieldValue *fv;
+    FDIRNamespaceEntry *ns_entry;
+
+    sf_serializer_iterator_init(&it);
+    if ((result=sf_serializer_unpack(&it, content)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "unpack inode %"PRId64" fail, errno: %d, error info: %s",
+                __LINE__, inode, it.error_no, it.error_info);
+        return NULL;
+    }
+
+    ns_entry = NULL;
+    while ((fv=sf_serializer_next(&it)) != NULL) {
+        if (fv->fid == DENTRY_FIELD_ID_NAMESPACE_ID) {
+            namespace_id = fv->value.n;
+            if ((ns_entry=fdir_namespace_get_by_id(namespace_id)) == NULL) {
+                logError("file: "__FILE__", line: %d, "
+                        "inode: %"PRId64", unpacked namespace id: %d "
+                        "not exist", __LINE__, inode, namespace_id);
+            }
+            break;
+        }
+    }
+
+    sf_serializer_iterator_destroy(&it);
+    return ns_entry;
 }

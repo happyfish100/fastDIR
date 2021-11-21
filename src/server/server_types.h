@@ -150,6 +150,11 @@ typedef struct fdir_server_dentry_array {
     struct fdir_server_dentry **entries;
 } FDIRServerDentryArray;  //for list entry
 
+typedef struct fdir_dentry_id_ptr_pair {
+    int64_t inode;
+    FDIRServerDentry *dentry;
+} FDIRDentryIdPtrPair;
+
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];  //for slave server

@@ -294,6 +294,7 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     if (STORAGE_ENABLED) {
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
+        sf_serializer_iterator_init(&db_context->it);
     } else {
         element_size = sizeof(FDIRServerDentry);
     }
@@ -412,11 +413,10 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
     return 0;
 }
 
-static int dentry_find_parent_and_me(FDIRDentryContext *context,
-        const FDIRDEntryFullName *fullname, FDIRPathInfo *path_info,
-        string_t *my_name, FDIRNamespaceEntry **ns_entry,
-        FDIRServerDentry **parent, FDIRServerDentry **me,
-        const bool create_ns)
+static int dentry_find_parent_and_me(const FDIRDEntryFullName *fullname,
+        FDIRPathInfo *path_info, string_t *my_name,
+        FDIRNamespaceEntry **ns_entry, FDIRServerDentry **parent,
+        FDIRServerDentry **me)
 {
     FDIRServerDentry target;
     int result;
@@ -427,8 +427,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         return EINVAL;
     }
 
-    *ns_entry = fdir_namespace_get(context, &fullname->ns,
-            create_ns, &result);
+    *ns_entry = fdir_namespace_get(NULL, &fullname->ns, false, &result);
     if (*ns_entry == NULL) {
         *parent = *me = NULL;
         return result;
@@ -472,15 +471,15 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
     return 0;
 }
 
-static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
-        FDIRRecordDEntry *rec_entry, FDIRNamespaceEntry **ns_entry,
-        const bool create_ns)
+static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
+        const string_t *ns, FDIRRecordDEntry *rec_entry,
+        FDIRNamespaceEntry **ns_entry, const bool create_ns)
 {
     FDIRServerDentry target;
     int result;
 
     if (rec_entry->parent == NULL) {
-        *ns_entry = fdir_namespace_get(context, ns, create_ns, &result);
+        *ns_entry = fdir_namespace_get(thread_ctx, ns, create_ns, &result);
         if (*ns_entry == NULL) {
             return result;
         }
@@ -528,7 +527,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+    if ((result=dentry_find_me(db_context, &record->ns,
                     &record->me, &ns_entry, true)) != 0)
     {
         bool is_root_path;
@@ -744,7 +743,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     bool free_dentry;
     int result;
 
-    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+    if ((result=dentry_find_me(db_context, &record->ns,
                     &record->me, &ns_entry, false)) != 0)
     {
         return result;
@@ -1110,8 +1109,8 @@ int dentry_find_ex(const FDIRDEntryFullName *fullname,
     string_t my_name;
     int result;
 
-    if ((result=dentry_find_parent_and_me(NULL, fullname, &path_info,
-                    &my_name, &ns_entry, &parent, dentry, false)) != 0)
+    if ((result=dentry_find_parent_and_me(fullname, &path_info,
+                    &my_name, &ns_entry, &parent, dentry)) != 0)
     {
         return result;
     }
@@ -1253,8 +1252,7 @@ int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
     return 0;
 }
 
-int dentry_load_one(FDIRDataThreadContext *thread_ctx,
-        FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
+int dentry_load_one(FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
         const int64_t inode, const string_t *name, FDIRServerDentry
         **dentry, DentrySerializerExtraFields *extra_fields)
 {
@@ -1263,13 +1261,13 @@ int dentry_load_one(FDIRDataThreadContext *thread_ctx,
 
     if ((result=STORAGE_ENGINE_FETCH_API(inode,
                     FDIR_PIECE_FIELD_INDEX_BASIC,
-                    &thread_ctx->read_ctx)) != 0)
+                    &ns_entry->thread_ctx->read_ctx)) != 0)
     {
         return result;
     }
 
-    *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(
-            &thread_ctx->dentry_context.dentry_allocator);
+    *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(&ns_entry->
+            thread_ctx->dentry_context.dentry_allocator);
     if (*dentry == NULL) {
         return ENOMEM;
     }
@@ -1282,16 +1280,25 @@ int dentry_load_one(FDIRDataThreadContext *thread_ctx,
         (*dentry)->name = *name;
     }
 
-    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(thread_ctx->read_ctx.
-                op_ctx), DA_OP_CTX_BUFFER_LEN(thread_ctx->read_ctx.op_ctx));
-    if ((result=dentry_serializer_unpack_basic(thread_ctx,
+    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(ns_entry->thread_ctx->
+                read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(ns_entry->
+                    thread_ctx->read_ctx.op_ctx));
+    if ((result=dentry_serializer_unpack_basic(ns_entry->thread_ctx,
             &content, *dentry, extra_fields)) != 0)
     {
         logCrit("file: "__FILE__", line: %d, "
                 "dentry unpack basic info fail, "
                 "program exit!", __LINE__);
         sf_terminate_myself();
-        return result;
+    }
+
+    return result;
+}
+
+int dentry_load(FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
+        const int64_t inode, const string_t *name, FDIRServerDentry **dentry)
+{
+    if (ns_entry == NULL) {
     }
 
     return 0;

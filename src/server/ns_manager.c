@@ -29,6 +29,7 @@
 #include "common/fdir_types.h"
 #include "server_global.h"
 #include "data_thread.h"
+#include "dentry.h"
 #include "ns_manager.h"
 
 #define NAMESPACE_DUMP_FILENAME    "namespaces.dump"
@@ -229,7 +230,7 @@ static int realloc_namespace_array(FDIRNamespacePtrArray *array)
     return 0;
 }
 
-static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
+static FDIRNamespaceEntry *create_namespace(FDIRDataThreadContext *thread_ctx,
         FDIRNamespaceEntry **bucket, const int id, const string_t *name,
         const unsigned int hash_code, int *err_no)
 {
@@ -249,7 +250,9 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
     }
 
     memset(entry, 0, sizeof(*entry));
-    if ((*err_no=dentry_strdup(context, &entry->name, name)) != 0) {
+    if ((*err_no=dentry_strdup(&thread_ctx->dentry_context,
+                    &entry->name, name)) != 0)
+    {
         return NULL;
     }
 
@@ -260,11 +263,12 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
 
     entry->id = id;
     entry->hash_code = hash_code;
+    entry->thread_ctx = thread_ctx;
     entry->nexts.htable = *bucket;
     *bucket = entry;
 
     fdir_manager.array.namespaces[fdir_manager.array.count++] = entry;
-    context->counters.ns++;
+    thread_ctx->dentry_context.counters.ns++;
     return entry;
 }
 
@@ -277,7 +281,7 @@ static FDIRNamespaceEntry *create_namespace(FDIRDentryContext *context,
         g_server_global_vars.namespace_hashtable_capacity
 
 
-FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
+FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,
         const string_t *ns, const bool create_ns, int *err_no)
 {
     FDIRNamespaceEntry *entry;
@@ -303,7 +307,7 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
     }
 
     if (entry == NULL) {
-        if ((entry=create_namespace(context, bucket, ++fdir_manager.
+        if ((entry=create_namespace(thread_ctx, bucket, ++fdir_manager.
                         current_id, ns, hash_code, err_no)) != NULL)
         {
             if ((*err_no=write_binlog(entry)) != 0) {
@@ -530,11 +534,11 @@ static int parse_binlog_line(const string_t *line, char *error_info)
     fast_char_unescape(&fdir_manager.char_converter, name.str, &name.len);
 
     {
-        FDIRDataThreadContext *context;
+        FDIRDataThreadContext *thread_ctx;
         NAMESPACE_SET_HT_BUCKET(&name);
-        context = get_data_thread_context(hash_code);
-        create_namespace(&context->dentry_context, bucket,
-                id, &name, hash_code, &result);
+        thread_ctx = get_data_thread_context(hash_code);
+        create_namespace(thread_ctx, bucket, id,
+                &name, hash_code, &result);
     }
 
     return result;
@@ -626,12 +630,14 @@ static int load_namespaces()
 static int parse_dump_line(const string_t *line, char *error_info)
 {
     const bool ignore_empty = true;
+    int result;
     int id;
     int col_count;
     char *endptr;
     FDIRNamespaceEntry *entry;
-    FDIRDataThreadContext *context;
+    FDIRDataThreadContext *thread_ctx;
     string_t cols[NAMESPACE_FIELD_MAX];
+    DentrySerializerExtraFields extra_fields;
 
     col_count = split_string_ex(line, ' ', cols,
             NAMESPACE_FIELD_MAX, ignore_empty);
@@ -662,9 +668,24 @@ static int parse_dump_line(const string_t *line, char *error_info)
     entry->current.counts.file = entry->delay.counts.file;
     entry->current.used_bytes = entry->delay.used_bytes;
 
-    context = get_data_thread_context(entry->hash_code);
-    context->dentry_context.counters.dir += entry->current.counts.dir;
-    context->dentry_context.counters.file += entry->current.counts.file;
+    thread_ctx = get_data_thread_context(entry->hash_code);
+    thread_ctx->dentry_context.counters.dir += entry->current.counts.dir;
+    thread_ctx->dentry_context.counters.file += entry->current.counts.file;
+
+    if (entry->delay.root.inode != 0) {
+        string_t empty;
+        string_t name;
+
+        FC_SET_STRING_EX(empty, "", 0);
+        if ((result=dentry_strdup(&thread_ctx->dentry_context,
+                        &name, &empty)) != 0)
+        {
+            return result;
+        }
+        return dentry_load_one(entry, NULL, entry->delay.root.inode,
+                &name, &entry->current.root.ptr, &extra_fields);
+    }
+
     return 0;
 }
 

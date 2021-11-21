@@ -39,6 +39,7 @@ typedef struct fdir_namespace_entry {
     string_t name;
     FDIRNamespaceInfo current;
     FDIRNamespaceInfo delay;   //for storage engine
+    FDIRDataThreadContext *thread_ctx;
 
     struct {
         struct fdir_namespace_entry *htable; //for hashtable
@@ -68,7 +69,7 @@ extern "C" {
     int ns_manager_init();
     void ns_manager_destroy();
 
-    FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
+    FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,
             const string_t *ns, const bool create_ns, int *err_no);
 
     FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id);

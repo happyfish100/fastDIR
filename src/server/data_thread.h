@@ -20,6 +20,7 @@
 
 #include "fastcommon/fc_queue.h"
 #include "fastcommon/server_id_func.h"
+#include "sf/sf_serializer.h"
 #include "diskallocator/dio/trunk_read_thread.h"
 #include "common/fdir_types.h"
 #include "binlog/binlog_types.h"
@@ -86,7 +87,10 @@ typedef struct fdir_data_thread_context {
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerFreeContext free_context;
-    DASynchronizedReadContext read_ctx;  //for storage engine
+
+    /* for storage engine */
+    DASynchronizedReadContext read_ctx;
+    SFSerializerIterator it;
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {

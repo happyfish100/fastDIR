@@ -25,7 +25,6 @@
 typedef struct {
     int64_t parent_inode;
     int64_t src_inode;
-    int64_t namespace_id;
 } DentrySerializerExtraFields;
 
 typedef struct {
