@@ -110,22 +110,19 @@ struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
 
+#define FDIR_DENTRY_LOADED_FLAGS_BASIC     (1 << 0)
+#define FDIR_DENTRY_LOADED_FLAGS_CHILDREN  (1 << 1)
+#define FDIR_DENTRY_LOADED_FLAGS_XATTR     (1 << 2)
+
 typedef struct fdir_server_dentry_db_args {
     volatile int reffer_count;
     IdNameArray *children;  //children inodes for update event dealer
 } FDIRServerDentryDBArgs;
 
-#define FDIR_DENTRY_BASE_FIELDS \
-    int64_t inode;  \
-    string_t name;  \
-    int flags
-
-typedef struct fdir_dentry_base {
-    FDIR_DENTRY_BASE_FIELDS;
-} FDIRDentryBase;
-
 typedef struct fdir_server_dentry {
-    FDIR_DENTRY_BASE_FIELDS;   //MUST first
+    int64_t inode;
+    string_t name;
+    short loaded_flags;
 
     FDIRDEntryStat stat;
 
@@ -149,11 +146,6 @@ typedef struct fdir_server_dentry_array {
     int count;
     struct fdir_server_dentry **entries;
 } FDIRServerDentryArray;  //for list entry
-
-typedef struct fdir_dentry_id_ptr_pair {
-    int64_t inode;
-    FDIRServerDentry *dentry;
-} FDIRDentryIdPtrPair;
 
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;

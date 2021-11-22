@@ -88,6 +88,14 @@ extern "C" {
             const string_t *content, FDIRServerDentry *dentry,
             DentrySerializerExtraFields *extra_fields);
 
+    int dentry_serializer_extract_namespace(FDIRDBFetchContext *db_fetch_ctx,
+            const string_t *content, const int64_t inode,
+            FDIRNamespaceEntry **ns_entry);
+
+    int dentry_serializer_unpack_children(FDIRDataThreadContext *thread_ctx,
+            const string_t *content, const int64_t inode,
+            const id_name_array_t **array);
+
 #ifdef __cplusplus
 }
 #endif

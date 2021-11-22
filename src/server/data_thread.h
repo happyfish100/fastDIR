@@ -75,6 +75,11 @@ typedef struct server_free_context {
     ServerDelayFreeContext delay;
 } ServerFreeContext;
 
+typedef struct fdir_db_fetch_context {
+    DASynchronizedReadContext read_ctx;
+    SFSerializerIterator it;
+} FDIRDBFetchContext;
+
 typedef struct fdir_data_thread_context {
     int index;
     struct {
@@ -88,9 +93,7 @@ typedef struct fdir_data_thread_context {
     FDIRDentryContext dentry_context;
     ServerFreeContext free_context;
 
-    /* for storage engine */
-    DASynchronizedReadContext read_ctx;
-    SFSerializerIterator it;
+    FDIRDBFetchContext db_fetch_ctx;  //for storage engine
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {
@@ -243,6 +246,16 @@ extern "C" {
         }
 
         return (min_version != INT64_MAX ?  min_version : max_version);
+    }
+
+    static inline int init_db_fetch_context(FDIRDBFetchContext *db_fetch_ctx)
+    {
+        int result;
+        if ((result=da_init_read_context(&db_fetch_ctx->read_ctx)) != 0) {
+            return result;
+        }
+        sf_serializer_iterator_init(&db_fetch_ctx->it);
+        return 0;
     }
 
 #ifdef __cplusplus

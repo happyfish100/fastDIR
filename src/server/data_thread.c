@@ -262,10 +262,10 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
         return result;
     }
 
-    if (STORAGE_ENABLED && (result=da_init_read_context(
-                    &context->read_ctx)) != 0)
-    {
-        return result;
+    if (STORAGE_ENABLED) {
+        if ((result=init_db_fetch_context(&context->db_fetch_ctx)) != 0) {
+            return result;
+        }
     }
 
     return 0;

@@ -107,13 +107,22 @@ extern "C" {
         dentry_release_ex(dentry, 1);
     }
 
-    int dentry_load(FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
+    int dentry_load(FDIRDataThreadContext *thread_ctx,
+            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
             const int64_t inode, const string_t *name, FDIRServerDentry
             **dentry);
 
-    int dentry_load_one(FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
+    int dentry_load_one(FDIRDataThreadContext *thread_ctx,
+            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
             const int64_t inode, const string_t *name, FDIRServerDentry
             **dentry, DentrySerializerExtraFields *extra_fields);
+
+    static inline int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
+            FDIRNamespaceEntry *ns_entry, const int64_t inode,
+            FDIRServerDentry **dentry)
+    {
+        return dentry_load(thread_ctx, ns_entry, NULL, inode, NULL, dentry);
+    }
 
 #ifdef __cplusplus
 }
