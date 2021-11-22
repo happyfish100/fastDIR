@@ -1306,6 +1306,8 @@ static int dentry_load_children(FDIRServerDentry *dentry)
         } else {
             return result;
         }
+        __sync_add_and_fetch(&child->db_args->reffer_count, 1);
+        child->ns_entry = child->ns_entry;
     }
 
     dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;

@@ -635,7 +635,6 @@ static int parse_dump_line(const string_t *line, char *error_info)
     int col_count;
     char *endptr;
     FDIRNamespaceEntry *entry;
-    FDIRDataThreadContext *thread_ctx;
     string_t cols[NAMESPACE_FIELD_MAX];
     DentrySerializerExtraFields extra_fields;
 
@@ -667,23 +666,24 @@ static int parse_dump_line(const string_t *line, char *error_info)
     entry->current.counts.dir = entry->delay.counts.dir;
     entry->current.counts.file = entry->delay.counts.file;
     entry->current.used_bytes = entry->delay.used_bytes;
-
-    thread_ctx = get_data_thread_context(entry->hash_code);
-    thread_ctx->dentry_context.counters.dir += entry->current.counts.dir;
-    thread_ctx->dentry_context.counters.file += entry->current.counts.file;
+    entry->thread_ctx->dentry_context.counters.dir +=
+        entry->current.counts.dir;
+    entry->thread_ctx->dentry_context.counters.file +=
+        entry->current.counts.file;
 
     if (entry->delay.root.inode != 0) {
         string_t empty;
         string_t name;
 
         FC_SET_STRING_EX(empty, "", 0);
-        if ((result=dentry_strdup(&thread_ctx->dentry_context,
-                        &name, &empty)) != 0)
+        if ((result=dentry_strdup(&entry->thread_ctx->
+                        dentry_context, &name, &empty)) != 0)
         {
             return result;
         }
-        return dentry_load_one(entry, NULL, entry->delay.root.inode,
-                &name, &entry->current.root.ptr, &extra_fields);
+        return dentry_load_one(entry->thread_ctx, entry, NULL,
+                entry->delay.root.inode, &name, &entry->current.
+                root.ptr, &extra_fields);
     }
 
     return 0;

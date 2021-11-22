@@ -549,6 +549,32 @@ int dentry_serializer_extract_namespace(FDIRDBFetchContext *db_fetch_ctx,
     return ENOENT;
 }
 
+int dentry_serializer_extract_parent(FDIRDBFetchContext *db_fetch_ctx,
+        const string_t *content, const int64_t inode, int64_t *parent_inode)
+{
+    int result;
+    const SFSerializerFieldValue *fv;
+
+    if ((result=sf_serializer_unpack(&db_fetch_ctx->it, content)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "unpack inode %"PRId64" fail, error info: %s",
+                __LINE__, inode, db_fetch_ctx->it.error_info);
+        return result;
+    }
+
+    while ((fv=sf_serializer_next(&db_fetch_ctx->it)) != NULL) {
+        if (fv->fid == DENTRY_FIELD_ID_PARENT) {
+            *parent_inode = fv->value.n;
+            return 0;
+        }
+    }
+
+    logError("file: "__FILE__", line: %d, "
+            "inode: %"PRId64", field: parent not exist",
+            __LINE__, inode);
+    return ENOENT;
+}
+
 int dentry_serializer_unpack_children(FDIRDataThreadContext *thread_ctx,
         const string_t *content, const int64_t inode,
         const id_name_array_t **array)

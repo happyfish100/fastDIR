@@ -19,6 +19,7 @@
 
 #include "sf/sf_serializer.h"
 #include "../server_types.h"
+#include "../ns_manager.h"
 #include "../data_thread.h"
 #include "change_notify.h"
 
@@ -91,6 +92,10 @@ extern "C" {
     int dentry_serializer_extract_namespace(FDIRDBFetchContext *db_fetch_ctx,
             const string_t *content, const int64_t inode,
             FDIRNamespaceEntry **ns_entry);
+
+    int dentry_serializer_extract_parent(FDIRDBFetchContext *db_fetch_ctx,
+            const string_t *content, const int64_t inode,
+            int64_t *parent_inode);
 
     int dentry_serializer_unpack_children(FDIRDataThreadContext *thread_ctx,
             const string_t *content, const int64_t inode,
