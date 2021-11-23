@@ -20,7 +20,6 @@
 #include "server_types.h"
 #include "ns_manager.h"
 #include "data_thread.h"
-#include "db/dentry_serializer.h"
 
 #define FDIR_GET_REAL_DENTRY(dentry)  \
     FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
@@ -105,23 +104,6 @@ extern "C" {
     static inline void dentry_release(FDIRServerDentry *dentry)
     {
         dentry_release_ex(dentry, 1);
-    }
-
-    int dentry_load(FDIRDataThreadContext *thread_ctx,
-            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
-            const int64_t inode, const string_t *name, FDIRServerDentry
-            **dentry);
-
-    int dentry_load_one(FDIRDataThreadContext *thread_ctx,
-            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
-            const int64_t inode, const string_t *name, FDIRServerDentry
-            **dentry, DentrySerializerExtraFields *extra_fields);
-
-    static inline int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
-            FDIRNamespaceEntry *ns_entry, const int64_t inode,
-            FDIRServerDentry **dentry)
-    {
-        return dentry_load(thread_ctx, ns_entry, NULL, inode, NULL, dentry);
     }
 
 #ifdef __cplusplus

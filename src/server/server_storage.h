@@ -22,6 +22,7 @@
 #include "db/change_notify.h"
 #include "db/event_dealer.h"
 #include "db/db_updater.h"
+#include "db/dentry_loader.h"
 
 #ifdef __cplusplus
 extern "C" {

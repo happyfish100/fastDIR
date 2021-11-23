@@ -30,6 +30,7 @@
 #include "server_global.h"
 #include "data_thread.h"
 #include "dentry.h"
+#include "db/dentry_loader.h"
 #include "ns_manager.h"
 
 #define NAMESPACE_DUMP_FILENAME    "namespaces.dump"

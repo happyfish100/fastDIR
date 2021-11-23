@@ -24,6 +24,10 @@ int server_storage_init()
         return result;
     }
 
+    if ((result=dentry_loader_init()) != 0) {
+        return result;
+    }
+
     if ((result=change_notify_init()) != 0) {
         return result;
     }
