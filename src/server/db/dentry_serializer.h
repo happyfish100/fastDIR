@@ -24,11 +24,6 @@
 #include "change_notify.h"
 
 typedef struct {
-    int64_t parent_inode;
-    int64_t src_inode;
-} DentrySerializerExtraFields;
-
-typedef struct {
     struct fast_mblock_man buffer_allocator;
     struct array_allocator_context id_name_array_allocator_ctx;
     struct sorted_array_context id_name_sorted_array_ctx;
@@ -87,7 +82,7 @@ extern "C" {
 
     int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
             const string_t *content, FDIRServerDentry *dentry,
-            DentrySerializerExtraFields *extra_fields);
+            int64_t *src_inode);
 
     int dentry_serializer_extract_namespace(FDIRDBFetchContext *db_fetch_ctx,
             const string_t *content, const int64_t inode,

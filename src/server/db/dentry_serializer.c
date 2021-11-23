@@ -297,8 +297,7 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
 }
 
 int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
-        const string_t *content, FDIRServerDentry *dentry,
-        DentrySerializerExtraFields *extra_fields)
+        const string_t *content, FDIRServerDentry *dentry, int64_t *src_inode)
 {
     int result;
     int namespace_id;
@@ -326,8 +325,7 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
     found_nlink = false;
     found_src_inode = false;
     found_lnk = false;
-    extra_fields->parent_inode = -1;
-    extra_fields->src_inode = 0;
+    *src_inode = 0;
     namespace_id = -1;
     while ((fv=sf_serializer_next(&thread_ctx->db_fetch_ctx.it)) != NULL) {
         switch (fv->fid) {
@@ -342,13 +340,12 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
                 found_inode = true;
                 break;
             case DENTRY_FIELD_ID_PARENT:
-                extra_fields->parent_inode = fv->value.n;
                 if (dentry->parent != NULL) {
-                    if (extra_fields->parent_inode != dentry->parent->inode) {
+                    if (fv->value.n != dentry->parent->inode) {
                         logError("file: "__FILE__", line: %d, "
                                 "inode: %"PRId64", unpacked parent: %"PRId64
                                 " != input parent: %"PRId64, __LINE__,
-                                dentry->inode, extra_fields->parent_inode,
+                                dentry->inode, fv->value.n,
                                 dentry->parent->inode);
                         return EINVAL;
                     }
@@ -372,8 +369,8 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
                 }
                 break;
             case DENTRY_FIELD_ID_SRC_INODE:
-                extra_fields->src_inode = fv->value.n;
-                if (extra_fields->src_inode == dentry->inode) {
+                *src_inode = fv->value.n;
+                if (*src_inode == dentry->inode) {
                     logError("file: "__FILE__", line: %d, "
                             "inode: %"PRId64", the src inode equals "
                             "to me!", __LINE__, dentry->inode);
@@ -481,13 +478,6 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
         return ENOENT;
     }
 
-    if (extra_fields->parent_inode == -1) {
-        logError("file: "__FILE__", line: %d, "
-                "inode: %"PRId64", field parent not exist",
-                __LINE__, dentry->inode);
-        return ENOENT;
-    }
-
     if (namespace_id == -1) {
         logError("file: "__FILE__", line: %d, "
                 "inode: %"PRId64", field namespace_id not exist",
@@ -496,7 +486,7 @@ int dentry_serializer_unpack_basic(FDIRDataThreadContext *thread_ctx,
     }
 
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
-        if (!(found_src_inode && extra_fields->src_inode != 0)) {
+        if (!(found_src_inode && *src_inode != 0)) {
             logError("file: "__FILE__", line: %d, "
                     "inode: %"PRId64", field src_inode not exist",
                     __LINE__, dentry->inode);

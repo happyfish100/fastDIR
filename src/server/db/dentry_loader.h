@@ -44,16 +44,12 @@ extern "C" {
 
     int dentry_loader_init();
 
-    int dentry_load(FDIRDataThreadContext *thread_ctx,
-            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
-            const int64_t inode, const string_t *name, FDIRServerDentry
-            **dentry);
+    int dentry_load_root(FDIRNamespaceEntry *ns_entry,
+            const int64_t inode, FDIRServerDentry **dentry);
 
-    int dentry_load_one(FDIRDataThreadContext *thread_ctx,
-            FDIRNamespaceEntry *ns_entry, FDIRServerDentry *parent,
-            const int64_t inode, const string_t *name, FDIRServerDentry
-            **dentry, DentrySerializerExtraFields *extra_fields);
-
+    int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
+            FDIRNamespaceEntry *ns_entry, const int64_t inode,
+            FDIRServerDentry **dentry);
 
 #ifdef __cplusplus
 }

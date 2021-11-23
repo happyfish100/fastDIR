@@ -631,13 +631,12 @@ static int load_namespaces()
 static int parse_dump_line(const string_t *line, char *error_info)
 {
     const bool ignore_empty = true;
-    int result;
     int id;
     int col_count;
+    int result;
     char *endptr;
     FDIRNamespaceEntry *entry;
     string_t cols[NAMESPACE_FIELD_MAX];
-    DentrySerializerExtraFields extra_fields;
 
     col_count = split_string_ex(line, ' ', cols,
             NAMESPACE_FIELD_MAX, ignore_empty);
@@ -673,18 +672,15 @@ static int parse_dump_line(const string_t *line, char *error_info)
         entry->current.counts.file;
 
     if (entry->delay.root.inode != 0) {
-        string_t empty;
-        string_t name;
-
-        FC_SET_STRING_EX(empty, "", 0);
-        if ((result=dentry_strdup(&entry->thread_ctx->
-                        dentry_context, &name, &empty)) != 0)
+        if ((result=dentry_load_root(entry, entry->delay.root.inode,
+                        &entry->current.root.ptr)) != 0)
         {
+            sprintf(error_info, "namespace: %.*s, load inode: %"PRId64" "
+                    "fail, errno: %d, error info: %s", entry->name.len,
+                    entry->name.str, entry->delay.root.inode,
+                    result, STRERROR(result));
             return result;
         }
-        return dentry_load_one(entry->thread_ctx, entry, NULL,
-                entry->delay.root.inode, &name, &entry->current.
-                root.ptr, &extra_fields);
     }
 
     return 0;
