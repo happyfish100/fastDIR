@@ -110,10 +110,12 @@ struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
 
-#define DENTRY_SKIPLIST_INIT_LEVEL_COUNT    2
-#define FDIR_DENTRY_LOADED_FLAGS_BASIC     (1 << 0)
-#define FDIR_DENTRY_LOADED_FLAGS_CHILDREN  (1 << 1)
-#define FDIR_DENTRY_LOADED_FLAGS_XATTR     (1 << 2)
+#define DENTRY_SKIPLIST_INIT_LEVEL_COUNT   2
+#define FDIR_DENTRY_LOADED_FLAGS_BASIC    (1 << 0)
+#define FDIR_DENTRY_LOADED_FLAGS_CHILDREN (1 << 1)
+#define FDIR_DENTRY_LOADED_FLAGS_XATTR    (1 << 2)
+#define FDIR_DENTRY_LOADED_FLAGS_ALL      (FDIR_DENTRY_LOADED_FLAGS_BASIC | \
+        FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR)
 
 typedef struct fdir_server_dentry_db_args {
     volatile int reffer_count;

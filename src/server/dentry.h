@@ -56,7 +56,7 @@ extern "C" {
             FDIRServerDentry **dentry)
     {
         const bool hdlink_follow = true;
-        return  dentry_find_ex(fullname, dentry, hdlink_follow);
+        return dentry_find_ex(fullname, dentry, hdlink_follow);
     }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,

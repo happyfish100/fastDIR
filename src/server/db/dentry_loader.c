@@ -58,7 +58,7 @@ int dentry_loader_init()
     return 0;
 }
 
-static int dentry_load_children(FDIRServerDentry *parent,
+static int dentry_load_children_ex(FDIRServerDentry *parent,
         DentryPair *current_pair)
 {
     int result;
@@ -72,6 +72,10 @@ static int dentry_load_children(FDIRServerDentry *parent,
     UniqSkiplistIterator it;
 
     if ((parent->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CHILDREN) != 0) {
+        if (current_pair->inode == 0) {
+            return 0;
+        }
+
         uniq_skiplist_iterator(parent->children, &it);
         while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
             if (current_pair->inode == child->inode) {
@@ -141,7 +145,57 @@ static int dentry_load_children(FDIRServerDentry *parent,
     }
 
     parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;
-    return current_pair->dentry != NULL ? 0 : ENOENT;
+    if (current_pair->inode == 0) {
+        return 0;
+    } else {
+        return current_pair->dentry != NULL ? 0 : ENOENT;
+    }
+}
+
+static inline int dentry_load_children(FDIRServerDentry *parent)
+{
+    DentryPair current_pair;
+
+    current_pair.inode = 0;
+    return dentry_load_children_ex(parent, &current_pair);
+}
+
+static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
+        FDIRServerDentry *dentry)
+{
+    int result;
+    string_t content;
+    int64_t src_inode;
+
+    if ((result=STORAGE_ENGINE_FETCH_API(dentry->inode,
+                    FDIR_PIECE_FIELD_INDEX_BASIC, &thread_ctx->
+                    db_fetch_ctx.read_ctx)) != 0)
+    {
+        return result;
+    }
+
+    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(thread_ctx->
+                db_fetch_ctx.read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
+                    thread_ctx->db_fetch_ctx.read_ctx.op_ctx));
+    if ((result=dentry_serializer_unpack_basic(thread_ctx,
+                    &content, dentry, &src_inode)) != 0)
+    {
+        logCrit("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", unpack basic info fail, "
+                "program exit!", __LINE__, dentry->inode);
+        sf_terminate_myself();
+        return result;
+    }
+    dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
+
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        result = dentry_load_inode(thread_ctx, dentry->
+                ns_entry, src_inode, &dentry->src_dentry);
+    } else {
+        result = inode_index_add_dentry(dentry);
+    }
+
+    return result;
 }
 
 static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
@@ -149,14 +203,12 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         const string_t *name, FDIRServerDentry **dentry)
 {
     int result;
-    string_t content;
     DentryPair current_pair;
-    int64_t src_inode;
 
     if (parent != NULL) {
         current_pair.inode = inode;
         current_pair.dentry = NULL;
-        if ((result=dentry_load_children(parent, &current_pair)) != 0) {
+        if ((result=dentry_load_children_ex(parent, &current_pair)) != 0) {
             return result;
         }
         *dentry = current_pair.dentry;
@@ -177,34 +229,29 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         __sync_add_and_fetch(&(*dentry)->db_args->reffer_count, 1);
     }
 
-    if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
-                    &ns_entry->thread_ctx->db_fetch_ctx.read_ctx)) != 0)
+    return dentry_load_basic(ns_entry->thread_ctx, *dentry);
+}
+
+int dentry_check_load(FDIRDataThreadContext *thread_ctx,
+        FDIRServerDentry *dentry)
+{
+    int result;
+
+    if ((dentry->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC) == 0) {
+        if ((result=dentry_load_basic(thread_ctx, dentry)) != 0) {
+            return result;
+        }
+    }
+
+    if (S_ISDIR(dentry->stat.mode) && (dentry->loaded_flags &
+                FDIR_DENTRY_LOADED_FLAGS_CHILDREN) == 0)
     {
-        return result;
+        if ((result=dentry_load_children(dentry)) != 0) {
+            return result;
+        }
     }
 
-    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(ns_entry->thread_ctx->
-                db_fetch_ctx.read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
-                    ns_entry->thread_ctx->db_fetch_ctx.read_ctx.op_ctx));
-    if ((result=dentry_serializer_unpack_basic(ns_entry->thread_ctx,
-                    &content, *dentry, &src_inode)) != 0)
-    {
-        logCrit("file: "__FILE__", line: %d, "
-                "dentry unpack basic info fail, "
-                "program exit!", __LINE__);
-        sf_terminate_myself();
-        return result;
-    }
-    (*dentry)->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
-
-    if (FDIR_IS_DENTRY_HARD_LINK((*dentry)->stat.mode)) {
-        result = dentry_load_inode(ns_entry->thread_ctx,
-                ns_entry, src_inode, &(*dentry)->src_dentry);
-    } else {
-        result = inode_index_add_dentry(*dentry);
-    }
-
-    return result;
+    return 0;
 }
 
 int dentry_load_root(FDIRNamespaceEntry *ns_entry,
@@ -283,10 +330,17 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
         }
 
         if (pair->parent.inode == 0) {
-            logError("file: "__FILE__", line: %d, "
-                    "inode: %"PRId64", invalid parent inode: 0",
-                    __LINE__, pair->current.inode);
-            result = EINVAL;
+            if (parray->count > 1) {
+                logError("file: "__FILE__", line: %d, "
+                        "inode: %"PRId64", invalid parent inode: 0",
+                        __LINE__, pair->current.inode);
+                result = EINVAL;
+            } else if (ns_entry == NULL) {
+                result = dentry_serializer_extract_namespace(
+                        db_fetch_ctx, &content, inode, &ns_entry);
+            }
+
+            pair->parent.dentry = NULL;
             break;
         }
 
@@ -310,8 +364,10 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
     } while (1);
 
     if (result == 0) {
-        //TODO
-        if ((result=dentry_load_all(parray)) == 0) {
+        if (parray->count == 1) {
+            result = dentry_load_one(ns_entry, pair->parent.dentry,
+                    inode, NULL, dentry);
+        } else if ((result=dentry_load_all(parray)) == 0) {
             *dentry = parray->pairs->current.dentry;
         }
     }
@@ -319,3 +375,62 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
     fast_mblock_free_object(&PAIR_ARRAY_ALLOCATOR, parray);
     return result;
 }
+
+/*
+static int dentry_load_namespace(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, FDIRNamespaceEntry **ns_entry)
+{
+    int result;
+    string_t content;
+    FDIRDBFetchContext *db_fetch_ctx;
+
+    if (thread_ctx != NULL) {
+        db_fetch_ctx = &thread_ctx->db_fetch_ctx;
+    } else {
+        //TODO
+        db_fetch_ctx = NULL;
+    }
+
+    if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
+                    &db_fetch_ctx->read_ctx)) != 0)
+    {
+        return result;
+    }
+
+    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(db_fetch_ctx->
+                read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
+                    db_fetch_ctx->read_ctx.op_ctx));
+    return dentry_serializer_extract_namespace(db_fetch_ctx,
+            &content, inode, ns_entry);
+}
+
+
+int dentry_load(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, FDIRServerDentry **dentry)
+{
+    int result;
+    string_t content;
+    FDIRNamespaceEntry *ns_entry;
+    FDIRDBFetchContext *db_fetch_ctx;
+
+    if (thread_ctx == NULL) {
+         //TODO
+        db_fetch_ctx = NULL;
+        if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
+                        &db_fetch_ctx->read_ctx)) != 0)
+        {
+            return result;
+        }
+
+        FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(db_fetch_ctx->
+                    read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
+                        db_fetch_ctx->read_ctx.op_ctx));
+        if ((result=dentry_serializer_extract_namespace(db_fetch_ctx,
+                        &content, inode, &ns_entry)) != 0)
+        {
+            return result;
+        }
+        thread_ctx = ns_entry->thread_ctx;
+    }
+}
+*/

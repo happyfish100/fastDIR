@@ -314,6 +314,32 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     return 0;
 }
 
+/*
+static inline FDIRServerDentry *find_child(FDIRServerDentry *parent,
+        const string_t *name)
+{
+    FDIRServerDentry target;
+
+    if (STORAGE_ENABLED) {
+    }
+
+    if (!S_ISDIR(parent->stat.mode)) {
+        *dentry = NULL;
+        return ENOENT;
+    }
+
+    target.name = *name;
+    if ((*dentry=(FDIRServerDentry *)uniq_skiplist_find(
+                    parent->children, &target)) != NULL)
+    {
+        SET_HARD_LINK_DENTRY(*dentry);
+        return 0;
+    } else {
+        return ENOENT;
+    }
+}
+*/
+
 static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
         const string_t *paths, const int count)
 {
@@ -611,6 +637,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     current->stat.nlink = 1;
     current->stat.alloc = 0;
     current->stat.space_end = 0;
+    current->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;
@@ -713,6 +740,7 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                __LINE__, dentry->inode, dentry->stat.nlink);
              */
 
+            dentry->parent = NULL;   //orphan inode
             op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }

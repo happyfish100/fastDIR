@@ -51,6 +51,9 @@ extern "C" {
             FDIRNamespaceEntry *ns_entry, const int64_t inode,
             FDIRServerDentry **dentry);
 
+    int dentry_check_load(FDIRDataThreadContext *thread_ctx,
+            FDIRServerDentry *dentry);
+
 #ifdef __cplusplus
 }
 #endif
