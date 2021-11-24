@@ -58,7 +58,8 @@ int dentry_loader_init()
     return 0;
 }
 
-static int dentry_load_children(DentryParentChildPair *pc_pair)
+static int dentry_load_children(FDIRServerDentry *parent,
+        DentryPair *current_pair)
 {
     int result;
     string_t content;
@@ -67,10 +68,21 @@ static int dentry_load_children(DentryParentChildPair *pc_pair)
     const id_name_array_t *id_name_array;
     const id_name_pair_t *pair;
     const id_name_pair_t *end;
-    FDIRServerDentry *parent;
     FDIRServerDentry *child;
+    UniqSkiplistIterator it;
 
-    parent = pc_pair->parent.dentry;
+    if ((parent->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CHILDREN) != 0) {
+        uniq_skiplist_iterator(parent->children, &it);
+        while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+            if (current_pair->inode == child->inode) {
+                current_pair->dentry = child;
+                return 0;
+            }
+        }
+
+        return ENOENT;
+    }
+
     thread_ctx = parent->ns_entry->thread_ctx;
     if ((result=STORAGE_ENGINE_FETCH_API(parent->inode,
                     FDIR_PIECE_FIELD_INDEX_CHILDREN,
@@ -116,38 +128,39 @@ static int dentry_load_children(DentryParentChildPair *pc_pair)
             return result;
         }
 
-        if ((result=uniq_skiplist_insert(parent->children, child)) == 0) {
-            parent->stat.nlink++;
-        } else {
+        if ((result=uniq_skiplist_insert(parent->children, child)) != 0) {
             return result;
         }
+        parent->stat.nlink++;
         child->ns_entry = parent->ns_entry;
         __sync_add_and_fetch(&child->db_args->reffer_count, 1);
 
-        if (pc_pair->current.inode == child->inode) {
-            pc_pair->current.dentry = child;
+        if (current_pair->inode == child->inode) {
+            current_pair->dentry = child;
         }
     }
 
     parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;
-    return 0;
+    return current_pair->dentry != NULL ? 0 : ENOENT;
 }
 
 static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         FDIRServerDentry *parent, const int64_t inode,
-        const string_t *name, FDIRServerDentry **dentry,
-        int64_t *src_inode)
+        const string_t *name, FDIRServerDentry **dentry)
 {
     int result;
     string_t content;
+    DentryPair current_pair;
+    int64_t src_inode;
 
-    if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
-                    &ns_entry->thread_ctx->db_fetch_ctx.read_ctx)) != 0)
-    {
-        return result;
-    }
-
-    if (*dentry == NULL) {
+    if (parent != NULL) {
+        current_pair.inode = inode;
+        current_pair.dentry = NULL;
+        if ((result=dentry_load_children(parent, &current_pair)) != 0) {
+            return result;
+        }
+        *dentry = current_pair.dentry;
+    } else {
         *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(
                 &ns_entry->thread_ctx->dentry_context.dentry_allocator);
         if (*dentry == NULL) {
@@ -164,11 +177,17 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         __sync_add_and_fetch(&(*dentry)->db_args->reffer_count, 1);
     }
 
+    if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
+                    &ns_entry->thread_ctx->db_fetch_ctx.read_ctx)) != 0)
+    {
+        return result;
+    }
+
     FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(ns_entry->thread_ctx->
                 db_fetch_ctx.read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
                     ns_entry->thread_ctx->db_fetch_ctx.read_ctx.op_ctx));
     if ((result=dentry_serializer_unpack_basic(ns_entry->thread_ctx,
-                    &content, *dentry, src_inode)) != 0)
+                    &content, *dentry, &src_inode)) != 0)
     {
         logCrit("file: "__FILE__", line: %d, "
                 "dentry unpack basic info fail, "
@@ -176,8 +195,15 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         sf_terminate_myself();
         return result;
     }
-
     (*dentry)->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
+
+    if (FDIR_IS_DENTRY_HARD_LINK((*dentry)->stat.mode)) {
+        result = dentry_load_inode(ns_entry->thread_ctx,
+                ns_entry, src_inode, &(*dentry)->src_dentry);
+    } else {
+        result = inode_index_add_dentry(*dentry);
+    }
+
     return result;
 }
 
@@ -188,7 +214,6 @@ int dentry_load_root(FDIRNamespaceEntry *ns_entry,
     FDIRServerDentry *parent = NULL;
     string_t empty;
     string_t name;
-    int64_t src_inode;
 
     FC_SET_STRING_EX(empty, "", 0);
     if ((result=dentry_strdup(&ns_entry->thread_ctx->
@@ -196,39 +221,22 @@ int dentry_load_root(FDIRNamespaceEntry *ns_entry,
     {
         return result;
     }
-    return dentry_load_one(ns_entry, parent, inode,
-            &name, dentry, &src_inode);
+    return dentry_load_one(ns_entry, parent, inode, &name, dentry);
 }
 
 int dentry_load_all(DentryParentChildArray *parray)
 {
     int result;
-    int64_t src_inode;
-    FDIRServerDentry **dentry;
     DentryParentChildPair *pair;
     DentryParentChildPair *last;
 
     last = parray->pairs + parray->count - 1;
     for (pair=last; pair>=parray->pairs; pair--) {
-        if ((result=dentry_load_children(pair)) != 0) {
-            return result;
-        }
-
-        dentry = &pair->current.dentry;
         if ((result=dentry_load_one(pair->parent.dentry->ns_entry,
                         pair->parent.dentry, pair->current.inode,
-                        NULL, dentry, &src_inode)) != 0)
+                        NULL, &pair->current.dentry)) != 0)
         {
             return result;
-        }
-
-        if (FDIR_IS_DENTRY_HARD_LINK((*dentry)->stat.mode)) {
-            if ((result=dentry_load_inode((*dentry)->ns_entry->
-                            thread_ctx, (*dentry)->ns_entry, src_inode,
-                            &(*dentry)->src_dentry)) != 0)
-            {
-                return result;
-            }
         }
     }
 
