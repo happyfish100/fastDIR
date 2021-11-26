@@ -34,6 +34,7 @@
 #include "sf/sf_func.h"
 #include "dentry.h"
 #include "inode_index.h"
+#include "service_handler.h"
 #include "db/change_notify.h"
 #include "db/dentry_serializer.h"
 #include "data_thread.h"
@@ -655,6 +656,46 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
     return 0;
 }
 
+static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    bool is_create;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        return check_parent(record);
+    }
+
+    /*
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
+            fullname.ns.len, fullname.ns.str,
+            fullname.path.len, fullname.path.str);
+            */
+
+    is_create = (record->operation == BINLOG_OP_CREATE_DENTRY_INT);
+    if ((result=dentry_find_parent(&record->me.fullname, &record->
+                    me.parent, &record->me.pname.name)) != 0)
+    {
+        if (!(result == ENOENT && is_create)) {
+            return result;
+        }
+        if (!FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
+            return result;
+        }
+    } else if (is_create && FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
+        return EEXIST;
+    }
+
+    record->ns = record->me.fullname.ns;
+    if (record->me.parent != NULL) {
+        record->me.pname.parent_inode = record->me.parent->inode;
+    }
+    record->me.dentry = NULL;
+    return service_set_record_pname_info(record,
+            (struct fast_task_info *)record->notify.args);
+}
+
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -667,7 +708,7 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            if ((result=check_parent(record)) != 0) {
+            if ((result=find_or_check_parent(thread_ctx, record)) != 0) {
                 ignore_errno = 0;
                 break;
             }

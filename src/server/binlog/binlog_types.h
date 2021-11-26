@@ -64,15 +64,16 @@ typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
 
 typedef struct {
+    FDIRDEntryFullName fullname;
     FDIRDEntryPName pname;
     FDIRServerDentry *parent;
     FDIRServerDentry *dentry;
 } FDIRRecordDEntry;
 
 typedef enum {
-    fdir_record_type_load = 'l',
-    fdir_record_type_update = 'u'
-} FDIRRecordType;
+    fdir_dentry_type_fullname = 'f',
+    fdir_dentry_type_inode = 'i'
+} FDIRDEntryType;
 
 typedef struct {
     FDIRServerDentry *dentry;
@@ -83,11 +84,11 @@ typedef struct fdir_binlog_record {
     uint64_t data_version;
     int64_t inode;
     string_t ns;   //namespace
-    FDIRRecordType type;
     unsigned int hash_code;
     int operation;
     int timestamp;
     int flags;
+    FDIRDEntryType dentry_type;
     FDIRStatModifyFlags options;
 
     union {

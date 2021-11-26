@@ -196,7 +196,6 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         for (record=replay_ctx->record_array.records;
                 record<rec_end; record++)
         {
-            record->type = fdir_record_type_update;
             push_to_data_thread_queue(record);
         }
 

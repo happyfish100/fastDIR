@@ -902,6 +902,7 @@ int binlog_unpack_record(const char *str, const int len,
         return result;
     }
 
+    record->dentry_type = fdir_dentry_type_inode;
     *record_end = pcontext.rec_end;
     return binlog_parse_fields(&pcontext, record);
 }

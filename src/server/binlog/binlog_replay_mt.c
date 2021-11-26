@@ -363,7 +363,6 @@ static void waiting_and_process_parse_result(BinlogReplayMTContext
             FC_ATOMIC_INC(counter->done);
         } else {
             replay_ctx->data_current_version = record->data_version;
-            record->type = fdir_record_type_load;
             push_to_data_thread_queue(record);
         }
     }

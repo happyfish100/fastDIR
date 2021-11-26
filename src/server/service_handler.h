@@ -23,6 +23,7 @@
 #include <string.h>
 #include "fastcommon/fast_task_queue.h"
 #include "server_types.h"
+#include "binlog/binlog_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +35,12 @@ int service_deal_task(struct fast_task_info *task, const int stage);
 void service_task_finish_cleanup(struct fast_task_info *task);
 void *service_alloc_thread_extra_data(const int thread_index);
 //int service_thread_loop(struct nio_thread_data *thread_data);
+
+int service_set_record_pname_info(FDIRBinlogRecord *record,
+        struct fast_task_info *task);
+
+int service_set_record_link(FDIRBinlogRecord *record,
+        struct fast_task_info *task);
 
 #ifdef __cplusplus
 }
