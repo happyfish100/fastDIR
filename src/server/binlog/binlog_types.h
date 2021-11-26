@@ -100,8 +100,11 @@ typedef struct fdir_binlog_record {
 
         struct {
             FDIRRecordDEntry dest;  //must be the first
-            int64_t src_inode;
-            FDIRServerDentry *src_dentry;
+            struct {
+                int64_t inode;
+                FDIRDEntryFullName fullname;
+                FDIRServerDentry *dentry;
+            } src;
         } hdlink;
 
         FDIRRecordDEntry me;  //for create and remove

@@ -821,8 +821,8 @@ static int compare_record(const FDIRBinlogRecord *r1,
     }
 
     if (r1->options.src_inode) {
-        if ((sub=fc_compare_int64(r1->hdlink.src_inode,
-                    r2->hdlink.src_inode)) != 0)
+        if ((sub=fc_compare_int64(r1->hdlink.src.inode,
+                    r2->hdlink.src.inode)) != 0)
         {
             return sub;
         }

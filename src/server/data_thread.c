@@ -409,37 +409,137 @@ static inline int check_parent(FDIRBinlogRecord *record)
     return record->me.parent != NULL ? 0 : ENOENT;
 }
 
-static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
+static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
-    if ((record->hdlink.src_dentry=inode_index_get_dentry(
-                    record->hdlink.src_inode)) == NULL)
-    {
-        return ENOENT;
+    int result;
+    bool is_create;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        return check_parent(record);
     }
 
-    if (S_ISDIR(record->hdlink.src_dentry->stat.mode) ||
-            FDIR_IS_DENTRY_HARD_LINK(record->hdlink.src_dentry->stat.mode))
+    /*
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
+            fullname.ns.len, fullname.ns.str,
+            fullname.path.len, fullname.path.str);
+            */
+
+    is_create = (record->operation == BINLOG_OP_CREATE_DENTRY_INT);
+    if ((result=dentry_find_parent(&record->me.fullname, &record->
+                    me.parent, &record->me.pname.name)) != 0)
+    {
+        if (!(result == ENOENT && is_create)) {
+            return result;
+        }
+        if (!FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
+            return result;
+        }
+    } else if (is_create && FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
+        return EEXIST;
+    }
+
+    record->me.pname.parent_inode = (record->me.parent != NULL ?
+            record->me.parent->inode : 0);
+    record->me.dentry = NULL;
+    return service_set_record_pname_info(record,
+            (struct fast_task_info *)record->notify.args);
+}
+
+static inline int set_pname_by_fullname_ex(FDIRRecordDEntry *entry,
+        const bool allow_root_path)
+{
+    int result;
+
+    if ((result=dentry_find_parent(&entry->fullname, &entry->parent,
+                    &entry->pname.name)) != 0)
+    {
+        return result;
+    }
+
+    if (allow_root_path) {
+        entry->pname.parent_inode = (entry->parent != NULL ?
+                entry->parent->inode : 0);
+    } else {
+        if (entry->parent == NULL) {
+            return EINVAL;
+        }
+        entry->pname.parent_inode = entry->parent->inode;
+    }
+
+    return 0;
+}
+
+#define set_pname_by_fullname(entry) set_pname_by_fullname_ex(entry, false)
+
+static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
+{
+    int result;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        if ((record->hdlink.src.dentry=inode_index_get_dentry(
+                        record->hdlink.src.inode)) == NULL)
+        {
+            return ENOENT;
+        }
+    } else {
+        if ((result=dentry_find(&record->hdlink.src.fullname,
+                        &record->hdlink.src.dentry)) != 0)
+        {
+            return result;
+        }
+        record->hdlink.src.inode = record->hdlink.src.dentry->inode;
+    }
+
+    if (S_ISDIR(record->hdlink.src.dentry->stat.mode) ||
+            FDIR_IS_DENTRY_HARD_LINK(record->hdlink.src.dentry->stat.mode))
     {
         return EPERM;
     }
 
+    record->stat.mode |= (record->hdlink.src.dentry->stat.mode & S_IFMT);
     return 0;
 }
 
 static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    if ((record->rename.src.parent=inode_index_get_dentry(record->
-                    rename.src.pname.parent_inode)) == NULL)
-    {
-        return ENOENT;
+    int result;
+    char *src_name;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        if ((record->rename.src.parent=inode_index_get_dentry(record->
+                        rename.src.pname.parent_inode)) == NULL)
+        {
+            return ENOENT;
+        }
+
+        if ((record->rename.dest.parent=inode_index_get_dentry(record->
+                        rename.dest.pname.parent_inode)) == NULL)
+        {
+            return ENOENT;
+        }
+    } else {
+        if ((result=set_pname_by_fullname(&record->rename.src)) != 0) {
+            return result;
+        }
+        if ((result=set_pname_by_fullname(&record->rename.dest)) != 0) {
+            return result;
+        }
+
+        if ((result=service_set_record_pname_info(record,
+                        (struct fast_task_info *)record->notify.args)) != 0)
+        {
+            return result;
+        }
     }
 
-    if ((record->rename.dest.parent=inode_index_get_dentry(record->
-                    rename.dest.pname.parent_inode)) == NULL)
-    {
-        return ENOENT;
-    }
+    src_name = record->rename.dest.pname.name.str +
+        record->rename.dest.pname.name.len;
+    memcpy(src_name, record->rename.src.pname.name.str,
+            record->rename.src.pname.name.len);
+    record->rename.src.pname.name.str = src_name;
 
     return dentry_rename(thread_ctx, record);
 }
@@ -656,46 +756,6 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
     return 0;
 }
 
-static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
-{
-    int result;
-    bool is_create;
-
-    if (record->dentry_type == fdir_dentry_type_inode) {
-        return check_parent(record);
-    }
-
-    /*
-    logInfo("file: "__FILE__", line: %d, func: %s, "
-            "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
-            fullname.ns.len, fullname.ns.str,
-            fullname.path.len, fullname.path.str);
-            */
-
-    is_create = (record->operation == BINLOG_OP_CREATE_DENTRY_INT);
-    if ((result=dentry_find_parent(&record->me.fullname, &record->
-                    me.parent, &record->me.pname.name)) != 0)
-    {
-        if (!(result == ENOENT && is_create)) {
-            return result;
-        }
-        if (!FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
-            return result;
-        }
-    } else if (is_create && FDIR_IS_ROOT_PATH(record->me.fullname.path)) {
-        return EEXIST;
-    }
-
-    record->ns = record->me.fullname.ns;
-    if (record->me.parent != NULL) {
-        record->me.pname.parent_inode = record->me.parent->inode;
-    }
-    record->me.dentry = NULL;
-    return service_set_record_pname_info(record,
-            (struct fast_task_info *)record->notify.args);
-}
-
 static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -715,6 +775,16 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
                 if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
                     if ((result=set_hdlink_src_dentry(record)) != 0) {
+                        ignore_errno = 0;
+                        break;
+                    }
+                } else if (S_ISLNK(record->stat.mode) && record->dentry_type
+                        == fdir_dentry_type_fullname)
+                {
+                    if ((result=service_set_record_link(record,
+                                    (struct fast_task_info *)
+                                    record->notify.args)) != 0)
+                    {
                         ignore_errno = 0;
                         break;
                     }

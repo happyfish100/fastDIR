@@ -351,7 +351,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
     if (record->options.src_inode) {
         fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_SRC_INODE, record->hdlink.src_inode);
+                BINLOG_RECORD_FIELD_NAME_SRC_INODE, record->hdlink.src.inode);
     }
 
     switch (record->operation) {
@@ -642,7 +642,7 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
         case BINLOG_RECORD_FIELD_INDEX_SRC_INODE:
             expect_type = BINLOG_FIELD_TYPE_INTEGER;
             if (pcontext->fv.type == expect_type) {
-                record->hdlink.src_inode = pcontext->fv.value.n;
+                record->hdlink.src.inode = pcontext->fv.value.n;
                 record->options.src_inode = 1;
             }
             break;

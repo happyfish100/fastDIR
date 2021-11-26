@@ -594,7 +594,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
         FC_SET_STRING_NULL(current->link);
-        current->src_dentry = record->hdlink.src_dentry;
+        current->src_dentry = record->hdlink.src.dentry;
     } else if (S_ISLNK(record->stat.mode)) {
         if ((result=dentry_strdup(&db_context->dentry_context,
                         &current->link, &record->link)) != 0)

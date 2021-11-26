@@ -770,11 +770,9 @@ static inline int check_name_length(struct fast_task_info *task,
 }
 
 static int server_parse_pname(struct fast_task_info *task,
-        const int front_part_size, string_t *ns, string_t *name,
-        FDIRServerDentry **parent_dentry)
+        const int front_part_size, string_t *ns, FDIRDEntryPName *pname)
 {
     FDIRProtoDEntryByPName *req;
-    int64_t parent_inode;
     int result;
 
     req = (FDIRProtoDEntryByPName *)(REQUEST.body + front_part_size);
@@ -787,23 +785,17 @@ static int server_parse_pname(struct fast_task_info *task,
 
     ns->len = req->ns_len;
     ns->str = req->ns_str;
-    name->len = req->name_len;
-    name->str = ns->str + ns->len;
-    parent_inode = buff2long(req->parent_inode);
-    if ((*parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "parent inode: %"PRId64" not exist", parent_inode);
-        return ENOENT;
-    }
-
+    pname->name.len = req->name_len;
+    pname->name.str = ns->str + ns->len;
+    pname->parent_inode = buff2long(req->parent_inode);
     return 0;
 }
 
 static int server_check_and_parse_pname(struct fast_task_info *task,
-        const int front_part_size, string_t *ns, string_t *name,
-        FDIRServerDentry **parent_dentry)
+        const int front_part_size, string_t *ns, FDIRDEntryPName *pname)
 {
     int fixed_part_size;
+    int expect_len;
     int result;
 
     fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryByPName);
@@ -813,16 +805,15 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
         return result;
     }
 
-    if ((result=server_parse_pname(task, front_part_size, ns, name,
-                    parent_dentry)) != 0)
-    {
+    if ((result=server_parse_pname(task, front_part_size, ns, pname)) != 0) {
         return result;
     }
 
-    if (fixed_part_size + ns->len + name->len != REQUEST.header.body_len) {
+    expect_len = fixed_part_size + ns->len + pname->name.len;
+    if (expect_len != REQUEST.header.body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d", REQUEST.header.body_len,
-                fixed_part_size + ns->len + name->len);
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, expect_len);
         return EINVAL;
     }
 
@@ -1124,14 +1115,11 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 static void init_record_for_create_ex(struct fast_task_info *task,
         const int mode, const bool is_hdlink)
 {
-    int new_mode;
     if (is_hdlink) {
-        new_mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)) |
-                (RECORD->hdlink.src_dentry->stat.mode & S_IFMT));
+        RECORD->stat.mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)));
     } else {
-        new_mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
+        RECORD->stat.mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
     }
-    RECORD->stat.mode = new_mode;
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
                 REQUEST.body)->uid);
@@ -1163,6 +1151,7 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
         free_record_object(task);
         return result;
     }
+    RECORD->ns = RECORD->me.fullname.ns;
 
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
@@ -1185,15 +1174,10 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
 
     RECORD->dentry_type = fdir_dentry_type_inode;
     if ((result=server_check_and_parse_pname(task, front_part_size,
-                    &RECORD->ns, &RECORD->me.pname.name,
-                    &RECORD->me.parent)) != 0)
+                    &RECORD->ns, &RECORD->me.pname)) != 0)
     {
         free_record_object(task);
         return result;
-    }
-
-    if (RECORD->me.parent != NULL) {
-        RECORD->me.pname.parent_inode = RECORD->me.parent->inode;
     }
     RECORD->me.dentry = NULL;
 
@@ -1431,7 +1415,7 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
 }
 
 static int do_hdlink_dentry(struct fast_task_info *task,
-        FDIRServerDentry *src_dentry, const int mode, const int resp_cmd)
+        const int mode, const int resp_cmd)
 {
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -1443,8 +1427,6 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             RECORD->hdlink.dest.pname.name.str);
             */
 
-    RECORD->hdlink.src_dentry = src_dentry;
-    RECORD->hdlink.src_inode = src_dentry->inode;
     init_record_for_create_ex(task, mode, true);
     RECORD->options.src_inode = 1;
     RESPONSE.header.cmd = resp_cmd;
@@ -1454,7 +1436,6 @@ static int do_hdlink_dentry(struct fast_task_info *task,
 static int service_deal_hdlink_dentry(struct fast_task_info *task)
 {
     FDIRDEntryFullName src_fullname;
-    FDIRServerDentry *src_dentry;
     int mode;
     int result;
 
@@ -1473,13 +1454,10 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=dentry_find(&src_fullname, &src_dentry)) != 0) {
-        return result;
-    }
-
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoCreateDEntryFront) +
-                    sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
+                    sizeof(FDIRProtoDEntryInfo) +
+                    src_fullname.ns.len +
                     src_fullname.path.len)) != 0)
     {
         return result;
@@ -1499,8 +1477,9 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
+    RECORD->hdlink.src.fullname = src_fullname;
     mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
-    return do_hdlink_dentry(task, src_dentry, mode,
+    return do_hdlink_dentry(task, mode,
             FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
 }
 
@@ -1524,7 +1503,6 @@ static int parse_hdlink_dentry_front(struct fast_task_info *task,
 
 static int service_deal_hdlink_by_pname(struct fast_task_info *task)
 {
-    FDIRServerDentry *src_dentry;
     int result;
     int mode;
     int64_t src_inode;
@@ -1533,17 +1511,14 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    if ((src_dentry=inode_index_get_dentry(src_inode)) == NULL) {
-        return ENOENT;
-    }
-
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoHDlinkByPNameFront))) != 0)
     {
         return result;
     }
 
-    return do_hdlink_dentry(task, src_dentry, mode,
+    RECORD->hdlink.src.inode = src_inode;
+    return do_hdlink_dentry(task, mode,
             FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 
@@ -1573,53 +1548,12 @@ static int service_deal_remove_by_pname(struct fast_task_info *task)
     return push_record_to_data_thread_queue(task);
 }
 
-static int set_rename_src_by_dentry(struct fast_task_info *task,
-        FDIRServerDentry *dentry)
+static inline void parse_rename_flags(struct fast_task_info *task)
 {
     FDIRProtoRenameDEntryFront *front;
 
-    if (dentry->parent == NULL) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "can't rename root path: /");
-        return EINVAL;
-    }
-
     front = (FDIRProtoRenameDEntryFront *)REQUEST.body;
     RECORD->flags = buff2int(front->flags);
-
-    RECORD->rename.src.pname.name.str = RECORD->rename.dest.pname.name.str +
-        RECORD->rename.dest.pname.name.len;
-    memcpy(RECORD->rename.src.pname.name.str,
-            dentry->name.str, dentry->name.len);
-    RECORD->rename.src.pname.name.len = dentry->name.len;
-    RECORD->rename.src.pname.parent_inode = dentry->parent->inode;
-    return 0;
-}
-
-static inline int set_rename_src_dentry(struct fast_task_info *task,
-        FDIRDEntryFullName *src_fullname)
-{
-    int result;
-    FDIRServerDentry *dentry;
-
-    if ((result=dentry_find(src_fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return set_rename_src_by_dentry(task, dentry);
-}
-
-static inline int set_rename_src_pname(struct fast_task_info *task,
-        FDIRServerDentry *parent, string_t *src_name)
-{
-    int result;
-    FDIRServerDentry *dentry;
-
-    if ((result=dentry_find_by_pname(parent, src_name, &dentry)) != 0) {
-        return result;
-    }
-
-    return set_rename_src_by_dentry(task, dentry);
 }
 
 static int service_deal_rename_dentry(struct fast_task_info *task)
@@ -1657,10 +1591,8 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             src_fullname.path.len, src_fullname.path.str);
             */
 
-    if ((result=set_rename_src_dentry(task, &src_fullname)) != 0) {
-        free_record_object(task);
-        return result;
-    }
+    RECORD->rename.src.fullname = src_fullname;
+    parse_rename_flags(task);
 
     if (!fc_string_equal(&RECORD->ns, &src_fullname.ns)) {
         free_record_object(task);
@@ -1691,8 +1623,7 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
 {
     int result;
     string_t src_ns;
-    string_t src_name;
-    FDIRServerDentry *src_parent;
+    FDIRDEntryPName src_pname;
 
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntryByPName) + 4,
@@ -1702,8 +1633,9 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=server_parse_pname(task, sizeof(FDIRProtoRenameDEntryFront),
-                    &src_ns, &src_name, &src_parent)) != 0)
+    if ((result=server_parse_pname(task,
+                    sizeof(FDIRProtoRenameDEntryFront),
+                    &src_ns, &src_pname)) != 0)
     {
         return result;
     }
@@ -1711,16 +1643,13 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoRenameDEntryFront) +
                     sizeof(FDIRProtoDEntryByPName) +
-                    src_ns.len + src_name.len)) != 0)
+                    src_ns.len + src_pname.name.len)) != 0)
     {
         return result;
     }
 
-    if ((result=set_rename_src_pname(task, src_parent, &src_name)) != 0) {
-        free_record_object(task);
-        return result;
-    }
-
+    RECORD->rename.src.pname = src_pname;
+    parse_rename_flags(task);
     if (!fc_string_equal(&RECORD->ns, &src_ns)) {
         free_record_object(task);
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
