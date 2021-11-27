@@ -516,44 +516,40 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
     return 0;
 }
 
-FDIRServerDentry *inode_index_set_xattr(
-        const FDIRBinlogRecord *record, int *err_no)
+int inode_index_set_xattr(const FDIRBinlogRecord *record)
 {
     FDIRServerDentry *dentry;
+    int result;
 
     SET_INODE_HT_BUCKET_AND_CTX(record->inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, record->inode);
     if (dentry != NULL) {
-        if ((*err_no=set_xattr(dentry, record)) != 0) {
-            dentry = NULL;
-        }
+        result = set_xattr(dentry, record);
     } else {
-        *err_no = ENOENT;
+        result = ENOENT;
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    return dentry;
+    return result;
 }
 
-FDIRServerDentry *inode_index_remove_xattr(const int64_t inode,
-        const string_t *name, int *err_no)
+int inode_index_remove_xattr(const int64_t inode, const string_t *name)
 {
     FDIRServerDentry *dentry;
+    int result;
 
     SET_INODE_HT_BUCKET_AND_CTX(inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, inode);
     if (dentry != NULL) {
-        if ((*err_no=remove_xattr(dentry, name)) != 0) {
-            dentry = NULL;
-        }
+        result = remove_xattr(dentry, name);
     } else {
-        *err_no = ENOENT;
+        result = ENOENT;
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    return dentry;
+    return result;
 }
 
 int inode_index_get_xattr(FDIRServerDentry *dentry,

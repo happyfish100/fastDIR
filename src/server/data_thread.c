@@ -544,6 +544,25 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     return dentry_rename(thread_ctx, record);
 }
 
+static inline int xattr_update_prepare(FDIRBinlogRecord *record)
+{
+    int result;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        return 0;
+    }
+
+    if ((result=dentry_find(&record->me.fullname, &record->me.dentry)) != 0) {
+        return result;
+    }
+
+    record->inode = record->me.dentry->inode;
+    record->me.pname.name = record->me.dentry->name;
+    record->me.pname.parent_inode = (record->me.dentry->parent != NULL ?
+            record->me.dentry->parent->inode : 0);
+    return 0;
+}
+
 #define GENERATE_ADD_TO_PARENT_MESSAGE(msg, dentry, op_type)  \
     if ((dentry)->parent != NULL) {  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, (dentry)->parent, \
@@ -806,13 +825,16 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = 0;
             break;
         case BINLOG_OP_SET_XATTR_INT:
-            record->me.dentry = inode_index_set_xattr(
-                    record, &result);
+            if ((result=xattr_update_prepare(record)) == 0) {
+                result = inode_index_set_xattr(record);
+            }
             ignore_errno = 0;
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
-            record->me.dentry = inode_index_remove_xattr(
-                    record->inode, &record->xattr.key, &result);
+            if ((result=xattr_update_prepare(record)) == 0) {
+                result = inode_index_remove_xattr(record->inode,
+                        &record->xattr.key);
+            }
             ignore_errno = ENODATA;
             break;
         default:
