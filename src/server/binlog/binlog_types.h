@@ -34,6 +34,11 @@
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
 
+#define SERVICE_OP_STAT_DENTRY_INT  101
+#define SERVICE_OP_READ_LINK_INT    102
+#define SERVICE_OP_LOOKUP_INODE_INT 103
+#define SERVICE_OP_LIST_DENTRY_INT  104
+
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
 #define BINLOG_OP_REMOVE_DENTRY_STR  "rm"
@@ -85,10 +90,11 @@ typedef struct fdir_binlog_record {
     int64_t inode;
     string_t ns;   //namespace
     unsigned int hash_code;
-    int operation;
+    uint8_t operation;
+    bool is_update;
+    FDIRDEntryType dentry_type;
     int timestamp;
     int flags;
-    FDIRDEntryType dentry_type;
     FDIRStatModifyFlags options;
 
     union {
@@ -166,6 +172,14 @@ static inline const char *get_operation_caption(const int operation)
             return "SET_XATTR";
         case BINLOG_OP_REMOVE_XATTR_INT:
             return "REMOVE_XATTR";
+        case SERVICE_OP_STAT_DENTRY_INT:
+            return "STAT_DENTRY";
+        case SERVICE_OP_READ_LINK_INT:
+            return "READ_LINK";
+        case SERVICE_OP_LOOKUP_INODE_INT:
+            return "LOOKUP_INODE";
+        case SERVICE_OP_LIST_DENTRY_INT:
+            return "LIST_DENTRY";
         default:
             return "UNKOWN";
     }

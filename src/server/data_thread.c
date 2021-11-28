@@ -775,7 +775,7 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
     return 0;
 }
 
-static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
+static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
@@ -896,6 +896,33 @@ static int deal_binlog_one_record(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
+static int deal_query_record(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    switch (record->operation) {
+        case SERVICE_OP_STAT_DENTRY_INT:
+        case SERVICE_OP_READ_LINK_INT:
+        case SERVICE_OP_LOOKUP_INODE_INT:
+            if (record->dentry_type == fdir_dentry_type_inode) {
+                record->me.dentry = inode_index_get_dentry(record->inode);
+                result = (record->me.dentry != NULL ? 0 : ENOENT);
+            } else {
+                result = dentry_find(&record->me.fullname, &record->me.dentry);
+            }
+            break;
+        case SERVICE_OP_LIST_DENTRY_INT:
+            result = 0;
+            break;
+        default:
+            result = EPROTONOSUPPORT;
+            break;
+    }
+
+    record->notify.func(record, result, result != 0);
+    return result;
+}
+
 static void *data_thread_func(void *arg)
 {
     FDIRBinlogRecord *record;
@@ -925,7 +952,11 @@ static void *data_thread_func(void *arg)
         do {
             current = record;
             record = record->next;
-            deal_binlog_one_record(thread_ctx, current);
+            if (record->is_update) {
+                deal_update_record(thread_ctx, current);
+            } else {
+                deal_query_record(thread_ctx, current);
+            }
             ++count;
         } while (record != NULL);
 
