@@ -896,6 +896,29 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
+static int list_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        if ((record->me.dentry=inode_index_get_dentry(
+                        record->inode)) == NULL)
+        {
+            return ENOENT;
+        }
+
+        result = dentry_list(record->me.dentry, &DENTRY_LIST_CACHE.array);
+    } else {
+        result = dentry_list_by_path(&record->me.fullname,
+                &DENTRY_LIST_CACHE.array);
+    }
+
+    return result;
+}
+
 static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -904,15 +927,21 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         case SERVICE_OP_STAT_DENTRY_INT:
         case SERVICE_OP_READ_LINK_INT:
         case SERVICE_OP_LOOKUP_INODE_INT:
+        case SERVICE_OP_GET_XATTR_INT:
+        case SERVICE_OP_LIST_XATTR_INT:
             if (record->dentry_type == fdir_dentry_type_inode) {
                 record->me.dentry = inode_index_get_dentry(record->inode);
+                result = (record->me.dentry != NULL ? 0 : ENOENT);
+            } else if (record->dentry_type == fdir_dentry_type_pname) {
+                record->me.dentry=inode_index_get_dentry_by_pname(record->
+                        me.pname.parent_inode, &record->me.pname.name);
                 result = (record->me.dentry != NULL ? 0 : ENOENT);
             } else {
                 result = dentry_find(&record->me.fullname, &record->me.dentry);
             }
             break;
         case SERVICE_OP_LIST_DENTRY_INT:
-            result = 0;
+            result = list_dentry(thread_ctx, record);
             break;
         default:
             result = EPROTONOSUPPORT;

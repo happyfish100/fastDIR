@@ -38,6 +38,8 @@
 #define SERVICE_OP_READ_LINK_INT    102
 #define SERVICE_OP_LOOKUP_INODE_INT 103
 #define SERVICE_OP_LIST_DENTRY_INT  104
+#define SERVICE_OP_GET_XATTR_INT    105
+#define SERVICE_OP_LIST_XATTR_INT   106
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -63,7 +65,7 @@
 struct server_binlog_record_buffer;
 
 typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
-        const int result, const bool is_error);
+        int result, const bool is_error);
 
 typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
@@ -77,6 +79,7 @@ typedef struct {
 
 typedef enum {
     fdir_dentry_type_fullname = 'f',
+    fdir_dentry_type_pname = 'p',
     fdir_dentry_type_inode = 'i'
 } FDIRDEntryType;
 
@@ -180,6 +183,10 @@ static inline const char *get_operation_caption(const int operation)
             return "LOOKUP_INODE";
         case SERVICE_OP_LIST_DENTRY_INT:
             return "LIST_DENTRY";
+        case SERVICE_OP_GET_XATTR_INT:
+            return "GET_XATTR";
+        case SERVICE_OP_LIST_XATTR_INT:
+            return "LIST_XATTR";
         default:
             return "UNKOWN";
     }

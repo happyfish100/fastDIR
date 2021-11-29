@@ -1008,8 +1008,106 @@ static inline void lookup_inode_output(struct fast_task_info *task,
     TASK_CTX.common.response_done = true;
 }
 
+static void server_list_dentry_output(struct fast_task_info *task)
+{
+    FDIRProtoListDEntryRespBodyHeader *body_header;
+    FDIRServerDentry *src_dentry;
+    FDIRServerDentry **dentry;
+    FDIRServerDentry **start;
+    FDIRServerDentry **end;
+    FDIRProtoListDEntryRespBodyPart *body_part;
+    char *p;
+    char *buf_end;
+    int remain_count;
+    int count;
+
+    remain_count = DENTRY_LIST_CACHE.array.count -
+        DENTRY_LIST_CACHE.offset;
+
+    buf_end = task->data + task->size;
+    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
+    start = DENTRY_LIST_CACHE.array.entries +
+        DENTRY_LIST_CACHE.offset;
+    end = start + remain_count;
+    for (dentry=start; dentry<end; dentry++) {
+        src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
+        if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
+                (*dentry)->name.len)
+        {
+            break;
+        }
+        body_part = (FDIRProtoListDEntryRespBodyPart *)p;
+        long2buff(src_dentry->inode, body_part->inode);
+
+        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
+                &body_part->stat, true);
+        body_part->name_len = (*dentry)->name.len;
+        memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
+        p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
+    }
+    count = dentry - start;
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
+
+    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    int2buff(count, body_header->count);
+    if (count < remain_count) {
+        DENTRY_LIST_CACHE.offset += count;
+        DENTRY_LIST_CACHE.expires = g_current_time + 60;
+        DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
+
+        body_header->is_last = 0;
+        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
+    } else {
+        body_header->is_last = 1;
+        long2buff(0, body_header->token);
+    }
+
+    TASK_CTX.common.response_done = true;
+}
+
+static int service_do_getxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const string_t *name)
+{
+    int result;
+    string_t value;
+
+    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
+        /*
+           RESPONSE.error.length = sprintf(RESPONSE.error.message,
+           "inode: %"PRId64", get xattr %.*s fail, %s",
+           dentry->inode, name->len, name->str, STRERROR(result));
+         */
+        return result;
+    }
+
+    RESPONSE.header.body_len = value.len;
+    memcpy(SF_PROTO_RESP_BODY(task), value.str, value.len);
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static void service_do_listxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    FDIRXAttrIterator it;
+    const key_value_pair_t *kv;
+    char *p;
+
+    p = SF_PROTO_RESP_BODY(task);
+    inode_index_list_xattr(dentry, &it);
+    while ((kv=xattr_iterator_next(&it)) != NULL) {
+        memcpy(p, kv->key.str, kv->key.len);
+        p += kv->key.len;
+        *p++ = '\0';
+    }
+
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    TASK_CTX.common.response_done = true;
+}
+
 static void record_deal_done_notify(FDIRBinlogRecord *record,
-        const int result, const bool is_error)
+        int result, const bool is_error)
 {
     struct fast_task_info *task;
     char xattr_name_buff[256];
@@ -1082,6 +1180,15 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 lookup_inode_output(task, record->me.dentry);
                 break;
             case SERVICE_OP_LIST_DENTRY_INT:
+                DENTRY_LIST_CACHE.offset = 0;
+                server_list_dentry_output(task);
+                break;
+            case SERVICE_OP_GET_XATTR_INT:
+                result = service_do_getxattr(task, record->me.dentry,
+                        &record->xattr.key);
+                break;
+            case SERVICE_OP_LIST_XATTR_INT:
+                service_do_listxattr(task, record->me.dentry);
                 break;
             default:
                 break;
@@ -2025,44 +2132,51 @@ static int service_deal_readlink_by_path(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
-static int service_deal_readlink_by_pname(struct fast_task_info *task)
+static int get_dentry_by_pname(struct fast_task_info *task)
 {
-    FDIRProtoReadlinkByPNameReq *req;
-    FDIRServerDentry *dentry;
-    int64_t parent_inode;
-    string_t name;
+    FDIRProtoStatDEntryByPNameReq *req;
     int result;
 
     if ((result=server_check_body_length(sizeof(
-                        FDIRProtoReadlinkByPNameReq) + 1,
-                    sizeof(FDIRProtoReadlinkByPNameReq) + NAME_MAX)) != 0)
+                        FDIRProtoStatDEntryByPNameReq) + 1,
+                    sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoReadlinkByPNameReq *)REQUEST.body;
-    if (sizeof(FDIRProtoReadlinkByPNameReq) + req->name_len !=
+    req = (FDIRProtoStatDEntryByPNameReq *)REQUEST.body;
+    if (sizeof(FDIRProtoStatDEntryByPNameReq) + req->name_len !=
             REQUEST.header.body_len)
     {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "body length: %d != expected: %d",
                 REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoReadlinkByPNameReq) + req->name_len);
+                    FDIRProtoStatDEntryByPNameReq) + req->name_len);
         return EINVAL;
     }
 
-    //TODO
-    parent_inode = buff2long(req->parent_inode);
-    name.str = req->name_str;
-    name.len = req->name_len;
-    if ((dentry=inode_index_get_dentry_by_pname(
-                    parent_inode, &name)) == NULL)
-    {
-        return ENOENT;
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
 
+    RECORD->me.pname.parent_inode = buff2long(req->parent_inode);
+    FC_SET_STRING_EX(RECORD->me.pname.name, req->name_str, req->name_len);
+    RECORD->dentry_type = fdir_dentry_type_pname;
+    RECORD->inode = 0;
+    return 0;
+}
+
+static int service_deal_readlink_by_pname(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=get_dentry_by_pname(task)) != 0) {
+        return result;
+    }
+
+    RECORD->operation = SERVICE_OP_READ_LINK_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP;
-    return readlink_output(task, dentry);
+    return push_query_to_data_thread_queue(task);
 }
 
 static inline int server_check_and_parse_inode(struct fast_task_info *task)
@@ -2122,70 +2236,30 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
-static int get_dentry_by_pname(struct fast_task_info *task,
-        FDIRServerDentry **dentry)
-{
-    FDIRProtoStatDEntryByPNameReq *req;
-    int64_t parent_inode;
-    string_t name;
-    int result;
-
-    if ((result=server_check_body_length(sizeof(
-                        FDIRProtoStatDEntryByPNameReq) + 1,
-                    sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
-    {
-        return result;
-    }
-
-    req = (FDIRProtoStatDEntryByPNameReq *)REQUEST.body;
-    if (sizeof(FDIRProtoStatDEntryByPNameReq) + req->name_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoStatDEntryByPNameReq) + req->name_len);
-        return EINVAL;
-    }
-
-    parent_inode = buff2long(req->parent_inode);
-    name.str = req->name_str;
-    name.len = req->name_len;
-    if ((*dentry=inode_index_get_dentry_by_pname(
-                    parent_inode, &name)) == NULL)
-    {
-        return ENOENT;
-    }
-
-    return 0;
-}
-
 static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
-    FDIRServerDentry *dentry;
 
-    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
-        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
-        dentry_stat_output(task, &dentry);
+    if ((result=get_dentry_by_pname(task)) != 0) {
+        return result;
     }
-    return result;
+
+    RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 {
     int result;
-    FDIRServerDentry *dentry;
-    FDIRProtoLookupInodeResp *resp;
 
-    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
-        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
-        resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
-        long2buff(dentry->inode, resp->inode);
-        RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
-        TASK_CTX.common.response_done = true;
+    if ((result=get_dentry_by_pname(task)) != 0) {
+        return result;
     }
-    return result;
+
+    RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static inline int binlog_produce_directly(struct fast_task_info *task)
@@ -2998,65 +3072,6 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
 }
 
-static int server_list_dentry_output(struct fast_task_info *task)
-{
-    FDIRProtoListDEntryRespBodyHeader *body_header;
-    FDIRServerDentry *src_dentry;
-    FDIRServerDentry **dentry;
-    FDIRServerDentry **start;
-    FDIRServerDentry **end;
-    FDIRProtoListDEntryRespBodyPart *body_part;
-    char *p;
-    char *buf_end;
-    int remain_count;
-    int count;
-
-    remain_count = DENTRY_LIST_CACHE.array.count -
-        DENTRY_LIST_CACHE.offset;
-
-    buf_end = task->data + task->size;
-    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
-    start = DENTRY_LIST_CACHE.array.entries +
-        DENTRY_LIST_CACHE.offset;
-    end = start + remain_count;
-    for (dentry=start; dentry<end; dentry++) {
-        src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
-        if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
-                (*dentry)->name.len)
-        {
-            break;
-        }
-        body_part = (FDIRProtoListDEntryRespBodyPart *)p;
-        long2buff(src_dentry->inode, body_part->inode);
-
-        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
-                &body_part->stat, true);
-        body_part->name_len = (*dentry)->name.len;
-        memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
-        p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
-    }
-    count = dentry - start;
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
-
-    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
-    int2buff(count, body_header->count);
-    if (count < remain_count) {
-        DENTRY_LIST_CACHE.offset += count;
-        DENTRY_LIST_CACHE.expires = g_current_time + 60;
-        DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
-
-        body_header->is_last = 0;
-        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
-    } else {
-        body_header->is_last = 1;
-        long2buff(0, body_header->token);
-    }
-
-    TASK_CTX.common.response_done = true;
-    return 0;
-}
-
 static int service_deal_list_dentry_by_path(struct fast_task_info *task)
 {
     int result;
@@ -3064,18 +3079,6 @@ static int service_deal_list_dentry_by_path(struct fast_task_info *task)
     if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
-
-    //TODO
-    /*
-    if ((result=dentry_list_by_path(&RECORD->me.fullname,
-                    &DENTRY_LIST_CACHE.array)) != 0)
-    {
-        return result;
-    }
-
-    DENTRY_LIST_CACHE.offset = 0;
-    return server_list_dentry_output(task);
-    */
 
     RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
     return push_query_to_data_thread_queue(task);
@@ -3088,19 +3091,6 @@ static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
     if ((result=server_check_and_parse_inode(task)) != 0) {
         return result;
     }
-
-    /*
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    if ((result=dentry_list(dentry, &DENTRY_LIST_CACHE.array)) != 0) {
-        return result;
-    }
-
-    DENTRY_LIST_CACHE.offset = 0;
-    return server_list_dentry_output(task);
-    */
 
     RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
     return push_query_to_data_thread_queue(task);
@@ -3142,29 +3132,7 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
                 offset, DENTRY_LIST_CACHE.offset);
         return EINVAL;
     }
-    return server_list_dentry_output(task);
-}
-
-static int service_do_getxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const string_t *name,
-        const int resp_cmd)
-{
-    int result;
-    string_t value;
-
-    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
-        /*
-           RESPONSE.error.length = sprintf(RESPONSE.error.message,
-           "inode: %"PRId64", get xattr %.*s fail, %s",
-           dentry->inode, name->len, name->str, STRERROR(result));
-         */
-        return result;
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = value.len;
-    memcpy(SF_PROTO_RESP_BODY(task), value.str, value.len);
-    TASK_CTX.common.response_done = true;
+    server_list_dentry_output(task);
     return 0;
 }
 
@@ -3173,7 +3141,6 @@ static int service_get_xattr_by_path(struct fast_task_info *task)
     int result;
     int fixed_size;
     string_t name;
-    FDIRServerDentry *dentry;
 
     fixed_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
     if ((result=parse_xattr_name_info(task, fixed_size,
@@ -3188,22 +3155,17 @@ static int service_get_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    //TODO
-    if ((result=dentry_find(&RECORD->me.fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return service_do_getxattr(task, dentry, &name,
-            FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP);
+    RECORD->xattr.key = name;
+    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_get_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
     int fixed_size;
-    int64_t inode;
     string_t name;
-    FDIRServerDentry *dentry;
 
     fixed_size = sizeof(FDIRProtoGetXAttrByInodeReq);
     if ((result=parse_xattr_name_info(task, fixed_size,
@@ -3212,60 +3174,37 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    inode = buff2long(REQUEST.body + sizeof(FDIRProtoNameInfo) + name.len);
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
 
-    return service_do_getxattr(task, dentry, &name,
-            FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP);
-}
-
-static int service_do_listxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const int resp_cmd)
-{
-    FDIRXAttrIterator it;
-    const key_value_pair_t *kv;
-    char *p;
-
-    p = SF_PROTO_RESP_BODY(task);
-    inode_index_list_xattr(dentry, &it);
-    while ((kv=xattr_iterator_next(&it)) != NULL) {
-        memcpy(p, kv->key.str, kv->key.len);
-        p += kv->key.len;
-        *p++ = '\0';
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
-    TASK_CTX.common.response_done = true;
-    return 0;
+    //TODO set namespace
+    RECORD->inode = buff2long(REQUEST.body + sizeof(
+                FDIRProtoNameInfo) + name.len);
+    RECORD->xattr.key = name;
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_list_xattr_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRServerDentry *dentry;
 
     if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
-    //TODO
-    if ((result=dentry_find(&RECORD->me.fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return service_do_listxattr(task, dentry,
-            FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP);
+    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
-    int64_t inode;
     FDIRProtoListXAttrByInodeReq *req;
-    FDIRServerDentry *dentry;
 
     if ((result=server_expect_body_length(sizeof(
                         FDIRProtoListXAttrByInodeReq))) != 0)
@@ -3273,14 +3212,17 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    req = (FDIRProtoListXAttrByInodeReq *)REQUEST.body;
-    inode = buff2long(req->inode);
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
 
-    return service_do_listxattr(task, dentry,
-            FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
+    //TODO set namespace
+    req = (FDIRProtoListXAttrByInodeReq *)REQUEST.body;
+    RECORD->inode = buff2long(req->inode);
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_check_priv(struct fast_task_info *task)
