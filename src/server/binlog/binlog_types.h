@@ -34,7 +34,9 @@
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
 
-#define SERVICE_OP_SET_DSIZE_INT    101
+#define SERVICE_OP_SET_DSIZE_INT       101
+#define SERVICE_OP_BATCH_SET_DSIZE_INT 102
+
 #define SERVICE_OP_STAT_DENTRY_INT  111
 #define SERVICE_OP_READ_LINK_INT    112
 #define SERVICE_OP_LOOKUP_INODE_INT 113
@@ -146,6 +148,12 @@ typedef struct fdir_binlog_record {
 
     struct fdir_binlog_record *next; //for data thread queue
 } FDIRBinlogRecord;
+
+typedef struct fdir_record_ptr_array {
+    FDIRBinlogRecord **records;
+    int alloc;
+    int count;
+} FDIRRecordPtrArray;
 
 typedef struct server_binlog_record_buffer {
     SFVersionRange data_version; //for binlog writer and idempotency (slave only)

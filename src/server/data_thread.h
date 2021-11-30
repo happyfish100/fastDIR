@@ -187,20 +187,6 @@ extern "C" {
         fc_queue_push(&context->queue, record);
     }
 
-    int push_to_db_update_queue(FDIRBinlogRecord *record);
-
-    static inline int push_to_db_update_queue_by_service(
-            FDIRBinlogRecord *record)
-    {
-        FDIRDataThreadContext *thread_ctx;
-
-        thread_ctx = g_data_thread_vars.thread_array.contexts +
-            record->hash_code % g_data_thread_vars.thread_array.count;
-        FC_ATOMIC_SET_LARGER(thread_ctx->SERVICE_THREAD_LAST_VERSION,
-                record->data_version);
-        return push_to_db_update_queue(record);
-    }
-
     static inline int64_t data_thread_get_last_data_version()
     {
         FDIRDataThreadContext *ctx;

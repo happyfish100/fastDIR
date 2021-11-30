@@ -79,7 +79,8 @@
 #define RESPONSE          TASK_CTX.common.response
 #define RESPONSE_STATUS   RESPONSE.header.status
 #define REQUEST_STATUS    REQUEST.header.status
-#define RECORD            TASK_CTX.service.record
+#define RECORD            TASK_CTX.service.record.ptr
+#define RPARRAY           TASK_CTX.service.record.parray
 #define RBUFFER           TASK_CTX.service.rbuffer
 #define FTASK_HEAD_PTR    &TASK_CTX.service.ftasks
 #define SYS_LOCK_TASK     TASK_CTX.service.sys_lock_task
@@ -246,6 +247,7 @@ typedef struct fdir_slave_replication_ptr_array {
 } FDIRSlaveReplicationPtrArray;
 
 struct fdir_binlog_record;
+struct fdir_record_ptr_array;
 struct flock_task;
 struct sys_lock_task;
 
@@ -286,7 +288,10 @@ typedef struct server_task_arg {
                 struct sys_lock_task *sys_lock_task; //for append and ftruncate
 
                 struct idempotency_request *idempotency_request;
-                struct fdir_binlog_record *record;
+                struct {
+                    struct fdir_binlog_record *ptr;
+                    struct fdir_record_ptr_array *parray; //for batch set dsize
+                } record;
                 struct server_binlog_record_buffer *rbuffer;
                 volatile int waiting_rpc_count;
             } service;
@@ -303,6 +308,7 @@ typedef struct fdir_server_context {
     union {
         struct {
             struct fast_mblock_man record_allocator;
+            struct fast_mblock_man record_parray_allocator;
             struct fast_mblock_man request_allocator; //for idempotency_request
         } service;
 

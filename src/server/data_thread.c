@@ -564,6 +564,48 @@ static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
+static inline int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    struct fast_task_info *task;
+    FDIRBinlogRecord **pp;
+    FDIRBinlogRecord **recend;
+    int64_t current_version;
+    int success_count;
+    int updated_count;
+    int result;
+
+    task = (struct fast_task_info *)record->notify.args;
+    success_count = updated_count = 0;
+    recend = RPARRAY->records + RPARRAY->count;
+    for (pp=RPARRAY->records; pp<recend; pp++) {
+        if ((result=inode_index_check_set_dentry_size(*pp, true)) == 0) {
+            ++success_count;
+            if ((*pp)->options.flags != 0) {
+                ++updated_count;
+            }
+        }
+    }
+
+    if (success_count == 0) {
+        return ENOENT;
+    }
+    if (updated_count == 0) {
+        return 0;
+    }
+
+    record->data_version = __sync_add_and_fetch(
+            &DATA_CURRENT_VERSION, updated_count);
+    current_version = record->data_version - updated_count;
+    for (pp=RPARRAY->records; pp<recend; pp++) {
+        if ((*pp)->options.flags != 0) {
+            (*pp)->data_version = ++current_version;
+        }
+    }
+
+    return 0;
+}
+
 #define GENERATE_ADD_TO_PARENT_MESSAGE(msg, dentry, op_type)  \
     if ((dentry)->parent != NULL) {  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, (dentry)->parent, \
@@ -721,7 +763,7 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
     return 0;
 }
 
-int push_to_db_update_queue(FDIRBinlogRecord *record)
+static int push_to_db_update_queue(FDIRBinlogRecord *record)
 {
     int result;
     FDIRChangeNotifyEvent *event;
@@ -745,6 +787,7 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
                     da_binlog_op_type_create);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
+        case SERVICE_OP_SET_DSIZE_INT:
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->me.dentry,
                     da_binlog_op_type_update, FDIR_PIECE_FIELD_INDEX_BASIC,
                     (record->options.inc_alloc ? record->stat.alloc : 0));
@@ -773,6 +816,26 @@ int push_to_db_update_queue(FDIRBinlogRecord *record)
     }
 
     change_notify_push_to_queue(event);
+    return 0;
+}
+
+static int push_batch_set_dsize_to_db_update_queue(FDIRBinlogRecord *record)
+{
+    struct fast_task_info *task;
+    FDIRBinlogRecord **pp;
+    FDIRBinlogRecord **recend;
+    int result;
+
+    task = (struct fast_task_info *)record->notify.args;
+    recend = RPARRAY->records + RPARRAY->count;
+    for (pp=RPARRAY->records; pp<recend; pp++) {
+        if ((*pp)->options.flags != 0) {
+            if ((result=push_to_db_update_queue(*pp)) != 0) {
+                return result;
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -839,14 +902,18 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = ENODATA;
             break;
         case SERVICE_OP_SET_DSIZE_INT:
-            ignore_errno = EEXIST;
+            ignore_errno = -EEXIST;
             if ((result=inode_index_check_set_dentry_size(
                             record, true)) == 0)
             {
                 if (record->options.flags == 0) {
-                    result = EEXIST;
+                    result = -EEXIST;
                 }
             }
+            break;
+        case SERVICE_OP_BATCH_SET_DSIZE_INT:
+            ignore_errno = ENOENT;
+            result = batch_set_dentry_size(thread_ctx, record);
             break;
         default:
             ignore_errno = 0;
@@ -884,12 +951,21 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
         }
 
-        if ((result=push_to_db_update_queue(record)) != 0) {
+        if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT) {
+            result = push_batch_set_dsize_to_db_update_queue(record);
+        } else {
+            result = push_to_db_update_queue(record);
+        }
+        if (result != 0) {
             logCrit("file: "__FILE__", line: %d, "
                     "push_to_db_update_queue fail, "
                     "program exit!", __LINE__);
             sf_terminate_myself();
         }
+    }
+
+    if (result == -EEXIST && record->operation == SERVICE_OP_SET_DSIZE_INT) {
+        result = 0;
     }
 
     if (record->notify.func != NULL) {

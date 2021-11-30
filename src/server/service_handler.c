@@ -719,8 +719,7 @@ static int server_parse_dentry_info(struct fast_task_info *task,
 static inline int alloc_record_object(struct fast_task_info *task)
 {
     RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-            &((FDIRServerContext *)task->thread_data->arg)->
-            service.record_allocator);
+            &SERVER_CTX->service.record_allocator);
     if (RECORD == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -735,8 +734,8 @@ static inline int alloc_record_object(struct fast_task_info *task)
 static inline void free_record_object(struct fast_task_info *task)
 {
     if (RECORD != NULL) {
-        fast_mblock_free_object(&((FDIRServerContext *)task->
-                    thread_data->arg)->service.record_allocator, RECORD);
+        fast_mblock_free_object(&SERVER_CTX->service.
+                record_allocator, RECORD);
         RECORD = NULL;
     }
 }
@@ -1195,7 +1194,7 @@ static int handle_record_update_done(struct fast_task_info *task)
     bool need_release;
 
     task->continue_callback = NULL;
-    if (RESPONSE_STATUS == 0) {
+    if (RESPONSE_STATUS == 0 && RECORD->data_version != 0) {
         result = server_binlog_produce(task);
         need_release = false;
     } else {
@@ -1222,24 +1221,104 @@ static int handle_record_query_done(struct fast_task_info *task)
     return RESPONSE_STATUS;
 }
 
+static int handle_batch_set_dsize_done(struct fast_task_info *task)
+{
+    ServerBinlogRecordBuffer *rbuffer;
+    FDIRBinlogRecord **record;
+    FDIRBinlogRecord **recend;
+    int updated_count;
+    int result;
+
+    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        return ENOMEM;
+    }
+
+    rbuffer->data_version.first = 0;
+    rbuffer->data_version.last = RECORD->data_version;
+    updated_count = 0;
+    recend = RPARRAY->records + RPARRAY->count;
+    for (record=RPARRAY->records; record<recend; record++) {
+        if ((*record)->data_version == 0) {
+            continue;
+        }
+
+        ++updated_count;
+        if (rbuffer->data_version.first == 0) {
+            rbuffer->data_version.first = (*record)->data_version;
+        }
+
+        (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+        (*record)->timestamp = g_current_time;
+        if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
+            break;
+        }
+    }
+
+    for (record=RPARRAY->records; record<recend; record++) {
+        fast_mblock_free_object(&SERVER_CTX->service.
+                record_allocator, *record);
+    }
+    logInfo("result: %d, record count: %d, updated count: %d, "
+            "first data_version: %"PRId64", last data_version: %"PRId64
+            ", buffer length: %d", result, RPARRAY->count,
+            updated_count, rbuffer->data_version.first,
+            rbuffer->data_version.last, rbuffer->buffer.length);
+
+    fast_mblock_free_object(&SERVER_CTX->service.
+            record_parray_allocator, RPARRAY);
+    free_record_object(task);
+
+    if (result == 0 && updated_count > 0) {
+        result = do_binlog_produce(task, rbuffer);
+    } else {
+        server_binlog_free_rbuffer(rbuffer);
+        sf_release_task(task);
+    }
+
+    return result;
+}
+
+static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
+{
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    if (result != 0) {
+        logWarning("file: "__FILE__", line: %d, "
+                "batch set %d dentries' size fail",
+                __LINE__, RPARRAY->count);
+    }
+
+    RESPONSE_STATUS = result;
+    sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+}
+
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
-        const bool is_update, TaskContinueCallback continue_callback)
+        const bool is_update, data_thread_notify_func notify_func,
+        TaskContinueCallback continue_callback)
 {
     sf_hold_task(task);
 
-    task->continue_callback = continue_callback;
     RECORD->is_update = is_update;
-    RECORD->notify.func = record_deal_done_notify; //call by data thread
+    RECORD->notify.func = notify_func;  //call by data thread
     RECORD->notify.args = task;
+    task->continue_callback = continue_callback;
     push_to_data_thread_queue(RECORD);
     return TASK_STATUS_CONTINUE;
 }
 
 #define push_update_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, true, handle_record_update_done)
+    push_record_to_data_thread_queue(task, true, record_deal_done_notify, \
+            handle_record_update_done)
+
+#define push_batch_set_dsize_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, true, batch_set_dsize_done_notify, \
+            handle_batch_set_dsize_done)
 
 #define push_query_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, false, handle_record_query_done)
+    push_record_to_data_thread_queue(task, false, record_deal_done_notify, \
+            handle_record_query_done)
 
 int service_set_record_pname_info(FDIRBinlogRecord *record,
         struct fast_task_info *task)
@@ -2256,12 +2335,12 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
         const FDIRSetDEntrySizeInfo *dsize)
 {
     record->data_version = 0;
-    record->dentry_type = fdir_dentry_type_inode;
     record->inode = dsize->inode;
     record->options.flags = dsize->flags;
     record->options.force = dsize->force ? 1 : 0;
     record->stat.size = dsize->file_size;
     record->stat.alloc = dsize->inc_alloc;
+    record->operation = SERVICE_OP_SET_DSIZE_INT;
 }
 
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
@@ -2309,7 +2388,6 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     init_record_by_dsize(RECORD, &dsize);
     FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
-    RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     return push_update_to_data_thread_queue(task);
 }
@@ -2319,13 +2397,8 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     FDIRProtoBatchSetDentrySizeReqHeader *rheader;
     FDIRProtoBatchSetDentrySizeReqBody *rbody;
     FDIRProtoBatchSetDentrySizeReqBody *rbend;
-    ServerBinlogRecordBuffer *rbuffer;
     FDIRSetDEntrySizeInfo dsize;
-    FDIRBinlogRecord *records[FDIR_BATCH_SET_MAX_DENTRY_COUNT];
     FDIRBinlogRecord **record;
-    FDIRBinlogRecord **recend;
-    uint64_t current_version;
-    int record_count;
     int result;
     int count;
     int expect_blen;
@@ -2361,13 +2434,16 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
-        return ENOMEM;
+    RPARRAY = (FDIRRecordPtrArray *)fast_mblock_alloc_object(
+            &SERVER_CTX->service.record_parray_allocator);
+    if (RPARRAY == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "system busy, please try later");
+        return EBUSY;
     }
-    memset(records, 0, sizeof(FDIRBinlogRecord *) * count);
-    record = records;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
+    record = RPARRAY->records;
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
         (rheader->ns_str + rheader->ns_len);
     rbend = rbody + count;
@@ -2376,8 +2452,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
 
         if (*record == NULL) {
             *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-                    &((FDIRServerContext *)task->thread_data->arg)->
-                    service.record_allocator);
+                    &SERVER_CTX->service.record_allocator);
             if (*record == NULL) {
                 RESPONSE.error.length = sprintf(
                         RESPONSE.error.message,
@@ -2386,64 +2461,21 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
             }
         }
 
-        //TODO
         init_record_by_dsize(*record, &dsize);
-        FC_SET_STRING_EX((*record)->ns, rheader->ns_str, rheader->ns_len);
-        (*record)->hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
-        (*record)->operation = SERVICE_OP_SET_DSIZE_INT;
-
-        /*
-        dentry = do_set_dentry_size(*record, rheader->ns_str,
-                rheader->ns_len, &dsize, true, &result, &modified_flags);
-        if (dentry != NULL && modified_flags != 0) {
-            record++;
-        }
-        */
     }
+    RPARRAY->count = count;
 
-    recend = record;
-    record_count = recend - records;
-    rbuffer->data_version.last = __sync_add_and_fetch(
-                &DATA_CURRENT_VERSION, record_count);
-    rbuffer->data_version.first = rbuffer->
-        data_version.last - record_count + 1;
-    current_version = rbuffer->data_version.first;
-    for (record=records; record<recend; record++) {
-        (*record)->data_version = current_version++;
-        (*record)->timestamp = g_current_time;
-        if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
-            break;
-        }
-
-        if (STORAGE_ENABLED) {
-            push_to_db_update_queue_by_service(*record);
-        }
-    }
-
-    for (record=records; record<recend; record++) {
-        fast_mblock_free_object(&((FDIRServerContext *)task->
-                    thread_data->arg)->service.record_allocator, *record);
-    }
-    if (record_count < count && *recend != NULL) {
-        fast_mblock_free_object(&((FDIRServerContext *)task->
-                    thread_data->arg)->service.record_allocator, *recend);
-    }
-
-    /*
-    logInfo("result: %d, count: %d, record_count: %d, "
-            "first data_version: %"PRId64", last data_version: %"PRId64
-            ", buffer length: %d", result, count, record_count,
-            rbuffer->data_version.first, rbuffer->data_version.last,
-            rbuffer->buffer.length);
-            */
-
-    if (result == 0 && record_count > 0) {
-        sf_hold_task(task);
-        return do_binlog_produce(task, rbuffer);
-    } else {
-        server_binlog_free_rbuffer(rbuffer);
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
+
+    FC_SET_STRING_EX(RECORD->ns, rheader->ns_str, rheader->ns_len);
+    RECORD->inode = 0;
+    RECORD->data_version = 0;
+    RECORD->hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
+    RECORD->operation = SERVICE_OP_BATCH_SET_DSIZE_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
+    return push_batch_set_dsize_to_data_thread_queue(task);
 }
 
 static int service_deal_modify_dentry_stat(struct fast_task_info *task)
@@ -3484,6 +3516,15 @@ int service_deal_task(struct fast_task_info *task, const int stage)
     }
 }
 
+int record_parray_alloc_init(void *element, void *args)
+{
+    FDIRRecordPtrArray *parray;
+    parray = (FDIRRecordPtrArray *)element;
+    parray->records = (FDIRBinlogRecord **)(parray + 1);
+    parray->alloc = FDIR_BATCH_SET_MAX_DENTRY_COUNT;
+    return 0;
+}
+
 void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
@@ -3498,6 +3539,16 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
                 0, NULL, NULL, false) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+
+    element_size = sizeof(FDIRRecordPtrArray) + sizeof(FDIRBinlogRecord *) *
+        FDIR_BATCH_SET_MAX_DENTRY_COUNT;
+    if (fast_mblock_init_ex1(&server_context->service.record_parray_allocator,
+                "record_parray", element_size, 512, 0, record_parray_alloc_init,
+                NULL, false) != 0)
     {
         free(server_context);
         return NULL;
