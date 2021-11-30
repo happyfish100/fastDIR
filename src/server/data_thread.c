@@ -415,7 +415,7 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
     int result;
     bool is_create;
 
-    if (record->dentry_type == fdir_dentry_type_inode) {
+    if (record->dentry_type == fdir_dentry_type_pname) {
         return check_parent(record);
     }
 
@@ -477,7 +477,7 @@ static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
 {
     int result;
 
-    if (record->dentry_type == fdir_dentry_type_inode) {
+    if (record->dentry_type == fdir_dentry_type_pname) {
         if ((record->hdlink.src.dentry=inode_index_get_dentry(
                         record->hdlink.src.inode)) == NULL)
         {
@@ -508,7 +508,7 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     int result;
     char *src_name;
 
-    if (record->dentry_type == fdir_dentry_type_inode) {
+    if (record->dentry_type == fdir_dentry_type_pname) {
         if ((record->rename.src.parent=inode_index_get_dentry(record->
                         rename.src.pname.parent_inode)) == NULL)
         {
@@ -544,7 +544,8 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     return dentry_rename(thread_ctx, record);
 }
 
-static inline int xattr_update_prepare(FDIRBinlogRecord *record)
+static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     int result;
 
@@ -825,17 +826,27 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = 0;
             break;
         case BINLOG_OP_SET_XATTR_INT:
-            if ((result=xattr_update_prepare(record)) == 0) {
+            if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
                 result = inode_index_set_xattr(record);
             }
             ignore_errno = 0;
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
-            if ((result=xattr_update_prepare(record)) == 0) {
+            if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
                 result = inode_index_remove_xattr(record->inode,
                         &record->xattr.key);
             }
             ignore_errno = ENODATA;
+            break;
+        case SERVICE_OP_SET_DSIZE_INT:
+            ignore_errno = EEXIST;
+            if ((result=inode_index_check_set_dentry_size(
+                            record, true)) == 0)
+            {
+                if (record->options.flags == 0) {
+                    result = EEXIST;
+                }
+            }
             break;
         default:
             ignore_errno = 0;
@@ -939,6 +950,14 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             } else {
                 result = dentry_find(&record->me.fullname, &record->me.dentry);
             }
+
+            if (result == 0) {
+                if (record->operation == SERVICE_OP_GET_XATTR_INT) {
+                    result = inode_index_get_xattr(record->me.dentry,
+                            &record->xattr.key, &record->xattr.value);
+                }
+            }
+
             break;
         case SERVICE_OP_LIST_DENTRY_INT:
             result = list_dentry(thread_ctx, record);

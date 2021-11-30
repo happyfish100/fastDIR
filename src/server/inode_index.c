@@ -264,26 +264,27 @@ FDIRServerDentry *inode_index_get_dentry_by_pname(
     return dentry;
 }
 
-FDIRServerDentry *inode_index_check_set_dentry_size(
-        const FDIRSetDEntrySizeInfo *dsize,
-        const bool need_lock, int *modified_flags)
+int inode_index_check_set_dentry_size(FDIRBinlogRecord *record,
+        const bool need_lock)
 {
     FDIRServerDentry *dentry;
     int flags;
+    bool force;
 
-    SET_INODE_HT_BUCKET_AND_CTX(dsize->inode);
-    flags = dsize->flags;
-    *modified_flags = 0;
+    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
+    flags = record->options.flags;
+    force = record->options.force;
+    record->options.flags = 0;
     if (need_lock) {
         PTHREAD_MUTEX_LOCK(&ctx->lock);
     }
-    dentry = find_inode_entry(bucket, dsize->inode);
+    dentry = find_inode_entry(bucket, record->inode);
     if (dentry != NULL) {
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-            if (dsize->force || (dentry->stat.size < dsize->file_size)) {
-                if (dentry->stat.size != dsize->file_size) {
-                    dentry->stat.size = dsize->file_size;
-                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE;
+            if (force || (dentry->stat.size < record->stat.size)) {
+                if (dentry->stat.size != record->stat.size) {
+                    dentry->stat.size = record->stat.size;
+                    record->options.size = 1;
                 }
             }
 
@@ -293,36 +294,39 @@ FDIRServerDentry *inode_index_check_set_dentry_size(
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
             if (dentry->stat.mtime != g_current_time) {
                 dentry->stat.mtime = g_current_time;
-                *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
+                record->stat.mtime = dentry->stat.mtime;
+                record->options.mtime = 1;
             }
         }
 
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-            if (dsize->force || (dentry->stat.space_end < dsize->file_size)) {
-                if (dentry->stat.space_end != dsize->file_size) {
-                    dentry->stat.space_end = dsize->file_size;
-                    *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END;
+            if (force || (dentry->stat.space_end < record->stat.size)) {
+                if (dentry->stat.space_end != record->stat.size) {
+                    dentry->stat.space_end = record->stat.size;
+                    record->stat.space_end = dentry->stat.space_end;
+                    record->options.space_end = 1;
                 }
             }
         }
 
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-            dentry_set_inc_alloc_bytes(dentry, dsize->inc_alloc);
-            *modified_flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC;
+            dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
+            record->options.inc_alloc = 1;
         }
 
         /*
         logInfo("old size: %"PRId64", new size: %"PRId64", "
                 "old mtime: %d, new mtime: %d, modified_flags: %d",
-                dentry->stat.size, dsize->file_size, dentry->stat.mtime,
+                dentry->stat.size, record->stat.size, dentry->stat.mtime,
                 (int)g_current_time, *modified_flags);
          */
     }
     if (need_lock) {
         PTHREAD_MUTEX_UNLOCK(&ctx->lock);
     }
+    record->me.dentry = dentry;
 
-    return dentry;
+    return (dentry != NULL ? 0 : ENOENT);
 }
 
 static void update_dentry(FDIRServerDentry *dentry,

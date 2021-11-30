@@ -34,12 +34,13 @@
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
 
-#define SERVICE_OP_STAT_DENTRY_INT  101
-#define SERVICE_OP_READ_LINK_INT    102
-#define SERVICE_OP_LOOKUP_INODE_INT 103
-#define SERVICE_OP_LIST_DENTRY_INT  104
-#define SERVICE_OP_GET_XATTR_INT    105
-#define SERVICE_OP_LIST_XATTR_INT   106
+#define SERVICE_OP_SET_DSIZE_INT    101
+#define SERVICE_OP_STAT_DENTRY_INT  111
+#define SERVICE_OP_READ_LINK_INT    112
+#define SERVICE_OP_LOOKUP_INODE_INT 113
+#define SERVICE_OP_LIST_DENTRY_INT  114
+#define SERVICE_OP_GET_XATTR_INT    115
+#define SERVICE_OP_LIST_XATTR_INT   116
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -65,7 +66,7 @@
 struct server_binlog_record_buffer;
 
 typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
-        int result, const bool is_error);
+        const int result, const bool is_error);
 
 typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
@@ -175,6 +176,8 @@ static inline const char *get_operation_caption(const int operation)
             return "SET_XATTR";
         case BINLOG_OP_REMOVE_XATTR_INT:
             return "REMOVE_XATTR";
+        case SERVICE_OP_SET_DSIZE_INT:
+            return "SET_DENTRY_SIZE";
         case SERVICE_OP_STAT_DENTRY_INT:
             return "STAT_DENTRY";
         case SERVICE_OP_READ_LINK_INT:

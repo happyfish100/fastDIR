@@ -134,6 +134,7 @@ typedef union {
         bool inc_alloc: 1;   //for increaase space alloc
         bool space_end: 1;   //for space end offset
         bool src_inode: 1;   //for create hard link only
+        bool force: 1;       //for set dentry size only
     };
 } FDIRStatModifyFlags;
 
