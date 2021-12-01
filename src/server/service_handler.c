@@ -869,8 +869,8 @@ static int check_and_parse_inode_info(struct fast_task_info *task,
     return 0;
 }
 
-static void service_idempotency_request_finish(struct fast_task_info *task,
-        const int result)
+static inline void service_idempotency_request_finish(
+        struct fast_task_info *task, const int result)
 {
     if (IDEMPOTENCY_REQUEST != NULL) {
         IDEMPOTENCY_REQUEST->finished = true;
@@ -925,6 +925,7 @@ static int server_binlog_produce(struct fast_task_info *task)
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
         free_record_object(task);
+        service_idempotency_request_finish(task, ENOMEM);
         sf_release_task(task);
         return ENOMEM;
     }
@@ -932,7 +933,6 @@ static int server_binlog_produce(struct fast_task_info *task)
     rbuffer->data_version.first = RECORD->data_version;
     rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
-
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
     free_record_object(task);
 
@@ -940,6 +940,7 @@ static int server_binlog_produce(struct fast_task_info *task)
         return do_binlog_produce(task, rbuffer);
     } else {
         server_binlog_free_rbuffer(rbuffer);
+        service_idempotency_request_finish(task, result);
         sf_release_task(task);
         return result;
     }
@@ -1191,25 +1192,17 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
 static int handle_record_update_done(struct fast_task_info *task)
 {
     int result;
-    bool need_release;
 
     if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
-        result = server_binlog_produce(task);
-        need_release = false;
-    } else {
-        result = RESPONSE_STATUS;
-        need_release = true;
+        return server_binlog_produce(task);
     }
 
-    if (result != TASK_STATUS_CONTINUE) {
-        service_idempotency_request_finish(task, result);
-    }
+    result = RESPONSE_STATUS;
+    service_idempotency_request_finish(task, result);
 
-    if (need_release) {
-        task->continue_callback = NULL;
-        free_record_object(task);
-        sf_release_task(task);
-    }
+    task->continue_callback = NULL;
+    free_record_object(task);
+    sf_release_task(task);
     return result;
 }
 
