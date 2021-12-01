@@ -1193,8 +1193,7 @@ static int handle_record_update_done(struct fast_task_info *task)
     int result;
     bool need_release;
 
-    task->continue_callback = NULL;
-    if (RESPONSE_STATUS == 0 && RECORD->data_version != 0) {
+    if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
         result = server_binlog_produce(task);
         need_release = false;
     } else {
@@ -1207,6 +1206,7 @@ static int handle_record_update_done(struct fast_task_info *task)
     }
 
     if (need_release) {
+        task->continue_callback = NULL;
         free_record_object(task);
         sf_release_task(task);
     }
@@ -1221,57 +1221,84 @@ static int handle_record_query_done(struct fast_task_info *task)
     return RESPONSE_STATUS;
 }
 
-static int handle_batch_set_dsize_done(struct fast_task_info *task)
+static inline void free_record_and_parray(struct fast_task_info *task)
+{
+    fast_mblock_free_object(&SERVER_CTX->service.
+            record_parray_allocator, RECORD->parray);
+    RECORD->parray = NULL;
+    free_record_object(task);
+}
+
+static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
+        struct fast_task_info *task, bool *need_release)
 {
     ServerBinlogRecordBuffer *rbuffer;
-    FDIRBinlogRecord **record;
+    FDIRBinlogRecord **pp;
     FDIRBinlogRecord **recend;
-    int updated_count;
     int result;
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        free_record_and_parray(task);
+        *need_release = true;
         return ENOMEM;
     }
 
     rbuffer->data_version.first = 0;
-    rbuffer->data_version.last = RECORD->data_version;
-    updated_count = 0;
-    recend = RPARRAY->records + RPARRAY->count;
-    for (record=RPARRAY->records; record<recend; record++) {
-        if ((*record)->data_version == 0) {
+    rbuffer->data_version.last = record->data_version;
+    recend = record->parray->records + record->parray->counts.total;
+    for (pp=record->parray->records; pp<recend; pp++) {
+        if ((*pp)->data_version == 0) {
             continue;
         }
 
-        ++updated_count;
         if (rbuffer->data_version.first == 0) {
-            rbuffer->data_version.first = (*record)->data_version;
+            rbuffer->data_version.first = (*pp)->data_version;
         }
 
-        (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-        (*record)->timestamp = g_current_time;
-        if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
+        (*pp)->timestamp = g_current_time;
+        if ((result=binlog_pack_record(*pp, &rbuffer->buffer)) != 0) {
             break;
         }
     }
 
-    for (record=RPARRAY->records; record<recend; record++) {
+    for (pp=record->parray->records; pp<recend; pp++) {
         fast_mblock_free_object(&SERVER_CTX->service.
-                record_allocator, *record);
+                record_allocator, *pp);
     }
     logInfo("result: %d, record count: %d, updated count: %d, "
             "first data_version: %"PRId64", last data_version: %"PRId64
-            ", buffer length: %d", result, RPARRAY->count,
-            updated_count, rbuffer->data_version.first,
+            ", buffer length: %d", result, record->parray->counts.total,
+            record->parray->counts.updated, rbuffer->data_version.first,
             rbuffer->data_version.last, rbuffer->buffer.length);
 
-    fast_mblock_free_object(&SERVER_CTX->service.
-            record_parray_allocator, RPARRAY);
-    free_record_object(task);
-
-    if (result == 0 && updated_count > 0) {
+    free_record_and_parray(task);
+    if (result == 0) {
         result = do_binlog_produce(task, rbuffer);
+        *need_release = false;
     } else {
         server_binlog_free_rbuffer(rbuffer);
+        *need_release = true;
+    }
+
+    return result;
+}
+
+static int handle_batch_set_dsize_done(struct fast_task_info *task)
+{
+    int result;
+    bool need_release;
+
+    if (RESPONSE_STATUS == 0 && RECORD->parray->counts.updated > 0) {
+        result = batch_set_dsize_binlog_produce(RECORD, task, &need_release);
+    } else {
+        result = RESPONSE_STATUS;
+        free_record_and_parray(task);
+        need_release = true;
+    }
+
+    if (need_release) {
+        task->continue_callback = NULL;
+        service_idempotency_request_finish(task, result);
         sf_release_task(task);
     }
 
@@ -1287,7 +1314,7 @@ static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
     if (result != 0) {
         logWarning("file: "__FILE__", line: %d, "
                 "batch set %d dentries' size fail",
-                __LINE__, RPARRAY->count);
+                __LINE__, RECORD->parray->counts.total);
     }
 
     RESPONSE_STATUS = result;
@@ -2340,7 +2367,6 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
     record->options.force = dsize->force ? 1 : 0;
     record->stat.size = dsize->file_size;
     record->stat.alloc = dsize->inc_alloc;
-    record->operation = SERVICE_OP_SET_DSIZE_INT;
 }
 
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
@@ -2388,6 +2414,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     init_record_by_dsize(RECORD, &dsize);
     FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     return push_update_to_data_thread_queue(task);
 }
@@ -2434,40 +2461,40 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    RPARRAY = (FDIRRecordPtrArray *)fast_mblock_alloc_object(
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    RECORD->parray = (FDIRRecordPtrArray *)fast_mblock_alloc_object(
             &SERVER_CTX->service.record_parray_allocator);
-    if (RPARRAY == NULL) {
+    if (RECORD->parray == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "system busy, please try later");
         return EBUSY;
     }
 
-    record = RPARRAY->records;
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
         (rheader->ns_str + rheader->ns_len);
     rbend = rbody + count;
-    for (; rbody < rbend; rbody++) {
+    for (record=RECORD->parray->records;
+            rbody<rbend; record++, rbody++)
+    {
         SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, rbody);
 
+        *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+                &SERVER_CTX->service.record_allocator);
         if (*record == NULL) {
-            *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-                    &SERVER_CTX->service.record_allocator);
-            if (*record == NULL) {
-                RESPONSE.error.length = sprintf(
-                        RESPONSE.error.message,
-                        "system busy, please try later");
-                return EBUSY;
-            }
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "system busy, please try later");
+            return EBUSY;
         }
 
         init_record_by_dsize(*record, &dsize);
+        (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     }
-    RPARRAY->count = count;
-
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
+    RECORD->parray->counts.total = count;
 
     FC_SET_STRING_EX(RECORD->ns, rheader->ns_str, rheader->ns_len);
     RECORD->inode = 0;

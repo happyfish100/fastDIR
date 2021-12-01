@@ -120,6 +120,8 @@ typedef struct fdir_binlog_record {
         } hdlink;
 
         FDIRRecordDEntry me;  //for create and remove
+
+        struct fdir_record_ptr_array *parray; //for batch set dsize
     };
 
     /* affected dentries for rename and remove operation */
@@ -152,7 +154,11 @@ typedef struct fdir_binlog_record {
 typedef struct fdir_record_ptr_array {
     FDIRBinlogRecord **records;
     int alloc;
-    int count;
+    struct {
+        int total;
+        int success;
+        int updated;
+    } counts;
 } FDIRRecordPtrArray;
 
 typedef struct server_binlog_record_buffer {

@@ -567,37 +567,33 @@ static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
 static inline int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    struct fast_task_info *task;
     FDIRBinlogRecord **pp;
     FDIRBinlogRecord **recend;
     int64_t current_version;
-    int success_count;
-    int updated_count;
     int result;
 
-    task = (struct fast_task_info *)record->notify.args;
-    success_count = updated_count = 0;
-    recend = RPARRAY->records + RPARRAY->count;
-    for (pp=RPARRAY->records; pp<recend; pp++) {
+    record->parray->counts.success = record->parray->counts.updated = 0;
+    recend = record->parray->records + record->parray->counts.total;
+    for (pp=record->parray->records; pp<recend; pp++) {
         if ((result=inode_index_check_set_dentry_size(*pp, true)) == 0) {
-            ++success_count;
+            record->parray->counts.success++;
             if ((*pp)->options.flags != 0) {
-                ++updated_count;
+                record->parray->counts.updated++;
             }
         }
     }
 
-    if (success_count == 0) {
+    if (record->parray->counts.success == 0) {
         return ENOENT;
     }
-    if (updated_count == 0) {
+    if (record->parray->counts.updated == 0) {
         return 0;
     }
 
-    record->data_version = __sync_add_and_fetch(
-            &DATA_CURRENT_VERSION, updated_count);
-    current_version = record->data_version - updated_count;
-    for (pp=RPARRAY->records; pp<recend; pp++) {
+    record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION,
+            record->parray->counts.updated);
+    current_version = record->data_version - record->parray->counts.updated;
+    for (pp=record->parray->records; pp<recend; pp++) {
         if ((*pp)->options.flags != 0) {
             (*pp)->data_version = ++current_version;
         }
@@ -827,9 +823,9 @@ static int push_batch_set_dsize_to_db_update_queue(FDIRBinlogRecord *record)
     int result;
 
     task = (struct fast_task_info *)record->notify.args;
-    recend = RPARRAY->records + RPARRAY->count;
-    for (pp=RPARRAY->records; pp<recend; pp++) {
-        if ((*pp)->options.flags != 0) {
+    recend = record->parray->records + record->parray->counts.total;
+    for (pp=record->parray->records; pp<recend; pp++) {
+        if ((*pp)->data_version > 0) {
             if ((result=push_to_db_update_queue(*pp)) != 0) {
                 return result;
             }
@@ -902,12 +898,13 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = ENODATA;
             break;
         case SERVICE_OP_SET_DSIZE_INT:
-            ignore_errno = -EEXIST;
+            ignore_errno = 0;
             if ((result=inode_index_check_set_dentry_size(
                             record, true)) == 0)
             {
-                if (record->options.flags == 0) {
-                    result = -EEXIST;
+                if (record->options.flags != 0) {
+                    record->data_version = __sync_add_and_fetch(
+                            &DATA_CURRENT_VERSION, 1);
                 }
             }
             break;
@@ -921,7 +918,12 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             break;
     }
 
-    if (result == 0) {
+    if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT ||
+            record->operation == SERVICE_OP_SET_DSIZE_INT)
+    {
+        set_data_verson = false;
+        is_error = (result != 0);
+    } else if (result == 0) {
         if (record->data_version == 0) {
             record->data_version = __sync_add_and_fetch(
                     &DATA_CURRENT_VERSION, 1);
@@ -946,7 +948,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         }
     }
 
-    if (result == 0 && STORAGE_ENABLED) {
+    if (result == 0 && STORAGE_ENABLED && record->data_version > 0) {
         if (record->data_version > thread_ctx->DATA_THREAD_LAST_VERSION) {
             thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
         }
@@ -962,10 +964,6 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                     "program exit!", __LINE__);
             sf_terminate_myself();
         }
-    }
-
-    if (result == -EEXIST && record->operation == SERVICE_OP_SET_DSIZE_INT) {
-        result = 0;
     }
 
     if (record->notify.func != NULL) {
