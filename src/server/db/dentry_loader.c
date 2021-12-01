@@ -137,7 +137,7 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
         }
         parent->stat.nlink++;
         child->ns_entry = parent->ns_entry;
-        __sync_add_and_fetch(&child->db_args->reffer_count, 1);
+        __sync_add_and_fetch(&child->reffer_count, 1);
 
         if (current_pair->inode == child->inode) {
             current_pair->dentry = child;
@@ -226,7 +226,7 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
             (*dentry)->name = *name;
         }
         (*dentry)->ns_entry = ns_entry;
-        __sync_add_and_fetch(&(*dentry)->db_args->reffer_count, 1);
+        __sync_add_and_fetch(&(*dentry)->reffer_count, 1);
     }
 
     return dentry_load_basic(ns_entry->thread_ctx, *dentry);

@@ -783,7 +783,6 @@ static int push_to_db_update_queue(FDIRBinlogRecord *record)
                     da_binlog_op_type_create);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
-        case SERVICE_OP_SET_DSIZE_INT:
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->me.dentry,
                     da_binlog_op_type_update, FDIR_PIECE_FIELD_INDEX_BASIC,
                     (record->options.inc_alloc ? record->stat.alloc : 0));
@@ -921,6 +920,9 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT ||
             record->operation == SERVICE_OP_SET_DSIZE_INT)
     {
+        if (record->operation == SERVICE_OP_SET_DSIZE_INT) {
+            record->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+        }
         set_data_verson = false;
         is_error = (result != 0);
     } else if (result == 0) {

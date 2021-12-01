@@ -625,7 +625,9 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
         ftask->dentry = dentry;
         ftask->task = task;
         *result = flock_apply(&ctx->flock_ctx, offset, length, ftask, block);
-        if (!(*result == 0 || *result == EINPROGRESS)) {
+        if (*result == 0 || *result == EINPROGRESS) {
+            dentry_hold(dentry);
+        } else {
             flock_free_ftask(&ctx->flock_ctx, ftask);
             ftask = NULL;
         }
@@ -665,6 +667,7 @@ void inode_index_flock_release(FLockTask *ftask)
     if (ftask->dentry->flock_entry != NULL) {
         flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
     }
+    dentry_release(ftask->dentry);
     flock_free_ftask(&ctx->flock_ctx, ftask);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
@@ -701,7 +704,9 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
         sys_task->dentry = dentry;
         sys_task->task = task;
         *result = sys_lock_apply(dentry->flock_entry, sys_task, block);
-        if (!(*result == 0 || *result == EINPROGRESS)) {
+        if (*result == 0 || *result == EINPROGRESS) {
+            dentry_hold(dentry);
+        } else {
             flock_free_sys_task(&ctx->flock_ctx, sys_task);
             sys_task = NULL;
         }
@@ -723,6 +728,7 @@ int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
     } else {
         result = ENOENT;
     }
+    dentry_release(sys_task->dentry);
     flock_free_sys_task(&ctx->flock_ctx, sys_task);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 

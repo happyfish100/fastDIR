@@ -118,7 +118,6 @@ struct flock_entry;
         FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR)
 
 typedef struct fdir_server_dentry_db_args {
-    volatile int reffer_count;
     IdNameArray *children;  //children inodes for update event dealer
 } FDIRServerDentryDBArgs;
 
@@ -126,6 +125,7 @@ typedef struct fdir_server_dentry {
     int64_t inode;
     string_t name;
     short loaded_flags;
+    volatile int reffer_count;
 
     FDIRDEntryStat stat;
 

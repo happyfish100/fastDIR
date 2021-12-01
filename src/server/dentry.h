@@ -96,7 +96,7 @@ extern "C" {
 
     static inline void dentry_hold(FDIRServerDentry *dentry)
     {
-        __sync_add_and_fetch(&dentry->db_args->reffer_count, 1);
+        __sync_add_and_fetch(&dentry->reffer_count, 1);
     }
 
     void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count);

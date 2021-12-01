@@ -119,12 +119,8 @@ static void dentry_do_free(void *ptr, const int dec_count)
     FDIRServerDentry *dentry;
 
     dentry = (FDIRServerDentry *)ptr;
-    if (STORAGE_ENABLED) {
-        if (__sync_sub_and_fetch(&dentry->db_args->
-                    reffer_count, dec_count) != 0)
-        {
-            return;
-        }
+    if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
+        return;
     }
 
     if (dentry->children != NULL) {
@@ -569,8 +565,8 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     if (current == NULL) {
         return ENOMEM;
     }
+    __sync_add_and_fetch(&current->reffer_count, 1);
     if (STORAGE_ENABLED) {
-        __sync_add_and_fetch(&current->db_args->reffer_count, 1);
         current->db_args->children = NULL;
     }
 

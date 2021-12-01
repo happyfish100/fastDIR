@@ -1147,8 +1147,6 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 record->ns.str, extra_buff, xattr_name_buff);
     } else {
         switch (record->operation) {
-            case SERVICE_OP_SET_DSIZE_INT:
-                record->operation = BINLOG_OP_UPDATE_DENTRY_INT;
             case BINLOG_OP_CREATE_DENTRY_INT:
             case BINLOG_OP_REMOVE_DENTRY_INT:
             case BINLOG_OP_UPDATE_DENTRY_INT:
@@ -1208,10 +1206,13 @@ static int handle_record_update_done(struct fast_task_info *task)
 
 static int handle_record_query_done(struct fast_task_info *task)
 {
+    int result;
+
+    result = RESPONSE_STATUS;
     task->continue_callback = NULL;
     free_record_object(task);
     sf_release_task(task);
-    return RESPONSE_STATUS;
+    return result;
 }
 
 static inline void free_record_and_parray(struct fast_task_info *task)
@@ -2873,7 +2874,8 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     inode = buff2long(req->inode);
     flags = buff2int(req->flags);
 
-    if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode, (flags & LOCK_NB) == 0,
+    if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode,
+                    ((flags & LOCK_NB) == 0),
                     task, &result)) == NULL)
     {
         if (result == EDEADLK) {
