@@ -564,7 +564,7 @@ static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static inline int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
+static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     FDIRBinlogRecord **pp;
@@ -575,7 +575,7 @@ static inline int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
     record->parray->counts.success = record->parray->counts.updated = 0;
     recend = record->parray->records + record->parray->counts.total;
     for (pp=record->parray->records; pp<recend; pp++) {
-        if ((result=inode_index_check_set_dentry_size(*pp, true)) == 0) {
+        if ((result=inode_index_check_set_dentry_size(*pp)) == 0) {
             record->parray->counts.success++;
             if ((*pp)->options.flags != 0) {
                 record->parray->counts.updated++;
@@ -896,11 +896,17 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             }
             ignore_errno = ENODATA;
             break;
+        case SERVICE_OP_SYS_LOCK_RELEASE_INT:
+            ignore_errno = 0;
+            if ((result=service_sys_lock_release((struct fast_task_info *)
+                            record->notify.args, true)) != 0)
+            {
+                break;
+            }
+            record->operation = SERVICE_OP_SET_DSIZE_INT;
         case SERVICE_OP_SET_DSIZE_INT:
             ignore_errno = 0;
-            if ((result=inode_index_check_set_dentry_size(
-                            record, true)) == 0)
-            {
+            if ((result=inode_index_check_set_dentry_size(record)) == 0) {
                 if (record->options.flags != 0) {
                     record->data_version = __sync_add_and_fetch(
                             &DATA_CURRENT_VERSION, 1);

@@ -44,8 +44,7 @@ extern "C" {
     FDIRServerDentry *inode_index_get_dentry_by_pname(
             const int64_t parent_inode, const string_t *name);
 
-    int inode_index_check_set_dentry_size(FDIRBinlogRecord *record,
-            const bool need_lock);
+    int inode_index_check_set_dentry_size(FDIRBinlogRecord *record);
 
     FDIRServerDentry *inode_index_update_dentry(
             const FDIRBinlogRecord *record);
@@ -81,13 +80,7 @@ extern "C" {
     SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
             struct fast_task_info *task, int *result);
 
-    int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
-            sys_lock_release_callback callback, void *args);
-
-    static inline int inode_index_sys_lock_release(SysLockTask *sys_task)
-    {
-        return inode_index_sys_lock_release_ex(sys_task, NULL, NULL);
-    }
+    int inode_index_sys_lock_release(SysLockTask *sys_task);
 
 #ifdef __cplusplus
 }

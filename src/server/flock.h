@@ -146,8 +146,7 @@ extern "C" {
     int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
             const bool block);
     
-    int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task,
-            sys_lock_release_callback callback, void *args);
+    int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task);
 
 #ifdef __cplusplus
 }

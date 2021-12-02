@@ -264,8 +264,7 @@ FDIRServerDentry *inode_index_get_dentry_by_pname(
     return dentry;
 }
 
-int inode_index_check_set_dentry_size(FDIRBinlogRecord *record,
-        const bool need_lock)
+int inode_index_check_set_dentry_size(FDIRBinlogRecord *record)
 {
     FDIRServerDentry *dentry;
     int flags;
@@ -275,9 +274,7 @@ int inode_index_check_set_dentry_size(FDIRBinlogRecord *record,
     flags = record->options.flags;
     force = record->options.force;
     record->options.flags = 0;
-    if (need_lock) {
-        PTHREAD_MUTEX_LOCK(&ctx->lock);
-    }
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
     dentry = find_inode_entry(bucket, record->inode);
     if (dentry != NULL) {
         if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
@@ -321,11 +318,9 @@ int inode_index_check_set_dentry_size(FDIRBinlogRecord *record,
                 (int)g_current_time, *modified_flags);
          */
     }
-    if (need_lock) {
-        PTHREAD_MUTEX_UNLOCK(&ctx->lock);
-    }
-    record->me.dentry = dentry;
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
+    record->me.dentry = dentry;
     return (dentry != NULL ? 0 : ENOENT);
 }
 
@@ -717,15 +712,13 @@ SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
     return sys_task;
 }
 
-int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
-        sys_lock_release_callback callback, void *args)
+int inode_index_sys_lock_release(SysLockTask *sys_task)
 {
     int result;
     SET_INODE_HASHTABLE_CTX(sys_task->dentry->inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);
     if (sys_task->dentry->flock_entry != NULL) {
-        result = sys_lock_release(sys_task->dentry->flock_entry,
-                sys_task, callback, args);
+        result = sys_lock_release(sys_task->dentry->flock_entry, sys_task);
     } else {
         result = ENOENT;
     }

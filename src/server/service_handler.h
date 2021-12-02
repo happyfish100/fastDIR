@@ -24,6 +24,7 @@
 #include "fastcommon/fast_task_queue.h"
 #include "server_types.h"
 #include "binlog/binlog_types.h"
+#include "inode_index.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +42,27 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 
 int service_set_record_link(FDIRBinlogRecord *record,
         struct fast_task_info *task);
+
+static inline int service_sys_lock_release(struct fast_task_info *task,
+        const bool need_check)
+{
+    int result;
+
+    if (need_check && __sync_add_and_fetch(&task->canceled, 0)) {
+        logWarning("file: "__FILE__", line: %d, "
+                "task: %p, already canceled!",
+                __LINE__, task);
+        return ECANCELED;
+    }
+
+    if (SYS_LOCK_TASK != NULL) {
+        result = inode_index_sys_lock_release(SYS_LOCK_TASK);
+        SYS_LOCK_TASK = NULL;
+        return result;
+    } else {
+        return ENOENT;
+    }
+}
 
 #ifdef __cplusplus
 }

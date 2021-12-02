@@ -48,7 +48,6 @@
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
-#include "inode_index.h"
 #include "cluster_relationship.h"
 #include "common_handler.h"
 #include "ns_manager.h"
@@ -2457,6 +2456,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
 
     init_record_by_dsize(RECORD, &dsize);
     FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
     RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
@@ -2873,38 +2873,13 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     return push_flock_to_data_thread_queue(task);
 }
 
-static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
-{
-    struct fast_task_info *task;
-    FDIRProtoSysUnlockDEntryReq *req;
-    FDIRSetDEntrySizeInfo dsize;
-
-    task = (struct fast_task_info *)args;
-    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
-    dsize.inode = SYS_LOCK_TASK->dentry->inode;
-    dsize.file_size = buff2long(req->new_size);
-    dsize.inc_alloc = buff2long(req->inc_alloc);
-    dsize.flags = buff2int(req->flags);
-    dsize.force = req->force;
-
-    //TODO
-    /*
-    set_dentry_size(task, req->ns_str, req->ns_len,
-            &dsize, false, &result);
-
-    RESPONSE_STATUS = result;
-            */
-}
-
 static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysUnlockDEntryReq *req;
     int result;
-    int flags;
-    int64_t inode;
+    FDIRSetDEntrySizeInfo dsize;
     int64_t old_size;
     int64_t new_size;
-    sys_lock_release_callback callback;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP;
     if ((result=server_check_body_length(
@@ -2936,16 +2911,16 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
         return ENOENT;
     }
 
-    inode = buff2long(req->inode);
-    if (inode != SYS_LOCK_TASK->dentry->inode) {
+    dsize.inode = buff2long(req->inode);
+    if (dsize.inode != SYS_LOCK_TASK->dentry->inode) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "sys lock check fail, req inode: %"PRId64", "
-                "expect: %"PRId64, inode, SYS_LOCK_TASK->dentry->inode);
+                "expect: %"PRId64, dsize.inode,
+                SYS_LOCK_TASK->dentry->inode);
         return EINVAL;
     }
-    flags = buff2int(req->flags);
-
-    if ((flags & (FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE |
+    dsize.flags = buff2int(req->flags);
+    if ((dsize.flags & (FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE |
                     FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END |
                     FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)))
     {
@@ -2958,13 +2933,13 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
         old_size = buff2long(req->old_size);
         new_size = buff2long(req->new_size);
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE) &&
+        if ((dsize.flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE) &&
                 old_size != SYS_LOCK_TASK->dentry->stat.size)
         {
             logWarning("file: "__FILE__", line: %d, "
                     "client ip: %s, inode: %"PRId64", old size: %"PRId64
                     ", != current size: %"PRId64", maybe changed by others",
-                    __LINE__, task->client_ip, inode, old_size,
+                    __LINE__, task->client_ip, dsize.inode, old_size,
                     SYS_LOCK_TASK->dentry->stat.size);
         }
         if (new_size < 0) {
@@ -2972,30 +2947,21 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
                     "invalid new file size: %"PRId64" which < 0", new_size);
             return EINVAL;
         }
-        callback = on_sys_lock_release;
+
+        dsize.file_size = buff2long(req->new_size);
+        dsize.inc_alloc = buff2long(req->inc_alloc);
+        dsize.force = req->force;
+        if ((result=alloc_record_object(task)) != 0) {
+            return result;
+        }
+        init_record_by_dsize(RECORD, &dsize);
+        RECORD->dentry_type = fdir_dentry_type_inode;
+        FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+        RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+        RECORD->operation = SERVICE_OP_SYS_LOCK_RELEASE_INT;
+        return push_update_to_data_thread_queue(task);
     } else {
-        callback = NULL;
-    }
-
-    if ((result=inode_index_sys_lock_release_ex(
-                    SYS_LOCK_TASK, callback, task)) != 0)
-    {
-        return result;
-    }
-
-    /*
-    logInfo("file: "__FILE__", line: %d, func: %s, "
-            "task: %p, callback: %p, status: %d, nio stage: %d, fd: %d",
-            __LINE__, __FUNCTION__, task, callback, RESPONSE_STATUS,
-            SF_NIO_TASK_STAGE_FETCH(task), task->event.fd);
-            */
-
-    SYS_LOCK_TASK = NULL;
-    if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
-        RESPONSE_STATUS = 0;
-        return TASK_STATUS_CONTINUE;
-    } else {
-        return RESPONSE_STATUS;
+        return service_sys_lock_release(task, false);
     }
 }
 
