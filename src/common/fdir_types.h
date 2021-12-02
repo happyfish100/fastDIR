@@ -130,11 +130,12 @@ typedef union {
         bool mtime: 1;
         bool gid:   1;
         bool uid:   1;
-        bool size : 1;
+        bool size:  1;
         bool inc_alloc: 1;   //for increaase space alloc
         bool space_end: 1;   //for space end offset
         bool src_inode: 1;   //for create hard link only
         bool force: 1;       //for set dentry size only
+        bool blocked: 1;     //for set flock and sys-lock only
     };
 } FDIRStatModifyFlags;
 

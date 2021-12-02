@@ -70,9 +70,9 @@ extern "C" {
         }
     }
 
-    FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
-            const int64_t offset, const int64_t length, const bool block,
-            const FlockOwner *owner, struct fast_task_info *task, int *result);
+    FLockTask *inode_index_flock_apply(const int64_t inode,
+            const FlockParams *params, const bool block,
+            struct fast_task_info *task, int *result);
 
     void inode_index_flock_release(FLockTask *ftask);
 

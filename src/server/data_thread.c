@@ -983,7 +983,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-static int list_dentry(FDIRDataThreadContext *thread_ctx,
+static int deal_list_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
@@ -1005,6 +1005,32 @@ static int list_dentry(FDIRDataThreadContext *thread_ctx,
 
     return result;
 }
+
+static int deal_flock_apply(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    record->ftask = inode_index_flock_apply(record->inode,
+            &record->flock_params, record->options.blocked,
+            task, &result);
+    return result;
+}
+
+static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    record->stask = inode_index_sys_lock_apply(record->inode,
+            record->options.blocked, task, &result);
+    return result;
+}
+
 
 static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
@@ -1036,7 +1062,13 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
 
             break;
         case SERVICE_OP_LIST_DENTRY_INT:
-            result = list_dentry(thread_ctx, record);
+            result = deal_list_dentry(thread_ctx, record);
+            break;
+        case SERVICE_OP_FLOCK_APPLY_INT:
+            result = deal_flock_apply(thread_ctx, record);
+            break;
+        case SERVICE_OP_SYS_LOCK_APPLY_INT:
+            result = deal_sys_lock_apply(thread_ctx, record);
             break;
         default:
             result = EPROTONOSUPPORT;

@@ -25,6 +25,7 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "sf/sf_binlog_writer.h"
 #include "../server_types.h"
+#include "../flock.h"
 
 #define BINLOG_OP_NONE_INT           0
 #define BINLOG_OP_CREATE_DENTRY_INT  1
@@ -34,15 +35,19 @@
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
 
-#define SERVICE_OP_SET_DSIZE_INT       101
-#define SERVICE_OP_BATCH_SET_DSIZE_INT 102
+#define SERVICE_OP_SET_DSIZE_INT        101
+#define SERVICE_OP_BATCH_SET_DSIZE_INT  102
 
-#define SERVICE_OP_STAT_DENTRY_INT  111
-#define SERVICE_OP_READ_LINK_INT    112
-#define SERVICE_OP_LOOKUP_INODE_INT 113
-#define SERVICE_OP_LIST_DENTRY_INT  114
-#define SERVICE_OP_GET_XATTR_INT    115
-#define SERVICE_OP_LIST_XATTR_INT   116
+#define SERVICE_OP_SYS_LOCK_APPLY_INT   111
+#define SERVICE_OP_FLOCK_APPLY_INT      112
+#define SERVICE_OP_SYS_LOCK_RELEASE_INT 113
+
+#define SERVICE_OP_STAT_DENTRY_INT  121
+#define SERVICE_OP_READ_LINK_INT    122
+#define SERVICE_OP_LOOKUP_INODE_INT 123
+#define SERVICE_OP_LIST_DENTRY_INT  124
+#define SERVICE_OP_GET_XATTR_INT    125
+#define SERVICE_OP_LIST_XATTR_INT   126
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -122,6 +127,8 @@ typedef struct fdir_binlog_record {
         FDIRRecordDEntry me;  //for create and remove
 
         struct fdir_record_ptr_array *parray; //for batch set dsize
+        FLockTask *ftask;  //for flock apply
+        SysLockTask *stask; //for sys lock apply
     };
 
     /* affected dentries for rename and remove operation */
@@ -130,7 +137,10 @@ typedef struct fdir_binlog_record {
         int count;
     } affected;
 
-    FDIRDEntryStat stat;
+    union {
+        FDIRDEntryStat stat;
+        FlockParams flock_params;
+    };
 
     union {
         string_t link;
@@ -192,6 +202,14 @@ static inline const char *get_operation_caption(const int operation)
             return "REMOVE_XATTR";
         case SERVICE_OP_SET_DSIZE_INT:
             return "SET_DENTRY_SIZE";
+        case SERVICE_OP_BATCH_SET_DSIZE_INT:
+            return "BATCH_SET_DSIZE";
+        case SERVICE_OP_SYS_LOCK_APPLY_INT:
+            return "SYS_LOCK_APPLY";
+        case SERVICE_OP_FLOCK_APPLY_INT:
+            return "FLOCK_APPLY";
+        case SERVICE_OP_SYS_LOCK_RELEASE_INT:
+            return "SYS_LOCK_RELEASE";
         case SERVICE_OP_STAT_DENTRY_INT:
             return "STAT_DENTRY";
         case SERVICE_OP_READ_LINK_INT:

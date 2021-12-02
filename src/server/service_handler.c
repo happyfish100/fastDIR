@@ -1315,6 +1315,52 @@ static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }
 
+static void sys_lock_dentry_output(struct fast_task_info *task,
+        const FDIRServerDentry *dentry)
+{
+    FDIRProtoSysLockDEntryResp *resp;
+    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
+
+    long2buff(dentry->stat.size, resp->size);
+    long2buff(dentry->stat.space_end, resp->space_end);
+    RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
+    TASK_CTX.common.response_done = true;
+}
+
+static void flock_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
+{
+    struct fast_task_info *task;
+    int newr;
+
+    newr = result;
+    task = (struct fast_task_info *)record->notify.args;
+    if (record->ftask == NULL) {
+        logWarning("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", %s fail, errno: %d, error info: %s",
+                __LINE__, record->inode, get_operation_caption(
+                    record->operation), result, STRERROR(result));
+    } else {
+        if (record->operation == SERVICE_OP_FLOCK_APPLY_INT) {
+            fc_list_add_tail(&record->ftask->clink, FTASK_HEAD_PTR);
+        } else if (record->operation == SERVICE_OP_SYS_LOCK_APPLY_INT) {
+            SYS_LOCK_TASK = record->stask;
+            sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
+        }
+
+        if (result != 0) {
+            newr = TASK_STATUS_CONTINUE;
+        }
+    }
+
+    if (newr == TASK_STATUS_CONTINUE) {
+        RESPONSE_STATUS = 0;
+    } else {
+        RESPONSE_STATUS = result;
+        sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+    }
+}
+
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
         const bool is_update, data_thread_notify_func notify_func,
         TaskContinueCallback continue_callback)
@@ -1339,6 +1385,10 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
 
 #define push_query_to_data_thread_queue(task) \
     push_record_to_data_thread_queue(task, false, record_deal_done_notify, \
+            handle_record_query_done)
+
+#define push_flock_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, false, flock_done_notify, \
             handle_record_query_done)
 
 int service_set_record_pname_info(FDIRBinlogRecord *record,
@@ -2603,11 +2653,11 @@ static int service_process_update(struct fast_task_info *task,
     return result;
 }
 
-static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
-        const int64_t inode, const int64_t offset, const int64_t length)
+static int compare_flock_task(FLockTask *flck, const int64_t inode,
+        const FlockParams *params)
 {
     int sub;
-    if ((sub=fc_compare_int64(flck->owner.id, owner->id)) != 0) {
+    if ((sub=fc_compare_int64(flck->owner.id, params->owner.id)) != 0) {
         return sub;
     }
 
@@ -2615,11 +2665,11 @@ static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
         return sub;
     }
 
-    if ((sub=fc_compare_int64(flck->region->offset, offset)) != 0) {
+    if ((sub=fc_compare_int64(flck->region->offset, params->offset)) != 0) {
         return sub;
     }
 
-    if ((sub=fc_compare_int64(flck->region->length, length)) != 0) {
+    if ((sub=fc_compare_int64(flck->region->length, params->length)) != 0) {
         return sub;
     }
 
@@ -2627,8 +2677,7 @@ static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
 }
 
 static int flock_unlock_dentry(struct fast_task_info *task,
-        const FlockOwner *owner, const int64_t inode, const int64_t offset,
-        const int64_t length)
+        const int64_t inode, const FlockParams *params)
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
@@ -2646,7 +2695,7 @@ static int flock_unlock_dentry(struct fast_task_info *task,
             continue;
         }
 
-        if (compare_flock_task(flck, owner, inode, offset, length) == 0) {
+        if (compare_flock_task(flck, inode, params) == 0) {
             release_flock_task(task, flck);
             return 0;
         }
@@ -2658,14 +2707,10 @@ static int flock_unlock_dentry(struct fast_task_info *task,
 static int service_deal_flock_dentry(struct fast_task_info *task)
 {
     FDIRProtoFlockDEntryReq *req;
-    FLockTask *ftask;
     int result;
-    short type;
-    FlockOwner owner;
-    int64_t inode;
-    int64_t offset;
-    int64_t length;
     short operation;
+    int64_t inode;
+    FlockParams params;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     if ((result=server_expect_body_length(sizeof(
@@ -2676,10 +2721,10 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 
     req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
     inode = buff2long(req->inode);
-    offset = buff2long(req->offset);
-    length = buff2long(req->length);
-    owner.id = buff2long(req->owner.id);
-    owner.pid = buff2int(req->owner.pid);
+    params.offset = buff2long(req->offset);
+    params.length = buff2long(req->length);
+    params.owner.id = buff2long(req->owner.id);
+    params.owner.pid = buff2int(req->owner.pid);
     operation = buff2int(req->operation);
 
     /*
@@ -2687,18 +2732,18 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", "
             "owner.id: %"PRId64", owner.pid: %d", __LINE__,
-            task->event.fd, operation, inode,
-            offset, length, owner.id, owner.pid);
+            task->event.fd, operation, inode, params.offset,
+            params.length, params.owner.id, params.owner.pid);
             */
 
     if (operation & LOCK_UN) {
-        return flock_unlock_dentry(task, &owner, inode, offset, length);
+        return flock_unlock_dentry(task, inode, &params);
     }
 
     if (operation & LOCK_EX) {
-        type = LOCK_EX;
+        params.type = LOCK_EX;
     } else if (operation & LOCK_SH) {
-        type = LOCK_SH;
+        params.type = LOCK_SH;
     } else {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -2706,29 +2751,17 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if ((ftask=inode_index_flock_apply(inode, type, offset, length,
-                    (operation & LOCK_NB) == 0, &owner, task,
-                    &result)) == NULL)
-    {
-        if (result == EDEADLK) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "deadlock occur, inode: %"PRId64", operation: %d",
-                    inode, operation);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    /*
-    logInfo("file: "__FILE__", line: %d, "
-            "===operation: %d, inode: %"PRId64", offset: %"PRId64", "
-            "length: %"PRId64", owner.id: %"PRId64", owner.pid: %d, "
-            "result: %d, task: %p, deal_func: %p", __LINE__, operation,
-            inode, offset, length, owner.id, owner.pid,
-            result, task, task->continue_callback);
-            */
-
-    fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
-    return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+    //TODO set namespace
+    RECORD->inode = inode;
+    RECORD->options.blocked = ((operation & LOCK_NB) == 0 ? 1 : 0);
+    RECORD->flock_params = params;
+    RECORD->operation = SERVICE_OP_FLOCK_APPLY_INT;
+    RECORD->ftask = NULL;
+    return push_flock_to_data_thread_queue(task);
 }
 
 static int service_deal_getlk_dentry(struct fast_task_info *task)
@@ -2806,55 +2839,11 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     return result;
 }
 
-static void sys_lock_dentry_output(struct fast_task_info *task,
-        const FDIRServerDentry *dentry)
-{
-    FDIRProtoSysLockDEntryResp *resp;
-    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
-
-    long2buff(dentry->stat.size, resp->size);
-    long2buff(dentry->stat.space_end, resp->space_end);
-    RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
-    TASK_CTX.common.response_done = true;
-}
-
-static int handle_sys_lock_done(struct fast_task_info *task)
-{
-    struct sys_lock_task *sys_lock_task;
-
-    if (__sync_add_and_fetch(&task->canceled, 0)) {
-        logWarning("file: "__FILE__", line: %d, "
-                "task: %p, already canceled!",
-                __LINE__, task);
-        return ECANCELED;
-    }
-
-    sys_lock_task = SYS_LOCK_TASK;
-    if (sys_lock_task == NULL) {
-        logWarning("file: "__FILE__", line: %d, "
-                "task: %p, SYS_LOCK_TASK is NULL!",
-                __LINE__, task);
-        return ENOENT;
-    } else {
-        /*
-           logInfo("file: "__FILE__", line: %d, func: %s, "
-           "inode: %"PRId64", file size: %"PRId64,
-           __LINE__, __FUNCTION__,
-           sys_lock_task->dentry->inode,
-           sys_lock_task->dentry->stat.size);
-         */
-
-        sys_lock_dentry_output(task, sys_lock_task->dentry);
-        return 0;
-    }
-}
-
 static int service_deal_sys_lock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysLockDEntryReq *req;
     int result;
     int flags;
-    int64_t inode;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP;
     if ((result=server_expect_body_length(sizeof(
@@ -2870,42 +2859,18 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         return EEXIST;
     }
 
-    req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
-    inode = buff2long(req->inode);
-    flags = buff2int(req->flags);
-
-    if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode,
-                    ((flags & LOCK_NB) == 0),
-                    task, &result)) == NULL)
-    {
-        if (result == EDEADLK) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "deadlock occur, inode: %"PRId64, inode);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    if (result == 0) {
-        /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "locked for inode: %"PRId64", task: %p, sock: %d",
-                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
-                task, task->event.fd);
-                */
-
-        sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
-        return 0;
-    } else {
-        /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "waiting lock for inode: %"PRId64", task: %p, "
-                "sock: %d", __LINE__, __FUNCTION__,
-                SYS_LOCK_TASK->dentry->inode, task, task->event.fd);
-                */
-
-        task->continue_callback = handle_sys_lock_done;
-        return TASK_STATUS_CONTINUE;
-    }
+    //TODO set namespace
+    req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
+    RECORD->inode = buff2long(req->inode);
+    flags = buff2int(req->flags);
+    RECORD->options.blocked = ((flags & LOCK_NB) == 0 ? 1 : 0);
+    RECORD->operation = SERVICE_OP_SYS_LOCK_APPLY_INT;
+    RECORD->stask = NULL;
+    return push_flock_to_data_thread_queue(task);
 }
 
 static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)

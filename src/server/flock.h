@@ -38,6 +38,13 @@ typedef struct flock_owner {
     int64_t id;   //owner id
 } FlockOwner;
 
+typedef struct flock_params {
+    short type;
+    FlockOwner owner;
+    int64_t offset;
+    int64_t length;
+} FlockParams;
+
 typedef struct flock_task {
     /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
     short type;

@@ -589,9 +589,9 @@ void inode_index_list_xattr(FDIRServerDentry *dentry,
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
-FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
-        const int64_t offset, const int64_t length, const bool block,
-        const FlockOwner *owner, struct fast_task_info *task, int *result)
+FLockTask *inode_index_flock_apply(const int64_t inode,
+        const FlockParams *params, const bool block,
+        struct fast_task_info *task, int *result)
 {
     FDIRServerDentry *dentry;
     FLockTask *ftask;
@@ -620,11 +620,12 @@ FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
             break;
         }
 
-        ftask->type = type;
-        ftask->owner = *owner;
+        ftask->type = params->type;
+        ftask->owner = params->owner;
         ftask->dentry = dentry;
         ftask->task = task;
-        *result = flock_apply(&ctx->flock_ctx, offset, length, ftask, block);
+        *result = flock_apply(&ctx->flock_ctx, params->offset,
+                params->length, ftask, block);
         if (*result == 0 || *result == EINPROGRESS) {
             dentry_hold(dentry);
         } else {
