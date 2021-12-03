@@ -401,6 +401,7 @@ void data_thread_terminate()
 static inline int check_parent(FDIRBinlogRecord *record)
 {
     if (record->me.pname.parent_inode == 0) {
+        record->me.parent = NULL;
         return 0;
     }
 
