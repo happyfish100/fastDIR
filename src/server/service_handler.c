@@ -1236,6 +1236,7 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
         return ENOMEM;
     }
 
+    result = 0;
     rbuffer->data_version.first = 0;
     rbuffer->data_version.last = record->data_version;
     recend = record->parray->records + record->parray->counts.total;

@@ -817,12 +817,10 @@ static int push_to_db_update_queue(FDIRBinlogRecord *record)
 
 static int push_batch_set_dsize_to_db_update_queue(FDIRBinlogRecord *record)
 {
-    struct fast_task_info *task;
     FDIRBinlogRecord **pp;
     FDIRBinlogRecord **recend;
     int result;
 
-    task = (struct fast_task_info *)record->notify.args;
     recend = record->parray->records + record->parray->counts.total;
     for (pp=record->parray->records; pp<recend; pp++) {
         if ((*pp)->data_version > 0) {
