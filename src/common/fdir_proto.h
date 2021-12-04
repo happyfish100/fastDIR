@@ -330,11 +330,11 @@ typedef struct fdir_proto_flock_dentry_req {
 } FDIRProtoFlockDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_req {
-    char inode[8];
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     char operation[4];
     char pid[4];
+    FDIRProtoInodeInfo ino;
 } FDIRProtoGetlkDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_resp {

@@ -2748,14 +2748,14 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     FLockRegion region;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoGetlkDEntryReq))) != 0)
+    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
+    if ((result=server_expect_body_length(sizeof(*req) +
+                    req->ino.ns_len)) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
-    inode = buff2long(req->inode);
+    inode = buff2long(req->ino.inode);
     offset = buff2long(req->offset);
     length = buff2long(req->length);
     operation = buff2int(req->operation);
