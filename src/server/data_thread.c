@@ -416,7 +416,7 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
     int result;
     bool is_create;
 
-    if (record->dentry_type == fdir_dentry_type_pname) {
+    if (record->dentry_type != fdir_dentry_type_fullname) {
         return check_parent(record);
     }
 
@@ -478,19 +478,19 @@ static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
 {
     int result;
 
-    if (record->dentry_type == fdir_dentry_type_pname) {
-        if ((record->hdlink.src.dentry=inode_index_get_dentry(
-                        record->hdlink.src.inode)) == NULL)
-        {
-            return ENOENT;
-        }
-    } else {
+    if (record->dentry_type == fdir_dentry_type_fullname) {
         if ((result=dentry_find(&record->hdlink.src.fullname,
                         &record->hdlink.src.dentry)) != 0)
         {
             return result;
         }
         record->hdlink.src.inode = record->hdlink.src.dentry->inode;
+    } else {
+        if ((record->hdlink.src.dentry=inode_index_get_dentry(
+                        record->hdlink.src.inode)) == NULL)
+        {
+            return ENOENT;
+        }
     }
 
     if (S_ISDIR(record->hdlink.src.dentry->stat.mode) ||
@@ -509,19 +509,7 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     int result;
     char *src_name;
 
-    if (record->dentry_type == fdir_dentry_type_pname) {
-        if ((record->rename.src.parent=inode_index_get_dentry(record->
-                        rename.src.pname.parent_inode)) == NULL)
-        {
-            return ENOENT;
-        }
-
-        if ((record->rename.dest.parent=inode_index_get_dentry(record->
-                        rename.dest.pname.parent_inode)) == NULL)
-        {
-            return ENOENT;
-        }
-    } else {
+    if (record->dentry_type == fdir_dentry_type_fullname) {
         if ((result=set_pname_by_fullname(&record->rename.src)) != 0) {
             return result;
         }
@@ -533,6 +521,18 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
                         (struct fast_task_info *)record->notify.args)) != 0)
         {
             return result;
+        }
+    } else {
+        if ((record->rename.src.parent=inode_index_get_dentry(record->
+                        rename.src.pname.parent_inode)) == NULL)
+        {
+            return ENOENT;
+        }
+
+        if ((record->rename.dest.parent=inode_index_get_dentry(record->
+                        rename.dest.pname.parent_inode)) == NULL)
+        {
+            return ENOENT;
         }
     }
 
@@ -1113,7 +1113,7 @@ static void *data_thread_func(void *arg)
         do {
             current = record;
             record = record->next;
-            if (record->is_update) {
+            if (current->is_update) {
                 deal_update_record(thread_ctx, current);
             } else {
                 deal_query_record(thread_ctx, current);

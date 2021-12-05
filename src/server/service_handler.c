@@ -1092,58 +1092,75 @@ static void service_do_listxattr(struct fast_task_info *task,
     TASK_CTX.common.response_done = true;
 }
 
+void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
+        const int result, const bool is_error, const char *filename,
+        const int line_no, struct fast_task_info *task)
+{
+    char client_ip_buff[64];
+    char ns_buff[256];
+    char xattr_name_buff[256];
+    char extra_buff[256];
+    int extra_len;
+    int log_level;
+
+    if (task != NULL) {
+        sprintf(client_ip_buff, "client ip: %s, ", task->client_ip);
+    } else {
+        *client_ip_buff = '\0';
+    }
+
+    if (record->ns.len > 0) {
+        snprintf(ns_buff, sizeof(ns_buff), ", namespace: %.*s",
+                record->ns.len, record->ns.str);
+    } else {
+        snprintf(ns_buff, sizeof(ns_buff), ", namespace hash code: %u",
+                record->hash_code);
+    }
+
+    if (record->operation == BINLOG_OP_SET_XATTR_INT ||
+            record->operation == BINLOG_OP_REMOVE_XATTR_INT)
+    {
+        if (result == ENODATA) {
+            log_level = LOG_DEBUG;
+        } else {
+            log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+        }
+        snprintf(xattr_name_buff, sizeof(xattr_name_buff),
+                ", xattr name: %.*s", record->xattr.key.len,
+                record->xattr.key.str);
+    } else {
+        log_level = is_error ? LOG_ERR : LOG_WARNING;
+        *xattr_name_buff = '\0';
+    }
+
+    if (record->inode > 0) {
+        extra_len = sprintf(extra_buff, ", current inode: "
+                "%"PRId64, record->inode);
+    } else {
+        extra_len = 0;
+    }
+    if (record->me.pname.name.str != NULL) {
+        snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
+                ", parent inode: %"PRId64", dir name: %.*s",
+                record->me.pname.parent_inode, record->me.pname.name.len,
+                record->me.pname.name.str);
+    }
+
+    log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
+            "%s%s fail, errno: %d, error info: %s%s%s%s",
+            filename, line_no, client_ip_buff,
+            get_operation_caption(record->operation), result,
+            STRERROR(result), ns_buff, extra_buff, xattr_name_buff);
+}
+
 static void record_deal_done_notify(FDIRBinlogRecord *record,
         const int result, const bool is_error)
 {
     struct fast_task_info *task;
-    char xattr_name_buff[256];
-    char extra_buff[256];
-    int extra_len;
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
-        int log_level;
-
-        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ ||
-                REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ)
-        {
-            if (result == ENODATA) {
-                log_level = LOG_DEBUG;
-            } else {
-                log_level = is_error ? LOG_WARNING : LOG_DEBUG;
-            }
-            snprintf(xattr_name_buff, sizeof(xattr_name_buff),
-                    ", xattr name: %.*s", record->xattr.key.len,
-                    record->xattr.key.str);
-        } else {
-            log_level = is_error ? LOG_ERR : LOG_WARNING;
-            *xattr_name_buff = '\0';
-        }
-
-        if (record->inode > 0) {
-            extra_len = sprintf(extra_buff, ", current inode: "
-                    "%"PRId64, record->inode);
-        } else {
-            extra_len = 0;
-        }
-        if (record->me.pname.parent_inode >= 0 &&
-                record->me.pname.name.str != NULL)
-        {
-            snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
-                    ", parent inode: %"PRId64", dir name: %.*s",
-                    record->me.pname.parent_inode, record->me.pname.name.len,
-                    record->me.pname.name.str);
-        }
-
-        log_it_ex(&g_log_context, log_level,
-                "file: "__FILE__", line: %d, "
-                "client ip: %s, %s dentry fail, "
-                "errno: %d, error info: %s, "
-                "namespace: %.*s%s%s",
-                __LINE__, task->client_ip,
-                get_operation_caption(record->operation),
-                result, STRERROR(result), record->ns.len,
-                record->ns.str, extra_buff, xattr_name_buff);
+        service_record_deal_error_log_ex(record, result, is_error, task);
     } else {
         switch (record->operation) {
             case BINLOG_OP_CREATE_DENTRY_INT:

@@ -189,13 +189,13 @@ static inline const char *get_operation_caption(const int operation)
 {
     switch (operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
-            return "CREATE";
+            return "CREATE_DENTRY";
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            return "REMOVE";
+            return "REMOVE_DENTRY";
         case BINLOG_OP_RENAME_DENTRY_INT:
-            return "RENAME";
+            return "RENAME_DENTRY";
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            return "UPDATE";
+            return "UPDATE_DENTRY";
         case BINLOG_OP_SET_XATTR_INT:
             return "SET_XATTR";
         case BINLOG_OP_REMOVE_XATTR_INT:

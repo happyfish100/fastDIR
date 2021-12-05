@@ -43,6 +43,17 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 int service_set_record_link(FDIRBinlogRecord *record,
         struct fast_task_info *task);
 
+void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
+        const int result, const bool is_error, const char *filename,
+        const int line_no, struct fast_task_info *task);
+
+#define service_record_deal_error_log_ex(record, result, is_error, task) \
+    service_record_deal_error_log_ex1(record, result, is_error, \
+            __FILE__, __LINE__, task)
+
+#define service_record_deal_error_log(record, result, is_error) \
+    service_record_deal_error_log_ex(record, result, is_error, NULL)
+
 static inline int service_sys_lock_release(struct fast_task_info *task,
         const bool need_check)
 {
