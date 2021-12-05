@@ -186,6 +186,7 @@ ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
 
     old_value = 0;  //for hint
     FC_ATOMIC_CAS(rbuffer->reffer_count, old_value, 1);
+    rbuffer->buffer.length = 0;
     return rbuffer;
 }
 
