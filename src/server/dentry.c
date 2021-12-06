@@ -104,6 +104,7 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
         fast_allocator_free(&dentry->context->name_acontext, kv->value.str);
     }
 
+    dentry->kv_array->count = 0;
     if ((allocator=dentry_get_kvarray_allocator_by_capacity(
                     dentry->context, dentry->kv_array->alloc)) != NULL)
     {
@@ -111,7 +112,6 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     }
 
     dentry->kv_array = NULL;
-    dentry->kv_array->count = 0;
 }
 
 static void dentry_do_free(void *ptr, const int dec_count)

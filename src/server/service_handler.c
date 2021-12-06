@@ -2406,9 +2406,6 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
     record->options.flags = dsize->flags;
     record->stat.size = dsize->file_size;
     record->stat.alloc = dsize->inc_alloc;
-
-    logInfo("inode: %"PRId64", force: %d", dsize->inode,
-            (dsize->flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE) != 0);
 }
 
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \

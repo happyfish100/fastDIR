@@ -311,11 +311,13 @@ int inode_index_check_set_dentry_size(FDIRBinlogRecord *record)
             record->options.inc_alloc = 1;
         }
 
+        /*
         logInfo("old size: %"PRId64", new size: %"PRId64", "
                 "old mtime: %d, new mtime: %d, force: %d, flags: %u, "
                 "modified_flags: %"PRId64, dentry->stat.size, record->stat.size,
                 dentry->stat.mtime, (int)g_current_time, force, flags,
                 record->options.flags);
+                */
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
