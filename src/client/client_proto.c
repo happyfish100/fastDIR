@@ -931,8 +931,12 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
     long2buff(dsize->inode, req->inode);         \
     long2buff(dsize->file_size, req->file_size); \
     long2buff(dsize->inc_alloc, req->inc_alloc); \
-    int2buff(dsize->flags, req->flags); \
-    req->force = dsize->force
+    if (dsize->force) { \
+        int2buff(dsize->flags | FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE, \
+                req->flags); \
+    } else { \
+        int2buff(dsize->flags, req->flags); \
+    }
 
 int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,

@@ -851,7 +851,7 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
     return 0;
 }
 
-static int check_and_parse_inode_info(struct fast_task_info *task,
+static inline int check_and_parse_inode_info(struct fast_task_info *task,
         const int front_part_size, string_t *ns, int64_t *inode)
 {
     FDIRProtoInodeInfo *req;
@@ -1130,7 +1130,13 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
                 ", xattr name: %.*s", record->xattr.key.len,
                 record->xattr.key.str);
     } else {
-        log_level = is_error ? LOG_ERR : LOG_WARNING;
+        if (record->operation == SERVICE_OP_LOOKUP_INODE_INT &&
+                result == ENOENT)
+        {
+            log_level = LOG_DEBUG;
+        } else {
+            log_level = is_error ? LOG_ERR : LOG_WARNING;
+        }
         *xattr_name_buff = '\0';
     }
 
@@ -1277,11 +1283,13 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
         fast_mblock_free_object(&SERVER_CTX->service.
                 record_allocator, *pp);
     }
+    /*
     logInfo("result: %d, record count: %d, updated count: %d, "
             "first data_version: %"PRId64", last data_version: %"PRId64
             ", buffer length: %d", result, record->parray->counts.total,
             record->parray->counts.updated, rbuffer->data_version.first,
             rbuffer->data_version.last, rbuffer->buffer.length);
+            */
 
     free_record_and_parray(task);
     if (result == 0) {
@@ -1570,7 +1578,8 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
         return result;
     }
 
-    RECORD->inode = RECORD->data_version = 0;
+    RECORD->data_version = 0;
+    RECORD->inode = inode;
     RECORD->ns = ns;
     RECORD->hash_code = simple_hash(ns.str, ns.len);
     FC_SET_STRING_NULL(RECORD->me.pname.name);
@@ -2395,9 +2404,11 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
     record->data_version = 0;
     record->inode = dsize->inode;
     record->options.flags = dsize->flags;
-    record->options.force = dsize->force ? 1 : 0;
     record->stat.size = dsize->file_size;
     record->stat.alloc = dsize->inc_alloc;
+
+    logInfo("inode: %"PRId64", force: %d", dsize->inode,
+            (dsize->flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE) != 0);
 }
 
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
@@ -2405,7 +2416,6 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
     dsize.file_size = buff2long(req->file_size); \
     dsize.inc_alloc = buff2long(req->inc_alloc); \
     dsize.flags = buff2int(req->flags);  \
-    dsize.force = req->force
 
 static int service_deal_set_dentry_size(struct fast_task_info *task)
 {
@@ -2458,6 +2468,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     FDIRProtoBatchSetDentrySizeReqBody *rbend;
     FDIRSetDEntrySizeInfo dsize;
     FDIRBinlogRecord **record;
+    uint32_t hash_code;
     int result;
     int count;
     int expect_blen;
@@ -2506,6 +2517,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EBUSY;
     }
 
+    hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
         (rheader->ns_str + rheader->ns_len);
     rbend = rbody + count;
@@ -2524,6 +2536,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         }
 
         init_record_by_dsize(*record, &dsize);
+        (*record)->hash_code = hash_code;
         (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     }
     RECORD->parray->counts.total = count;
@@ -2531,7 +2544,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     FC_SET_STRING_EX(RECORD->ns, rheader->ns_str, rheader->ns_len);
     RECORD->inode = RECORD->data_version = 0;
     RECORD->dentry_type = fdir_dentry_type_inode;
-    RECORD->hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
+    RECORD->hash_code = hash_code;
     RECORD->operation = SERVICE_OP_BATCH_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
     return push_batch_set_dsize_to_data_thread_queue(task);
@@ -2940,7 +2953,9 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
         dsize.file_size = buff2long(req->new_size);
         dsize.inc_alloc = buff2long(req->inc_alloc);
-        dsize.force = req->force;
+        if (req->force) {
+            dsize.flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE;
+        }
         if ((result=alloc_record_object(task)) != 0) {
             return result;
         }

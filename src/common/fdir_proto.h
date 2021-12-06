@@ -265,7 +265,6 @@ typedef struct fdir_proto_set_dentry_size_req {
     char file_size[8];   /* file size in bytes */
     char inc_alloc[8];   /* increase alloc size in bytes */
     char flags[4];
-    char force;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
 } FDIRProtoSetDentrySizeReq;
@@ -281,7 +280,6 @@ typedef struct fdir_proto_batch_set_dentry_size_req_body {
     char file_size[8];   /* file size in bytes */
     char inc_alloc[8];   /* increase alloc size in bytes */
     char flags[4];
-    char force;
 } FDIRProtoBatchSetDentrySizeReqBody;
 
 typedef struct fdir_proto_dentry_stat {
