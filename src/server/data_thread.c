@@ -159,7 +159,7 @@ static void deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
 {
     ServerDelayFreeContext *delay_context;
     ServerDelayFreeNode *node;
-    ServerDelayFreeNode *tail;
+    struct fast_mblock_node *current;
     struct fast_mblock_chain chain;
 
     delay_context = &thread_ctx->free_context.delay;
@@ -169,7 +169,7 @@ static void deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
         return;
     }
 
-    tail = NULL;
+    chain.head = chain.tail = NULL;
     delay_context->last_check_time = g_current_time;
     node = delay_context->queue.head;
     while ((node != NULL) && (node->expires < g_current_time)) {
@@ -179,17 +179,22 @@ static void deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
             node->free_func_ex(node->ctx, node->ptr);
         }
 
-        tail = node;
+        current = fast_mblock_to_node_ptr(node);
+        if (chain.head == NULL) {
+            chain.head = current;
+        } else {
+            chain.tail->next = current;
+        }
+        chain.tail = current;
+
         node = node->next;
     }
 
-    if (tail == NULL) {
+    if (chain.head == NULL) {
         return;
     }
 
-    tail->next = NULL;
-    chain.head = fast_mblock_to_node_ptr(delay_context->queue.head);
-    chain.tail = fast_mblock_to_node_ptr(tail);
+    chain.tail->next = NULL;
     fast_mblock_batch_free(&thread_ctx->free_context.allocator, &chain);
 
     delay_context->queue.head = node;
@@ -201,7 +206,6 @@ static void deal_delay_free_queue(FDIRDataThreadContext *thread_ctx)
 static void deal_immediate_free_queue(FDIRDataThreadContext *thread_ctx)
 {
     struct fc_queue_info qinfo;
-    struct fast_mblock_chain chain;
     ServerDelayFreeNode *node;
     int count;
 
@@ -224,14 +228,15 @@ static void deal_immediate_free_queue(FDIRDataThreadContext *thread_ctx)
         node = node->next;
     } while (node != NULL);
 
-    chain.head = fast_mblock_to_node_ptr(qinfo.head);
-    chain.tail = fast_mblock_to_node_ptr(qinfo.tail);
-    fast_mblock_batch_free(&thread_ctx->free_context.allocator, &chain);
+    fc_queue_free_chain(&thread_ctx->free_context.immediate.queue,
+            &thread_ctx->free_context.allocator, &qinfo);
 
+    /*
     logInfo("file: "__FILE__", line: %d, "
             "free count: %d, free_context.immediate.waiting_count: %d",
             __LINE__, count,  __sync_add_and_fetch(&thread_ctx->
                 free_context.immediate.waiting_count, 0));
+                */
 
     __sync_sub_and_fetch(&thread_ctx->free_context.
             immediate.waiting_count, count);
@@ -1132,10 +1137,12 @@ static void *data_thread_func(void *arg)
         if (__sync_add_and_fetch(&thread_ctx->free_context.
                     immediate.waiting_count, 0) != 0)
         {
+            /*
             logInfo("file: "__FILE__", line: %d, "
                     "free_context.immediate.waiting_count: %d",
                     __LINE__, __sync_add_and_fetch(&thread_ctx->
                         free_context.immediate.waiting_count, 0));
+                        */
 
             deal_immediate_free_queue(thread_ctx);
         }
