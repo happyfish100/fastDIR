@@ -113,6 +113,7 @@ typedef struct {
 } BinlogFieldValue;
 
 typedef struct {
+    struct fast_mpool_man *mpool;
     const char *p;
     const char *rec_end;
     BinlogFieldValue fv;
@@ -453,8 +454,25 @@ static int binlog_get_next_field_value(FieldParserContext *pcontext)
             return EINVAL;
         }
 
-        fast_char_unescape(&char_converter, pcontext->fv.value.s.str,
-                &pcontext->fv.value.s.len);
+        if (memchr(pcontext->fv.value.s.str, '\\',
+                    pcontext->fv.value.s.len) != NULL)
+        {
+            if (pcontext->mpool != NULL) {
+                char *unescaped;
+
+                if ((unescaped=fast_mpool_memdup(pcontext->mpool,
+                                pcontext->fv.value.s.str,
+                                pcontext->fv.value.s.len)) == NULL)
+                {
+                    sprintf(pcontext->error_info, "alloc %d bytes fail",
+                            pcontext->fv.value.s.len);
+                    return ENOMEM;
+                }
+                pcontext->fv.value.s.str = unescaped;
+            }
+            fast_char_unescape(&char_converter, pcontext->fv.value.s.str,
+                    &pcontext->fv.value.s.len);
+        }
     } else if ((*endptr == ' ') || (*endptr == '/' && pcontext->rec_end -
                 endptr == BINLOG_RECORD_END_TAG_LEN))
     {
@@ -888,14 +906,16 @@ static int binlog_check_record(const char *str, const int len,
         pcontext.error_size = errsize;  \
     } while (0)
 
-int binlog_unpack_record(const char *str, const int len,
+int binlog_unpack_record_ex(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
-        char *error_info, const int error_size)
+        char *error_info, const int error_size,
+        struct fast_mpool_man *mpool)
 {
     FieldParserContext pcontext;
     int result;
 
     memset(record, 0, (long)(&((FDIRBinlogRecord*)0)->notify));
+    pcontext.mpool = mpool;
     BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
         *record_end = NULL;

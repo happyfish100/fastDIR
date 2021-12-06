@@ -536,11 +536,13 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         }
     }
 
-    src_name = record->rename.dest.pname.name.str +
-        record->rename.dest.pname.name.len;
-    memcpy(src_name, record->rename.src.pname.name.str,
-            record->rename.src.pname.name.len);
-    record->rename.src.pname.name.str = src_name;
+    if (record->dentry_type != fdir_dentry_type_inode) {
+        src_name = record->rename.dest.pname.name.str +
+            record->rename.dest.pname.name.len;
+        memcpy(src_name, record->rename.src.pname.name.str,
+                record->rename.src.pname.name.len);
+        record->rename.src.pname.name.str = src_name;
+    }
 
     return dentry_rename(thread_ctx, record);
 }

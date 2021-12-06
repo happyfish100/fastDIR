@@ -18,6 +18,7 @@
 #ifndef _BINLOG_PACK_H_
 #define _BINLOG_PACK_H_
 
+#include "fastcommon/fast_mpool.h"
 #include "binlog_types.h"
 
 #define BINLOG_RECORD_MIN_SIZE            64
@@ -33,9 +34,15 @@ int binlog_pack_init();
 
 int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer);
 
-int binlog_unpack_record(const char *str, const int len,
+int binlog_unpack_record_ex(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
-        char *error_info, const int error_size);
+        char *error_info, const int error_size,
+        struct fast_mpool_man *mpool);
+
+#define binlog_unpack_record(str, len, record, record_end, \
+        error_info, error_size) \
+    binlog_unpack_record_ex(str, len, record, record_end, \
+            error_info, error_size, NULL)
 
 int binlog_detect_record(const char *str, const int len,
         int64_t *data_version, const char **rec_end,

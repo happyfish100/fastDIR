@@ -1118,6 +1118,7 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     }
 
     if (record->operation == BINLOG_OP_SET_XATTR_INT ||
+            record->operation == SERVICE_OP_GET_XATTR_INT ||
             record->operation == BINLOG_OP_REMOVE_XATTR_INT)
     {
         if (result == ENODATA) {

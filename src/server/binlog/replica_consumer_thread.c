@@ -48,7 +48,6 @@ static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
     ReplicaConsumerThreadContext *ctx;
     bool notify;
 
-
     ctx = (ReplicaConsumerThreadContext *)rbuffer->args;
     common_blocked_queue_push_ex(&ctx->queues.free, rbuffer, &notify);
     if (notify) {
@@ -129,8 +128,8 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     {
         return NULL;
     }
-    if ((*err_no=common_blocked_queue_init_ex(&ctx->queues.result,
-                    8192)) != 0)
+    if ((*err_no=common_blocked_queue_init_ex(
+                    &ctx->queues.result, 8192)) != 0)
     {
         return NULL;
     }
@@ -146,7 +145,6 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
 
     ctx->recv_rbuffer = (ServerBinlogRecordBuffer *)common_blocked_queue_pop(
                 &ctx->queues.free);
-
     if ((*err_no=fc_create_thread(&ctx->tid, deal_binlog_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
@@ -394,8 +392,10 @@ static void *deal_binlog_thread_func(void *arg)
 
             /*
             logInfo("file: "__FILE__", line: %d, "
-                    "replay binlog buffer length: %d, data_version: %"PRId64,
-                    __LINE__, rb->buffer.length, rb->data_version);
+                    "replay binlog buffer: %p, length: %d, "
+                    "data_version: {%"PRId64", %"PRId64"}", __LINE__,
+                    rb, rb->buffer.length, rb->data_version.first,
+                    rb->data_version.last);
                     */
 
             if (binlog_replay_deal_buffer(&ctx->replay_ctx,
