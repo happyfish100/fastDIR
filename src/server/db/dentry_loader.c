@@ -219,7 +219,8 @@ static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
             return ENOMEM;
         }
 
-        memset(*dentry, 0, sizeof(FDIRServerDentry));
+        memset(*dentry, 0, sizeof(FDIRServerDentry) +
+                sizeof(FDIRServerDentryDBArgs));
         (*dentry)->inode = inode;
         (*dentry)->parent = parent;
         if (name != NULL) {
@@ -271,7 +272,7 @@ int dentry_load_root(FDIRNamespaceEntry *ns_entry,
     return dentry_load_one(ns_entry, parent, inode, &name, dentry);
 }
 
-int dentry_load_all(DentryParentChildArray *parray)
+static int dentry_load_all(DentryParentChildArray *parray)
 {
     int result;
     DentryParentChildPair *pair;
@@ -375,62 +376,3 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
     fast_mblock_free_object(&PAIR_ARRAY_ALLOCATOR, parray);
     return result;
 }
-
-/*
-static int dentry_load_namespace(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, FDIRNamespaceEntry **ns_entry)
-{
-    int result;
-    string_t content;
-    FDIRDBFetchContext *db_fetch_ctx;
-
-    if (thread_ctx != NULL) {
-        db_fetch_ctx = &thread_ctx->db_fetch_ctx;
-    } else {
-        //TODO
-        db_fetch_ctx = NULL;
-    }
-
-    if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
-                    &db_fetch_ctx->read_ctx)) != 0)
-    {
-        return result;
-    }
-
-    FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(db_fetch_ctx->
-                read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
-                    db_fetch_ctx->read_ctx.op_ctx));
-    return dentry_serializer_extract_namespace(db_fetch_ctx,
-            &content, inode, ns_entry);
-}
-
-
-int dentry_load(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, FDIRServerDentry **dentry)
-{
-    int result;
-    string_t content;
-    FDIRNamespaceEntry *ns_entry;
-    FDIRDBFetchContext *db_fetch_ctx;
-
-    if (thread_ctx == NULL) {
-         //TODO
-        db_fetch_ctx = NULL;
-        if ((result=STORAGE_ENGINE_FETCH_API(inode, FDIR_PIECE_FIELD_INDEX_BASIC,
-                        &db_fetch_ctx->read_ctx)) != 0)
-        {
-            return result;
-        }
-
-        FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(db_fetch_ctx->
-                    read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
-                        db_fetch_ctx->read_ctx.op_ctx));
-        if ((result=dentry_serializer_extract_namespace(db_fetch_ctx,
-                        &content, inode, &ns_entry)) != 0)
-        {
-            return result;
-        }
-        thread_ctx = ns_entry->thread_ctx;
-    }
-}
-*/

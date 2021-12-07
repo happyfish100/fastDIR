@@ -294,6 +294,7 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,
     }
 
     if (entry != NULL) {
+        *err_no = 0;
         return entry;
     }
     if (!create_ns) {
