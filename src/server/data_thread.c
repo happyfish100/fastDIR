@@ -37,6 +37,7 @@
 #include "service_handler.h"
 #include "db/change_notify.h"
 #include "db/dentry_serializer.h"
+#include "db/dentry_loader.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -1074,6 +1075,11 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                 if (record->operation == SERVICE_OP_GET_XATTR_INT) {
                     result = inode_index_get_xattr(record->me.dentry,
                             &record->xattr.key, &record->xattr.value);
+                } else if (record->operation == SERVICE_OP_LIST_XATTR_INT) {
+                    if (STORAGE_ENABLED) {
+                        result = dentry_load_xattr(thread_ctx,
+                                record->me.dentry);
+                    }
                 }
             }
 

@@ -35,15 +35,15 @@ extern "C" {
     void dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
             const int64_t inc_alloc);
 
-    int dentry_init_context(FDIRDataThreadContext *db_context);
+    int dentry_init_context(FDIRDataThreadContext *thread_ctx);
 
-    int dentry_create(FDIRDataThreadContext *db_context,
+    int dentry_create(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
-    int dentry_remove(FDIRDataThreadContext *db_context,
+    int dentry_remove(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
-    int dentry_rename(FDIRDataThreadContext *db_context,
+    int dentry_rename(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
     int dentry_find_parent(const FDIRDEntryFullName *fullname,

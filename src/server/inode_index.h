@@ -23,11 +23,6 @@
 #include "flock.h"
 #include "data_thread.h"
 
-typedef struct fdir_xattr_iterator {
-    key_value_pair_t *kv;
-    key_value_pair_t *end;
-} FDIRXAttrIterator;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -63,19 +58,6 @@ extern "C" {
     int inode_index_get_xattr(FDIRServerDentry *dentry,
             const string_t *name, string_t *value);
 
-    void inode_index_list_xattr(FDIRServerDentry *dentry,
-            FDIRXAttrIterator *it);
-
-    static inline const key_value_pair_t *xattr_iterator_next(
-            FDIRXAttrIterator *it)
-    {
-        if (it->kv < it->end) {
-            return it->kv++;
-        } else {
-            return NULL;
-        }
-    }
-
     FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
             const int64_t inode, const FlockParams *params, const bool block,
             struct fast_task_info *task, int *result);
@@ -89,6 +71,9 @@ extern "C" {
             struct fast_task_info *task, int *result);
 
     int inode_index_sys_lock_release(SysLockTask *sys_task);
+
+    int inode_index_xattrs_copy(const key_value_array_t *kv_array,
+            FDIRServerDentry *dentry);
 
 #ifdef __cplusplus
 }

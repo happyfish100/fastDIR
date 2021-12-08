@@ -629,7 +629,7 @@ static int load_namespaces()
     return result;
 }
 
-static int parse_dump_line(const string_t *line, char *error_info)
+static int parse_dumped_line(const string_t *line, char *error_info)
 {
     const bool ignore_empty = true;
     int id;
@@ -757,7 +757,7 @@ int fdir_namespace_load(int64_t *last_version)
     *error_info = '\0';
     end = rows + count;
     for (line=rows+1; line<end; line++) {
-        if ((result=parse_dump_line(line, error_info)) != 0) {
+        if ((result=parse_dumped_line(line, error_info)) != 0) {
             logError("file: "__FILE__", line: %d, "
                     "namespace dump file: %s, line no. %d, %s", __LINE__,
                     filename, (int)(line - rows) + 1, error_info);

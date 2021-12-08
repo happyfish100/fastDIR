@@ -41,7 +41,7 @@ typedef struct fdir_dentry_context {
     struct fast_mblock_man dentry_allocator;
     struct fast_mblock_man kvarray_allocators[FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT];
     struct fast_allocator_context name_acontext;
-    struct fdir_data_thread_context *db_context;
+    struct fdir_data_thread_context *thread_ctx;
     FDIRDentryCounters counters;
 } FDIRDentryContext;
 
@@ -148,7 +148,7 @@ extern "C" {
     static inline void server_delay_free_str(FDIRDentryContext
             *context, char *str)
     {
-        server_add_to_delay_free_queue_ex(&context->db_context->
+        server_add_to_delay_free_queue_ex(&context->thread_ctx->
                 free_context, &context->name_acontext, str,
                 (server_free_func_ex)fast_allocator_free,
                 FDIR_DELAY_FREE_SECONDS);
@@ -157,7 +157,7 @@ extern "C" {
     static inline void server_immediate_free_str(FDIRDentryContext
             *context, char *str)
     {
-        server_add_to_immediate_free_queue_ex(&context->db_context->
+        server_add_to_immediate_free_queue_ex(&context->thread_ctx->
                 free_context, &context->name_acontext, str,
                 (server_free_func_ex)fast_allocator_free);
     }

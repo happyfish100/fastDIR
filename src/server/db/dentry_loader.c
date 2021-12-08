@@ -198,6 +198,49 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
+int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
+        FDIRServerDentry *dentry)
+{
+    int result;
+    string_t content;
+    const key_value_array_t *kv_array;
+
+    if ((dentry->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_XATTR) != 0) {
+        return 0;
+    }
+
+    if ((result=STORAGE_ENGINE_FETCH_API(dentry->inode,
+                    FDIR_PIECE_FIELD_INDEX_XATTR, &thread_ctx->
+                    db_fetch_ctx.read_ctx)) != 0)
+    {
+        if (result == ENODATA) {
+            result = 0;
+        } else {
+            return result;
+        }
+    } else {
+        FC_SET_STRING_EX(content, DA_OP_CTX_BUFFER_PTR(thread_ctx->
+                    db_fetch_ctx.read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
+                        thread_ctx->db_fetch_ctx.read_ctx.op_ctx));
+        if ((result=dentry_serializer_unpack_xattr(thread_ctx,
+                        &content, dentry->inode, &kv_array)) != 0)
+        {
+            logCrit("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", unpack xattr fail, "
+                    "program exit!", __LINE__, dentry->inode);
+            sf_terminate_myself();
+            return result;
+        }
+
+        if ((result=inode_index_xattrs_copy(kv_array, dentry)) != 0) {
+            return result;
+        }
+    }
+    dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_XATTR;
+
+    return result;
+}
+
 static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         FDIRServerDentry *parent, const int64_t inode,
         const string_t *name, FDIRServerDentry **dentry)

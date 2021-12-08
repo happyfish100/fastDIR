@@ -389,48 +389,48 @@ int inode_index_update_dentry(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static key_value_pair_t *get_xattr(FDIRServerDentry *dentry,
-        const string_t *name)
+static int get_xattr(FDIRServerDentry *dentry, const string_t *name,
+        key_value_pair_t **kv)
 {
-    key_value_pair_t *kv;
+    int result;
     key_value_pair_t *end;
 
-    if (dentry->kv_array == NULL) {
-        return NULL;
-    }
-
-    end = dentry->kv_array->elts + dentry->kv_array->count;
-    for (kv=dentry->kv_array->elts; kv<end; kv++) {
-        if (fc_string_equal(name, &kv->key)) {
-            return kv;
+    if (STORAGE_ENABLED) {
+        if ((result=dentry_load_xattr(dentry->context->
+                        thread_ctx, dentry)) != 0)
+        {
+            *kv = NULL;
+            return result;
         }
     }
 
-    return NULL;
+    if (dentry->kv_array != NULL) {
+        end = dentry->kv_array->elts + dentry->kv_array->count;
+        for (*kv=dentry->kv_array->elts; *kv<end; (*kv)++) {
+            if (fc_string_equal(name, &(*kv)->key)) {
+                return 0;
+            }
+        }
+    }
+
+    *kv = NULL;
+    return ENODATA;
 }
 
 static int remove_xattr(FDIRServerDentry *dentry, const string_t *name)
 {
+    int result;
     key_value_pair_t *kv;
     key_value_pair_t *end;
 
-    if (dentry->kv_array == NULL) {
-        return ENODATA;
-    }
-
-    end = dentry->kv_array->elts + dentry->kv_array->count;
-    for (kv=dentry->kv_array->elts; kv<end; kv++) {
-        if (fc_string_equal(name, &kv->key)) {
-            break;
-        }
-    }
-
-    if (kv == end) {
-        return ENODATA;
+    if ((result=get_xattr(dentry, name, &kv)) != 0) {
+        return result;
     }
 
     server_delay_free_str(dentry->context, kv->key.str);
     server_delay_free_str(dentry->context, kv->value.str);
+
+    end = dentry->kv_array->elts + dentry->kv_array->count;
     for (kv=kv+1; kv<end; kv++) {
         *(kv - 1) = *kv;
     }
@@ -439,8 +439,8 @@ static int remove_xattr(FDIRServerDentry *dentry, const string_t *name)
     return 0;
 }
 
-static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext
-        *context, FDIRServerDentry *dentry, int *err_no)
+static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext *context,
+        FDIRServerDentry *dentry, int *err_no)
 {
     struct fast_mblock_man *allocator;
     SFKeyValueArray *new_array;
@@ -489,14 +489,16 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
     key_value_pair_t *kv;
     string_t value;
 
-    if ((kv=get_xattr(dentry, &record->xattr.key)) != NULL) {
+    if ((result=get_xattr(dentry, &record->xattr.key, &kv)) == 0) {
         if (record->flags == XATTR_CREATE) {
             return EEXIST;
         }
         new_create = false;
+    } else if (result != ENODATA) {
+        return result;
     } else {
         if (record->flags == XATTR_REPLACE) {
-            return ENODATA;
+            return result;
         }
 
         if ((kv=check_alloc_kvpair(dentry->context,
@@ -504,8 +506,8 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
         {
             return result;
         }
-        if ((result=dentry_strdup(dentry->context,
-                        &kv->key, &record->xattr.key)) != 0)
+        if ((result=dentry_strdup(dentry->context, &kv->key,
+                        &record->xattr.key)) != 0)
         {
             return result;
         }
@@ -513,8 +515,8 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
         new_create = true;
     }
 
-    if ((result=dentry_strdup(dentry->context,
-                    &value, &record->xattr.value)) != 0)
+    if ((result=dentry_strdup(dentry->context, &value,
+                    &record->xattr.value)) != 0)
     {
         if (new_create) {
             dentry_strfree(dentry->context, &kv->key);
@@ -561,28 +563,14 @@ int inode_index_remove_xattr(FDIRDataThreadContext *thread_ctx,
 int inode_index_get_xattr(FDIRServerDentry *dentry,
         const string_t *name, string_t *value)
 {
+    int result;
     key_value_pair_t *kv;
 
-    if ((kv=get_xattr(dentry, name)) != NULL) {
+    if ((result=get_xattr(dentry, name, &kv)) == 0) {
         *value = kv->value;
-        return 0;
-    } else {
-        return ENODATA;
     }
-}
 
-void inode_index_list_xattr(FDIRServerDentry *dentry,
-        FDIRXAttrIterator *it)
-{
-    SET_INODE_HASHTABLE_CTX(dentry->inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    if (dentry->kv_array == NULL) {
-        it->kv = it->end = NULL;
-    } else {
-        it->kv = dentry->kv_array->elts;
-        it->end = dentry->kv_array->elts + dentry->kv_array->count;
-    }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    return result;
 }
 
 FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
@@ -728,4 +716,36 @@ int inode_index_sys_lock_release(SysLockTask *sys_task)
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
     return result;
+}
+
+int inode_index_xattrs_copy(const key_value_array_t *kv_array,
+        FDIRServerDentry *dentry)
+{
+    int result;
+    const key_value_pair_t *src;
+    const key_value_pair_t *end;
+    key_value_pair_t *dest;
+
+    end = kv_array->kv_pairs + kv_array->count;
+    for (src=kv_array->kv_pairs; src<end; src++) {
+        if ((dest=check_alloc_kvpair(dentry->context,
+                        dentry, &result)) == NULL)
+        {
+            return result;
+        }
+        if ((result=dentry_strdup(dentry->context,
+                        &dest->key, &src->key)) != 0)
+        {
+            return result;
+        }
+
+        if ((result=dentry_strdup(dentry->context,
+                        &dest->value, &src->value)) != 0)
+        {
+            return result;
+        }
+        dentry->kv_array->count++;
+    }
+
+    return 0;
 }

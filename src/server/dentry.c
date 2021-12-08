@@ -155,7 +155,7 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
     dentry = (FDIRServerDentry *)ptr;
 
     if (delay_seconds > 0) {
-        server_add_to_delay_free_queue(&dentry->context->db_context->
+        server_add_to_delay_free_queue(&dentry->context->thread_ctx->
                 free_context, ptr, dentry_free, delay_seconds);
     } else {
         dentry_free(ptr);
@@ -164,7 +164,7 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
 void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 {
-    server_add_to_immediate_free_queue_ex(&dentry->context->db_context->
+    server_add_to_immediate_free_queue_ex(&dentry->context->thread_ctx->
             free_context, (void *)(long)dec_count, dentry, dentry_free_ex);
 }
 
@@ -269,14 +269,14 @@ struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
     }
 }
 
-int dentry_init_context(FDIRDataThreadContext *db_context)
+int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
     FDIRDentryContext *context;
     int element_size;
     int result;
 
-    context = &db_context->dentry_context;
-    context->db_context = db_context;
+    context = &thread_ctx->dentry_context;
+    context->thread_ctx = thread_ctx;
     if ((result=uniq_skiplist_init_ex(&context->factory,
                     max_level_count, dentry_compare, dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
@@ -519,7 +519,7 @@ static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
         record->affected.count++;  \
     } while (0)
 
-int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
+int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     FDIRServerDentry *current;
@@ -535,14 +535,14 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_me(db_context, &record->ns,
+    if ((result=dentry_find_me(thread_ctx, &record->ns,
                     &record->me, &ns_entry, true)) != ENOENT)
     {
         return (result == 0 ? EEXIST : result);
     }
 
     current = (FDIRServerDentry *)fast_mblock_alloc_object(
-            &db_context->dentry_context.dentry_allocator);
+            &thread_ctx->dentry_context.dentry_allocator);
     if (current == NULL) {
         return ENOMEM;
     }
@@ -553,7 +553,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
 
     is_dir = S_ISDIR(record->stat.mode);
     if (is_dir) {
-        current->children = uniq_skiplist_new(&db_context->dentry_context.
+        current->children = uniq_skiplist_new(&thread_ctx->dentry_context.
                 factory, DENTRY_SKIPLIST_INIT_LEVEL_COUNT);
         if (current->children == NULL) {
             return ENOMEM;
@@ -563,7 +563,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
 
     current->parent = record->me.parent;
-    if ((result=dentry_strdup(&db_context->dentry_context,
+    if ((result=dentry_strdup(&thread_ctx->dentry_context,
                     &current->name, &record->me.pname.name)) != 0)
     {
         return result;
@@ -573,7 +573,7 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         FC_SET_STRING_NULL(current->link);
         current->src_dentry = record->hdlink.src.dentry;
     } else if (S_ISLNK(record->stat.mode)) {
-        if ((result=dentry_strdup(&db_context->dentry_context,
+        if ((result=dentry_strdup(&thread_ctx->dentry_context,
                         &current->link, &record->link)) != 0)
         {
             return result;
@@ -643,16 +643,16 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
 
     if (is_dir) {
-        db_context->dentry_context.counters.dir++;
+        thread_ctx->dentry_context.counters.dir++;
         __sync_add_and_fetch(&ns_entry->current.counts.dir, 1);
     } else {
-        db_context->dentry_context.counters.file++;
+        thread_ctx->dentry_context.counters.file++;
         __sync_add_and_fetch(&ns_entry->current.counts.file, 1);
     }
     return 0;
 }
 
-static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
+static inline int remove_src_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
@@ -663,17 +663,17 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
 
     if (S_ISDIR(dentry->stat.mode)) {
         __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
-        db_context->dentry_context.counters.dir--;
+        thread_ctx->dentry_context.counters.dir--;
     } else {
         __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
-        db_context->dentry_context.counters.file--;
+        thread_ctx->dentry_context.counters.file--;
     }
 
     dentry_free_func(dentry, FDIR_DELAY_FREE_SECONDS);
     return 0;
 }
 
-static int do_remove_dentry(FDIRDataThreadContext *db_context,
+static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record, FDIRServerDentry *dentry,
         bool *free_dentry)
 {
@@ -688,7 +688,7 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                dentry->src_dentry->inode);
              */
 
-            if ((result=remove_src_dentry(db_context,
+            if ((result=remove_src_dentry(thread_ctx,
                             dentry->src_dentry)) != 0)
             {
                 return result;
@@ -726,10 +726,10 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
 
     if (*free_dentry) {
         if (S_ISDIR(dentry->stat.mode)) {
-            db_context->dentry_context.counters.dir--;
+            thread_ctx->dentry_context.counters.dir--;
             __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
         } else {
-            db_context->dentry_context.counters.file--;
+            thread_ctx->dentry_context.counters.file--;
             __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
         }
     }
@@ -737,14 +737,14 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
     return 0;
 }
 
-int dentry_remove(FDIRDataThreadContext *db_context,
+int dentry_remove(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     bool free_dentry;
     int result;
 
-    if ((result=dentry_find_me(db_context, &record->ns,
+    if ((result=dentry_find_me(thread_ctx, &record->ns,
                     &record->me, &ns_entry, false)) != 0)
     {
         return result;
@@ -757,7 +757,7 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     }
 
     record->inode = record->me.dentry->inode;
-    if ((result=do_remove_dentry(db_context, record,
+    if ((result=do_remove_dentry(thread_ctx, record,
                     record->me.dentry, &free_dentry)) != 0)
     {
         return result;
@@ -790,7 +790,7 @@ static bool dentry_is_ancestor(FDIRServerDentry *dentry, FDIRServerDentry *paren
     return false;
 }
 
-static int rename_check(FDIRDataThreadContext *db_context,
+static int rename_check(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
@@ -801,14 +801,14 @@ static int rename_check(FDIRDataThreadContext *db_context,
         return EINVAL;
     }
 
-    if ((result=find_child(db_context, record->rename.src.parent,
+    if ((result=find_child(thread_ctx, record->rename.src.parent,
                     &record->rename.src.pname.name,
                     &record->rename.src.dentry)) != 0)
     {
         return result;
     }
 
-    if ((result=find_child(db_context, record->rename.dest.parent,
+    if ((result=find_child(thread_ctx, record->rename.dest.parent,
                     &record->rename.dest.pname.name,
                     &record->rename.dest.dentry)) != 0)
     {
@@ -862,7 +862,7 @@ static inline void restore_dentry_name(FDIRServerDentry *dentry,
     server_delay_free_str(dentry->context, name_to_free);
 }
 
-static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
+static int set_and_store_dentry_name(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry, const string_t *new_name,
         const bool name_changed, StringHolderPtrPair *pair)
 {
@@ -894,7 +894,7 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
     return 0;
 }
 
-static int exchange_dentry(FDIRDataThreadContext *db_context,
+static int exchange_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record, const bool name_changed)
 {
     int result;
@@ -915,7 +915,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
 
     do {
         old_src_pair.ptr = NULL;
-        if ((result=set_and_store_dentry_name(db_context,
+        if ((result=set_and_store_dentry_name(thread_ctx,
                         record->rename.src.dentry, &record->
                         rename.dest.pname.name, name_changed,
                         &old_src_pair)) != 0)
@@ -929,7 +929,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
             break;
         }
 
-        if ((result=set_and_store_dentry_name(db_context,
+        if ((result=set_and_store_dentry_name(thread_ctx,
                         record->rename.dest.dentry, &record->
                         rename.src.pname.name, name_changed,
                         &old_dest_pair)) != 0)
@@ -974,7 +974,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
     return result;
 }
 
-static int move_dentry(FDIRDataThreadContext *db_context,
+static int move_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record, const bool name_changed)
 {
     int result;
@@ -986,7 +986,7 @@ static int move_dentry(FDIRDataThreadContext *db_context,
     }
 
     do {
-        if ((result=set_and_store_dentry_name(db_context,
+        if ((result=set_and_store_dentry_name(thread_ctx,
                         record->rename.src.dentry,
                         &record->rename.dest.pname.name,
                         name_changed, &old_src_pair)) != 0)
@@ -1008,7 +1008,7 @@ static int move_dentry(FDIRDataThreadContext *db_context,
         record->rename.overwritten = record->rename.dest.dentry;
         if (record->rename.dest.dentry != NULL) {
             bool free_dentry;
-            if ((result=do_remove_dentry(db_context, record, record->
+            if ((result=do_remove_dentry(thread_ctx, record, record->
                             rename.dest.dentry, &free_dentry)) == 0)
             {
                 result = uniq_skiplist_replace_ex(record->rename.dest.parent->
@@ -1042,13 +1042,13 @@ static int move_dentry(FDIRDataThreadContext *db_context,
     return result;
 }
 
-int dentry_rename(FDIRDataThreadContext *db_context,
+int dentry_rename(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
     bool name_changed;
 
-    if ((result=rename_check(db_context, record)) != 0) {
+    if ((result=rename_check(thread_ctx, record)) != 0) {
         return result;
     }
 
@@ -1090,10 +1090,10 @@ int dentry_rename(FDIRDataThreadContext *db_context,
             */
 
     if ((record->flags & RENAME_EXCHANGE)) {
-        return exchange_dentry(db_context, record, name_changed);
+        return exchange_dentry(thread_ctx, record, name_changed);
     } else {
         //dentry_children_print(record->rename.src.parent);
-        return move_dentry(db_context, record, name_changed);
+        return move_dentry(thread_ctx, record, name_changed);
     }
 }
 

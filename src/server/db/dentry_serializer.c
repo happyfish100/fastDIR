@@ -606,3 +606,45 @@ int dentry_serializer_unpack_children(FDIRDataThreadContext *thread_ctx,
     *array = &fv->value.id_name_array;
     return 0;
 }
+
+int dentry_serializer_unpack_xattr(FDIRDataThreadContext *thread_ctx,
+        const string_t *content, const int64_t inode,
+        const key_value_array_t **array)
+{
+    int result;
+    const SFSerializerFieldValue *fv;
+
+    if ((result=sf_serializer_unpack(&thread_ctx->
+                    db_fetch_ctx.it, content)) != 0)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", unpack xattr fail, error info: %s",
+                __LINE__, inode, thread_ctx->db_fetch_ctx.it.error_info);
+        return result;
+    }
+
+    if ((fv=sf_serializer_next(&thread_ctx->db_fetch_ctx.it)) == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", xattr field not exist",
+                __LINE__, inode);
+        return ENOENT;
+    }
+
+    if (fv->fid != DENTRY_FIELD_ID_XATTR) {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", the first fid: %d is NOT xattr, "
+                "expected fid: %d", __LINE__, inode, fv->fid,
+                DENTRY_FIELD_ID_XATTR);
+        return EINVAL;
+    }
+    if (fv->type != sf_serializer_value_type_map) {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", the field type: %d is invalid, "
+                "expected type: %d", __LINE__, inode, fv->type,
+                sf_serializer_value_type_map);
+        return EINVAL;
+    }
+
+    *array = &fv->value.kv_array;
+    return 0;
+}

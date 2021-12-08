@@ -54,6 +54,9 @@ extern "C" {
     int dentry_check_load(FDIRDataThreadContext *thread_ctx,
             FDIRServerDentry *dentry);
 
+    int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
+            FDIRServerDentry *dentry);
+
 #ifdef __cplusplus
 }
 #endif

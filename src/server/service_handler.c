@@ -1076,16 +1076,27 @@ static inline void service_getxattr_output(struct fast_task_info *task,
 static void service_do_listxattr(struct fast_task_info *task,
         FDIRServerDentry *dentry)
 {
-    FDIRXAttrIterator it;
     const key_value_pair_t *kv;
+    const key_value_pair_t *kv_end;
     char *p;
 
     p = SF_PROTO_RESP_BODY(task);
-    inode_index_list_xattr(dentry, &it);
-    while ((kv=xattr_iterator_next(&it)) != NULL) {
-        memcpy(p, kv->key.str, kv->key.len);
-        p += kv->key.len;
-        *p++ = '\0';
+    if (dentry->kv_array != NULL) {
+        char *buff_end;
+
+        buff_end = task->data + task->size;
+        kv_end = dentry->kv_array->elts + dentry->kv_array->count;
+        for (kv=dentry->kv_array->elts; kv<kv_end; kv++) {
+            if (buff_end - p <= kv->key.len) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "too many xattribues, xattr count: %d!",
+                        __LINE__, dentry->kv_array->count);
+                break;
+            }
+            memcpy(p, kv->key.str, kv->key.len);
+            p += kv->key.len;
+            *p++ = '\0';
+        }
     }
 
     RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
