@@ -23,6 +23,7 @@
 #include "server_global.h"
 #include "ns_manager.h"
 #include "dentry.h"
+#include "db/dentry_loader.h"
 #include "inode_index.h"
 
 typedef struct {
@@ -143,8 +144,8 @@ static FDIRServerDentry *find_dentry_for_update(FDIRServerDentry **bucket,
     return NULL;
 }
 
-static FDIRServerDentry *find_inode_entry(FDIRServerDentry **bucket,
-        const int64_t inode)
+static FDIRServerDentry *find_inode_entry(FDIRServerDentry
+        **bucket, const int64_t inode)
 {
     int64_t cmpr;
     FDIRServerDentry *dentry;
@@ -238,7 +239,7 @@ int inode_index_del_dentry(FDIRServerDentry *dentry)
     return result;
 }
 
-FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
+FDIRServerDentry *inode_index_find_dentry(const int64_t inode)
 {
     FDIRServerDentry *dentry;
 
@@ -250,79 +251,95 @@ FDIRServerDentry *inode_index_get_dentry(const int64_t inode)
     return dentry;
 }
 
-FDIRServerDentry *inode_index_get_dentry_by_pname(
-        const int64_t parent_inode, const string_t *name)
+int inode_index_get_dentry(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, FDIRServerDentry **dentry)
 {
-    FDIRServerDentry *parent_dentry;
-    FDIRServerDentry *dentry;
-
-    if ((parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
-        return NULL;
+    if ((*dentry=inode_index_find_dentry(inode)) != NULL) {
+        return 0;
     }
 
-    dentry_find_by_pname(parent_dentry, name, &dentry);
-    return dentry;
+    if (STORAGE_ENABLED) {
+        return dentry_load_inode(thread_ctx, NULL, inode, dentry);
+    } else {
+        return ENOENT;
+    }
 }
 
-int inode_index_check_set_dentry_size(FDIRBinlogRecord *record)
+int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
+        const int64_t parent_inode, const string_t *name,
+        FDIRServerDentry **dentry)
 {
-    FDIRServerDentry *dentry;
+    int result;
+    FDIRServerDentry *parent_dentry;
+
+    if ((result=inode_index_get_dentry(thread_ctx,
+                    parent_inode, &parent_dentry)) != 0)
+    {
+        return result;
+    }
+
+    return dentry_find_by_pname(parent_dentry, name, dentry);
+}
+
+int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
     int flags;
     bool force;
 
-    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
+    if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                    &record->me.dentry)) != 0)
+    {
+        return result;
+    }
+
     flags = record->options.flags;
     force = ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE) != 0);
     record->options.flags = 0;
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    dentry = find_inode_entry(bucket, record->inode);
-    if (dentry != NULL) {
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-            if (force || (dentry->stat.size < record->stat.size)) {
-                if (dentry->stat.size != record->stat.size) {
-                    dentry->stat.size = record->stat.size;
-                    record->options.size = 1;
-                }
-            }
-
-            flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
-        }
-
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
-            if (dentry->stat.mtime != g_current_time) {
-                dentry->stat.mtime = g_current_time;
-                record->stat.mtime = dentry->stat.mtime;
-                record->options.mtime = 1;
+    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
+        if (force || (record->me.dentry->stat.size < record->stat.size)) {
+            if (record->me.dentry->stat.size != record->stat.size) {
+                record->me.dentry->stat.size = record->stat.size;
+                record->options.size = 1;
             }
         }
 
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-            if (force || (dentry->stat.space_end < record->stat.size)) {
-                if (dentry->stat.space_end != record->stat.size) {
-                    dentry->stat.space_end = record->stat.size;
-                    record->stat.space_end = dentry->stat.space_end;
-                    record->options.space_end = 1;
-                }
-            }
-        }
-
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-            dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
-            record->options.inc_alloc = 1;
-        }
-
-        /*
-        logInfo("old size: %"PRId64", new size: %"PRId64", "
-                "old mtime: %d, new mtime: %d, force: %d, flags: %u, "
-                "modified_flags: %"PRId64, dentry->stat.size, record->stat.size,
-                dentry->stat.mtime, (int)g_current_time, force, flags,
-                record->options.flags);
-                */
+        flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME;
     }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    record->me.dentry = dentry;
-    return (dentry != NULL ? 0 : ENOENT);
+    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
+        if (record->me.dentry->stat.mtime != g_current_time) {
+            record->me.dentry->stat.mtime = g_current_time;
+            record->stat.mtime = record->me.dentry->stat.mtime;
+            record->options.mtime = 1;
+        }
+    }
+
+    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
+        if (force || (record->me.dentry->stat.space_end < record->stat.size)) {
+            if (record->me.dentry->stat.space_end != record->stat.size) {
+                record->me.dentry->stat.space_end = record->stat.size;
+                record->stat.space_end = record->me.dentry->stat.space_end;
+                record->options.space_end = 1;
+            }
+        }
+    }
+
+    if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
+        dentry_set_inc_alloc_bytes(record->me.dentry, record->stat.alloc);
+        record->options.inc_alloc = 1;
+    }
+
+    /*
+    logInfo("old size: %"PRId64", new size: %"PRId64", "
+            "old mtime: %d, new mtime: %d, force: %d, flags: %u, "
+            "modified_flags: %"PRId64, record->me.dentry->stat.size,
+            record->stat.size, record->me.dentry->stat.mtime,
+            (int)g_current_time, force, flags, record->options.flags);
+     */
+
+    return 0;
 }
 
 static void update_dentry(FDIRServerDentry *dentry,
@@ -357,20 +374,19 @@ static void update_dentry(FDIRServerDentry *dentry,
     }
 }
 
-FDIRServerDentry *inode_index_update_dentry(
-        const FDIRBinlogRecord *record)
+int inode_index_update_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
-    FDIRServerDentry *dentry;
+    int result;
 
-    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    dentry = find_inode_entry(bucket, record->inode);
-    if (dentry != NULL) {
-        update_dentry(dentry, record);
+    if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                    &record->me.dentry)) != 0)
+    {
+        return result;
     }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    return dentry;
+    update_dentry(record->me.dentry, record);
+    return 0;
 }
 
 static key_value_pair_t *get_xattr(FDIRServerDentry *dentry,
@@ -516,59 +532,43 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
     return 0;
 }
 
-int inode_index_set_xattr(const FDIRBinlogRecord *record)
+int inode_index_set_xattr(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
-    FDIRServerDentry *dentry;
     int result;
 
-    SET_INODE_HT_BUCKET_AND_CTX(record->inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    dentry = find_inode_entry(bucket, record->inode);
-    if (dentry != NULL) {
-        result = set_xattr(dentry, record);
-    } else {
-        result = ENOENT;
+    if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                    &record->me.dentry)) != 0)
+    {
+        return result;
     }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    return result;
+    return set_xattr(record->me.dentry, record);
 }
 
-int inode_index_remove_xattr(const int64_t inode, const string_t *name)
+int inode_index_remove_xattr(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, const string_t *name)
 {
     FDIRServerDentry *dentry;
     int result;
 
-    SET_INODE_HT_BUCKET_AND_CTX(inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    dentry = find_inode_entry(bucket, inode);
-    if (dentry != NULL) {
-        result = remove_xattr(dentry, name);
-    } else {
-        result = ENOENT;
+    if ((result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
+        return result;
     }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
-
-    return result;
+    return remove_xattr(dentry, name);
 }
 
 int inode_index_get_xattr(FDIRServerDentry *dentry,
         const string_t *name, string_t *value)
 {
-    int result;
     key_value_pair_t *kv;
 
-    SET_INODE_HASHTABLE_CTX(dentry->inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
     if ((kv=get_xattr(dentry, name)) != NULL) {
         *value = kv->value;
-        result = 0;
+        return 0;
     } else {
-        result = ENODATA;
+        return ENODATA;
     }
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
-
-    return result;
 }
 
 void inode_index_list_xattr(FDIRServerDentry *dentry,
@@ -585,51 +585,51 @@ void inode_index_list_xattr(FDIRServerDentry *dentry,
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
-FLockTask *inode_index_flock_apply(const int64_t inode,
-        const FlockParams *params, const bool block,
+FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, const FlockParams *params, const bool block,
         struct fast_task_info *task, int *result)
 {
     FDIRServerDentry *dentry;
     FLockTask *ftask;
 
-    SET_INODE_HT_BUCKET_AND_CTX(inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    do {
-        if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
-            *result = ENOENT;
-            ftask = NULL;
-            break;
-        }
+    if ((*result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
+        return NULL;
+    }
 
-        if (dentry->flock_entry == NULL) {
-            dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+    {
+        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        PTHREAD_MUTEX_LOCK(&ctx->lock);
+        do {
             if (dentry->flock_entry == NULL) {
+                dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+                if (dentry->flock_entry == NULL) {
+                    *result = ENOMEM;
+                    ftask = NULL;
+                    break;
+                }
+            }
+
+            if ((ftask=flock_alloc_ftask(&ctx->flock_ctx)) == NULL) {
                 *result = ENOMEM;
                 ftask = NULL;
                 break;
             }
-        }
 
-        if ((ftask=flock_alloc_ftask(&ctx->flock_ctx)) == NULL) {
-            *result = ENOMEM;
-            ftask = NULL;
-            break;
-        }
-
-        ftask->type = params->type;
-        ftask->owner = params->owner;
-        ftask->dentry = dentry;
-        ftask->task = task;
-        *result = flock_apply(&ctx->flock_ctx, params->offset,
-                params->length, ftask, block);
-        if (*result == 0 || *result == EINPROGRESS) {
-            dentry_hold(dentry);
-        } else {
-            flock_free_ftask(&ctx->flock_ctx, ftask);
-            ftask = NULL;
-        }
-    } while (0);
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+            ftask->type = params->type;
+            ftask->owner = params->owner;
+            ftask->dentry = dentry;
+            ftask->task = task;
+            *result = flock_apply(&ctx->flock_ctx, params->offset,
+                    params->length, ftask, block);
+            if (*result == 0 || *result == EINPROGRESS) {
+                dentry_hold(dentry);
+            } else {
+                flock_free_ftask(&ctx->flock_ctx, ftask);
+                ftask = NULL;
+            }
+        } while (0);
+        PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    }
 
     return ftask;
 }
@@ -638,22 +638,21 @@ int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
 {
     int result;
 
-    SET_INODE_HT_BUCKET_AND_CTX(inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    do {
-        if ((ftask->dentry=find_inode_entry(bucket, inode)) == NULL) {
-            result = ENOENT;
-            break;
-        }
+    if ((ftask->dentry=inode_index_find_dentry(inode)) == NULL) {
+        return ENOENT;
+    }
 
+    {
+        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        PTHREAD_MUTEX_LOCK(&ctx->lock);
         if (ftask->dentry->flock_entry == NULL) {
             result = ENOENT;
-            break;
+        } else {
+            result = flock_get_conflict_lock(&ctx->flock_ctx, ftask);
         }
+        PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    }
 
-        result = flock_get_conflict_lock(&ctx->flock_ctx, ftask);
-    } while (0);
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
     return result;
 }
 
@@ -669,46 +668,47 @@ void inode_index_flock_release(FLockTask *ftask)
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
-SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
+SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, const bool block,
         struct fast_task_info *task, int *result)
 {
     FDIRServerDentry *dentry;
     SysLockTask  *sys_task;
 
-    SET_INODE_HT_BUCKET_AND_CTX(inode);
-    PTHREAD_MUTEX_LOCK(&ctx->lock);
-    do {
-        if ((dentry=find_inode_entry(bucket, inode)) == NULL) {
-            *result = ENOENT;
-            sys_task = NULL;
-            break;
-        }
+    if ((*result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
+        return NULL;
+    }
 
-        if (dentry->flock_entry == NULL) {
-            dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+    {
+        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        PTHREAD_MUTEX_LOCK(&ctx->lock);
+        do {
             if (dentry->flock_entry == NULL) {
+                dentry->flock_entry = flock_alloc_entry(&ctx->flock_ctx);
+                if (dentry->flock_entry == NULL) {
+                    *result = ENOMEM;
+                    sys_task = NULL;
+                    break;
+                }
+            }
+
+            if ((sys_task=flock_alloc_sys_task(&ctx->flock_ctx)) == NULL) {
                 *result = ENOMEM;
-                sys_task = NULL;
                 break;
             }
-        }
 
-        if ((sys_task=flock_alloc_sys_task(&ctx->flock_ctx)) == NULL) {
-            *result = ENOMEM;
-            break;
-        }
-
-        sys_task->dentry = dentry;
-        sys_task->task = task;
-        *result = sys_lock_apply(dentry->flock_entry, sys_task, block);
-        if (*result == 0 || *result == EINPROGRESS) {
-            dentry_hold(dentry);
-        } else {
-            flock_free_sys_task(&ctx->flock_ctx, sys_task);
-            sys_task = NULL;
-        }
-    } while (0);
-    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+            sys_task->dentry = dentry;
+            sys_task->task = task;
+            *result = sys_lock_apply(dentry->flock_entry, sys_task, block);
+            if (*result == 0 || *result == EINPROGRESS) {
+                dentry_hold(dentry);
+            } else {
+                flock_free_sys_task(&ctx->flock_ctx, sys_task);
+                sys_task = NULL;
+            }
+        } while (0);
+        PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    }
 
     return sys_task;
 }

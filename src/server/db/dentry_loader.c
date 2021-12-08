@@ -330,7 +330,7 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
             break;
         }
 
-        if (pair->parent.inode == 0) {
+        if (pair->parent.inode == 0) {  //orphan inode
             if (parray->count > 1) {
                 logError("file: "__FILE__", line: %d, "
                         "inode: %"PRId64", invalid parent inode: 0",
@@ -345,7 +345,7 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
             break;
         }
 
-        pair->parent.dentry = inode_index_get_dentry(pair->parent.inode);
+        pair->parent.dentry = inode_index_find_dentry(pair->parent.inode);
         if (pair->parent.dentry != NULL) {
             break;
         }

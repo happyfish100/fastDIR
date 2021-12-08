@@ -403,16 +403,16 @@ void data_thread_terminate()
     }
 }
 
-static inline int check_parent(FDIRBinlogRecord *record)
+static inline int check_parent(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     if (record->me.pname.parent_inode == 0) {
         record->me.parent = NULL;
         return 0;
     }
 
-    record->me.parent = inode_index_get_dentry(record->
-            me.pname.parent_inode);
-    return record->me.parent != NULL ? 0 : ENOENT;
+    return inode_index_get_dentry(thread_ctx, record->
+            me.pname.parent_inode, &record->me.parent);
 }
 
 static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
@@ -422,7 +422,7 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
     bool is_create;
 
     if (record->dentry_type != fdir_dentry_type_fullname) {
-        return check_parent(record);
+        return check_parent(thread_ctx, record);
     }
 
     /*
@@ -479,7 +479,8 @@ static inline int set_pname_by_fullname_ex(FDIRRecordDEntry *entry,
 
 #define set_pname_by_fullname(entry) set_pname_by_fullname_ex(entry, false)
 
-static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
+static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     int result;
 
@@ -491,10 +492,10 @@ static inline int set_hdlink_src_dentry(FDIRBinlogRecord *record)
         }
         record->hdlink.src.inode = record->hdlink.src.dentry->inode;
     } else {
-        if ((record->hdlink.src.dentry=inode_index_get_dentry(
-                        record->hdlink.src.inode)) == NULL)
+        if ((result=inode_index_get_dentry(thread_ctx, record->hdlink.
+                        src.inode, &record->hdlink.src.dentry)) != 0)
         {
-            return ENOENT;
+            return result;
         }
     }
 
@@ -528,16 +529,16 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
             return result;
         }
     } else {
-        if ((record->rename.src.parent=inode_index_get_dentry(record->
-                        rename.src.pname.parent_inode)) == NULL)
+        if ((result=inode_index_get_dentry(thread_ctx, record->rename.src.
+                        pname.parent_inode, &record->rename.src.parent)) != 0)
         {
-            return ENOENT;
+            return result;
         }
 
-        if ((record->rename.dest.parent=inode_index_get_dentry(record->
-                        rename.dest.pname.parent_inode)) == NULL)
+        if ((result=inode_index_get_dentry(thread_ctx, record->rename.dest.
+                        pname.parent_inode, &record->rename.dest.parent)) != 0)
         {
-            return ENOENT;
+            return result;
         }
     }
 
@@ -583,7 +584,9 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
     record->parray->counts.success = record->parray->counts.updated = 0;
     recend = record->parray->records + record->parray->counts.total;
     for (pp=record->parray->records; pp<recend; pp++) {
-        if ((result=inode_index_check_set_dentry_size(*pp)) == 0) {
+        if ((result=inode_index_check_set_dentry_size(
+                        thread_ctx, *pp)) == 0)
+        {
             record->parray->counts.success++;
             if ((*pp)->options.flags != 0) {
                 record->parray->counts.updated++;
@@ -858,7 +861,9 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             }
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
                 if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
-                    if ((result=set_hdlink_src_dentry(record)) != 0) {
+                    if ((result=set_hdlink_src_dentry(thread_ctx,
+                                    record)) != 0)
+                    {
                         ignore_errno = 0;
                         break;
                     }
@@ -885,20 +890,19 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             result = deal_record_rename_op(thread_ctx, record);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            record->me.dentry = inode_index_update_dentry(record);
-            result = (record->me.dentry != NULL) ? 0 : ENOENT;
+            result = inode_index_update_dentry(thread_ctx, record);
             ignore_errno = 0;
             break;
         case BINLOG_OP_SET_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
-                result = inode_index_set_xattr(record);
+                result = inode_index_set_xattr(thread_ctx, record);
             }
             ignore_errno = 0;
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
-                result = inode_index_remove_xattr(record->inode,
-                        &record->xattr.key);
+                result = inode_index_remove_xattr(thread_ctx,
+                        record->inode, &record->xattr.key);
             }
             ignore_errno = ENODATA;
             break;
@@ -912,7 +916,9 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             record->operation = SERVICE_OP_SET_DSIZE_INT;
         case SERVICE_OP_SET_DSIZE_INT:
             ignore_errno = 0;
-            if ((result=inode_index_check_set_dentry_size(record)) == 0) {
+            if ((result=inode_index_check_set_dentry_size(
+                            thread_ctx, record)) == 0)
+            {
                 if (record->options.flags != 0) {
                     record->data_version = __sync_add_and_fetch(
                             &DATA_CURRENT_VERSION, 1);
@@ -1003,10 +1009,10 @@ static int deal_list_dentry(FDIRDataThreadContext *thread_ctx,
 
     task = (struct fast_task_info *)record->notify.args;
     if (record->dentry_type == fdir_dentry_type_inode) {
-        if ((record->me.dentry=inode_index_get_dentry(
-                        record->inode)) == NULL)
+        if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                        &record->me.dentry)) != 0)
         {
-            return ENOENT;
+            return result;
         }
 
         result = dentry_list(record->me.dentry, &DENTRY_LIST_CACHE.array);
@@ -1025,9 +1031,8 @@ static int deal_flock_apply(FDIRDataThreadContext *thread_ctx,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    record->ftask = inode_index_flock_apply(record->inode,
-            &record->flock_params, record->options.blocked,
-            task, &result);
+    record->ftask = inode_index_flock_apply(thread_ctx, record->inode,
+            &record->flock_params, record->options.blocked, task, &result);
     return result;
 }
 
@@ -1038,7 +1043,7 @@ static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    record->stask = inode_index_sys_lock_apply(record->inode,
+    record->stask = inode_index_sys_lock_apply(thread_ctx, record->inode,
             record->options.blocked, task, &result);
     return result;
 }
@@ -1055,12 +1060,12 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         case SERVICE_OP_GET_XATTR_INT:
         case SERVICE_OP_LIST_XATTR_INT:
             if (record->dentry_type == fdir_dentry_type_inode) {
-                record->me.dentry = inode_index_get_dentry(record->inode);
-                result = (record->me.dentry != NULL ? 0 : ENOENT);
+                result = inode_index_get_dentry(thread_ctx,
+                        record->inode, &record->me.dentry);
             } else if (record->dentry_type == fdir_dentry_type_pname) {
-                record->me.dentry=inode_index_get_dentry_by_pname(record->
-                        me.pname.parent_inode, &record->me.pname.name);
-                result = (record->me.dentry != NULL ? 0 : ENOENT);
+                result = inode_index_get_dentry_by_pname(thread_ctx,
+                        record->me.pname.parent_inode, &record->
+                        me.pname.name, &record->me.dentry);
             } else {
                 result = dentry_find(&record->me.fullname, &record->me.dentry);
             }
