@@ -72,6 +72,8 @@ extern "C" {
 
     int inode_index_sys_lock_release(SysLockTask *sys_task);
 
+    void inode_index_free_flock_entry(FDIRServerDentry *dentry);
+
     int inode_index_xattrs_copy(const key_value_array_t *kv_array,
             FDIRServerDentry *dentry);
 

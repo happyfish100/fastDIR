@@ -718,6 +718,15 @@ int inode_index_sys_lock_release(SysLockTask *sys_task)
     return result;
 }
 
+void inode_index_free_flock_entry(FDIRServerDentry *dentry)
+{
+    SET_INODE_HASHTABLE_CTX(dentry->inode);
+
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    flock_free_entry(&ctx->flock_ctx, dentry->flock_entry);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+}
+
 int inode_index_xattrs_copy(const key_value_array_t *kv_array,
         FDIRServerDentry *dentry)
 {

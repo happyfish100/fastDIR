@@ -126,16 +126,32 @@ static void dentry_do_free(void *ptr, const int dec_count)
 
     if (dentry->children != NULL) {
         uniq_skiplist_free(dentry->children);
+        dentry->children = NULL;
     }
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
-    if ((!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode) &&
-            S_ISLNK(dentry->stat.mode)) && dentry->link.str != NULL)
-    {
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        dentry->src_dentry = NULL;
+    } else if (S_ISLNK(dentry->stat.mode) && dentry->link.str != NULL) {
         fast_allocator_free(&dentry->context->
                 name_acontext, dentry->link.str);
+        FC_SET_STRING_NULL(dentry->link);
     }
     dentry_free_xattrs(dentry);
+
+    if (dentry->flock_entry != NULL) {
+        inode_index_free_flock_entry(dentry);
+        dentry->flock_entry = NULL;
+    }
+
+    if (STORAGE_ENABLED) {
+        if (dentry->db_args->children != NULL) {
+            id_name_array_allocator_free(&ID_NAME_ARRAY_ALLOCATOR_CTX,
+                    dentry->db_args->children);
+            dentry->db_args->children = NULL;
+        }
+    }
+
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
@@ -547,9 +563,6 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         return ENOMEM;
     }
     __sync_add_and_fetch(&current->reffer_count, 1);
-    if (STORAGE_ENABLED) {
-        current->db_args->children = NULL;
-    }
 
     is_dir = S_ISDIR(record->stat.mode);
     if (is_dir) {
@@ -570,7 +583,6 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     }
 
     if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
-        FC_SET_STRING_NULL(current->link);
         current->src_dentry = record->hdlink.src.dentry;
     } else if (S_ISLNK(record->stat.mode)) {
         if ((result=dentry_strdup(&thread_ctx->dentry_context,
@@ -578,8 +590,6 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         {
             return result;
         }
-    } else {
-        FC_SET_STRING_NULL(current->link);
     }
 
     /*
