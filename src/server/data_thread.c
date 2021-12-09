@@ -429,8 +429,8 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
-            fullname.ns.len, fullname.ns.str,
-            fullname.path.len, fullname.path.str);
+            record->me.fullname.ns.len, record->me.fullname.ns.str,
+            record->me.fullname.path.len, record->me.fullname.path.str);
             */
 
     is_create = (record->operation == BINLOG_OP_CREATE_DENTRY_INT);

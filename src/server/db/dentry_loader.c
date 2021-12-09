@@ -58,6 +58,42 @@ int dentry_loader_init()
     return 0;
 }
 
+static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
+        FDIRServerDentry *parent, const int64_t inode,
+        const string_t *name, FDIRServerDentry **dentry)
+{
+    int result;
+
+    *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(&ns_entry->
+            thread_ctx->dentry_context.dentry_allocator);
+    if (*dentry == NULL) {
+        return ENOMEM;
+    }
+
+    memset(&(*dentry)->stat, 0, sizeof((*dentry)->stat));
+    (*dentry)->loaded_flags = 0;
+    (*dentry)->inode = inode;
+    if (name != NULL) {
+        if ((result=dentry_strdup(&ns_entry->thread_ctx->dentry_context,
+                        &(*dentry)->name, name)) != 0)
+        {
+            return result;
+        }
+    } else {
+        FC_SET_STRING_NULL((*dentry)->name);
+    }
+
+    (*dentry)->parent = parent;
+    if (parent != NULL) {
+        if ((result=uniq_skiplist_insert(parent->children, *dentry)) != 0) {
+            return result;
+        }
+    }
+    (*dentry)->ns_entry = ns_entry;
+    __sync_add_and_fetch(&(*dentry)->reffer_count, 1);
+    return 0;
+}
+
 static int dentry_load_children_ex(FDIRServerDentry *parent,
         DentryPair *current_pair)
 {
@@ -93,6 +129,9 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
                     &thread_ctx->db_fetch_ctx.read_ctx)) != 0)
     {
         if (result != ENODATA) {
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", load children fail, result: %d",
+                    __LINE__, parent->inode, result);
             return result;
         }
         array_holder.elts = NULL;
@@ -117,33 +156,18 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
 
     end = id_name_array->elts + id_name_array->count;
     for (pair=id_name_array->elts; pair<end; pair++) {
-        child = (FDIRServerDentry *)fast_mblock_alloc_object(
-                &thread_ctx->dentry_context.dentry_allocator);
-        if (child == NULL) {
-            return ENOMEM;
-        }
-
-        memset(child, 0, sizeof(FDIRServerDentry));
-        child->inode = pair->id;
-        child->parent = parent;
-        if ((result=dentry_strdup(&thread_ctx->dentry_context,
-                        &child->name, &pair->name)) != 0)
+        if ((result=alloc_init_dentry(parent->ns_entry, parent,
+                        pair->id, &pair->name, &child)) != 0)
         {
             return result;
         }
-
-        if ((result=uniq_skiplist_insert(parent->children, child)) != 0) {
-            return result;
-        }
-        parent->stat.nlink++;
-        child->ns_entry = parent->ns_entry;
-        __sync_add_and_fetch(&child->reffer_count, 1);
 
         if (current_pair->inode == child->inode) {
             current_pair->dentry = child;
         }
     }
 
+    parent->stat.nlink += id_name_array->count;
     parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;
     if (current_pair->inode == 0) {
         return 0;
@@ -171,6 +195,9 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
                     FDIR_PIECE_FIELD_INDEX_BASIC, &thread_ctx->
                     db_fetch_ctx.read_ctx)) != 0)
     {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", load basic fail, result: %d",
+                __LINE__, dentry->inode, result);
         return result;
     }
 
@@ -216,6 +243,9 @@ int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
         if (result == ENODATA) {
             result = 0;
         } else {
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", load xattr fail, result: %d",
+                    __LINE__, dentry->inode, result);
             return result;
         }
     } else {
@@ -239,41 +269,6 @@ int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
     dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_XATTR;
 
     return result;
-}
-
-static int dentry_load_one(FDIRNamespaceEntry *ns_entry,
-        FDIRServerDentry *parent, const int64_t inode,
-        const string_t *name, FDIRServerDentry **dentry)
-{
-    int result;
-    DentryPair current_pair;
-
-    if (parent != NULL) {
-        current_pair.inode = inode;
-        current_pair.dentry = NULL;
-        if ((result=dentry_load_children_ex(parent, &current_pair)) != 0) {
-            return result;
-        }
-        *dentry = current_pair.dentry;
-    } else {
-        *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(
-                &ns_entry->thread_ctx->dentry_context.dentry_allocator);
-        if (*dentry == NULL) {
-            return ENOMEM;
-        }
-
-        memset(*dentry, 0, sizeof(FDIRServerDentry) +
-                sizeof(FDIRServerDentryDBArgs));
-        (*dentry)->inode = inode;
-        (*dentry)->parent = parent;
-        if (name != NULL) {
-            (*dentry)->name = *name;
-        }
-        (*dentry)->ns_entry = ns_entry;
-        __sync_add_and_fetch(&(*dentry)->reffer_count, 1);
-    }
-
-    return dentry_load_basic(ns_entry->thread_ctx, *dentry);
 }
 
 int dentry_check_load(FDIRDataThreadContext *thread_ctx,
@@ -303,16 +298,45 @@ int dentry_load_root(FDIRNamespaceEntry *ns_entry,
 {
     int result;
     FDIRServerDentry *parent = NULL;
-    string_t empty;
     string_t name;
 
-    FC_SET_STRING_EX(empty, "", 0);
-    if ((result=dentry_strdup(&ns_entry->thread_ctx->
-                    dentry_context, &name, &empty)) != 0)
+    FC_SET_STRING_EX(name, "", 0);
+    if ((result=alloc_init_dentry(ns_entry, parent,
+                    inode, &name, dentry)) != 0)
     {
         return result;
     }
-    return dentry_load_one(ns_entry, parent, inode, &name, dentry);
+
+    return dentry_load_basic(ns_entry->thread_ctx, *dentry);
+}
+
+static inline int dentry_load_child(FDIRServerDentry *parent,
+        DentryPair *child_pair)
+{
+    int result;
+
+    if ((result=dentry_load_children_ex(parent, child_pair)) != 0) {
+        return result;
+    }
+    return dentry_load_basic(parent->ns_entry->
+            thread_ctx, child_pair->dentry);
+}
+
+static inline int dentry_load_one(FDIRNamespaceEntry *ns_entry,
+        FDIRServerDentry *parent, DentryPair *child_pair)
+{
+    int result;
+
+    if (parent == NULL) {
+        if ((result=alloc_init_dentry(ns_entry, parent, child_pair->inode,
+                        NULL, &child_pair->dentry)) != 0)
+        {
+            return result;
+        }
+        return dentry_load_basic(ns_entry->thread_ctx, child_pair->dentry);
+    } else {
+        return dentry_load_child(parent, child_pair);
+    }
 }
 
 static int dentry_load_all(DentryParentChildArray *parray)
@@ -322,12 +346,21 @@ static int dentry_load_all(DentryParentChildArray *parray)
     DentryParentChildPair *last;
 
     last = parray->pairs + parray->count - 1;
-    for (pair=last; pair>=parray->pairs; pair--) {
-        if ((result=dentry_load_one(pair->parent.dentry->ns_entry,
-                        pair->parent.dentry, pair->current.inode,
-                        NULL, &pair->current.dentry)) != 0)
+    for (pair = last; pair >= parray->pairs; pair--) {
+        if ((result=dentry_load_child(pair->parent.dentry,
+                        &pair->current)) != 0)
         {
             return result;
+        }
+
+        if (pair > parray->pairs) {
+            if ((pair - 1)->parent.inode != pair->current.inode) {
+                logError("file: "__FILE__", line: %d, "
+                        "shit! inode: %"PRId64" != %"PRId64,
+                        __LINE__, (pair - 1)->parent.inode,
+                        pair->current.inode);
+            }
+            (pair - 1)->parent.dentry = pair->current.dentry;
         }
     }
 
@@ -339,6 +372,7 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry **dentry)
 {
     int result;
+    int64_t parent_inode;
     string_t content;
     FDIRDBFetchContext *db_fetch_ctx;
     DentryParentChildArray *parray;
@@ -361,6 +395,9 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
                         FDIR_PIECE_FIELD_INDEX_BASIC,
                         &db_fetch_ctx->read_ctx)) != 0)
         {
+            logError("file: "__FILE__", line: %d, "
+                    "inode: %"PRId64", load basic fail, result: %d",
+                    __LINE__, pair->current.inode, result);
             break;
         }
 
@@ -368,12 +405,13 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
                     read_ctx.op_ctx), DA_OP_CTX_BUFFER_LEN(
                         db_fetch_ctx->read_ctx.op_ctx));
         if ((result=dentry_serializer_extract_parent(db_fetch_ctx, &content,
-                        pair->current.inode, &pair->parent.inode)) != 0)
+                        pair->current.inode, &parent_inode)) != 0)
         {
             break;
         }
 
-        if (pair->parent.inode == 0) {  //orphan inode
+        pair->parent.inode = parent_inode;
+        if (parent_inode == 0) {  //orphan inode
             if (parray->count > 1) {
                 logError("file: "__FILE__", line: %d, "
                         "inode: %"PRId64", invalid parent inode: 0",
@@ -388,8 +426,11 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
             break;
         }
 
-        pair->parent.dentry = inode_index_find_dentry(pair->parent.inode);
+        pair->parent.dentry = inode_index_find_dentry(parent_inode);
         if (pair->parent.dentry != NULL) {
+            if (ns_entry == NULL) {
+                ns_entry = pair->parent.dentry->ns_entry;
+            }
             break;
         }
 
@@ -397,24 +438,24 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
         if (parray->count > parray->alloc) {
             logError("file: "__FILE__", line: %d, "
                     "inode: %"PRId64", path's level is too large, "
-                    "exceeds %d", __LINE__, parray->pairs->current.
-                    inode, parray->alloc);
+                    "exceeds %d", __LINE__, inode, parray->alloc);
             result = EOVERFLOW;
             break;
         }
 
-        pair->current.inode = pair->parent.inode;
+        pair->current.inode = parent_inode;
         pair->current.dentry = NULL;
     } while (1);
 
     if (result == 0) {
         if (parray->count == 1) {
             result = dentry_load_one(ns_entry, pair->parent.dentry,
-                    inode, NULL, dentry);
-        } else if ((result=dentry_load_all(parray)) == 0) {
-            *dentry = parray->pairs->current.dentry;
+                    &parray->pairs->current);
+        } else {
+            result = dentry_load_all(parray);
         }
     }
+    *dentry = parray->pairs->current.dentry;
 
     fast_mblock_free_object(&PAIR_ARRAY_ALLOCATOR, parray);
     return result;
