@@ -84,16 +84,19 @@ typedef struct fdir_data_thread_context {
     int index;
     struct {
         volatile int waiting_records;
-        struct {
-            volatile int64_t dthread; //data thread
-            volatile int64_t sthread; //service thread
-        } last_versions;
+        volatile int64_t last_version;
     } update_notify; //for data persistency
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerFreeContext free_context;
 
-    FDIRDBFetchContext db_fetch_ctx;  //for storage engine
+    /* following fields for storage engine */
+    FDIRDBFetchContext db_fetch_ctx;
+    struct {
+        struct fast_mblock_man allocator;
+        struct fast_mblock_chain chain;        //for batch free event
+        struct fdir_data_thread_context *next; //for batch free event
+    } event;  //for change notify when data persistency
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {
@@ -105,8 +108,12 @@ typedef struct fdir_data_thread_variables {
     FDIRDataThreadArray thread_array;
     volatile int running_count;
     int error_mode;
-    volatile int64_t current_event_id;
-    struct fast_mblock_man event_allocator;  //for change notify when data persistency
+
+    struct {
+        volatile int64_t current_id;
+        int alloc_elements_once;
+        int alloc_elements_limit;
+    } event;  //for storage engine
 } FDIRDataThreadVariables;
 
 #define dentry_strdup(context, dest, src) \
@@ -115,10 +122,10 @@ typedef struct fdir_data_thread_variables {
 #define dentry_strfree(context, s) \
     fast_allocator_free(&(context)->name_acontext, (s)->str)
 
-#define DATA_THREAD_LAST_VERSION     update_notify.last_versions.dthread
-#define SERVICE_THREAD_LAST_VERSION  update_notify.last_versions.sthread
+#define DATA_THREAD_LAST_VERSION  update_notify.last_version
 
-#define NOTIFY_EVENT_ALLOCATOR  g_data_thread_vars.event_allocator
+#define EVENT_ALLOC_ELEMENTS_ONCE  g_data_thread_vars.event.alloc_elements_once
+#define EVENT_ALLOC_ELEMENTS_LIMIT g_data_thread_vars.event.alloc_elements_limit
 
 #ifdef __cplusplus
 extern "C" {
@@ -181,7 +188,7 @@ extern "C" {
 
         context = g_data_thread_vars.thread_array.contexts +
             record->hash_code % g_data_thread_vars.thread_array.count;
-        if (STORAGE_ENABLED) {
+        if (STORAGE_ENABLED && record->is_update) {
             __sync_add_and_fetch(&context->update_notify.waiting_records, 1);
         }
         fc_queue_push(&context->queue, record);
@@ -193,40 +200,21 @@ extern "C" {
         FDIRDataThreadContext *end;
         int64_t min_version;
         int64_t max_version;
-        int64_t service_version;
-        int64_t last_version;
 
         min_version = INT64_MAX;
         max_version = 0;
         end = g_data_thread_vars.thread_array.contexts +
             g_data_thread_vars.thread_array.count;
         for (ctx=g_data_thread_vars.thread_array.contexts; ctx<end; ctx++) {
-            service_version = FC_ATOMIC_GET(ctx->SERVICE_THREAD_LAST_VERSION);
             if (__sync_add_and_fetch(&ctx->update_notify.
                         waiting_records, 0) > 0)
             {
-                if (CLUSTER_MASTER_PTR == CLUSTER_MYSELF_PTR) {
-                    last_version = FC_MIN(service_version,
-                            ctx->DATA_THREAD_LAST_VERSION);
-                    if (min_version > last_version) {
-                        min_version = last_version;
-                    }
-                } else {
-                    if (min_version > ctx->DATA_THREAD_LAST_VERSION) {
-                        min_version = ctx->DATA_THREAD_LAST_VERSION;
-                    }
+                if (min_version > ctx->DATA_THREAD_LAST_VERSION) {
+                    min_version = ctx->DATA_THREAD_LAST_VERSION;
                 }
             } else {
-                if (CLUSTER_MASTER_PTR == CLUSTER_MYSELF_PTR) {
-                    last_version = FC_MAX(service_version,
-                            ctx->DATA_THREAD_LAST_VERSION);
-                    if (max_version < last_version) {
-                        max_version = last_version;
-                    }
-                } else {
-                    if (max_version < ctx->DATA_THREAD_LAST_VERSION) {
-                        max_version = ctx->DATA_THREAD_LAST_VERSION;
-                    }
+                if (max_version < ctx->DATA_THREAD_LAST_VERSION) {
+                    max_version = ctx->DATA_THREAD_LAST_VERSION;
                 }
             }
         }

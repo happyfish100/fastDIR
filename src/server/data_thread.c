@@ -243,6 +243,12 @@ static void deal_immediate_free_queue(FDIRDataThreadContext *thread_ctx)
             immediate.waiting_count, count);
 }
 
+static int event_alloc_init_func(void *element, void *args)
+{
+    ((FDIRChangeNotifyEvent *)element)->thread_ctx = args;
+    return 0;
+}
+
 static int init_thread_ctx(FDIRDataThreadContext *context)
 {
     int result;
@@ -270,6 +276,16 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
     }
 
     if (STORAGE_ENABLED) {
+        if ((result=fast_mblock_init_ex1(&context->event.allocator,
+                        "chg-event", sizeof(FDIRChangeNotifyEvent),
+                        EVENT_ALLOC_ELEMENTS_ONCE, EVENT_ALLOC_ELEMENTS_LIMIT,
+                        event_alloc_init_func, context, true)) != 0)
+        {
+            return result;
+        }
+        fast_mblock_set_need_wait(&context->event.allocator,
+                true, (bool *)&SF_G_CONTINUE_FLAG);
+
         if ((result=init_db_fetch_context(&context->db_fetch_ctx)) != 0) {
             return result;
         }
@@ -308,39 +324,29 @@ static int init_data_thread_array()
 
 int data_thread_init()
 {
-    int alloc_elements_once;
-    int64_t alloc_elements_limit;
     int result;
     int count;
+    int limit;
 
     if (STORAGE_ENABLED) {
         if (BATCH_STORE_ON_MODIFIES < 1000) {
-            alloc_elements_once = 1 * 1024;
-            alloc_elements_limit = 8 * 1024;
+            EVENT_ALLOC_ELEMENTS_ONCE = 1 * 1024;
+            limit = 8 * 1024;
         } else if (BATCH_STORE_ON_MODIFIES < 10 * 1000) {
-            alloc_elements_once = 2 * 1024;
-            alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 8;
+            EVENT_ALLOC_ELEMENTS_ONCE = 2 * 1024;
+            limit = BATCH_STORE_ON_MODIFIES * 4;
         } else if (BATCH_STORE_ON_MODIFIES < 100 * 1000) {
-            alloc_elements_once = 4 * 1024;
-            alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 4;
+            EVENT_ALLOC_ELEMENTS_ONCE = 4 * 1024;
+            limit = BATCH_STORE_ON_MODIFIES * 2;
         } else {
-            alloc_elements_once = 8 * 1024;
-            if (BATCH_STORE_ON_MODIFIES < 1000 * 1000) {
-                alloc_elements_limit = BATCH_STORE_ON_MODIFIES * 2;
-            } else {
-                alloc_elements_limit = BATCH_STORE_ON_MODIFIES;
-            }
+            EVENT_ALLOC_ELEMENTS_ONCE = 8 * 1024;
+            limit = BATCH_STORE_ON_MODIFIES;
         }
 
-        if ((result=fast_mblock_init_ex1(&NOTIFY_EVENT_ALLOCATOR,
-                        "chg-event", sizeof(FDIRChangeNotifyEvent),
-                        alloc_elements_once, alloc_elements_limit,
-                        NULL, NULL, true)) != 0)
-        {
-            return result;
+        EVENT_ALLOC_ELEMENTS_LIMIT = EVENT_ALLOC_ELEMENTS_ONCE;
+        while (EVENT_ALLOC_ELEMENTS_LIMIT < limit) {
+            EVENT_ALLOC_ELEMENTS_LIMIT *= 2;
         }
-        fast_mblock_set_need_wait(&NOTIFY_EVENT_ALLOCATOR,
-                true, (bool *)&SF_G_CONTINUE_FLAG);
     }
 
     if ((result=init_data_thread_array()) != 0) {
@@ -560,7 +566,8 @@ static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
     int result;
 
     if (record->dentry_type == fdir_dentry_type_inode) {
-        return 0;
+        return inode_index_get_dentry(thread_ctx,
+                record->inode, &record->me.dentry);
     }
 
     if ((result=dentry_find(&record->me.fullname, &record->me.dentry)) != 0) {
@@ -754,7 +761,7 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
     end = event->marray.messages + event->marray.count;
     for (msg=event->marray.messages; msg<end; msg++) {
         msg->id = __sync_add_and_fetch(&g_data_thread_vars.
-                current_event_id, 1);
+                event.current_id, 1);
         if (msg->op_type == da_binlog_op_type_remove ||
                 msg->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN)
         {
@@ -771,14 +778,15 @@ static inline int pack_messages(FDIRChangeNotifyEvent *event)
     return 0;
 }
 
-static int push_to_db_update_queue(FDIRBinlogRecord *record)
+static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     int result;
     FDIRChangeNotifyEvent *event;
     FDIRChangeNotifyMessage *msg;
 
     event = (FDIRChangeNotifyEvent *)fast_mblock_alloc_object(
-            &NOTIFY_EVENT_ALLOCATOR);
+            &thread_ctx->event.allocator);
     if (event == NULL) {
         return ENOMEM;
     }
@@ -826,7 +834,8 @@ static int push_to_db_update_queue(FDIRBinlogRecord *record)
     return 0;
 }
 
-static int push_batch_set_dsize_to_db_update_queue(FDIRBinlogRecord *record)
+static int push_batch_set_dsize_to_db_update_queue(FDIRDataThreadContext
+        *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRBinlogRecord **pp;
     FDIRBinlogRecord **recend;
@@ -835,7 +844,7 @@ static int push_batch_set_dsize_to_db_update_queue(FDIRBinlogRecord *record)
     recend = record->parray->records + record->parray->counts.total;
     for (pp=record->parray->records; pp<recend; pp++) {
         if ((*pp)->data_version > 0) {
-            if ((result=push_to_db_update_queue(*pp)) != 0) {
+            if ((result=push_to_db_update_queue(thread_ctx, *pp)) != 0) {
                 return result;
             }
         }
@@ -896,14 +905,14 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             break;
         case BINLOG_OP_SET_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
-                result = inode_index_set_xattr(thread_ctx, record);
+                result = inode_index_set_xattr(record->me.dentry, record);
             }
             ignore_errno = 0;
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
-                result = inode_index_remove_xattr(thread_ctx,
-                        record->inode, &record->xattr.key);
+                result = inode_index_remove_xattr(record->me.dentry,
+                        &record->xattr.key);
             }
             ignore_errno = ENODATA;
             break;
@@ -975,9 +984,10 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         }
 
         if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT) {
-            result = push_batch_set_dsize_to_db_update_queue(record);
+            result = push_batch_set_dsize_to_db_update_queue(
+                    thread_ctx, record);
         } else {
-            result = push_to_db_update_queue(record);
+            result = push_to_db_update_queue(thread_ctx, record);
         }
         if (result != 0) {
             logCrit("file: "__FILE__", line: %d, "
@@ -1107,7 +1117,7 @@ static void *data_thread_func(void *arg)
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *current;
     FDIRDataThreadContext *thread_ctx;
-    int count;
+    int update_count;
 
     __sync_add_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);
     thread_ctx = (FDIRDataThreadContext *)arg;
@@ -1127,21 +1137,21 @@ static void *data_thread_func(void *arg)
             continue;
         }
 
-        count = 0;
+        update_count = 0;
         do {
             current = record;
             record = record->next;
             if (current->is_update) {
+                ++update_count;
                 deal_update_record(thread_ctx, current);
             } else {
                 deal_query_record(thread_ctx, current);
             }
-            ++count;
         } while (record != NULL);
 
-        if (STORAGE_ENABLED) {
+        if (STORAGE_ENABLED && update_count > 0) {
             __sync_sub_and_fetch(&thread_ctx->update_notify.
-                    waiting_records, count);
+                    waiting_records, update_count);
         }
 
         deal_delay_free_queue(thread_ctx);

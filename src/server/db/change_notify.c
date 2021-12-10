@@ -30,6 +30,48 @@ typedef struct fdir_change_notify_context {
 
 static FDIRchangeNotifyContext change_notify_ctx;
 
+static void free_events(struct fc_queue_info *qinfo)
+{
+    FDIRDataThreadContext *head;
+    FDIRDataThreadContext *tail;
+    FDIRDataThreadContext *thread_ctx;
+    FDIRChangeNotifyEvent *event;
+    struct fast_mblock_node *node;
+
+    head = tail = NULL;
+    event = qinfo->head;
+    while (event != NULL) {
+        node = fast_mblock_to_node_ptr(event);
+        if (event->thread_ctx->event.chain.head == NULL) {
+            if (head == NULL) {
+                head = event->thread_ctx;
+            } else {
+                tail->event.next = event->thread_ctx;
+            }
+            tail = event->thread_ctx;
+
+            event->thread_ctx->event.chain.head = node;
+        } else {
+            event->thread_ctx->event.chain.tail->next = node;
+        }
+        event->thread_ctx->event.chain.tail = node;
+
+        event = event->next;
+    }
+
+    tail->event.next = NULL;
+    thread_ctx = head;
+    while (thread_ctx != NULL) {
+        thread_ctx->event.chain.tail->next = NULL;
+        fast_mblock_batch_free(&thread_ctx->event.allocator,
+                &thread_ctx->event.chain);
+        thread_ctx->event.chain.head = NULL;
+        thread_ctx->event.chain.tail = NULL;
+
+        thread_ctx = thread_ctx->event.next;
+    }
+}
+
 static int deal_events(struct fc_queue_info *qinfo)
 {
     int result;
@@ -39,8 +81,7 @@ static int deal_events(struct fc_queue_info *qinfo)
         return result;
     }
 
-    sorted_queue_free_chain(&change_notify_ctx.queue,
-            &NOTIFY_EVENT_ALLOCATOR, qinfo);
+    free_events(qinfo);
     __sync_sub_and_fetch(&change_notify_ctx.
             waiting_count, count);
     return 0;

@@ -146,6 +146,14 @@ static void dentry_do_free(void *ptr, const int dec_count)
 
     if (STORAGE_ENABLED) {
         if (dentry->db_args->children != NULL) {
+            id_name_pair_t *pair;
+            id_name_pair_t *end;
+
+            end = dentry->db_args->children->elts +
+                dentry->db_args->children->count;
+            for (pair=dentry->db_args->children->elts; pair<end; pair++) {
+                dentry_strfree(dentry->context, &pair->name);
+            }
             id_name_array_allocator_free(&ID_NAME_ARRAY_ALLOCATOR_CTX,
                     dentry->db_args->children);
             dentry->db_args->children = NULL;

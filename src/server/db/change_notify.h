@@ -21,6 +21,8 @@
 
 #define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
 
+struct fdir_data_thread_context;
+
 typedef struct fdir_change_notify_message {
     int64_t id;  //for stable sort
     FDIRServerDentry *dentry;
@@ -45,6 +47,7 @@ typedef struct fdir_change_notify_message_ptr_array {
 typedef struct fdir_change_notify_event {
     int64_t version;
     FDIRChangeNotifyMessageArray marray;
+    struct fdir_data_thread_context *thread_ctx;
     struct fdir_change_notify_event *next; //for queue
 } FDIRChangeNotifyEvent;
 

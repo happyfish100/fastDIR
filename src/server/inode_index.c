@@ -417,7 +417,7 @@ static int get_xattr(FDIRServerDentry *dentry, const string_t *name,
     return ENODATA;
 }
 
-static int remove_xattr(FDIRServerDentry *dentry, const string_t *name)
+int inode_index_remove_xattr(FDIRServerDentry *dentry, const string_t *name)
 {
     int result;
     key_value_pair_t *kv;
@@ -482,7 +482,8 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext *context,
     return dentry->kv_array->elts + dentry->kv_array->count;
 }
 
-static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
+int inode_index_set_xattr(FDIRServerDentry *dentry,
+        const FDIRBinlogRecord *record)
 {
     int result;
     bool new_create;
@@ -532,32 +533,6 @@ static int set_xattr(FDIRServerDentry *dentry, const FDIRBinlogRecord *record)
     kv->value = value;
 
     return 0;
-}
-
-int inode_index_set_xattr(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
-{
-    int result;
-
-    if ((result=inode_index_get_dentry(thread_ctx, record->inode,
-                    &record->me.dentry)) != 0)
-    {
-        return result;
-    }
-
-    return set_xattr(record->me.dentry, record);
-}
-
-int inode_index_remove_xattr(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, const string_t *name)
-{
-    FDIRServerDentry *dentry;
-    int result;
-
-    if ((result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
-        return result;
-    }
-    return remove_xattr(dentry, name);
 }
 
 int inode_index_get_xattr(FDIRServerDentry *dentry,
