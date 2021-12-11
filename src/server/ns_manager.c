@@ -539,8 +539,11 @@ static int parse_binlog_line(const string_t *line, char *error_info)
         FDIRDataThreadContext *thread_ctx;
         NAMESPACE_SET_HT_BUCKET(&name);
         thread_ctx = get_data_thread_context(hash_code);
-        create_namespace(thread_ctx, bucket, id,
-                &name, hash_code, &result);
+        if (create_namespace(thread_ctx, bucket, id, &name,
+                    hash_code, &result) != NULL)
+        {
+            fdir_manager.current_id = id;
+        }
     }
 
     return result;
@@ -597,7 +600,7 @@ static int alloc_namespace_array(FDIRNamespacePtrArray *array,
     return (array->namespaces != NULL ? 0 : ENOMEM);
 }
 
-static int load_namespaces()
+static int load_namespaces_from_binlog()
 {
     char filename[PATH_MAX];
     string_t content;
@@ -704,7 +707,7 @@ int fdir_namespace_load(int64_t *last_version)
     int count;
     int result;
 
-    if ((result=load_namespaces()) != 0) {
+    if ((result=load_namespaces_from_binlog()) != 0) {
         return result;
     }
 
