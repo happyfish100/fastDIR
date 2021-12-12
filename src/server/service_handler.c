@@ -1433,9 +1433,7 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 {
     char *p;
 
-    record->options.flags = 0;
     record->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
-
     if (REQUEST.header.body_len > sizeof(FDIRProtoStatDEntryResp)) {
         if ((REQUEST.header.body_len + record->ns.len +
                     record->me.pname.name.len) < task->size)
@@ -1476,6 +1474,7 @@ static void init_record_for_create_ex(struct fast_task_info *task,
     } else {
         RECORD->stat.mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
     }
+
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
                 REQUEST.body)->uid);
@@ -1502,6 +1501,7 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
         free_record_object(task);
         return result;
     }
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
@@ -1549,6 +1549,7 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
     RECORD->me.dentry = NULL;
 
@@ -1589,6 +1590,7 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
     RECORD->inode = inode;
     RECORD->ns = ns;
@@ -1649,9 +1651,29 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
     return 0;
 }
 
+static inline int parse_create_dentry_mode(
+        struct fast_task_info *task, int *mode)
+{
+    *mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
+    if ((*mode & S_IFMT) == 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "mode: %d is invalid", *mode);
+        return EINVAL;
+    }
+
+    if (S_ISLNK(*mode)) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "use symlink cmd to create link");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
 static int service_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
+    int mode;
 
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoCreateDEntryFront))) != 0)
@@ -1659,8 +1681,10 @@ static int service_deal_create_dentry(struct fast_task_info *task)
         return result;
     }
 
-    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode));
+    if ((result=parse_create_dentry_mode(task, &mode)) != 0) {
+        return result;
+    }
+    init_record_for_create(task, mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
     return push_update_to_data_thread_queue(task);
 }
@@ -1668,6 +1692,7 @@ static int service_deal_create_dentry(struct fast_task_info *task)
 static int service_deal_create_by_pname(struct fast_task_info *task)
 {
     int result;
+    int mode;
 
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoCreateDEntryFront))) != 0)
@@ -1675,8 +1700,10 @@ static int service_deal_create_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode));
+    if ((result=parse_create_dentry_mode(task, &mode)) != 0) {
+        return result;
+    }
+    init_record_for_create(task, mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP;
     return push_update_to_data_thread_queue(task);
 }
@@ -2074,7 +2101,6 @@ static inline int service_do_setxattr(struct fast_task_info *task,
         const key_value_pair_t *xattr, const int flags,
         const int resp_cmd)
 {
-    RECORD->options.flags = 0;
     RECORD->flags = flags;
     RECORD->xattr = *xattr;
     RECORD->operation = BINLOG_OP_SET_XATTR_INT;
@@ -2093,6 +2119,7 @@ static int parse_dentry_for_xattr_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
     return 0;
 }
@@ -2198,7 +2225,6 @@ static int parse_xattr_name_info(struct fast_task_info *task,
 static inline int service_do_removexattr(struct fast_task_info *task,
         const string_t *name, const int resp_cmd)
 {
-    RECORD->options.flags = 0;
     RECORD->xattr.key = *name;
     RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
