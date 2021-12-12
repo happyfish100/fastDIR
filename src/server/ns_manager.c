@@ -637,7 +637,6 @@ static int parse_dumped_line(const string_t *line, char *error_info)
     const bool ignore_empty = true;
     int id;
     int col_count;
-    int result;
     char *endptr;
     FDIRNamespaceEntry *entry;
     string_t cols[NAMESPACE_FIELD_MAX];
@@ -674,18 +673,6 @@ static int parse_dumped_line(const string_t *line, char *error_info)
         entry->current.counts.dir;
     entry->thread_ctx->dentry_context.counters.file +=
         entry->current.counts.file;
-
-    if (entry->delay.root.inode != 0) {
-        if ((result=dentry_load_root(entry, entry->delay.root.inode,
-                        &entry->current.root.ptr)) != 0)
-        {
-            sprintf(error_info, "namespace: %.*s, load inode: %"PRId64" "
-                    "fail, errno: %d, error info: %s", entry->name.len,
-                    entry->name.str, entry->delay.root.inode,
-                    result, STRERROR(result));
-            return result;
-        }
-    }
 
     return 0;
 }
@@ -771,4 +758,30 @@ int fdir_namespace_load(int64_t *last_version)
     free(content.str);
     free(rows);
     return result;
+}
+
+int fdir_namespace_load_root()
+{
+    int result;
+    FDIRNamespaceEntry **entry;
+    FDIRNamespaceEntry **end;
+
+    end = fdir_manager.array.namespaces + fdir_manager.array.count;
+    for (entry=fdir_manager.array.namespaces; entry<end; entry++) {
+        if ((*entry)->delay.root.inode != 0) {
+            if ((result=dentry_load_root(*entry, (*entry)->delay.root.inode,
+                            &(*entry)->current.root.ptr)) != 0)
+            {
+                logError("file: "__FILE__", line: %d, "
+                        "namespace: %.*s, load root inode: %"PRId64" "
+                        "fail, errno: %d, error info: %s", __LINE__,
+                        (*entry)->name.len, (*entry)->name.str,
+                        (*entry)->delay.root.inode,
+                        result, STRERROR(result));
+                return result;
+            }
+        }
+    }
+
+    return 0;
 }

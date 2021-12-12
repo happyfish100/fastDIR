@@ -512,7 +512,11 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
         }
     }
 
-    return STORAGE_ENGINE_REDO_API(&ctx->array);
+    if ((result=STORAGE_ENGINE_REDO_API(&ctx->array)) != 0) {
+        return result;
+    }
+
+    return fdir_namespace_load_root();
 }
 
 int db_updater_init(FDIRDBUpdaterContext *ctx)

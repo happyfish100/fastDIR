@@ -85,6 +85,8 @@ extern "C" {
     int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx);
     int fdir_namespace_load(int64_t *last_version);
 
+    int fdir_namespace_load_root();
+
 #ifdef __cplusplus
 }
 #endif
