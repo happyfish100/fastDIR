@@ -52,6 +52,7 @@ static void data_thread_deal_done_callback(
         if (is_error) {
             replay_ctx->last_errno = result;
             __sync_add_and_fetch(&replay_ctx->fail_count, 1);
+            SF_G_CONTINUE_FLAG = false;
         } else {
             __sync_add_and_fetch(&replay_ctx->warning_count, 1);
         }

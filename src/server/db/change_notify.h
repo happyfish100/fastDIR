@@ -29,7 +29,7 @@ typedef struct fdir_change_notify_message {
     int field_index;
     DABinlogOpType op_type;
     FastBuffer *buffer;
-    id_name_pair_t child; //child inodes
+    id_name_pair_t child; //child inode and name
     int64_t inc_alloc;    //inode allocate/deallocate space increment
 } FDIRChangeNotifyMessage;
 

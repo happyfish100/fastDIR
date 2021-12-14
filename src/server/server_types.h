@@ -114,8 +114,10 @@ struct flock_entry;
 #define FDIR_DENTRY_LOADED_FLAGS_BASIC    (1 << 0)
 #define FDIR_DENTRY_LOADED_FLAGS_CHILDREN (1 << 1)
 #define FDIR_DENTRY_LOADED_FLAGS_XATTR    (1 << 2)
+#define FDIR_DENTRY_LOADED_FLAGS_CLIST    (1 << 3) /* child list for serialization */
 #define FDIR_DENTRY_LOADED_FLAGS_ALL      (FDIR_DENTRY_LOADED_FLAGS_BASIC | \
-        FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR)
+        FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR |\
+        FDIR_DENTRY_LOADED_FLAGS_CLIST)
 
 typedef struct fdir_server_dentry_db_args {
     IdNameArray *children;  //children inodes for update event dealer
@@ -125,6 +127,7 @@ typedef struct fdir_server_dentry {
     int64_t inode;
     string_t name;
     short loaded_flags;
+    bool add_to_clist;  //if add to child list for serialization (just a temp variable)
     volatile int reffer_count;
 
     FDIRDEntryStat stat;

@@ -621,8 +621,58 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
+static int check_load_children(FDIRServerDentry *parent)
+{
+    int result;
+    int target_count;
+    FDIRServerDentry *child;
+    id_name_pair_t pair;
+    UniqSkiplistIterator it;
+
+    if ((parent->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0) {
+        return 0;
+    }
+
+    target_count = 0;
+    uniq_skiplist_iterator(parent->children, &it);
+    while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+        ++target_count;
+    }
+
+    if (target_count > 0) {
+        parent->db_args->children = id_name_array_allocator_alloc(
+                &ID_NAME_ARRAY_ALLOCATOR_CTX, target_count);
+        if (parent->db_args->children == NULL) {
+            return ENOMEM;
+        }
+
+        uniq_skiplist_iterator(parent->children, &it);
+        while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+            pair.id = child->inode;
+            if ((result=dentry_strdup(parent->context,
+                            &pair.name, &child->name)) != 0)
+            {
+                return result;
+            }
+            if ((result=sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX,
+                            parent->db_args->children->elts, &parent->
+                            db_args->children->count, &pair)) != 0)
+            {
+                return result;
+            }
+        }
+    }
+
+    parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CLIST;
+    return 0;
+}
+
+
 #define GENERATE_ADD_TO_PARENT_MESSAGE(msg, dentry, op_type)  \
     if ((dentry)->parent != NULL) {  \
+        if ((result=check_load_children((dentry)->parent)) != 0) { \
+            return result; \
+        }  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, (dentry)->parent, \
                 op_type, FDIR_PIECE_FIELD_INDEX_CHILDREN, 0);  \
         (msg)->child.id = (dentry)->inode;  \
@@ -636,6 +686,9 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
 
 #define GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg, parent, inode)  \
     if (parent != NULL) {  \
+        if ((result=check_load_children(parent)) != 0) { \
+            return result; \
+        }  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, parent, \
                 da_binlog_op_type_remove, \
                 FDIR_PIECE_FIELD_INDEX_CHILDREN, 0); \
@@ -661,11 +714,13 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg, old_parent, (dentry)->inode); \
         GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update)
 
-static void generate_affected_messages(FDIRChangeNotifyMessage **msg,
+
+static int generate_affected_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
     FDIRAffectedDentry *current;
     FDIRAffectedDentry *end;
+    int result;
 
     end = record->affected.entries + record->affected.count;
     for (current=record->affected.entries; current<end; current++) {
@@ -677,14 +732,17 @@ static void generate_affected_messages(FDIRChangeNotifyMessage **msg,
                     FDIR_PIECE_FIELD_INDEX_BASIC, 0);
         }
     }
+
+    return 0;
 }
 
-static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
+static int generate_remove_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
     FDIRAffectedDentry *current;
     FDIRAffectedDentry *end;
     bool removed;
+    int result;
 
     removed = false;
     end = record->affected.entries + record->affected.count;
@@ -705,6 +763,8 @@ static void generate_remove_messages(FDIRChangeNotifyMessage **msg,
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
                 dentry->parent, record->me.dentry->inode);
     }
+
+    return 0;
 }
 
 static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
@@ -735,7 +795,9 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
     }
 
     if (record->affected.count > 0) {
-        generate_affected_messages(msg, record);
+        if ((result=generate_affected_messages(msg, record)) != 0) {
+            return result;
+        }
     }
     if (record->rename.src.dentry->parent ==
             record->rename.src.parent)
@@ -797,7 +859,9 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
             if (record->affected.count > 0) {
-                generate_affected_messages(&msg, record);
+                if ((result=generate_affected_messages(&msg, record)) != 0) {
+                    return result;
+                }
             }
             GENERATE_DENTRY_MESSAGES(msg, record->me.dentry,
                     da_binlog_op_type_create);
@@ -814,7 +878,9 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
                     FDIR_PIECE_FIELD_INDEX_XATTR, 0);
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            generate_remove_messages(&msg, record);
+            if ((result=generate_remove_messages(&msg, record)) != 0) {
+                return result;
+            }
             break;
         case BINLOG_OP_RENAME_DENTRY_INT:
             if ((result=generate_rename_messages(&msg, record)) != 0) {
@@ -866,6 +932,10 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_REMOVE_DENTRY_INT:
             if ((result=find_or_check_parent(thread_ctx, record)) != 0) {
+                logError("file: "__FILE__", line: %d, "
+                        "hash code: %u, inode: %"PRId64", get parent: %"
+                        PRId64", fail", __LINE__, record->hash_code,
+                        record->inode, record->me.pname.parent_inode);
                 ignore_errno = 0;
                 break;
             }
@@ -1147,7 +1217,7 @@ static void *data_thread_func(void *arg)
             } else {
                 deal_query_record(thread_ctx, current);
             }
-        } while (record != NULL);
+        } while (record != NULL && SF_G_CONTINUE_FLAG);
 
         if (STORAGE_ENABLED && update_count > 0) {
             __sync_sub_and_fetch(&thread_ctx->update_notify.
