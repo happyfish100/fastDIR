@@ -202,15 +202,26 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
                             (*msg)->dentry->db_args->children->count,
                             &(*msg)->child)) == NULL)
             {
+                id_name_pair_t *pair;
+                id_name_pair_t *end;
+
                 logWarning("file: "__FILE__", line: %d, "
-                        "inode: %"PRId64", delete child %"PRId64" fail, "
-                        "errno: %d, error info: %s", __LINE__,
-                        (*msg)->dentry->inode, (*msg)->child.id,
-                        result, STRERROR(result));
+                        "parent inode: %"PRId64", child %"PRId64" not exist",
+                        __LINE__, (*msg)->dentry->inode, (*msg)->child.id);
+
+                end = (*msg)->dentry->db_args->children->elts +
+                    (*msg)->dentry->db_args->children->count;
+                for (pair=(*msg)->dentry->db_args->children->elts; pair<end; pair++) {
+                    logInfo("children[%d]: %"PRId64, (int)(pair - (*msg)->dentry->
+                        db_args->children->elts) + 1, pair->id);
+                }
+
                 continue;
             }
 
-            server_immediate_free_str((*msg)->dentry->context, found->name.str);
+            server_immediate_free_str((*msg)->dentry->context,
+                    found->name.str);
+
             if ((*msg)->op_type == da_binlog_op_type_remove) {
                 sorted_array_delete_by_index(&ID_NAME_SORTED_ARRAY_CTX,
                         (*msg)->dentry->db_args->children->elts,

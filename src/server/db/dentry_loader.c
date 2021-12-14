@@ -120,6 +120,17 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
             }
         }
 
+        {
+            int count = 0;
+            logError("line: %d, parent inode: %"PRId64", %.*s", __LINE__,
+                    parent->inode, parent->name.len, parent->name.str);
+            uniq_skiplist_iterator(parent->children, &it);
+            while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+                logError("%d. %"PRId64" => %.*s", ++count, child->inode,
+                        child->name.len, child->name.str);
+            }
+        }
+
         return ENOENT;
     }
 
@@ -172,6 +183,18 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
     if (current_pair->inode == 0) {
         return 0;
     } else {
+
+        if (current_pair->dentry == NULL) {
+            int count = 0;
+            logError("line: %d, parent inode: %"PRId64", %.*s", __LINE__,
+                    parent->inode, parent->name.len, parent->name.str);
+            uniq_skiplist_iterator(parent->children, &it);
+            while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+                logError("%d. %"PRId64" => %.*s", ++count, child->inode,
+                        child->name.len, child->name.str);
+            }
+        }
+
         return current_pair->dentry != NULL ? 0 : ENOENT;
     }
 }
