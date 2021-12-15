@@ -172,6 +172,10 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
     FDIRChangeNotifyMessage **msg;
 
     for (msg=start; msg<end; msg++) {
+        if ((int64_t)(*msg)->child.id < 0) {
+            continue;
+        }
+
         if ((*msg)->op_type == da_binlog_op_type_create) {
             if ((result=insert_children((*msg)->dentry,
                             &(*msg)->child)) != 0)
