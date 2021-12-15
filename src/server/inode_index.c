@@ -560,7 +560,7 @@ FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
     }
 
     {
-        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        SET_INODE_HASHTABLE_CTX(inode);
         PTHREAD_MUTEX_LOCK(&ctx->lock);
         do {
             if (dentry->flock_entry == NULL) {
@@ -606,7 +606,7 @@ int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
     }
 
     {
-        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        SET_INODE_HASHTABLE_CTX(inode);
         PTHREAD_MUTEX_LOCK(&ctx->lock);
         if (ftask->dentry->flock_entry == NULL) {
             result = ENOENT;
@@ -643,7 +643,7 @@ SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
     }
 
     {
-        SET_INODE_HT_BUCKET_AND_CTX(inode);
+        SET_INODE_HASHTABLE_CTX(inode);
         PTHREAD_MUTEX_LOCK(&ctx->lock);
         do {
             if (dentry->flock_entry == NULL) {
