@@ -74,6 +74,8 @@ extern "C" {
 
     FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id);
 
+    const FDIRNamespacePtrArray *fdir_namespace_get_all();
+
     int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat);
 
     void fdir_namespace_inc_alloc_bytes(FDIRNamespaceEntry *ns_entry,

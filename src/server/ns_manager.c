@@ -324,6 +324,11 @@ FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,
     return entry;
 }
 
+const FDIRNamespacePtrArray *fdir_namespace_get_all()
+{
+    return &fdir_manager.array;
+}
+
 static int namespace_compare_by_id(const FDIRNamespaceEntry **ns1,
         const FDIRNamespaceEntry **ns2)
 {

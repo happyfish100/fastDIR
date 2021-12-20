@@ -56,6 +56,7 @@
 #include "cluster_handler.h"
 #include "shared_thread_pool.h"
 #include "server_storage.h"
+#include "data_dumper.h"
 
 static int setup_server_env(const char *config_filename);
 static int setup_mblock_stat_task();
@@ -243,7 +244,15 @@ int main(int argc, char *argv[])
         if ((result=server_load_data()) != 0) {
             break;
         }
-        change_notify_load_done_signal();
+
+        if (STORAGE_ENABLED) {
+            change_notify_load_done_signal();
+        }
+
+        //TODO
+        if ((result=server_dump_data()) != 0) {
+            break;
+        }
 
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
             break;
