@@ -652,6 +652,11 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     {
         current->parent->stat.nlink++;
     } else {
+        logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
+                "insert child {inode: %"PRId64", name: %.*s} to "
+                "skiplist fail, errno: %d, error info: %s", __LINE__,
+                current->parent->inode, current->inode, current->name.len,
+                current->name.str, result, STRERROR(result));
         return result;
     }
 
@@ -735,7 +740,6 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
                __LINE__, dentry->inode, dentry->stat.nlink);
              */
 
-            dentry->parent = NULL;   //orphan inode
             op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }
@@ -791,6 +795,12 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     {
         record->me.parent->stat.nlink--;
     } else {
+        logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
+                "delete child {inode: %"PRId64", name: %.*s} from "
+                "skiplist fail, errno: %d, error info: %s", __LINE__,
+                record->me.parent->inode, record->me.dentry->inode,
+                record->me.dentry->name.len, record->me.dentry->name.str,
+                result, STRERROR(result));
         return result;
     }
 
@@ -1043,6 +1053,15 @@ static int move_dentry(FDIRDataThreadContext *thread_ctx,
                         old_src_pair.ptr);
             }
             break;
+        }
+
+        if (record->rename.overwritten != NULL) {
+            record->rename.src.parent->stat.nlink--;
+        } else {
+            if (record->rename.dest.parent != record->rename.src.parent) {
+                record->rename.src.parent->stat.nlink--;
+                record->rename.dest.parent->stat.nlink++;
+            }
         }
 
         record->rename.src.dentry->parent = record->rename.dest.parent;
