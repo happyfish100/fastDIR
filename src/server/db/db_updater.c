@@ -124,10 +124,11 @@ static int write_header(FDIRDBUpdaterContext *ctx)
 
     sf_serializer_pack_end(&ctx->buffer);
 
-
+    /*
     logInfo("count: %d, last_versions {field: %"PRId64", dentry: %"PRId64"}, "
             "buffer length: %d", ctx->array.count, ctx->last_versions.field,
             ctx->last_versions.dentry, ctx->buffer.length);
+            */
 
     return write_buffer_to_file(&ctx->buffer);
 }
@@ -233,8 +234,7 @@ static int write_redo_log(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
-    logInfo("write redo log count =====: %d", ctx->array.count);
-
+    //logInfo("write redo log count =====: %d", ctx->array.count);
     if ((result=do_write(ctx)) != 0) {
         return result;
     }
