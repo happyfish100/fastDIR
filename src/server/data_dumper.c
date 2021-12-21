@@ -20,6 +20,8 @@
 #include "db/dentry_loader.h"
 #include "data_dumper.h"
 
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+
 typedef struct {
     const FDIRNamespaceEntry *ns_entry;
     char path[PATH_MAX];
@@ -62,9 +64,10 @@ static int output_dentry(FDIRServerDentry *dentry)
 {
     int result;
 
-    fprintf(dump_ctx.fp, "\n[%"PRId64"] id=%"PRId64" nm=%.*s rr=%d",
-            ++dump_ctx.dentry_count, dentry->inode,
-            dentry->name.len, dentry->name.str, dentry->reffer_count);
+    fprintf(dump_ctx.fp, "\n[%"PRId64"] id=%"PRId64" pt=%"PRId64" "
+            "nm=%.*s", ++dump_ctx.dentry_count, dentry->inode,
+            (dentry->parent != NULL ? dentry->parent->inode : 0),
+            dentry->name.len, dentry->name.str);
 
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
         fprintf(dump_ctx.fp, " si=%"PRId64, dentry->src_dentry->inode);
@@ -183,3 +186,5 @@ int server_dump_data()
 
     return result;
 }
+
+#endif

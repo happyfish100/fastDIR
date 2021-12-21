@@ -23,7 +23,9 @@
 extern "C" {
 #endif
 
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
    int server_dump_data();
+#endif
 
 #ifdef __cplusplus
 }

@@ -86,6 +86,11 @@ static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
     (*dentry)->parent = parent;
     if (parent != NULL) {
         if ((result=uniq_skiplist_insert(parent->children, *dentry)) != 0) {
+            logError("file: "__FILE__", line: %d, "
+                    "parent inode: %"PRId64", insert child {inode: %"PRId64", "
+                    "name: %.*s} fail, errno: %d, error info: %s", __LINE__,
+                    parent->inode, (*dentry)->inode, (*dentry)->name.len,
+                    (*dentry)->name.str, result, STRERROR(result));
             return result;
         }
     }
@@ -238,11 +243,20 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
     }
     dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
 
+    if (S_ISDIR(dentry->stat.mode)) {
+        dentry->stat.nlink = 1;   //reset nlink for directory
+    }
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
         result = dentry_load_inode(thread_ctx, dentry->
                 ns_entry, src_inode, &dentry->src_dentry);
     } else {
-        result = inode_index_add_dentry(dentry);
+        if ((result=inode_index_add_dentry(dentry)) != 0) {
+            logError("file: "__FILE__", line: %d, "
+                    "inode_index_add_dentry {inode: %"PRId64", name: %.*s} "
+                    "fail, errno: %d, error info: %s", __LINE__,
+                    dentry->inode, dentry->name.len, dentry->name.str,
+                    result, STRERROR(result));
+        }
     }
 
     return result;

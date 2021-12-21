@@ -802,6 +802,7 @@ static int generate_remove_messages(FDIRChangeNotifyMessage **msg,
     if (!removed) {
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
                 dentry->parent, record->me.dentry->inode);
+        record->me.dentry->parent = NULL;   //orphan inode
     }
 
     return 0;
