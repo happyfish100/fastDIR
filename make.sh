@@ -9,6 +9,7 @@ WITH_LINUX_SERVICE=1
 DEBUG_FLAG=1
 
 export CC=gcc
+#CFLAGS='-Wall -DFDIR_DUMP_DATA_FOR_DEBUG'
 CFLAGS='-Wall'
 GCC_VERSION=$(gcc -dM -E -  < /dev/null | grep -w __GNUC__ | awk '{print $NF;}')
 if [ -n "$GCC_VERSION" ] && [ $GCC_VERSION -ge 7 ]; then
