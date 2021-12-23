@@ -29,35 +29,32 @@
 
 static char *ns = "test";
 static char *base_path = "/test";
-static char true_base_path[PATH_MAX];
-static bool ignore_exist_error = false;
+static bool ignore_noent_error = false;
 static int total_count = 0;
 static int ignore_count = 0;
-static FDIRClientOwnerModePair omp;
 
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename=%s] "
             "[-n namespace=test] [-b base_path=/test] "
-            "[-i for ignoring exist error]\n", argv[0],
+            "[-i for ignoring not exist error]\n", argv[0],
             FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
-static int create_dentry(FDIRDEntryFullName *fullname)
+static int remove_dentry(FDIRDEntryFullName *fullname)
 {
 	int result;
-    FDIRDEntryInfo dentry;
 
     ++total_count;
-    if ((result=fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
-                    fullname, &omp, &dentry)) != 0)
+    if ((result=fdir_client_remove_dentry(&g_fdir_client_vars.
+                    client_ctx, fullname)) != 0)
     {
-        if (ignore_exist_error && result == EEXIST) {
+        if (ignore_noent_error && result == ENOENT) {
             ++ignore_count;
             result = 0;
         } else {
             logError("file: "__FILE__", line: %d, "
-                    "create_dentry %.*s fail, namespace: %s, "
+                    "remove_dentry %.*s fail, namespace: %s, "
                     "errno: %d, error info: %s", __LINE__,
                     fullname->path.len, fullname->path.str,
                     fullname->ns.str, result, STRERROR(result));
@@ -66,77 +63,43 @@ static int create_dentry(FDIRDEntryFullName *fullname)
     return result;
 }
 
-static int create_base_path()
-{
-#define MAX_SUBDIR_COUNT 8
-
-    string_t path;
-    string_t parts[MAX_SUBDIR_COUNT];
-    FDIRDEntryFullName fullname;
-    int result;
-    int count;
-    int len;
-    int i;
-
-    FC_SET_STRING(path, base_path);
-    count = split_string_ex(&path, '/', parts, MAX_SUBDIR_COUNT, true);
-
-    FC_SET_STRING(fullname.ns, ns);
-    fullname.path.str = true_base_path;
-    strcpy(true_base_path, "/");
-    len = 1;
-    fullname.path.len = len;
-    if ((result=create_dentry(&fullname)) != 0) {
-        if (result != EEXIST) {
-            return result;
-        }
-    }
-
-    for (i=0; i<count; i++) {
-        if (i > 0) {
-            *(true_base_path + len++) = '/';
-        }
-        memcpy(true_base_path + len, parts[i].str, parts[i].len);
-        len += parts[i].len;
-
-        fullname.path.len = len;
-        if ((result=create_dentry(&fullname)) != 0) {
-            if (result != EEXIST) {
-                return result;
-            }
-        }
-    }
-
-    *(true_base_path + len) = '\0';
-    return 0;
-}
-
-static int test_mkdir()
+static int test_rmdir()
 {
     FDIRDEntryFullName fullname;
     char path[256];
+    int64_t inode;
 	int result;
     int i;
     int k;
 
-    if ((result=create_base_path()) != 0) {
+    FC_SET_STRING(fullname.ns, ns);
+    fullname.path.str = path;
+    fullname.path.len = sprintf(path, "%s", base_path);
+
+    if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
+                    client_ctx, &fullname, &inode)) != 0)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "lookup path %.*s fail, namespace: %s, "
+                "errno: %d, error info: %s", __LINE__,
+                fullname.path.len, fullname.path.str,
+                fullname.ns.str, result, STRERROR(result));
         return result;
     }
 
-    FC_SET_STRING(fullname.ns, ns);
-    fullname.path.str = path;
     for (i=0; i<SUBDIR_COUNT; i++) {
-        fullname.path.len = sprintf(path, "%s/%03d",
-                base_path, i + 1);
-        if ((result=create_dentry(&fullname)) != 0) {
-            return result;
-        }
         for (k=0; k<SUBDIR_COUNT; k++) {
             fullname.path.len = sprintf(path, "%s/%03d/%03d",
                     base_path, i + 1, k + 1);
-            if ((result=create_dentry(&fullname)) != 0) {
+            if ((result=remove_dentry(&fullname)) != 0) {
                 return result;
             }
+        }
+
+        fullname.path.len = sprintf(path, "%s/%03d",
+                base_path, i + 1);
+        if ((result=remove_dentry(&fullname)) != 0) {
+            return result;
         }
     }
 
@@ -169,7 +132,7 @@ int main(int argc, char *argv[])
                 config_filename = optarg;
                 break;
             case 'i':
-                ignore_exist_error = true;
+                ignore_noent_error = true;
                 break;
             default:
                 usage(argv);
@@ -187,13 +150,10 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    omp.mode = 0755 | S_IFDIR;
-    omp.uid = geteuid();
-    omp.gid = getegid();
     start_time = get_current_time_ms();
-    result = test_mkdir();
+    result = test_rmdir();
     time_used = get_current_time_ms() - start_time;
-    printf("create %d dentry, ignore count: %d, time used: %s ms\n", 
+    printf("remove %d dentry, ignore count: %d, time used: %s ms\n", 
             total_count, ignore_count,
             long_to_comma_str(time_used, time_buff));
 

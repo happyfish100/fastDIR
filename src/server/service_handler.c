@@ -48,7 +48,6 @@
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
-#include "inode_index.h"
 #include "cluster_relationship.h"
 #include "common_handler.h"
 #include "ns_manager.h"
@@ -254,7 +253,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
 
     long2buff(FC_ATOMIC_GET(DATA_CURRENT_VERSION),
             stat_resp->binlog.current_version);
-    long2buff(g_binlog_writer_ctx.writer.total_count,
+    long2buff(g_binlog_writer_ctx.writer.fw.total_count,
             stat_resp->binlog.writer.total_count);
     long2buff(g_binlog_writer_ctx.writer.version_ctx.next,
             stat_resp->binlog.writer.next_version);
@@ -453,7 +452,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
             break;
         }
 
-        long2buff(__sync_add_and_fetch(&current->ns->used_bytes, 0),
+        long2buff(__sync_add_and_fetch(&current->ns->current.used_bytes, 0),
                 body_part->used_bytes);
         body_part->ns_name.len = current->ns->name.len;
         memcpy(body_part->ns_name.str, current->ns->name.str,
@@ -716,12 +715,41 @@ static int server_parse_dentry_info(struct fast_task_info *task,
     return 0;
 }
 
-static int server_check_and_parse_dentry(struct fast_task_info *task,
-        const int front_part_size, FDIRDEntryFullName *fullname)
+static inline int alloc_record_object(struct fast_task_info *task)
+{
+    RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+            &SERVER_CTX->service.record_allocator);
+    if (RECORD == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "system busy, please try later");
+        return EBUSY;
+    }
+
+    RECORD->me.pname.parent_inode = 0;
+    return 0;
+}
+
+static inline void free_record_object(struct fast_task_info *task)
+{
+    if (RECORD != NULL) {
+        fast_mblock_free_object(&SERVER_CTX->service.
+                record_allocator, RECORD);
+        RECORD = NULL;
+    }
+}
+
+static int server_check_and_parse_dentry(
+        struct fast_task_info *task,
+        const int front_part_size)
 {
     int result;
     int fixed_part_size;
     int req_body_len;
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
 
     fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryInfo);
     if ((result=server_check_body_length(fixed_part_size + 2,
@@ -731,13 +759,13 @@ static int server_check_and_parse_dentry(struct fast_task_info *task,
     }
 
     if ((result=server_parse_dentry_info(task, REQUEST.body +
-                    front_part_size, fullname)) != 0)
+                    front_part_size, &RECORD->me.fullname)) != 0)
     {
         return result;
     }
 
-    req_body_len = fixed_part_size + fullname->ns.len +
-        fullname->path.len;
+    req_body_len = fixed_part_size + RECORD->me.fullname.ns.len +
+        RECORD->me.fullname.path.len;
     if (req_body_len != REQUEST.header.body_len) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -745,7 +773,10 @@ static int server_check_and_parse_dentry(struct fast_task_info *task,
                 REQUEST.header.body_len, req_body_len);
         return EINVAL;
     }
-
+    RECORD->inode = 0;
+    RECORD->dentry_type = fdir_dentry_type_fullname;
+    RECORD->ns = RECORD->me.fullname.ns;
+    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
     return 0;
 }
 
@@ -770,11 +801,9 @@ static inline int check_name_length(struct fast_task_info *task,
 }
 
 static int server_parse_pname(struct fast_task_info *task,
-        const int front_part_size, string_t *ns, string_t *name,
-        FDIRServerDentry **parent_dentry)
+        const int front_part_size, string_t *ns, FDIRDEntryPName *pname)
 {
     FDIRProtoDEntryByPName *req;
-    int64_t parent_inode;
     int result;
 
     req = (FDIRProtoDEntryByPName *)(REQUEST.body + front_part_size);
@@ -787,23 +816,17 @@ static int server_parse_pname(struct fast_task_info *task,
 
     ns->len = req->ns_len;
     ns->str = req->ns_str;
-    name->len = req->name_len;
-    name->str = ns->str + ns->len;
-    parent_inode = buff2long(req->parent_inode);
-    if ((*parent_dentry=inode_index_get_dentry(parent_inode)) == NULL) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "parent inode: %"PRId64" not exist", parent_inode);
-        return ENOENT;
-    }
-
+    pname->name.len = req->name_len;
+    pname->name.str = ns->str + ns->len;
+    pname->parent_inode = buff2long(req->parent_inode);
     return 0;
 }
 
 static int server_check_and_parse_pname(struct fast_task_info *task,
-        const int front_part_size, string_t *ns, string_t *name,
-        FDIRServerDentry **parent_dentry)
+        const int front_part_size, string_t *ns, FDIRDEntryPName *pname)
 {
     int fixed_part_size;
+    int expect_len;
     int result;
 
     fixed_part_size = front_part_size + sizeof(FDIRProtoDEntryByPName);
@@ -813,27 +836,25 @@ static int server_check_and_parse_pname(struct fast_task_info *task,
         return result;
     }
 
-    if ((result=server_parse_pname(task, front_part_size, ns, name,
-                    parent_dentry)) != 0)
-    {
+    if ((result=server_parse_pname(task, front_part_size, ns, pname)) != 0) {
         return result;
     }
 
-    if (fixed_part_size + ns->len + name->len != REQUEST.header.body_len) {
+    expect_len = fixed_part_size + ns->len + pname->name.len;
+    if (expect_len != REQUEST.header.body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d", REQUEST.header.body_len,
-                fixed_part_size + ns->len + name->len);
+                "body length: %d != expected: %d",
+                REQUEST.header.body_len, expect_len);
         return EINVAL;
     }
 
     return 0;
 }
 
-static int check_and_parse_inode_info(struct fast_task_info *task,
-        const int front_part_size, string_t *ns, FDIRServerDentry **dentry)
+static inline int check_and_parse_inode_info(struct fast_task_info *task,
+        const int front_part_size, string_t *ns, int64_t *inode)
 {
     FDIRProtoInodeInfo *req;
-    int64_t inode;
     int result;
 
     req = (FDIRProtoInodeInfo *)(REQUEST.body + front_part_size);
@@ -843,42 +864,12 @@ static int check_and_parse_inode_info(struct fast_task_info *task,
 
     ns->len = req->ns_len;
     ns->str = req->ns_str;
-    inode = buff2long(req->inode);
-    if ((*dentry=inode_index_get_dentry(inode)) == NULL) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "inode: %"PRId64" not exist", inode);
-        return ENOENT;
-    }
-
+    *inode = buff2long(req->inode);
     return 0;
 }
 
-static inline int alloc_record_object(struct fast_task_info *task)
-{
-    RECORD = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-            &((FDIRServerContext *)task->thread_data->arg)->
-            service.record_allocator);
-    if (RECORD == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "system busy, please try later");
-        return EBUSY;
-    }
-
-    RECORD->me.pname.parent_inode = 0;
-    return 0;
-}
-
-
-static inline void free_record_object(struct fast_task_info *task)
-{
-    fast_mblock_free_object(&((FDIRServerContext *)task->
-                thread_data->arg)->service.record_allocator, RECORD);
-    RECORD = NULL;
-}
-
-static void service_idempotency_request_finish(struct fast_task_info *task,
-        const int result)
+static inline void service_idempotency_request_finish(
+        struct fast_task_info *task, const int result)
 {
     if (IDEMPOTENCY_REQUEST != NULL) {
         IDEMPOTENCY_REQUEST->finished = true;
@@ -933,6 +924,7 @@ static int server_binlog_produce(struct fast_task_info *task)
 
     if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
         free_record_object(task);
+        service_idempotency_request_finish(task, ENOMEM);
         sf_release_task(task);
         return ENOMEM;
     }
@@ -940,7 +932,6 @@ static int server_binlog_produce(struct fast_task_info *task)
     rbuffer->data_version.first = RECORD->data_version;
     rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
-
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
     free_record_object(task);
 
@@ -948,6 +939,7 @@ static int server_binlog_produce(struct fast_task_info *task)
         return do_binlog_produce(task, rbuffer);
     } else {
         server_binlog_free_rbuffer(rbuffer);
+        service_idempotency_request_finish(task, result);
         sf_release_task(task);
         return result;
     }
@@ -977,7 +969,6 @@ static inline void dentry_stat_output(struct fast_task_info *task,
 static inline void set_update_result_and_output(
         struct fast_task_info *task, FDIRServerDentry *dentry)
 {
-    dentry_stat_output(task, &dentry);
     if (IDEMPOTENCY_REQUEST != NULL) {
         FDIRDEntryInfo *dinfo;
 
@@ -986,56 +977,243 @@ static inline void set_update_result_and_output(
         dinfo->inode = dentry->inode;
         dinfo->stat = dentry->stat;
     }
+    dentry_stat_output(task, &dentry);
+}
+
+static inline int readlink_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    if (!S_ISLNK(dentry->stat.mode)) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "not symbol link");
+        return ENOLINK;
+    }
+
+    RESPONSE.header.body_len = dentry->link.len;
+    memcpy(SF_PROTO_RESP_BODY(task), dentry->link.str, dentry->link.len);
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static inline void lookup_inode_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    FDIRProtoLookupInodeResp *resp;
+
+    resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
+    long2buff(dentry->inode, resp->inode);
+    RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
+    TASK_CTX.common.response_done = true;
+}
+
+static void server_list_dentry_output(struct fast_task_info *task)
+{
+    FDIRProtoListDEntryRespBodyHeader *body_header;
+    FDIRServerDentry *src_dentry;
+    FDIRServerDentry **dentry;
+    FDIRServerDentry **start;
+    FDIRServerDentry **end;
+    FDIRProtoListDEntryRespBodyPart *body_part;
+    char *p;
+    char *buf_end;
+    int remain_count;
+    int count;
+
+    remain_count = DENTRY_LIST_CACHE.array.count -
+        DENTRY_LIST_CACHE.offset;
+
+    buf_end = task->data + task->size;
+    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
+    start = DENTRY_LIST_CACHE.array.entries +
+        DENTRY_LIST_CACHE.offset;
+    end = start + remain_count;
+    for (dentry=start; dentry<end; dentry++) {
+        src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
+        if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
+                (*dentry)->name.len)
+        {
+            break;
+        }
+        body_part = (FDIRProtoListDEntryRespBodyPart *)p;
+        long2buff(src_dentry->inode, body_part->inode);
+
+        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
+                &body_part->stat, true);
+        body_part->name_len = (*dentry)->name.len;
+        memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
+        p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
+    }
+    count = dentry - start;
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
+
+    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    int2buff(count, body_header->count);
+    if (count < remain_count) {
+        DENTRY_LIST_CACHE.offset += count;
+        DENTRY_LIST_CACHE.expires = g_current_time + 60;
+        DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
+
+        body_header->is_last = 0;
+        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
+    } else {
+        body_header->is_last = 1;
+        long2buff(0, body_header->token);
+    }
+
+    TASK_CTX.common.response_done = true;
+}
+
+static inline void service_getxattr_output(struct fast_task_info *task,
+        FDIRServerDentry *dentry, const string_t *value)
+{
+    RESPONSE.header.body_len = value->len;
+    memcpy(SF_PROTO_RESP_BODY(task), value->str, value->len);
+    TASK_CTX.common.response_done = true;
+}
+
+static void service_do_listxattr(struct fast_task_info *task,
+        FDIRServerDentry *dentry)
+{
+    const key_value_pair_t *kv;
+    const key_value_pair_t *kv_end;
+    char *p;
+
+    p = SF_PROTO_RESP_BODY(task);
+    if (dentry->kv_array != NULL) {
+        char *buff_end;
+
+        buff_end = task->data + task->size;
+        kv_end = dentry->kv_array->elts + dentry->kv_array->count;
+        for (kv=dentry->kv_array->elts; kv<kv_end; kv++) {
+            if (buff_end - p <= kv->key.len) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "too many xattribues, xattr count: %d!",
+                        __LINE__, dentry->kv_array->count);
+                break;
+            }
+            memcpy(p, kv->key.str, kv->key.len);
+            p += kv->key.len;
+            *p++ = '\0';
+        }
+    }
+
+    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    TASK_CTX.common.response_done = true;
+}
+
+void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
+        const int result, const bool is_error, const char *filename,
+        const int line_no, struct fast_task_info *task)
+{
+    char client_ip_buff[64];
+    char ns_buff[256];
+    char xattr_name_buff[256];
+    char extra_buff[256];
+    int extra_len;
+    int log_level;
+
+    if (task != NULL) {
+        sprintf(client_ip_buff, "client ip: %s, ", task->client_ip);
+    } else {
+        *client_ip_buff = '\0';
+    }
+
+    if (record->ns.len > 0) {
+        snprintf(ns_buff, sizeof(ns_buff), ", namespace: %.*s",
+                record->ns.len, record->ns.str);
+    } else {
+        snprintf(ns_buff, sizeof(ns_buff), ", namespace hash code: %u",
+                record->hash_code);
+    }
+
+    if (record->operation == BINLOG_OP_SET_XATTR_INT ||
+            record->operation == SERVICE_OP_GET_XATTR_INT ||
+            record->operation == BINLOG_OP_REMOVE_XATTR_INT)
+    {
+        if (result == ENODATA) {
+            log_level = LOG_DEBUG;
+        } else {
+            log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+        }
+        snprintf(xattr_name_buff, sizeof(xattr_name_buff),
+                ", xattr name: %.*s", record->xattr.key.len,
+                record->xattr.key.str);
+    } else {
+        if (record->operation == SERVICE_OP_LOOKUP_INODE_INT &&
+                result == ENOENT)
+        {
+            log_level = LOG_DEBUG;
+        } else {
+            log_level = is_error ? LOG_ERR : LOG_WARNING;
+        }
+        *xattr_name_buff = '\0';
+    }
+
+    if (record->inode > 0) {
+        extra_len = sprintf(extra_buff, ", current inode: "
+                "%"PRId64, record->inode);
+    } else {
+        extra_len = 0;
+    }
+    if (record->me.pname.name.str != NULL) {
+        snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
+                ", parent inode: %"PRId64", dir name: %.*s",
+                record->me.pname.parent_inode, record->me.pname.name.len,
+                record->me.pname.name.str);
+    }
+
+    log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
+            "%s%s fail, errno: %d, error info: %s%s%s%s",
+            filename, line_no, client_ip_buff,
+            get_operation_caption(record->operation), result,
+            STRERROR(result), ns_buff, extra_buff, xattr_name_buff);
 }
 
 static void record_deal_done_notify(FDIRBinlogRecord *record,
         const int result, const bool is_error)
 {
     struct fast_task_info *task;
-    char xattr_name_buff[256];
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
-        int log_level;
-
-        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ ||
-                REQUEST.header.cmd == FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ)
-        {
-            if (result == ENODATA) {
-                log_level = LOG_DEBUG;
-            } else {
-                log_level = is_error ? LOG_WARNING : LOG_DEBUG;
-            }
-            snprintf(xattr_name_buff, sizeof(xattr_name_buff),
-                    ", xattr name: %.*s", record->xattr.key.len,
-                    record->xattr.key.str);
-        } else {
-            log_level = is_error ? LOG_ERR : LOG_WARNING;
-            *xattr_name_buff = '\0';
-        }
-
-        log_it_ex(&g_log_context, log_level,
-                "file: "__FILE__", line: %d, "
-                "client ip: %s, %s dentry fail, "
-                "errno: %d, error info: %s, "
-                "parent inode: %"PRId64", current inode: %"PRId64", "
-                "namespace: %.*s, dir name: %.*s%s",
-                __LINE__, task->client_ip,
-                get_operation_caption(record->operation),
-                result, STRERROR(result), record->me.pname.parent_inode,
-                record->inode, record->ns.len, record->ns.str,
-                record->me.pname.name.len, record->me.pname.name.str,
-                xattr_name_buff);
+        service_record_deal_error_log_ex(record, result, is_error, task);
     } else {
-        if (record->operation == BINLOG_OP_CREATE_DENTRY_INT ||
-                record->operation == BINLOG_OP_REMOVE_DENTRY_INT)
-        {
-            set_update_result_and_output(task, record->me.dentry);
-        } else if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
-            if (RECORD->rename.overwritten != NULL) {
-                set_update_result_and_output(task,
-                        RECORD->rename.overwritten);
-            }
+        switch (record->operation) {
+            case BINLOG_OP_CREATE_DENTRY_INT:
+            case BINLOG_OP_REMOVE_DENTRY_INT:
+            case BINLOG_OP_UPDATE_DENTRY_INT:
+                set_update_result_and_output(task, record->me.dentry);
+                break;
+            case BINLOG_OP_RENAME_DENTRY_INT:
+                if (RECORD->rename.overwritten != NULL) {
+                    set_update_result_and_output(task,
+                            RECORD->rename.overwritten);
+                }
+                break;
+            case SERVICE_OP_STAT_DENTRY_INT:
+                dentry_stat_output(task, &record->me.dentry);
+                break;
+            case SERVICE_OP_READ_LINK_INT:
+                readlink_output(task, record->me.dentry);
+                break;
+            case SERVICE_OP_LOOKUP_INODE_INT:
+                lookup_inode_output(task, record->me.dentry);
+                break;
+            case SERVICE_OP_LIST_DENTRY_INT:
+                DENTRY_LIST_CACHE.offset = 0;
+                server_list_dentry_output(task);
+                break;
+            case SERVICE_OP_GET_XATTR_INT:
+                service_getxattr_output(task, record->me.dentry,
+                        &record->xattr.value);
+                break;
+            case SERVICE_OP_LIST_XATTR_INT:
+                service_do_listxattr(task, record->me.dentry);
+                break;
+            default:
+                break;
         }
     }
 
@@ -1043,65 +1221,232 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }
 
-static int handle_record_deal_done(struct fast_task_info *task)
+static int handle_record_update_done(struct fast_task_info *task)
+{
+    int result;
+
+    if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
+        return server_binlog_produce(task);
+    }
+
+    result = RESPONSE_STATUS;
+    service_idempotency_request_finish(task, result);
+
+    task->continue_callback = NULL;
+    free_record_object(task);
+    sf_release_task(task);
+    return result;
+}
+
+static int handle_record_query_done(struct fast_task_info *task)
+{
+    int result;
+
+    result = RESPONSE_STATUS;
+    task->continue_callback = NULL;
+    free_record_object(task);
+    sf_release_task(task);
+    return result;
+}
+
+static inline void free_record_and_parray(struct fast_task_info *task)
+{
+    fast_mblock_free_object(&SERVER_CTX->service.
+            record_parray_allocator, RECORD->parray);
+    RECORD->parray = NULL;
+    free_record_object(task);
+}
+
+static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
+        struct fast_task_info *task, bool *need_release)
+{
+    ServerBinlogRecordBuffer *rbuffer;
+    FDIRBinlogRecord **pp;
+    FDIRBinlogRecord **recend;
+    int result;
+
+    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
+        free_record_and_parray(task);
+        *need_release = true;
+        return ENOMEM;
+    }
+
+    result = 0;
+    rbuffer->data_version.first = 0;
+    rbuffer->data_version.last = record->data_version;
+    recend = record->parray->records + record->parray->counts.total;
+    for (pp=record->parray->records; pp<recend; pp++) {
+        if ((*pp)->data_version == 0) {
+            continue;
+        }
+
+        if (rbuffer->data_version.first == 0) {
+            rbuffer->data_version.first = (*pp)->data_version;
+        }
+
+        (*pp)->timestamp = g_current_time;
+        if ((result=binlog_pack_record(*pp, &rbuffer->buffer)) != 0) {
+            break;
+        }
+    }
+
+    for (pp=record->parray->records; pp<recend; pp++) {
+        fast_mblock_free_object(&SERVER_CTX->service.
+                record_allocator, *pp);
+    }
+    /*
+    logInfo("result: %d, record count: %d, updated count: %d, "
+            "first data_version: %"PRId64", last data_version: %"PRId64
+            ", buffer length: %d", result, record->parray->counts.total,
+            record->parray->counts.updated, rbuffer->data_version.first,
+            rbuffer->data_version.last, rbuffer->buffer.length);
+            */
+
+    free_record_and_parray(task);
+    if (result == 0) {
+        result = do_binlog_produce(task, rbuffer);
+        *need_release = false;
+    } else {
+        server_binlog_free_rbuffer(rbuffer);
+        *need_release = true;
+    }
+
+    return result;
+}
+
+static int handle_batch_set_dsize_done(struct fast_task_info *task)
 {
     int result;
     bool need_release;
 
-    task->continue_callback = NULL;
-    if (RESPONSE_STATUS == 0) {
-        result = server_binlog_produce(task);
-        need_release = false;
+    if (RESPONSE_STATUS == 0 && RECORD->parray->counts.updated > 0) {
+        result = batch_set_dsize_binlog_produce(RECORD, task, &need_release);
     } else {
         result = RESPONSE_STATUS;
+        free_record_and_parray(task);
         need_release = true;
     }
 
-    if (result != TASK_STATUS_CONTINUE) {
-        service_idempotency_request_finish(task, result);
-    }
-
     if (need_release) {
-        free_record_object(task);
+        task->continue_callback = NULL;
+        service_idempotency_request_finish(task, result);
         sf_release_task(task);
     }
+
     return result;
 }
 
-static inline int push_record_to_data_thread_queue(struct fast_task_info *task)
+static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
+{
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    if (result != 0) {
+        logWarning("file: "__FILE__", line: %d, "
+                "batch set %d dentries' size fail",
+                __LINE__, RECORD->parray->counts.total);
+    }
+
+    RESPONSE_STATUS = result;
+    sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+}
+
+static void sys_lock_dentry_output(struct fast_task_info *task,
+        const FDIRServerDentry *dentry)
+{
+    FDIRProtoSysLockDEntryResp *resp;
+    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
+
+    long2buff(dentry->stat.size, resp->size);
+    long2buff(dentry->stat.space_end, resp->space_end);
+    RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
+    TASK_CTX.common.response_done = true;
+}
+
+static void flock_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
+{
+    struct fast_task_info *task;
+    int newr;
+
+    newr = result;
+    task = (struct fast_task_info *)record->notify.args;
+    if (record->ftask == NULL) {
+        logWarning("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", %s fail, errno: %d, error info: %s",
+                __LINE__, record->inode, get_operation_caption(
+                    record->operation), result, STRERROR(result));
+    } else {
+        if (record->operation == SERVICE_OP_FLOCK_APPLY_INT) {
+            fc_list_add_tail(&record->ftask->clink, FTASK_HEAD_PTR);
+        } else if (record->operation == SERVICE_OP_SYS_LOCK_APPLY_INT) {
+            SYS_LOCK_TASK = record->stask;
+            sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
+        }
+
+        if (result != 0) {
+            newr = TASK_STATUS_CONTINUE;
+        }
+    }
+
+    if (newr == TASK_STATUS_CONTINUE) {
+        RESPONSE_STATUS = 0;
+    } else {
+        RESPONSE_STATUS = result;
+        sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+    }
+}
+
+static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
+        const bool is_update, data_thread_notify_func notify_func,
+        TaskContinueCallback continue_callback)
 {
     sf_hold_task(task);
 
-    task->continue_callback = handle_record_deal_done;
-    RECORD->notify.func = record_deal_done_notify; //call by data thread
+    RECORD->is_update = is_update;
+    RECORD->notify.func = notify_func;  //call by data thread
     RECORD->notify.args = task;
+    task->continue_callback = continue_callback;
     push_to_data_thread_queue(RECORD);
     return TASK_STATUS_CONTINUE;
 }
 
-static int service_set_record_pname_info(struct fast_task_info *task,
-        const int reserved_size)
+#define push_update_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, true, record_deal_done_notify, \
+            handle_record_update_done)
+
+#define push_batch_set_dsize_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, true, batch_set_dsize_done_notify, \
+            handle_batch_set_dsize_done)
+
+#define push_query_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, false, record_deal_done_notify, \
+            handle_record_query_done)
+
+#define push_flock_to_data_thread_queue(task) \
+    push_record_to_data_thread_queue(task, false, flock_done_notify, \
+            handle_record_query_done)
+
+int service_set_record_pname_info(FDIRBinlogRecord *record,
+        struct fast_task_info *task)
 {
     char *p;
 
-    RECORD->inode = RECORD->data_version = 0;
-    RECORD->options.flags = 0;
-    RECORD->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
-    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
-
-    if (REQUEST.header.body_len > reserved_size) {
-        if ((REQUEST.header.body_len + RECORD->ns.len +
-                    RECORD->me.pname.name.len) < task->size)
+    record->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
+    if (REQUEST.header.body_len > sizeof(FDIRProtoStatDEntryResp)) {
+        if ((REQUEST.header.body_len + record->ns.len +
+                    record->me.pname.name.len) < task->size)
         {
             p = REQUEST.body + REQUEST.header.body_len;
         } else {
-            p = REQUEST.body + reserved_size;
+            p = REQUEST.body + sizeof(FDIRProtoStatDEntryResp);
         }
     } else {
-        p = REQUEST.body + reserved_size;
+        p = REQUEST.body + sizeof(FDIRProtoStatDEntryResp);
     }
 
-    if (p + RECORD->ns.len + RECORD->me.pname.name.len >
+    if (p + record->ns.len + record->me.pname.name.len >
             task->data + task->size)
     {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -1109,12 +1454,12 @@ static int service_set_record_pname_info(struct fast_task_info *task,
         return EOVERFLOW;
     }
 
-    memcpy(p, RECORD->ns.str, RECORD->ns.len);
-    memcpy(p + RECORD->ns.len, RECORD->me.pname.name.str,
-            RECORD->me.pname.name.len);
+    memcpy(p, record->ns.str, record->ns.len);
+    memcpy(p + record->ns.len, record->me.pname.name.str,
+            record->me.pname.name.len);
 
-    RECORD->ns.str = p;
-    RECORD->me.pname.name.str = p + RECORD->ns.len;
+    record->ns.str = p;
+    record->me.pname.name.str = p + record->ns.len;
     return 0;
 }
 
@@ -1124,14 +1469,12 @@ static int service_set_record_pname_info(struct fast_task_info *task,
 static void init_record_for_create_ex(struct fast_task_info *task,
         const int mode, const bool is_hdlink)
 {
-    int new_mode;
     if (is_hdlink) {
-        new_mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)) |
-                (RECORD->hdlink.src_dentry->stat.mode & S_IFMT));
+        RECORD->stat.mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)));
     } else {
-        new_mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
+        RECORD->stat.mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
     }
-    RECORD->stat.mode = new_mode;
+
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
                 REQUEST.body)->uid);
@@ -1148,76 +1491,66 @@ static void init_record_for_create_ex(struct fast_task_info *task,
 }
 
 static int server_parse_dentry_for_update(struct fast_task_info *task,
-        const int front_part_size, const bool is_create)
+        const int front_part_size)
 {
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *parent_dentry;
-    string_t name;
     int result;
 
-    if ((result=server_check_and_parse_dentry(task,
-                    front_part_size, &fullname)) != 0)
+    if ((result=server_check_and_parse_dentry(
+                    task, front_part_size)) != 0)
     {
+        free_record_object(task);
         return result;
     }
-
+    RECORD->options.flags = 0;
+    RECORD->data_version = 0;
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "ns: %.*s, path: %.*s", __LINE__, __FUNCTION__,
-            fullname.ns.len, fullname.ns.str,
-            fullname.path.len, fullname.path.str);
+            RECORD->me.fullname.ns.len, RECORD->me.fullname.ns.str,
+            RECORD->me.fullname.path.len, RECORD->me.fullname.path.str);
             */
 
-    if ((result=dentry_find_parent(&fullname, &parent_dentry, &name)) != 0) {
-        if (!(result == ENOENT && is_create)) {
-            return result;
-        }
-        if (!FDIR_IS_ROOT_PATH(fullname.path)) {
-            return result;
-        }
-    } else if (is_create && FDIR_IS_ROOT_PATH(fullname.path)) {
-        return EEXIST;
-    }
+   return 0;
+}
+
+static int server_parse_pname_for_query_ex(struct fast_task_info *task,
+        const int front_part_size)
+{
+    int result;
 
     if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    RECORD->ns = fullname.ns;
-    RECORD->me.pname.name = name;
-    if (parent_dentry != NULL) {
-        RECORD->me.pname.parent_inode = parent_dentry->inode;
+    RECORD->dentry_type = fdir_dentry_type_pname;
+    if ((result=server_check_and_parse_pname(task, front_part_size,
+                    &RECORD->ns, &RECORD->me.pname)) != 0)
+    {
+        free_record_object(task);
+        return result;
     }
-    RECORD->me.parent = parent_dentry;
-    RECORD->me.dentry = NULL;
-    return service_set_record_pname_info(task,
-            sizeof(FDIRProtoStatDEntryResp));
+    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
+    RECORD->inode = 0;
+
+    return 0;
 }
+
+#define server_parse_pname_for_query(task) \
+    server_parse_pname_for_query_ex(task, 0)
 
 static int server_parse_pname_for_update(struct fast_task_info *task,
         const int front_part_size)
 {
     int result;
-    FDIRServerDentry *parent_dentry;
-    string_t ns;
-    string_t name;
 
-    if ((result=server_check_and_parse_pname(task, front_part_size,
-                    &ns, &name, &parent_dentry)) != 0)
+    if ((result=server_parse_pname_for_query_ex(
+                    task, front_part_size)) != 0)
     {
         return result;
     }
 
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
-
-    RECORD->ns = ns;
-    RECORD->me.pname.name = name;
-    if (parent_dentry != NULL) {
-        RECORD->me.pname.parent_inode = parent_dentry->inode;
-    }
-    RECORD->me.parent = parent_dentry;
+    RECORD->options.flags = 0;
+    RECORD->data_version = 0;
     RECORD->me.dentry = NULL;
 
     /*
@@ -1228,8 +1561,7 @@ static int server_parse_pname_for_update(struct fast_task_info *task,
             RECORD->me.pname.name.str);
             */
 
-    return service_set_record_pname_info(task,
-            sizeof(FDIRProtoStatDEntryResp));
+    return service_set_record_pname_info(RECORD, task);
 }
 
 static int server_parse_inode_for_update(struct fast_task_info *task,
@@ -1237,11 +1569,11 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
 {
     int result;
     int body_len;
-    FDIRServerDentry *dentry;
+    int64_t inode;
     string_t ns;
 
     if ((result=check_and_parse_inode_info(task,
-                    front_part_size, &ns, &dentry)) != 0)
+                    front_part_size, &ns, &inode)) != 0)
     {
         return result;
     }
@@ -1258,15 +1590,12 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
-    RECORD->inode = dentry->inode;
+    RECORD->inode = inode;
     RECORD->ns = ns;
     RECORD->hash_code = simple_hash(ns.str, ns.len);
-    RECORD->me.dentry = dentry;
-    RECORD->me.pname.name = dentry->name;
-    if (dentry->parent != NULL) {
-        RECORD->me.pname.parent_inode = dentry->parent->inode;
-    }
+    FC_SET_STRING_NULL(RECORD->me.pname.name);
     return 0;
 }
 
@@ -1322,25 +1651,48 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
     return 0;
 }
 
+static inline int parse_create_dentry_mode(
+        struct fast_task_info *task, int *mode)
+{
+    *mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
+    if ((*mode & S_IFMT) == 0) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "mode: %d is invalid", *mode);
+        return EINVAL;
+    }
+
+    if (S_ISLNK(*mode)) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "use symlink cmd to create link");
+        return EINVAL;
+    }
+
+    return 0;
+}
+
 static int service_deal_create_dentry(struct fast_task_info *task)
 {
     int result;
+    int mode;
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront), true)) != 0)
+                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
     {
         return result;
     }
 
-    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode));
+    if ((result=parse_create_dentry_mode(task, &mode)) != 0) {
+        return result;
+    }
+    init_record_for_create(task, mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_create_by_pname(struct fast_task_info *task)
 {
     int result;
+    int mode;
 
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoCreateDEntryFront))) != 0)
@@ -1348,10 +1700,12 @@ static int service_deal_create_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    init_record_for_create(task, buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->mode));
+    if ((result=parse_create_dentry_mode(task, &mode)) != 0) {
+        return result;
+    }
+    init_record_for_create(task, mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int parse_symlink_dentry_front(struct fast_task_info *task,
@@ -1381,22 +1735,28 @@ static int parse_symlink_dentry_front(struct fast_task_info *task,
     return 0;
 }
 
-static int init_record_for_symlink(struct fast_task_info *task,
+static inline void init_record_for_symlink(struct fast_task_info *task,
         const string_t *link, const int mode)
 {
     init_record_for_create(task, mode);
+    RECORD->link = *link;
+    RECORD->options.link = 1;
+}
 
-    RECORD->link.str = RECORD->me.pname.name.str +
-        RECORD->me.pname.name.len;
-    if (RECORD->link.str + link->len > task->data + task->size) {
+int service_set_record_link(FDIRBinlogRecord *record,
+        struct fast_task_info *task)
+{
+    char *link_str;
+
+    link_str = record->me.pname.name.str + record->me.pname.name.len;
+    if (link_str + record->link.len > task->data + task->size) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "task pkg size: %d is too small", task->size);
         return EOVERFLOW;
     }
 
-    memcpy(RECORD->link.str, link->str, link->len);
-    RECORD->link.len = link->len;
-    RECORD->options.link = 1;
+    memcpy(link_str, record->link.str, record->link.len);
+    record->link.str = link_str;
     return 0;
 }
 
@@ -1412,18 +1772,14 @@ static int service_deal_symlink_dentry(struct fast_task_info *task)
 
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoSymlinkDEntryFront) +
-                    link.len, false)) != 0)
+                    link.len)) != 0)
     {
         return result;
     }
 
-    if ((result=init_record_for_symlink(task, &link, mode)) != 0) {
-        free_record_object(task);
-        return result;
-    }
-
+    init_record_for_symlink(task, &link, mode);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_symlink_by_pname(struct fast_task_info *task)
@@ -1442,17 +1798,18 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=init_record_for_symlink(task, &link, mode)) != 0) {
+    init_record_for_symlink(task, &link, mode);
+    if ((result=service_set_record_link(RECORD, task)) != 0) {
         free_record_object(task);
         return result;
     }
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int do_hdlink_dentry(struct fast_task_info *task,
-        FDIRServerDentry *src_dentry, const int mode, const int resp_cmd)
+        const int mode, const int resp_cmd)
 {
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -1464,18 +1821,15 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             RECORD->hdlink.dest.pname.name.str);
             */
 
-    RECORD->hdlink.src_dentry = src_dentry;
-    RECORD->hdlink.src_inode = src_dentry->inode;
     init_record_for_create_ex(task, mode, true);
     RECORD->options.src_inode = 1;
     RESPONSE.header.cmd = resp_cmd;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_hdlink_dentry(struct fast_task_info *task)
 {
     FDIRDEntryFullName src_fullname;
-    FDIRServerDentry *src_dentry;
     int mode;
     int result;
 
@@ -1494,14 +1848,11 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=dentry_find(&src_fullname, &src_dentry)) != 0) {
-        return result;
-    }
-
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoCreateDEntryFront) +
-                    sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
-                    src_fullname.path.len, false)) != 0)
+                    sizeof(FDIRProtoDEntryInfo) +
+                    src_fullname.ns.len +
+                    src_fullname.path.len)) != 0)
     {
         return result;
     }
@@ -1520,8 +1871,9 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
+    RECORD->hdlink.src.fullname = src_fullname;
     mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
-    return do_hdlink_dentry(task, src_dentry, mode,
+    return do_hdlink_dentry(task, mode,
             FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
 }
 
@@ -1545,7 +1897,6 @@ static int parse_hdlink_dentry_front(struct fast_task_info *task,
 
 static int service_deal_hdlink_by_pname(struct fast_task_info *task)
 {
-    FDIRServerDentry *src_dentry;
     int result;
     int mode;
     int64_t src_inode;
@@ -1554,17 +1905,14 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    if ((src_dentry=inode_index_get_dentry(src_inode)) == NULL) {
-        return ENOENT;
-    }
-
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoHDlinkByPNameFront))) != 0)
     {
         return result;
     }
 
-    return do_hdlink_dentry(task, src_dentry, mode,
+    RECORD->hdlink.src.inode = src_inode;
+    return do_hdlink_dentry(task, mode,
             FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 
@@ -1572,13 +1920,13 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_dentry_for_update(task, 0, false)) != 0) {
+    if ((result=server_parse_dentry_for_update(task, 0)) != 0) {
         return result;
     }
 
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_remove_by_pname(struct fast_task_info *task)
@@ -1591,56 +1939,15 @@ static int service_deal_remove_by_pname(struct fast_task_info *task)
 
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
-static int set_rename_src_by_dentry(struct fast_task_info *task,
-        FDIRServerDentry *dentry)
+static inline void parse_rename_flags(struct fast_task_info *task)
 {
     FDIRProtoRenameDEntryFront *front;
 
-    if (dentry->parent == NULL) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "can't rename root path: /");
-        return EINVAL;
-    }
-
     front = (FDIRProtoRenameDEntryFront *)REQUEST.body;
     RECORD->flags = buff2int(front->flags);
-
-    RECORD->rename.src.pname.name.str = RECORD->rename.dest.pname.name.str +
-        RECORD->rename.dest.pname.name.len;
-    memcpy(RECORD->rename.src.pname.name.str,
-            dentry->name.str, dentry->name.len);
-    RECORD->rename.src.pname.name.len = dentry->name.len;
-    RECORD->rename.src.pname.parent_inode = dentry->parent->inode;
-    return 0;
-}
-
-static inline int set_rename_src_dentry(struct fast_task_info *task,
-        FDIRDEntryFullName *src_fullname)
-{
-    int result;
-    FDIRServerDentry *dentry;
-
-    if ((result=dentry_find(src_fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return set_rename_src_by_dentry(task, dentry);
-}
-
-static inline int set_rename_src_pname(struct fast_task_info *task,
-        FDIRServerDentry *parent, string_t *src_name)
-{
-    int result;
-    FDIRServerDentry *dentry;
-
-    if ((result=dentry_find_by_pname(parent, src_name, &dentry)) != 0) {
-        return result;
-    }
-
-    return set_rename_src_by_dentry(task, dentry);
 }
 
 static int service_deal_rename_dentry(struct fast_task_info *task)
@@ -1666,7 +1973,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     if ((result=server_parse_dentry_for_update(task,
                     sizeof(FDIRProtoRenameDEntryFront) +
                     sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
-                    src_fullname.path.len, false)) != 0)
+                    src_fullname.path.len)) != 0)
     {
         return result;
     }
@@ -1678,10 +1985,8 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             src_fullname.path.len, src_fullname.path.str);
             */
 
-    if ((result=set_rename_src_dentry(task, &src_fullname)) != 0) {
-        free_record_object(task);
-        return result;
-    }
+    RECORD->rename.src.fullname = src_fullname;
+    parse_rename_flags(task);
 
     if (!fc_string_equal(&RECORD->ns, &src_fullname.ns)) {
         free_record_object(task);
@@ -1705,15 +2010,14 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     RECORD->rename.overwritten = NULL;
     RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_RENAME_DENTRY_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_rename_by_pname(struct fast_task_info *task)
 {
     int result;
     string_t src_ns;
-    string_t src_name;
-    FDIRServerDentry *src_parent;
+    FDIRDEntryPName src_pname;
 
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntryByPName) + 4,
@@ -1723,8 +2027,9 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=server_parse_pname(task, sizeof(FDIRProtoRenameDEntryFront),
-                    &src_ns, &src_name, &src_parent)) != 0)
+    if ((result=server_parse_pname(task,
+                    sizeof(FDIRProtoRenameDEntryFront),
+                    &src_ns, &src_pname)) != 0)
     {
         return result;
     }
@@ -1732,16 +2037,13 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     if ((result=server_parse_pname_for_update(task,
                     sizeof(FDIRProtoRenameDEntryFront) +
                     sizeof(FDIRProtoDEntryByPName) +
-                    src_ns.len + src_name.len)) != 0)
+                    src_ns.len + src_pname.name.len)) != 0)
     {
         return result;
     }
 
-    if ((result=set_rename_src_pname(task, src_parent, &src_name)) != 0) {
-        free_record_object(task);
-        return result;
-    }
-
+    RECORD->rename.src.pname = src_pname;
+    parse_rename_flags(task);
     if (!fc_string_equal(&RECORD->ns, &src_ns)) {
         free_record_object(task);
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -1752,7 +2054,7 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     RECORD->rename.overwritten = NULL;
     RECORD->operation = BINLOG_OP_RENAME_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_RENAME_BY_PNAME_RESP;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int parse_xattr_fields(struct fast_task_info *task,
@@ -1799,39 +2101,25 @@ static inline int service_do_setxattr(struct fast_task_info *task,
         const key_value_pair_t *xattr, const int flags,
         const int resp_cmd)
 {
-    RECORD->options.flags = 0;
     RECORD->flags = flags;
     RECORD->xattr = *xattr;
     RECORD->operation = BINLOG_OP_SET_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int parse_dentry_for_xattr_update(struct fast_task_info *task,
         const int front_part_size)
 {
-    FDIRServerDentry *dentry;
-    FDIRDEntryFullName fullname;
     int result;
 
-    if ((result=server_check_and_parse_dentry(task,
-                    front_part_size, &fullname)) != 0)
+    if ((result=server_check_and_parse_dentry(
+                    task, front_part_size)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
-
-    RECORD->me.dentry = dentry;
-    RECORD->ns = fullname.ns;
-    RECORD->inode = dentry->inode;
-    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
+    RECORD->options.flags = 0;
     RECORD->data_version = 0;
     return 0;
 }
@@ -1919,41 +2207,28 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
 }
 
 static int parse_xattr_name_info(struct fast_task_info *task,
-        const int fixed_size, const bool check_whole_body_len,
-        string_t *name)
+        const int fixed_size, string_t *name)
 {
     int result;
-    int expect_blen;
     FDIRProtoNameInfo *proto_name;
 
-    if ((result=server_check_min_body_length( fixed_size + 1)) != 0) {
+    if ((result=server_check_min_body_length(fixed_size + 1)) != 0) {
         return result;
     }
 
     proto_name = (FDIRProtoNameInfo *)REQUEST.body;
     name->len = proto_name->len;
     name->str = proto_name->str;
-    if (check_whole_body_len) {
-        expect_blen = fixed_size + name->len;
-        if (REQUEST.header.body_len != expect_blen) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "request body length: %d != expect: %d",
-                    REQUEST.header.body_len, expect_blen);
-            return EINVAL;
-        }
-    }
-
     return 0;
 }
 
 static inline int service_do_removexattr(struct fast_task_info *task,
         const string_t *name, const int resp_cmd)
 {
-    RECORD->options.flags = 0;
     RECORD->xattr.key = *name;
     RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
-    return push_record_to_data_thread_queue(task);
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
@@ -1971,9 +2246,7 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
     }
 
     fixed_size = sizeof(FDIRProtoRemoveXAttrByPathReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    false, &name)) != 0)
-    {
+    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
         return result;
     }
 
@@ -2013,9 +2286,7 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
     }
 
     fixed_size = sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    false, &name)) != 0)
-    {
+    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
         return result;
     }
 
@@ -2041,309 +2312,137 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
 static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *dentry;
 
-    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
+    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
+    RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
-    dentry_stat_output(task, &dentry);
-    return 0;
-}
-
-static int readlink_output(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const int resp_cmd)
-{
-    if (!S_ISLNK(dentry->stat.mode)) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "not symbol link");
-        return ENOLINK;
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = dentry->link.len;
-    memcpy(SF_PROTO_RESP_BODY(task), dentry->link.str, dentry->link.len);
-    TASK_CTX.common.response_done = true;
-    return 0;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_readlink_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *dentry;
 
-    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
+    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return readlink_output(task, dentry,
-            FDIR_SERVICE_PROTO_READLINK_BY_PATH_RESP);
+    RECORD->operation = SERVICE_OP_READ_LINK_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_readlink_by_pname(struct fast_task_info *task)
 {
-    FDIRProtoReadlinkByPNameReq *req;
-    FDIRServerDentry *dentry;
-    int64_t parent_inode;
-    string_t name;
     int result;
 
-    if ((result=server_check_body_length(sizeof(
-                        FDIRProtoReadlinkByPNameReq) + 1,
-                    sizeof(FDIRProtoReadlinkByPNameReq) + NAME_MAX)) != 0)
-    {
+    if ((result=server_parse_pname_for_query(task)) != 0) {
         return result;
     }
 
-    req = (FDIRProtoReadlinkByPNameReq *)REQUEST.body;
-    if (sizeof(FDIRProtoReadlinkByPNameReq) + req->name_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoReadlinkByPNameReq) + req->name_len);
-        return EINVAL;
-    }
-
-    parent_inode = buff2long(req->parent_inode);
-    name.str = req->name_str;
-    name.len = req->name_len;
-    if ((dentry=inode_index_get_dentry_by_pname(
-                    parent_inode, &name)) == NULL)
-    {
-        return ENOENT;
-    }
-
-    return readlink_output(task, dentry,
-            FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP);
+    RECORD->operation = SERVICE_OP_READ_LINK_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
-static inline int server_check_and_parse_inode(
-        struct fast_task_info *task, int64_t *inode)
+static inline int server_check_and_parse_inode(struct fast_task_info *task)
 {
+    FDIRProtoInodeInfo *req;
     int result;
 
-    if ((result=server_expect_body_length(8)) != 0) {
+    req = (FDIRProtoInodeInfo *)REQUEST.body;
+    if ((result=server_expect_body_length(sizeof(*req) + req->ns_len)) != 0) {
         return result;
     }
 
-    *inode = buff2long(REQUEST.body);
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
+
+    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->inode = buff2long(req->inode);
+    FC_SET_STRING_NULL(RECORD->me.pname.name);
     return 0;
 }
 
 static int service_deal_readlink_by_inode(struct fast_task_info *task)
 {
-    FDIRServerDentry *dentry;
-    int64_t inode;
     int result;
 
-    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+    if ((result=server_check_and_parse_inode(task)) != 0) {
         return result;
     }
 
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    return readlink_output(task, dentry,
-            FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP);
+    RECORD->operation = SERVICE_OP_READ_LINK_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *dentry;
-    FDIRProtoLookupInodeResp *resp;
 
-
-    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
+    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
+    RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP;
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
-    long2buff(dentry->inode, resp->inode);
-    RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
-    TASK_CTX.common.response_done = true;
-    return 0;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
-    FDIRServerDentry *dentry;
-    int64_t inode;
     int result;
 
-    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+    if ((result=server_check_and_parse_inode(task)) != 0) {
         return result;
     }
 
+    RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP;
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    dentry_stat_output(task, &dentry);
-    return 0;
-}
-
-static int get_dentry_by_pname(struct fast_task_info *task,
-        FDIRServerDentry **dentry)
-{
-    FDIRProtoStatDEntryByPNameReq *req;
-    int64_t parent_inode;
-    string_t name;
-    int result;
-
-    if ((result=server_check_body_length(sizeof(
-                        FDIRProtoStatDEntryByPNameReq) + 1,
-                    sizeof(FDIRProtoStatDEntryByPNameReq) + NAME_MAX)) != 0)
-    {
-        return result;
-    }
-
-    req = (FDIRProtoStatDEntryByPNameReq *)REQUEST.body;
-    if (sizeof(FDIRProtoStatDEntryByPNameReq) + req->name_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoStatDEntryByPNameReq) + req->name_len);
-        return EINVAL;
-    }
-
-    parent_inode = buff2long(req->parent_inode);
-    name.str = req->name_str;
-    name.len = req->name_len;
-    if ((*dentry=inode_index_get_dentry_by_pname(
-                    parent_inode, &name)) == NULL)
-    {
-        return ENOENT;
-    }
-
-    return 0;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
-    FDIRServerDentry *dentry;
 
-    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
-        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
-        dentry_stat_output(task, &dentry);
+    if ((result=server_parse_pname_for_query(task)) != 0) {
+        return result;
     }
-    return result;
+
+    RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 {
     int result;
-    FDIRServerDentry *dentry;
-    FDIRProtoLookupInodeResp *resp;
 
-    if ((result=get_dentry_by_pname(task, &dentry)) == 0) {
-        RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
-        resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
-        long2buff(dentry->inode, resp->inode);
-        RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
-        TASK_CTX.common.response_done = true;
+    if ((result=server_parse_pname_for_query(task)) != 0) {
+        return result;
     }
-    return result;
+
+    RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
-static inline int binlog_produce_directly(struct fast_task_info *task)
+static inline void init_record_by_dsize(FDIRBinlogRecord *record,
+        const FDIRSetDEntrySizeInfo *dsize)
 {
-    RECORD->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 1);
-    sf_hold_task(task);
-    return server_binlog_produce(task);
-}
-
-static FDIRServerDentry *do_set_dentry_size(FDIRBinlogRecord *record,
-        const char *ns_str, const int ns_len,
-        const FDIRSetDEntrySizeInfo *dsize, const bool need_lock,
-        int *result, int *modified_flags)
-{
-    FDIRServerDentry *dentry;
-
-    if ((dentry=inode_index_check_set_dentry_size(dsize,
-                    need_lock, modified_flags)) == NULL)
-    {
-        *result = ENOENT;
-        return NULL;
-    }
-
-    if (*modified_flags == 0) {  //no fields changed
-        *result = 0;
-        return dentry;
-    }
-
+    record->data_version = 0;
     record->inode = dsize->inode;
-    record->me.dentry = dentry;
-    record->hash_code = simple_hash(ns_str, ns_len);
-    record->options.flags = 0;
-    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-        record->options.size = 1;
-        record->stat.size = record->me.dentry->stat.size;
-    }
-    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-        record->options.space_end = 1;
-        record->stat.space_end = record->me.dentry->stat.space_end;
-    }
-    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
-        record->options.inc_alloc = 1;
-        record->stat.alloc = dsize->inc_alloc;
-    }
-    if ((*modified_flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
-        record->options.mtime = 1;
-        record->stat.mtime = record->me.dentry->stat.mtime;
-    }
-    record->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-    *result = 0;
-    return dentry;
-}
-
-static FDIRServerDentry *set_dentry_size(
-        struct fast_task_info *task,
-        const char *ns_str, const int ns_len,
-        const FDIRSetDEntrySizeInfo *dsize,
-        const bool need_lock, int *result)
-{
-    int modified_flags;
-    FDIRServerDentry *dentry;
-
-    if ((*result=alloc_record_object(task)) != 0) {
-        return NULL;
-    }
-
-    dentry = do_set_dentry_size(RECORD, ns_str, ns_len,
-            dsize, need_lock, result, &modified_flags);
-    if (dentry == NULL || modified_flags == 0) {
-        free_record_object(task);
-        return dentry;
-    }
-
-    *result = binlog_produce_directly(task);
-    return dentry;
+    record->options.flags = dsize->flags;
+    record->stat.size = dsize->file_size;
+    record->stat.alloc = dsize->inc_alloc;
 }
 
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
@@ -2351,12 +2450,10 @@ static FDIRServerDentry *set_dentry_size(
     dsize.file_size = buff2long(req->file_size); \
     dsize.inc_alloc = buff2long(req->inc_alloc); \
     dsize.flags = buff2int(req->flags);  \
-    dsize.force = req->force
 
 static int service_deal_set_dentry_size(struct fast_task_info *task)
 {
     FDIRProtoSetDentrySizeReq *req;
-    FDIRServerDentry *dentry;
     FDIRSetDEntrySizeInfo dsize;
     int result;
 
@@ -2384,18 +2481,18 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req);
-
-    dentry = set_dentry_size(task, req->ns_str, req->ns_len,
-            &dsize, true, &result);
-    if (result == 0 || result == TASK_STATUS_CONTINUE) {
-        if (dentry != NULL) {
-            set_update_result_and_output(task, dentry);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
 
-    return result;
+    init_record_by_dsize(RECORD, &dsize);
+    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
+    return push_update_to_data_thread_queue(task);
 }
 
 static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
@@ -2403,18 +2500,12 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     FDIRProtoBatchSetDentrySizeReqHeader *rheader;
     FDIRProtoBatchSetDentrySizeReqBody *rbody;
     FDIRProtoBatchSetDentrySizeReqBody *rbend;
-    ServerBinlogRecordBuffer *rbuffer;
-    FDIRServerDentry *dentry;
     FDIRSetDEntrySizeInfo dsize;
-    FDIRBinlogRecord *records[FDIR_BATCH_SET_MAX_DENTRY_COUNT];
     FDIRBinlogRecord **record;
-    FDIRBinlogRecord **recend;
-    uint64_t current_version;
-    int record_count;
+    uint32_t hash_code;
     int result;
     int count;
     int expect_blen;
-    int modified_flags;
 
     if ((result=server_check_min_body_length(
                     sizeof(FDIRProtoBatchSetDentrySizeReqHeader) + 1 +
@@ -2447,110 +2538,55 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if ((rbuffer=server_binlog_alloc_hold_rbuffer()) == NULL) {
-        return ENOMEM;
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
     }
-    memset(records, 0, sizeof(FDIRBinlogRecord *) * count);
-    record = records;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
+    RECORD->parray = (FDIRRecordPtrArray *)fast_mblock_alloc_object(
+            &SERVER_CTX->service.record_parray_allocator);
+    if (RECORD->parray == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "system busy, please try later");
+        return EBUSY;
+    }
+
+    hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
         (rheader->ns_str + rheader->ns_len);
     rbend = rbody + count;
-    for (; rbody < rbend; rbody++) {
+    for (record=RECORD->parray->records;
+            rbody<rbend; record++, rbody++)
+    {
         SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, rbody);
 
+        *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
+                &SERVER_CTX->service.record_allocator);
         if (*record == NULL) {
-            *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
-                    &((FDIRServerContext *)task->thread_data->arg)->
-                    service.record_allocator);
-            if (*record == NULL) {
-                RESPONSE.error.length = sprintf(
-                        RESPONSE.error.message,
-                        "system busy, please try later");
-                return EBUSY;
-            }
+            RESPONSE.error.length = sprintf(
+                    RESPONSE.error.message,
+                    "system busy, please try later");
+            return EBUSY;
         }
 
-        dentry = do_set_dentry_size(*record, rheader->ns_str,
-                rheader->ns_len, &dsize, true, &result, &modified_flags);
-        if (dentry != NULL && modified_flags != 0) {
-            record++;
-        }
+        init_record_by_dsize(*record, &dsize);
+        (*record)->hash_code = hash_code;
+        (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     }
+    RECORD->parray->counts.total = count;
 
-    recend = record;
-    record_count = recend - records;
-    rbuffer->data_version.last = __sync_add_and_fetch(
-                &DATA_CURRENT_VERSION, record_count);
-    rbuffer->data_version.first = rbuffer->
-        data_version.last - record_count + 1;
-    current_version = rbuffer->data_version.first;
-    for (record=records; record<recend; record++) {
-        (*record)->data_version = current_version++;
-        (*record)->timestamp = g_current_time;
-        if ((result=binlog_pack_record(*record, &rbuffer->buffer)) != 0) {
-            break;
-        }
-    }
-
-    for (record=records; record<recend; record++) {
-        fast_mblock_free_object(&((FDIRServerContext *)task->
-                    thread_data->arg)->service.record_allocator, *record);
-    }
-    if (record_count < count && *recend != NULL) {
-        fast_mblock_free_object(&((FDIRServerContext *)task->
-                    thread_data->arg)->service.record_allocator, *recend);
-    }
-
-    /*
-    logInfo("result: %d, count: %d, record_count: %d, "
-            "first data_version: %"PRId64", last data_version: %"PRId64
-            ", buffer length: %d", result, count, record_count,
-            rbuffer->data_version.first, rbuffer->data_version.last,
-            rbuffer->buffer.length);
-            */
-
-    if (result == 0 && record_count > 0) {
-        sf_hold_task(task);
-        return do_binlog_produce(task, rbuffer);
-    } else {
-        server_binlog_free_rbuffer(rbuffer);
-        return result;
-    }
-}
-
-static FDIRServerDentry *modify_dentry_stat(struct fast_task_info *task,
-        const char *ns_str, const int ns_len, const int64_t inode,
-        const int64_t flags, const FDIRDEntryStat *stat, int *result)
-{
-    FDIRServerDentry *dentry;
-
-    if ((*result=alloc_record_object(task)) != 0) {
-        return NULL;
-    }
-
-    RECORD->inode = inode;
-    RECORD->options.flags = flags;
-    RECORD->stat = *stat;
-    RECORD->hash_code = simple_hash(ns_str, ns_len);
-    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
-
-    if ((dentry=inode_index_update_dentry(RECORD)) == NULL) {
-        free_record_object(task);
-        *result = ENOENT;
-        return NULL;
-    }
-
-    RECORD->me.dentry = dentry;
-    *result = binlog_produce_directly(task);
-    return dentry;
+    FC_SET_STRING_EX(RECORD->ns, rheader->ns_str, rheader->ns_len);
+    RECORD->inode = RECORD->data_version = 0;
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->hash_code = hash_code;
+    RECORD->operation = SERVICE_OP_BATCH_SET_DSIZE_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
+    return push_batch_set_dsize_to_data_thread_queue(task);
 }
 
 static int service_deal_modify_dentry_stat(struct fast_task_info *task)
 {
     FDIRProtoModifyDentryStatReq *req;
-    FDIRServerDentry *dentry;
     FDIRDEntryStat stat;
     int64_t inode;
     int64_t flags;
@@ -2593,8 +2629,10 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
     }
 
     fdir_proto_unpack_dentry_stat(&req->stat, &stat);
-    dentry = modify_dentry_stat(task, req->ns_str, req->ns_len,
-            inode, masked_flags, &stat, &result);
+
+    if ((result=alloc_record_object(task)) != 0) {
+        return result;
+    }
 
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -2602,13 +2640,16 @@ static int service_deal_modify_dentry_stat(struct fast_task_info *task)
             __LINE__, flags, flags, masked_flags, result);
             */
 
-    if (result == 0 || result == TASK_STATUS_CONTINUE) {
-        if (dentry != NULL) {
-            set_update_result_and_output(task, dentry);
-        }
-    }
 
-    return result;
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->data_version = 0;
+    RECORD->inode = inode;
+    RECORD->options.flags = masked_flags;
+    RECORD->stat = stat;
+    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    return push_update_to_data_thread_queue(task);
 }
 
 static inline int service_check_readable(struct fast_task_info *task)
@@ -2647,11 +2688,11 @@ static int service_process_update(struct fast_task_info *task,
     return result;
 }
 
-static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
-        const int64_t inode, const int64_t offset, const int64_t length)
+static int compare_flock_task(FLockTask *flck, const int64_t inode,
+        const FlockParams *params)
 {
     int sub;
-    if ((sub=fc_compare_int64(flck->owner.id, owner->id)) != 0) {
+    if ((sub=fc_compare_int64(flck->owner.id, params->owner.id)) != 0) {
         return sub;
     }
 
@@ -2659,11 +2700,11 @@ static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
         return sub;
     }
 
-    if ((sub=fc_compare_int64(flck->region->offset, offset)) != 0) {
+    if ((sub=fc_compare_int64(flck->region->offset, params->offset)) != 0) {
         return sub;
     }
 
-    if ((sub=fc_compare_int64(flck->region->length, length)) != 0) {
+    if ((sub=fc_compare_int64(flck->region->length, params->length)) != 0) {
         return sub;
     }
 
@@ -2671,8 +2712,7 @@ static int compare_flock_task(FLockTask *flck, const FlockOwner *owner,
 }
 
 static int flock_unlock_dentry(struct fast_task_info *task,
-        const FlockOwner *owner, const int64_t inode, const int64_t offset,
-        const int64_t length)
+        const int64_t inode, const FlockParams *params)
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
@@ -2690,7 +2730,7 @@ static int flock_unlock_dentry(struct fast_task_info *task,
             continue;
         }
 
-        if (compare_flock_task(flck, owner, inode, offset, length) == 0) {
+        if (compare_flock_task(flck, inode, params) == 0) {
             release_flock_task(task, flck);
             return 0;
         }
@@ -2702,28 +2742,24 @@ static int flock_unlock_dentry(struct fast_task_info *task,
 static int service_deal_flock_dentry(struct fast_task_info *task)
 {
     FDIRProtoFlockDEntryReq *req;
-    FLockTask *ftask;
     int result;
-    short type;
-    FlockOwner owner;
-    int64_t inode;
-    int64_t offset;
-    int64_t length;
     short operation;
+    int64_t inode;
+    FlockParams params;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoFlockDEntryReq))) != 0)
+    req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
+    if ((result=server_expect_body_length(sizeof(*req) +
+                    req->ino.ns_len)) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
-    inode = buff2long(req->inode);
-    offset = buff2long(req->offset);
-    length = buff2long(req->length);
-    owner.id = buff2long(req->owner.id);
-    owner.pid = buff2int(req->owner.pid);
+    inode = buff2long(req->ino.inode);
+    params.offset = buff2long(req->offset);
+    params.length = buff2long(req->length);
+    params.owner.id = buff2long(req->owner.id);
+    params.owner.pid = buff2int(req->owner.pid);
     operation = buff2int(req->operation);
 
     /*
@@ -2731,18 +2767,18 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", "
             "owner.id: %"PRId64", owner.pid: %d", __LINE__,
-            task->event.fd, operation, inode,
-            offset, length, owner.id, owner.pid);
+            task->event.fd, operation, inode, params.offset,
+            params.length, params.owner.id, params.owner.pid);
             */
 
     if (operation & LOCK_UN) {
-        return flock_unlock_dentry(task, &owner, inode, offset, length);
+        return flock_unlock_dentry(task, inode, &params);
     }
 
     if (operation & LOCK_EX) {
-        type = LOCK_EX;
+        params.type = LOCK_EX;
     } else if (operation & LOCK_SH) {
-        type = LOCK_SH;
+        params.type = LOCK_SH;
     } else {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -2750,29 +2786,18 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return EINVAL;
     }
 
-    if ((ftask=inode_index_flock_apply(inode, type, offset, length,
-                    (operation & LOCK_NB) == 0, &owner, task,
-                    &result)) == NULL)
-    {
-        if (result == EDEADLK) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "deadlock occur, inode: %"PRId64", operation: %d",
-                    inode, operation);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    /*
-    logInfo("file: "__FILE__", line: %d, "
-            "===operation: %d, inode: %"PRId64", offset: %"PRId64", "
-            "length: %"PRId64", owner.id: %"PRId64", owner.pid: %d, "
-            "result: %d, task: %p, deal_func: %p", __LINE__, operation,
-            inode, offset, length, owner.id, owner.pid,
-            result, task, task->continue_callback);
-            */
-
-    fc_list_add_tail(&ftask->clink, FTASK_HEAD_PTR);
-    return result == 0 ? 0 : TASK_STATUS_CONTINUE;
+    RECORD->inode = inode;
+    FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
+    RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
+    RECORD->options.blocked = ((operation & LOCK_NB) == 0 ? 1 : 0);
+    RECORD->flock_params = params;
+    RECORD->operation = SERVICE_OP_FLOCK_APPLY_INT;
+    RECORD->ftask = NULL;
+    return push_flock_to_data_thread_queue(task);
 }
 
 static int service_deal_getlk_dentry(struct fast_task_info *task)
@@ -2789,14 +2814,14 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     FLockRegion region;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoGetlkDEntryReq))) != 0)
+    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
+    if ((result=server_expect_body_length(sizeof(*req) +
+                    req->ino.ns_len)) != 0)
     {
         return result;
     }
 
-    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
-    inode = buff2long(req->inode);
+    inode = buff2long(req->ino.inode);
     offset = buff2long(req->offset);
     length = buff2long(req->length);
     operation = buff2int(req->operation);
@@ -2850,59 +2875,16 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     return result;
 }
 
-static void sys_lock_dentry_output(struct fast_task_info *task,
-        const FDIRServerDentry *dentry)
-{
-    FDIRProtoSysLockDEntryResp *resp;
-    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
-
-    long2buff(dentry->stat.size, resp->size);
-    long2buff(dentry->stat.space_end, resp->space_end);
-    RESPONSE.header.body_len = sizeof(FDIRProtoSysLockDEntryResp);
-    TASK_CTX.common.response_done = true;
-}
-
-static int handle_sys_lock_done(struct fast_task_info *task)
-{
-    struct sys_lock_task *sys_lock_task;
-
-    if (__sync_add_and_fetch(&task->canceled, 0)) {
-        logWarning("file: "__FILE__", line: %d, "
-                "task: %p, already canceled!",
-                __LINE__, task);
-        return ECANCELED;
-    }
-
-    sys_lock_task = SYS_LOCK_TASK;
-    if (sys_lock_task == NULL) {
-        logWarning("file: "__FILE__", line: %d, "
-                "task: %p, SYS_LOCK_TASK is NULL!",
-                __LINE__, task);
-        return ENOENT;
-    } else {
-        /*
-           logInfo("file: "__FILE__", line: %d, func: %s, "
-           "inode: %"PRId64", file size: %"PRId64,
-           __LINE__, __FUNCTION__,
-           sys_lock_task->dentry->inode,
-           sys_lock_task->dentry->stat.size);
-         */
-
-        sys_lock_dentry_output(task, sys_lock_task->dentry);
-        return 0;
-    }
-}
-
 static int service_deal_sys_lock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysLockDEntryReq *req;
     int result;
     int flags;
-    int64_t inode;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_RESP;
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoSysLockDEntryReq))) != 0)
+    req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
+    if ((result=server_expect_body_length(sizeof(*req) +
+                    req->ino.ns_len)) != 0)
     {
         return result;
     }
@@ -2914,72 +2896,27 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         return EEXIST;
     }
 
-    req = (FDIRProtoSysLockDEntryReq *)REQUEST.body;
-    inode = buff2long(req->inode);
-    flags = buff2int(req->flags);
-
-    if ((SYS_LOCK_TASK=inode_index_sys_lock_apply(inode, (flags & LOCK_NB) == 0,
-                    task, &result)) == NULL)
-    {
-        if (result == EDEADLK) {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "deadlock occur, inode: %"PRId64, inode);
-        }
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    if (result == 0) {
-        /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "locked for inode: %"PRId64", task: %p, sock: %d",
-                __LINE__, __FUNCTION__, SYS_LOCK_TASK->dentry->inode,
-                task, task->event.fd);
-                */
-
-        sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
-        return 0;
-    } else {
-        /*
-        logInfo("file: "__FILE__", line: %d, func: %s, "
-                "waiting lock for inode: %"PRId64", task: %p, "
-                "sock: %d", __LINE__, __FUNCTION__,
-                SYS_LOCK_TASK->dentry->inode, task, task->event.fd);
-                */
-
-        task->continue_callback = handle_sys_lock_done;
-        return TASK_STATUS_CONTINUE;
-    }
-}
-
-static void on_sys_lock_release(FDIRServerDentry *dentry, void *args)
-{
-    struct fast_task_info *task;
-    FDIRProtoSysUnlockDEntryReq *req;
-    FDIRSetDEntrySizeInfo dsize;
-    int result;
-
-    task = (struct fast_task_info *)args;
-    req = (FDIRProtoSysUnlockDEntryReq *)REQUEST.body;
-    dsize.inode = SYS_LOCK_TASK->dentry->inode;
-    dsize.file_size = buff2long(req->new_size);
-    dsize.inc_alloc = buff2long(req->inc_alloc);
-    dsize.flags = buff2int(req->flags);
-    dsize.force = req->force;
-    set_dentry_size(task, req->ns_str, req->ns_len,
-            &dsize, false, &result);
-
-    RESPONSE_STATUS = result;
+    RECORD->inode = buff2long(req->ino.inode);
+    FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
+    RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
+    flags = buff2int(req->flags);
+    RECORD->options.blocked = ((flags & LOCK_NB) == 0 ? 1 : 0);
+    RECORD->operation = SERVICE_OP_SYS_LOCK_APPLY_INT;
+    RECORD->stask = NULL;
+    return push_flock_to_data_thread_queue(task);
 }
 
 static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 {
     FDIRProtoSysUnlockDEntryReq *req;
     int result;
-    int flags;
-    int64_t inode;
+    FDIRSetDEntrySizeInfo dsize;
     int64_t old_size;
     int64_t new_size;
-    sys_lock_release_callback callback;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP;
     if ((result=server_check_body_length(
@@ -3011,16 +2948,16 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
         return ENOENT;
     }
 
-    inode = buff2long(req->inode);
-    if (inode != SYS_LOCK_TASK->dentry->inode) {
+    dsize.inode = buff2long(req->inode);
+    if (dsize.inode != SYS_LOCK_TASK->dentry->inode) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "sys lock check fail, req inode: %"PRId64", "
-                "expect: %"PRId64, inode, SYS_LOCK_TASK->dentry->inode);
+                "expect: %"PRId64, dsize.inode,
+                SYS_LOCK_TASK->dentry->inode);
         return EINVAL;
     }
-    flags = buff2int(req->flags);
-
-    if ((flags & (FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE |
+    dsize.flags = buff2int(req->flags);
+    if ((dsize.flags & (FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE |
                     FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END |
                     FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)))
     {
@@ -3033,13 +2970,13 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
         old_size = buff2long(req->old_size);
         new_size = buff2long(req->new_size);
-        if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE) &&
+        if ((dsize.flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE) &&
                 old_size != SYS_LOCK_TASK->dentry->stat.size)
         {
             logWarning("file: "__FILE__", line: %d, "
                     "client ip: %s, inode: %"PRId64", old size: %"PRId64
                     ", != current size: %"PRId64", maybe changed by others",
-                    __LINE__, task->client_ip, inode, old_size,
+                    __LINE__, task->client_ip, dsize.inode, old_size,
                     SYS_LOCK_TASK->dentry->stat.size);
         }
         if (new_size < 0) {
@@ -3047,131 +2984,48 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
                     "invalid new file size: %"PRId64" which < 0", new_size);
             return EINVAL;
         }
-        callback = on_sys_lock_release;
-    } else {
-        callback = NULL;
-    }
 
-    if ((result=inode_index_sys_lock_release_ex(
-                    SYS_LOCK_TASK, callback, task)) != 0)
-    {
-        return result;
-    }
-
-    /*
-    logInfo("file: "__FILE__", line: %d, func: %s, "
-            "task: %p, callback: %p, status: %d, nio stage: %d, fd: %d",
-            __LINE__, __FUNCTION__, task, callback, RESPONSE_STATUS,
-            SF_NIO_TASK_STAGE_FETCH(task), task->event.fd);
-            */
-
-    SYS_LOCK_TASK = NULL;
-    if (RESPONSE_STATUS == TASK_STATUS_CONTINUE) { //status set by the callback
-        RESPONSE_STATUS = 0;
-        return TASK_STATUS_CONTINUE;
-    } else {
-        return RESPONSE_STATUS;
-    }
-}
-
-static int server_list_dentry_output(struct fast_task_info *task)
-{
-    FDIRProtoListDEntryRespBodyHeader *body_header;
-    FDIRServerDentry *src_dentry;
-    FDIRServerDentry **dentry;
-    FDIRServerDentry **start;
-    FDIRServerDentry **end;
-    FDIRProtoListDEntryRespBodyPart *body_part;
-    char *p;
-    char *buf_end;
-    int remain_count;
-    int count;
-
-    remain_count = DENTRY_LIST_CACHE.array.count -
-        DENTRY_LIST_CACHE.offset;
-
-    buf_end = task->data + task->size;
-    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
-    start = DENTRY_LIST_CACHE.array.entries +
-        DENTRY_LIST_CACHE.offset;
-    end = start + remain_count;
-    for (dentry=start; dentry<end; dentry++) {
-        src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
-        if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
-                (*dentry)->name.len)
-        {
-            break;
+        dsize.file_size = buff2long(req->new_size);
+        dsize.inc_alloc = buff2long(req->inc_alloc);
+        if (req->force) {
+            dsize.flags |= FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE;
         }
-        body_part = (FDIRProtoListDEntryRespBodyPart *)p;
-        long2buff(src_dentry->inode, body_part->inode);
-
-        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
-                &body_part->stat, true);
-        body_part->name_len = (*dentry)->name.len;
-        memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
-        p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
-    }
-    count = dentry - start;
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
-
-    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
-    int2buff(count, body_header->count);
-    if (count < remain_count) {
-        DENTRY_LIST_CACHE.offset += count;
-        DENTRY_LIST_CACHE.expires = g_current_time + 60;
-        DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
-
-        body_header->is_last = 0;
-        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
+        if ((result=alloc_record_object(task)) != 0) {
+            return result;
+        }
+        init_record_by_dsize(RECORD, &dsize);
+        RECORD->dentry_type = fdir_dentry_type_inode;
+        FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
+        RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+        RECORD->operation = SERVICE_OP_SYS_LOCK_RELEASE_INT;
+        return push_update_to_data_thread_queue(task);
     } else {
-        body_header->is_last = 1;
-        long2buff(0, body_header->token);
+        return service_sys_lock_release(task, false);
     }
-
-    TASK_CTX.common.response_done = true;
-    return 0;
 }
 
 static int service_deal_list_dentry_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRDEntryFullName fullname;
 
-    if ((result=server_check_and_parse_dentry(task, 0, &fullname)) != 0) {
+    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
-    if ((result=dentry_list_by_path(&fullname,
-                    &DENTRY_LIST_CACHE.array)) != 0)
-    {
-        return result;
-    }
-
-    DENTRY_LIST_CACHE.offset = 0;
-    return server_list_dentry_output(task);
+    RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
 {
-    FDIRServerDentry *dentry;
-    int64_t inode;
     int result;
 
-    if ((result=server_check_and_parse_inode(task, &inode)) != 0) {
+    if ((result=server_check_and_parse_inode(task)) != 0) {
         return result;
     }
 
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    if ((result=dentry_list(dentry, &DENTRY_LIST_CACHE.array)) != 0) {
-        return result;
-    }
-
-    DENTRY_LIST_CACHE.offset = 0;
-    return server_list_dentry_output(task);
+    RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_deal_list_dentry_next(struct fast_task_info *task)
@@ -3210,29 +3064,7 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
                 offset, DENTRY_LIST_CACHE.offset);
         return EINVAL;
     }
-    return server_list_dentry_output(task);
-}
-
-static int service_do_getxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const string_t *name,
-        const int resp_cmd)
-{
-    int result;
-    string_t value;
-
-    if ((result=inode_index_get_xattr(dentry, name, &value)) != 0) {
-        /*
-           RESPONSE.error.length = sprintf(RESPONSE.error.message,
-           "inode: %"PRId64", get xattr %.*s fail, %s",
-           dentry->inode, name->len, name->str, STRERROR(result));
-         */
-        return result;
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = value.len;
-    memcpy(SF_PROTO_RESP_BODY(task), value.str, value.len);
-    TASK_CTX.common.response_done = true;
+    server_list_dentry_output(task);
     return 0;
 }
 
@@ -3241,117 +3073,85 @@ static int service_get_xattr_by_path(struct fast_task_info *task)
     int result;
     int fixed_size;
     string_t name;
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *dentry;
 
     fixed_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    false, &name)) != 0)
-    {
+    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
         return result;
     }
 
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoNameInfo) + name.len,
-                    &fullname)) != 0)
+                    sizeof(FDIRProtoNameInfo) + name.len)) != 0)
     {
         return result;
     }
 
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return service_do_getxattr(task, dentry, &name,
-            FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP);
+    RECORD->xattr.key = name;
+    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_get_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
     int fixed_size;
-    int64_t inode;
+    int expect_blen;
     string_t name;
-    FDIRServerDentry *dentry;
+    FDIRProtoInodeInfo *ino;
 
-    fixed_size = sizeof(FDIRProtoGetXAttrByInodeReq);
-    if ((result=parse_xattr_name_info(task, fixed_size,
-                    true, &name)) != 0)
-    {
+    fixed_size = sizeof(FDIRProtoGetXAttrByInodeReq) + 1;
+    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
+        return result;
+    }
+    ino = (FDIRProtoInodeInfo *)(REQUEST.body + sizeof(
+                FDIRProtoNameInfo) + name.len);
+    expect_blen = sizeof(FDIRProtoGetXAttrByInodeReq) +
+        name.len + ino->ns_len;
+    if (expect_blen != REQUEST.header.body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "request body length: %d != expect: %d",
+                REQUEST.header.body_len, expect_blen);
+        return EINVAL;
+    }
+
+    if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
 
-    inode = buff2long(REQUEST.body + sizeof(FDIRProtoNameInfo) + name.len);
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    return service_do_getxattr(task, dentry, &name,
-            FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP);
-}
-
-static int service_do_listxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const int resp_cmd)
-{
-    FDIRXAttrIterator it;
-    const key_value_pair_t *kv;
-    char *p;
-
-    p = SF_PROTO_RESP_BODY(task);
-    inode_index_list_xattr(dentry, &it);
-    while ((kv=xattr_iterator_next(&it)) != NULL) {
-        memcpy(p, kv->key.str, kv->key.len);
-        p += kv->key.len;
-        *p++ = '\0';
-    }
-
-    RESPONSE.header.cmd = resp_cmd;
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
-    TASK_CTX.common.response_done = true;
-    return 0;
+    RECORD->inode = buff2long(ino->inode);
+    FC_SET_STRING_EX(RECORD->ns, ino->ns_str, ino->ns_len);
+    RECORD->hash_code = simple_hash(ino->ns_str, ino->ns_len);
+    RECORD->xattr.key = name;
+    RECORD->dentry_type = fdir_dentry_type_inode;
+    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_list_xattr_by_path(struct fast_task_info *task)
 {
     int result;
-    FDIRDEntryFullName fullname;
-    FDIRServerDentry *dentry;
 
-    if ((result=server_check_and_parse_dentry(task,
-                    0, &fullname)) != 0)
-    {
+    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
         return result;
     }
 
-    if ((result=dentry_find(&fullname, &dentry)) != 0) {
-        return result;
-    }
-
-    return service_do_listxattr(task, dentry,
-            FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP);
+    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
-    int64_t inode;
-    FDIRProtoListXAttrByInodeReq *req;
-    FDIRServerDentry *dentry;
 
-    if ((result=server_expect_body_length(sizeof(
-                        FDIRProtoListXAttrByInodeReq))) != 0)
-    {
+    if ((result=server_check_and_parse_inode(task)) != 0) {
         return result;
     }
 
-    req = (FDIRProtoListXAttrByInodeReq *)REQUEST.body;
-    inode = buff2long(req->inode);
-    if ((dentry=inode_index_get_dentry(inode)) == NULL) {
-        return ENOENT;
-    }
-
-    return service_do_listxattr(task, dentry,
-            FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
+    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP;
+    return push_query_to_data_thread_queue(task);
 }
 
 static int service_check_priv(struct fast_task_info *task)
@@ -3705,6 +3505,15 @@ int service_deal_task(struct fast_task_info *task, const int stage)
     }
 }
 
+int record_parray_alloc_init(void *element, void *args)
+{
+    FDIRRecordPtrArray *parray;
+    parray = (FDIRRecordPtrArray *)element;
+    parray->records = (FDIRBinlogRecord **)(parray + 1);
+    parray->alloc = FDIR_BATCH_SET_MAX_DENTRY_COUNT;
+    return 0;
+}
+
 void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
@@ -3719,6 +3528,16 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_context->service.record_allocator,
                 "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
                 0, NULL, NULL, false) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+
+    element_size = sizeof(FDIRRecordPtrArray) + sizeof(FDIRBinlogRecord *) *
+        FDIR_BATCH_SET_MAX_DENTRY_COUNT;
+    if (fast_mblock_init_ex1(&server_context->service.record_parray_allocator,
+                "record_parray", element_size, 512, 0, record_parray_alloc_init,
+                NULL, false) != 0)
     {
         free(server_context);
         return NULL;

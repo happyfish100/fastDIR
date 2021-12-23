@@ -122,8 +122,8 @@ int fdir_client_modify_dentry_stat(FDIRClientContext *client_ctx,
         const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry);
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
-        const int64_t inode, int *operation, int64_t *offset,
-        int64_t *length, int64_t *owner_id, pid_t *pid);
+        const string_t *ns, const int64_t inode, int *operation,
+        int64_t *offset, int64_t *length, int64_t *owner_id, pid_t *pid);
 
 int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
@@ -146,7 +146,7 @@ int fdir_client_get_xattr_by_path_ex(FDIRClientContext *client_ctx,
         const int enoattr_log_level, string_t *value, const int size);
 
 int fdir_client_get_xattr_by_inode_ex(FDIRClientContext *client_ctx,
-        const int64_t inode, const string_t *name,
+        const string_t *ns, const int64_t inode, const string_t *name,
         const int enoattr_log_level, string_t *value, const int size);
 
 int fdir_client_list_xattr_by_path(FDIRClientContext *client_ctx,
@@ -154,27 +154,28 @@ int fdir_client_list_xattr_by_path(FDIRClientContext *client_ctx,
         string_t *list, const int size);
 
 int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
-        const int64_t inode, string_t *list, const int size);
+        const string_t *ns, const int64_t inode,
+        string_t *list, const int size);
 
 #define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
     fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)
 
-#define fdir_client_lookup_inode_by_pname(client_ctx, pname, inode) \
-    fdir_client_lookup_inode_by_pname_ex(client_ctx, pname, LOG_ERR, inode)
+#define fdir_client_lookup_inode_by_pname(client_ctx, ns, pname, inode) \
+    fdir_client_lookup_inode_by_pname_ex(client_ctx, ns, pname, LOG_ERR, inode)
 
 #define fdir_client_stat_dentry_by_path(client_ctx, fullname, dentry) \
     fdir_client_stat_dentry_by_path_ex(client_ctx, fullname, LOG_ERR, dentry)
 
-#define fdir_client_stat_dentry_by_pname(client_ctx, pname, dentry) \
-    fdir_client_stat_dentry_by_pname_ex(client_ctx, pname, LOG_ERR, dentry)
+#define fdir_client_stat_dentry_by_pname(client_ctx, ns, pname, dentry) \
+    fdir_client_stat_dentry_by_pname_ex(client_ctx, ns, pname, LOG_ERR, dentry)
 
 #define fdir_client_get_xattr_by_path(client_ctx, fullname, name, value, size) \
     fdir_client_get_xattr_by_path_ex(client_ctx, \
             fullname, name, LOG_ERR, value, size)
 
-#define fdir_client_get_xattr_by_inode(client_ctx, inode, name, value, size) \
+#define fdir_client_get_xattr_by_inode(client_ctx, ns, inode, name, value, size) \
     fdir_client_get_xattr_by_inode_ex(client_ctx, \
-            inode, name, LOG_ERR, value, size)
+            ns, inode, name, LOG_ERR, value, size)
 
 #define fdir_client_remove_xattr_by_path(client_ctx, fullname, name) \
     fdir_client_remove_xattr_by_path_ex(client_ctx, fullname, name, LOG_ERR)
@@ -187,34 +188,36 @@ int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,
         int64_t *inode);
 
 int fdir_client_lookup_inode_by_pname_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryPName *pname, const int enoent_log_level,
-        int64_t *inode);
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const int enoent_log_level, int64_t *inode);
 
 int fdir_client_stat_dentry_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const int enoent_log_level,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_stat_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryPName *pname, const int enoent_log_level,
-        FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
-        const int64_t inode, FDIRDEntryInfo *dentry);
+        const string_t *ns, const int64_t inode, FDIRDEntryInfo *dentry);
 
 int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, string_t *link, const int size);
 
 int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
-        const FDIRDEntryPName *pname, string_t *link, const int size);
+        const string_t *ns, const FDIRDEntryPName *pname,
+        string_t *link, const int size);
 
 int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
-        const int64_t inode, string_t *link, const int size);
+        const string_t *ns, const int64_t inode, string_t *link,
+        const int size);
 
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);
 
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
-        const int64_t inode, FDIRClientDentryArray *array);
+        const string_t *ns, const int64_t inode, FDIRClientDentryArray *array);
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
         const string_t *ns, FDIRClientNamespaceStat *stat);

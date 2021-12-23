@@ -6,6 +6,7 @@ TARGET_CONF_PATH=$DESTDIR/etc/fdir
 DEBUG_FLAG=1
 
 export CC=gcc
+#CFLAGS='-Wall -DFDIR_DUMP_DATA_FOR_DEBUG'
 CFLAGS='-Wall'
 GCC_VERSION=$(gcc -dM -E -  < /dev/null | grep -w __GNUC__ | awk '{print $NF;}')
 if [ -n "$GCC_VERSION" ] && [ $GCC_VERSION -ge 7 ]; then
@@ -46,6 +47,7 @@ if [ "$uname" = "Linux" ]; then
     LIBS="$LIBS -L/usr/lib"
   fi
   CFLAGS="$CFLAGS"
+  LIBS="$LIBS -ldl"
 elif [ "$uname" = "FreeBSD" ] || [ "$uname" = "Darwin" ]; then
   LIBS="$LIBS -L/usr/lib"
   CFLAGS="$CFLAGS"
@@ -126,7 +128,7 @@ perl -pi -e "s#\\\$\(ENABLE_STATIC_LIB\)#$ENABLE_STATIC_LIB#g" Makefile
 perl -pi -e "s#\\\$\(ENABLE_SHARED_LIB\)#$ENABLE_SHARED_LIB#g" Makefile
 make $1 $2
 
-cd tools  
+cd tools
 cp Makefile.in Makefile
 perl -pi -e "s#\\\$\(CFLAGS\)#$CFLAGS#g" Makefile
 perl -pi -e "s#\\\$\(LIBS\)#$LIBS#g" Makefile

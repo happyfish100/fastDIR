@@ -25,6 +25,7 @@
 #include "fastcommon/common_blocked_queue.h"
 #include "sf/sf_binlog_writer.h"
 #include "../server_types.h"
+#include "../flock.h"
 
 #define BINLOG_OP_NONE_INT           0
 #define BINLOG_OP_CREATE_DENTRY_INT  1
@@ -33,6 +34,20 @@
 #define BINLOG_OP_UPDATE_DENTRY_INT  4
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
+
+#define SERVICE_OP_SET_DSIZE_INT        101
+#define SERVICE_OP_BATCH_SET_DSIZE_INT  102
+
+#define SERVICE_OP_SYS_LOCK_APPLY_INT   111
+#define SERVICE_OP_FLOCK_APPLY_INT      112
+#define SERVICE_OP_SYS_LOCK_RELEASE_INT 113
+
+#define SERVICE_OP_STAT_DENTRY_INT  121
+#define SERVICE_OP_READ_LINK_INT    122
+#define SERVICE_OP_LOOKUP_INODE_INT 123
+#define SERVICE_OP_LIST_DENTRY_INT  124
+#define SERVICE_OP_GET_XATTR_INT    125
+#define SERVICE_OP_LIST_XATTR_INT   126
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -64,20 +79,34 @@ typedef void (*release_binlog_rbuffer_func)(
         struct server_binlog_record_buffer *rbuffer);
 
 typedef struct {
+    FDIRDEntryFullName fullname;
     FDIRDEntryPName pname;
     FDIRServerDentry *parent;
     FDIRServerDentry *dentry;
 } FDIRRecordDEntry;
 
+typedef enum {
+    fdir_dentry_type_fullname = 'f',
+    fdir_dentry_type_pname = 'p',
+    fdir_dentry_type_inode = 'i'
+} FDIRDEntryType;
+
+typedef struct {
+    FDIRServerDentry *dentry;
+    DABinlogOpType op_type;
+} FDIRAffectedDentry;
+
 typedef struct fdir_binlog_record {
     uint64_t data_version;
     int64_t inode;
+    string_t ns;   //namespace
     unsigned int hash_code;
-    int operation;
+    uint8_t operation;
+    bool is_update;
+    FDIRDEntryType dentry_type;
     int timestamp;
     int flags;
     FDIRStatModifyFlags options;
-    string_t ns;   //namespace
 
     union {
         struct {
@@ -88,14 +117,30 @@ typedef struct fdir_binlog_record {
 
         struct {
             FDIRRecordDEntry dest;  //must be the first
-            int64_t src_inode;
-            FDIRServerDentry *src_dentry;
+            struct {
+                int64_t inode;
+                FDIRDEntryFullName fullname;
+                FDIRServerDentry *dentry;
+            } src;
         } hdlink;
 
         FDIRRecordDEntry me;  //for create and remove
+
+        struct fdir_record_ptr_array *parray; //for batch set dsize
+        FLockTask *ftask;  //for flock apply
+        SysLockTask *stask; //for sys lock apply
     };
 
-    FDIRDEntryStat stat;
+    /* affected dentries for rename and remove operation */
+    struct {
+        FDIRAffectedDentry entries[2];
+        int count;
+    } affected;
+
+    union {
+        FDIRDEntryStat stat;
+        FlockParams flock_params;
+    };
 
     union {
         string_t link;
@@ -116,6 +161,16 @@ typedef struct fdir_binlog_record {
     struct fdir_binlog_record *next; //for data thread queue
 } FDIRBinlogRecord;
 
+typedef struct fdir_record_ptr_array {
+    FDIRBinlogRecord **records;
+    int alloc;
+    struct {
+        int total;
+        int success;
+        int updated;
+    } counts;
+} FDIRRecordPtrArray;
+
 typedef struct server_binlog_record_buffer {
     SFVersionRange data_version; //for binlog writer and idempotency (slave only)
     volatile int reffer_count;
@@ -134,17 +189,39 @@ static inline const char *get_operation_caption(const int operation)
 {
     switch (operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
-            return "CREATE";
+            return "CREATE_DENTRY";
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            return "REMOVE";
+            return "REMOVE_DENTRY";
         case BINLOG_OP_RENAME_DENTRY_INT:
-            return "RENAME";
+            return "RENAME_DENTRY";
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            return "UPDATE";
+            return "UPDATE_DENTRY";
         case BINLOG_OP_SET_XATTR_INT:
             return "SET_XATTR";
         case BINLOG_OP_REMOVE_XATTR_INT:
             return "REMOVE_XATTR";
+        case SERVICE_OP_SET_DSIZE_INT:
+            return "SET_DENTRY_SIZE";
+        case SERVICE_OP_BATCH_SET_DSIZE_INT:
+            return "BATCH_SET_DSIZE";
+        case SERVICE_OP_SYS_LOCK_APPLY_INT:
+            return "SYS_LOCK_APPLY";
+        case SERVICE_OP_FLOCK_APPLY_INT:
+            return "FLOCK_APPLY";
+        case SERVICE_OP_SYS_LOCK_RELEASE_INT:
+            return "SYS_LOCK_RELEASE";
+        case SERVICE_OP_STAT_DENTRY_INT:
+            return "STAT_DENTRY";
+        case SERVICE_OP_READ_LINK_INT:
+            return "READ_LINK";
+        case SERVICE_OP_LOOKUP_INODE_INT:
+            return "LOOKUP_INODE";
+        case SERVICE_OP_LIST_DENTRY_INT:
+            return "LIST_DENTRY";
+        case SERVICE_OP_GET_XATTR_INT:
+            return "GET_XATTR";
+        case SERVICE_OP_LIST_XATTR_INT:
+            return "LIST_XATTR";
         default:
             return "UNKOWN";
     }

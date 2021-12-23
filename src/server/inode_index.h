@@ -23,11 +23,6 @@
 #include "flock.h"
 #include "data_thread.h"
 
-typedef struct fdir_xattr_iterator {
-    key_value_pair_t *kv;
-    key_value_pair_t *end;
-} FDIRXAttrIterator;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -39,58 +34,48 @@ extern "C" {
 
     int inode_index_del_dentry(FDIRServerDentry *dentry);
 
-    FDIRServerDentry *inode_index_get_dentry(const int64_t inode);
+    FDIRServerDentry *inode_index_find_dentry(const int64_t inode);
 
-    FDIRServerDentry *inode_index_get_dentry_by_pname(
-            const int64_t parent_inode, const string_t *name);
+    int inode_index_get_dentry(FDIRDataThreadContext *thread_ctx,
+            const int64_t inode, FDIRServerDentry **dentry);
 
-    FDIRServerDentry *inode_index_check_set_dentry_size(
-            const FDIRSetDEntrySizeInfo *dsize,
-            const bool need_lock, int *modified_flags);
+    int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
+            const int64_t parent_inode, const string_t *name,
+            FDIRServerDentry **dentry);
 
-    FDIRServerDentry *inode_index_update_dentry(
+    int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
+            FDIRBinlogRecord *record);
+
+    int inode_index_update_dentry(FDIRDataThreadContext *thread_ctx,
+            FDIRBinlogRecord *record);
+
+    int inode_index_set_xattr(FDIRServerDentry *dentry,
             const FDIRBinlogRecord *record);
 
-    FDIRServerDentry *inode_index_set_xattr(
-            const FDIRBinlogRecord *record, int *err_no);
-
-    FDIRServerDentry *inode_index_remove_xattr(const int64_t inode,
-            const string_t *name, int *err_no);
+    int inode_index_remove_xattr(FDIRServerDentry *dentry,
+            const string_t *name);
 
     int inode_index_get_xattr(FDIRServerDentry *dentry,
             const string_t *name, string_t *value);
 
-    void inode_index_list_xattr(FDIRServerDentry *dentry,
-            FDIRXAttrIterator *it);
-
-    static inline const key_value_pair_t *xattr_iterator_next(
-            FDIRXAttrIterator *it)
-    {
-        if (it->kv < it->end) {
-            return it->kv++;
-        } else {
-            return NULL;
-        }
-    }
-
-    FLockTask *inode_index_flock_apply(const int64_t inode, const short type,
-            const int64_t offset, const int64_t length, const bool block,
-            const FlockOwner *owner, struct fast_task_info *task, int *result);
+    FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
+            const int64_t inode, const FlockParams *params, const bool block,
+            struct fast_task_info *task, int *result);
 
     void inode_index_flock_release(FLockTask *ftask);
 
     int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask);
 
-    SysLockTask *inode_index_sys_lock_apply(const int64_t inode, const bool block,
+    SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
+            const int64_t inode, const bool block,
             struct fast_task_info *task, int *result);
 
-    int inode_index_sys_lock_release_ex(SysLockTask *sys_task,
-            sys_lock_release_callback callback, void *args);
+    int inode_index_sys_lock_release(SysLockTask *sys_task);
 
-    static inline int inode_index_sys_lock_release(SysLockTask *sys_task)
-    {
-        return inode_index_sys_lock_release_ex(sys_task, NULL, NULL);
-    }
+    void inode_index_free_flock_entry(FDIRServerDentry *dentry);
+
+    int inode_index_xattrs_copy(const key_value_array_t *kv_array,
+            FDIRServerDentry *dentry);
 
 #ifdef __cplusplus
 }

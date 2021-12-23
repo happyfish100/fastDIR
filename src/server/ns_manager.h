@@ -21,18 +21,46 @@
 #include "ns_subscribe.h"
 #include "data_thread.h"
 
-typedef struct fdir_namespace_entry {
-    string_t name;
-    struct fdir_server_dentry *dentry_root;
-    volatile int64_t dentry_count;
+typedef struct fdir_namespace_info {
+    union {
+        struct fdir_server_dentry *ptr;  //for current
+        int64_t inode;  //for delay
+    } root;
+    struct {
+        volatile int64_t dir;
+        volatile int64_t file;
+    } counts;
     volatile int64_t used_bytes;
+} FDIRNamespaceInfo;
+
+typedef struct fdir_namespace_entry {
+    int id;
+    unsigned int hash_code;
+    string_t name;
+    FDIRNamespaceInfo current;
+    FDIRNamespaceInfo delay;   //for storage engine
+    FDIRDataThreadContext *thread_ctx;
+
     struct {
         struct fdir_namespace_entry *htable; //for hashtable
-        struct fdir_namespace_entry *list;   //for chain list
     } nexts;
 
     FDIRNSSubscribeEntry subs_entries[0];
 } FDIRNamespaceEntry;
+
+typedef struct fdir_namespace_ptr_array {
+    FDIRNamespaceEntry **namespaces;
+    int count;
+    int alloc;
+} FDIRNamespacePtrArray;
+
+typedef struct fdir_namespace_dump_context {
+    FDIRNamespaceEntry **entries;
+    int alloc;
+    int count;
+    BufferInfo buffer;
+    int64_t last_version;
+} FDIRNamespaceDumpContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,8 +69,12 @@ extern "C" {
     int ns_manager_init();
     void ns_manager_destroy();
 
-    FDIRNamespaceEntry *fdir_namespace_get(FDIRDentryContext *context,
+    FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,
             const string_t *ns, const bool create_ns, int *err_no);
+
+    FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id);
+
+    const FDIRNamespacePtrArray *fdir_namespace_get_all();
 
     int fdir_namespace_stat(const string_t *ns, FDIRNamespaceStat *stat);
 
@@ -51,6 +83,11 @@ extern "C" {
 
     void fdir_namespace_push_all_to_holding_queue(
             FDIRNSSubscriber *subscriber);
+
+    int fdir_namespace_dump(FDIRNamespaceDumpContext *ctx);
+    int fdir_namespace_load(int64_t *last_version);
+
+    int fdir_namespace_load_root();
 
 #ifdef __cplusplus
 }

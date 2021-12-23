@@ -80,6 +80,8 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
         binlog_replay_notify_func notify_func, void *args,
         const int batch_size)
 {
+    const int alloc_size_once = 256 * 1024;
+    const int discard_size = 64;
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *rend;
     int result;
@@ -107,6 +109,12 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
         return result;
     }
 
+    if ((result=fast_mpool_init(&replay_ctx->mpool,
+                    alloc_size_once, discard_size)) != 0)
+    {
+        return result;
+    }
+
     rend = replay_ctx->record_array.records + replay_ctx->record_array.size;
     for (record=replay_ctx->record_array.records; record<rend; record++) {
         record->notify.func = data_thread_deal_done_callback;
@@ -124,6 +132,7 @@ void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
     }
 
     destroy_pthread_lock_cond_pair(&replay_ctx->lcp);
+    fast_mpool_destroy(&replay_ctx->mpool);
 }
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
@@ -142,17 +151,20 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     p = buff;
     end = p + len;
     while (p < end) {
+        fast_mpool_reset(&replay_ctx->mpool);
         record = replay_ctx->record_array.records;
         while (p < end) {
-            if ((result=binlog_unpack_record(p, end - p, record,
-                            &rend, error_info, sizeof(error_info))) != 0)
+            if ((result=binlog_unpack_record_ex(p, end - p, record,
+                            &rend, error_info, sizeof(error_info),
+                            &replay_ctx->mpool)) != 0)
             {
                 if (binlog_position != NULL) {
                     char filename[PATH_MAX];
                     int64_t line_count;
 
-                    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
-                            binlog_position->index, filename, sizeof(filename));
+                    sf_binlog_writer_get_filename(DATA_PATH_STR,
+                            FDIR_BINLOG_SUBDIR_NAME, binlog_position->
+                            index, filename, sizeof(filename));
                     if (fc_get_file_line_count_ex(filename, binlog_position->
                             offset + (p - buff), &line_count) == 0)
                     {

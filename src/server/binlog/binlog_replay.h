@@ -19,6 +19,7 @@
 #define _BINLOG_REPLAY_H_
 
 #include <pthread.h>
+#include "fastcommon/fast_mpool.h"
 #include "binlog_types.h"
 
 typedef void (*binlog_replay_notify_func)(const int result,
@@ -29,6 +30,7 @@ typedef struct binlog_replay_context {
         int size;
         FDIRBinlogRecord *records;
     } record_array;
+    struct fast_mpool_man mpool;   //for binlog_unpack_record
     int64_t data_current_version;
     volatile int waiting_count;
     int last_errno;

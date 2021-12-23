@@ -482,9 +482,10 @@ static int fill_binlog_last_lines(struct fast_task_info *task,
         sizeof(FDIRProtoJoinSlaveResp);
     buffer_size = task->size - front_length;
     *binlog_count = SLAVE_BINLOG_CHECK_LAST_ROWS;
-    return sf_binlog_writer_get_last_lines(FDIR_BINLOG_SUBDIR_NAME,
-            binlog_get_current_write_index(), task->data + front_length,
-            buffer_size, binlog_count, binlog_length);
+    return sf_binlog_writer_get_last_lines(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, binlog_get_current_write_index(),
+            task->data + front_length, buffer_size,
+            binlog_count, binlog_length);
 }
 
 static int cluster_deal_join_slave_req(struct fast_task_info *task)

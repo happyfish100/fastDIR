@@ -265,7 +265,6 @@ typedef struct fdir_proto_set_dentry_size_req {
     char file_size[8];   /* file size in bytes */
     char inc_alloc[8];   /* increase alloc size in bytes */
     char flags[4];
-    char force;
     unsigned char ns_len; //namespace length
     char ns_str[0];       //namespace for hash code
 } FDIRProtoSetDentrySizeReq;
@@ -281,7 +280,6 @@ typedef struct fdir_proto_batch_set_dentry_size_req_body {
     char file_size[8];   /* file size in bytes */
     char inc_alloc[8];   /* increase alloc size in bytes */
     char flags[4];
-    char force;
 } FDIRProtoBatchSetDentrySizeReqBody;
 
 typedef struct fdir_proto_dentry_stat {
@@ -306,21 +304,9 @@ typedef struct fdir_proto_modify_dentry_stat_req {
     char ns_str[0];       //namespace for hash code
 } FDIRProtoModifyDentryStatReq;
 
-typedef struct fdir_proto_lookup_by_inode_req {
-    char inode[8];
-} FDIRProtoLookupByInodeReq;
-
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
 } FDIRProtoLookupInodeResp;
-
-typedef struct fdir_proto_stat_dentry_by_pname_req {
-    char parent_inode[8];
-    unsigned char name_len; //dir name length
-    char name_str[0];       //dir name string
-} FDIRProtoStatDEntryByPNameReq;
-
-typedef FDIRProtoStatDEntryByPNameReq FDIRProtoReadlinkByPNameReq;
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];
@@ -328,7 +314,6 @@ typedef struct fdir_proto_stat_dentry_resp {
 } FDIRProtoStatDEntryResp;
 
 typedef struct fdir_proto_flock_dentry_req {
-    char inode[8];
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     struct {
@@ -339,14 +324,15 @@ typedef struct fdir_proto_flock_dentry_req {
                          LOCK_EX for write exclusive lock,
                          LOCK_NB for non-block with LOCK_SH or LOCK_EX,
                          LOCK_UN for unlock */
+    FDIRProtoInodeInfo ino;
 } FDIRProtoFlockDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_req {
-    char inode[8];
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region  length, 0 for until end of file */
     char operation[4];
     char pid[4];
+    FDIRProtoInodeInfo ino;
 } FDIRProtoGetlkDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_resp {
@@ -360,9 +346,9 @@ typedef struct fdir_proto_getlk_dentry_resp {
 } FDIRProtoGetlkDEntryResp;
 
 typedef struct fdir_proto_sys_lock_dentry_req {
-    char inode[8];
     char flags[4];      //LOCK_NB for non-block
     char padding[4];
+    FDIRProtoInodeInfo ino;
 } FDIRProtoSysLockDEntryReq;
 
 typedef struct fdir_proto_sys_lock_dentry_resp {
@@ -431,16 +417,12 @@ typedef struct fdir_proto_get_xattr_by_path_req {
 
 typedef struct fdir_proto_get_xattr_by_node_req {
     FDIRProtoNameInfo name;
-    char inode[8];
+    FDIRProtoInodeInfo ino;
 } FDIRProtoGetXAttrByInodeReq;
 
 typedef struct fdir_proto_list_xattr_by_path_req {
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoListXAttrByPathReq;
-
-typedef struct fdir_proto_list_xattr_by_node_req {
-    char inode[8];
-} FDIRProtoListXAttrByInodeReq;
 
 typedef FDIRProtoGetXAttrByPathReq FDIRProtoRemoveXAttrByPathReq;
 typedef struct fdir_proto_remove_xattr_by_node_req {

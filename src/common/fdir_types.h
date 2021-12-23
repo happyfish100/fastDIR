@@ -46,6 +46,7 @@
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC   2  //increase alloc space
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END   4  //space end offset for deallocate
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME       8  //file modify time
+#define FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE      16  //force update
 
 #define FDIR_DENTRY_MODE_FLAGS_HARD_LINK    (1 << 22)  //hard link flags in 32 bits mode
 
@@ -100,7 +101,7 @@ typedef struct fdir_dentry_stat {
     int atime;  /* access time */
     int ctime;  /* status change time */
     int mtime;  /* modify time */
-    int nlink;  /* ref count for hard link */
+    int nlink;  /* ref count for hard link and directory */
     int64_t size;   /* file size in bytes */
     int64_t alloc;  /* alloc space in bytes */
     int64_t space_end;   /* for remove disk space when deallocate */
@@ -130,10 +131,11 @@ typedef union {
         bool mtime: 1;
         bool gid:   1;
         bool uid:   1;
-        bool size : 1;
-        bool inc_alloc: 1;   //for increaase space alloc
-        bool space_end: 1;   //for space end offset
-        bool src_inode: 1;   //for create hard link only
+        bool size:  1;
+        bool inc_alloc: 1;  //for increaase space alloc
+        bool space_end: 1;  //for space end offset
+        bool src_inode: 1;  //for create hard link only
+        bool blocked: 1;    //for set flock and sys-lock only
     };
 } FDIRStatModifyFlags;
 

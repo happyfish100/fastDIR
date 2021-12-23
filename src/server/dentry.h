@@ -18,6 +18,7 @@
 #define _FDIR_DENTRY_H
 
 #include "server_types.h"
+#include "ns_manager.h"
 #include "data_thread.h"
 
 #define FDIR_GET_REAL_DENTRY(dentry)  \
@@ -34,15 +35,15 @@ extern "C" {
     void dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
             const int64_t inc_alloc);
 
-    int dentry_init_context(FDIRDataThreadContext *db_context);
+    int dentry_init_context(FDIRDataThreadContext *thread_ctx);
 
-    int dentry_create(FDIRDataThreadContext *db_context,
+    int dentry_create(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
-    int dentry_remove(FDIRDataThreadContext *db_context,
+    int dentry_remove(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
-    int dentry_rename(FDIRDataThreadContext *db_context,
+    int dentry_rename(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
     int dentry_find_parent(const FDIRDEntryFullName *fullname,
@@ -55,7 +56,7 @@ extern "C" {
             FDIRServerDentry **dentry)
     {
         const bool hdlink_follow = true;
-        return  dentry_find_ex(fullname, dentry, hdlink_follow);
+        return dentry_find_ex(fullname, dentry, hdlink_follow);
     }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,
@@ -92,6 +93,18 @@ extern "C" {
 
     struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
             FDIRDentryContext *context, const int alloc_elts);
+
+    static inline void dentry_hold(FDIRServerDentry *dentry)
+    {
+        __sync_add_and_fetch(&dentry->reffer_count, 1);
+    }
+
+    void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count);
+
+    static inline void dentry_release(FDIRServerDentry *dentry)
+    {
+        dentry_release_ex(dentry, 1);
+    }
 
 #ifdef __cplusplus
 }

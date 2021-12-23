@@ -30,6 +30,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
+#include "db/event_dealer.h"
 #include "server_global.h"
 #include "server_binlog.h"
 #include "data_thread.h"
@@ -38,6 +39,9 @@
 int server_load_data()
 {
     BinlogReplayMTContext replay_ctx;
+    SFBinlogFilePosition pos;
+    int64_t last_data_version;
+    SFBinlogFilePosition *hint_pos;
     BinlogReadThreadContext reader_ctx;
     BinlogReadThreadResult *r;
     int64_t start_time;
@@ -55,15 +59,35 @@ int server_load_data()
     } else {
         parse_threads = FC_MIN(DATA_THREAD_COUNT, SYSTEM_CPU_COUNT);
     }
-    if ((result=binlog_read_thread_init_ex(&reader_ctx, NULL, 0,
-                    BINLOG_BUFFER_SIZE, parse_threads * 2)) != 0)
+
+    if (STORAGE_ENABLED) {
+        last_data_version = event_dealer_get_last_data_version();
+        if (last_data_version > 0) {
+            hint_pos = &pos;
+            binlog_get_current_write_position(hint_pos);
+            FC_ATOMIC_SET(DATA_CURRENT_VERSION, last_data_version);
+        } else {
+            hint_pos = NULL;
+        }
+    } else {
+        hint_pos = NULL;
+        last_data_version = 0;
+    }
+
+    if ((result=binlog_read_thread_init_ex(&reader_ctx, hint_pos,
+                    last_data_version, BINLOG_BUFFER_SIZE,
+                    parse_threads * 2)) != 0)
     {
+        logError("file: "__FILE__", line: %d, "
+                "binlog_read_thread_init fail, "
+                "errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
         return result;
     }
 
     if ((result=binlog_replay_mt_init(&replay_ctx, &reader_ctx,
                     parse_threads)) != 0)
-   {
+    {
         return result;
     }
 

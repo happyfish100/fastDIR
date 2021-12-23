@@ -125,8 +125,8 @@ static void *thread_func(void *args)
 
         offset = thread_index;
         length = 4 * offset;
-        if ((result=fdir_client_flock_dentry_ex(&session,
-                        inode, operation | flock_flags, offset, length)) != 0)
+        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, inode,
+                        operation | flock_flags, offset, length)) != 0)
         {
             fprintf(stderr, "dentry lock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
@@ -135,7 +135,7 @@ static void *thread_func(void *args)
         }
 
         if ((result=fdir_client_stat_dentry_by_inode(&client_ctx,
-                        inode, &dentry)) != 0)
+                        &poolname, inode, &dentry)) != 0)
         {
             break;
         }
@@ -152,8 +152,8 @@ static void *thread_func(void *args)
             fc_sleep_ms(msleep_time);
         }
 
-        if ((result=fdir_client_flock_dentry_ex(&session,
-                        inode, LOCK_UN | flock_flags, offset, length)) != 0)
+        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, inode,
+                        LOCK_UN | flock_flags, offset, length)) != 0)
         {
             fprintf(stderr, "dentry unlock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,

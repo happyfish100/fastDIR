@@ -33,8 +33,9 @@
 #include "sf/sf_global.h"
 #include "sf/sf_func.h"
 #include "../server_global.h"
-#include "../data_thread.h"
 #include "../shared_thread_pool.h"
+#include "../service_handler.h"
+#include "../data_thread.h"
 #include "binlog_pack.h"
 #include "binlog_reader.h"
 #include "binlog_replay_mt.h"
@@ -43,31 +44,19 @@ static void data_thread_deal_done_callback(
         struct fdir_binlog_record *record,
         const int result, const bool is_error)
 {
-    int log_level;
     BinlogReplayMTContext *replay_ctx;
     DataThreadCounter *counter;
 
     replay_ctx = (BinlogReplayMTContext *)record->notify.args;
     if (result != 0) {
         if (is_error) {
-            log_level = LOG_ERR;
             replay_ctx->last_errno = result;
             __sync_add_and_fetch(&replay_ctx->fail_count, 1);
+            SF_G_CONTINUE_FLAG = false;
         } else {
-            log_level = LOG_WARNING;
             __sync_add_and_fetch(&replay_ctx->warning_count, 1);
         }
-
-        log_it_ex(&g_log_context, log_level,
-                "file: "__FILE__", line: %d, "
-                "%s dentry fail, errno: %d, error info: %s, "
-                "namespace: %.*s, inode: %"PRId64", parent inode: %"PRId64
-                ", subname: %.*s", __LINE__,
-                get_operation_caption(record->operation),
-                result, STRERROR(result),
-                record->ns.len, record->ns.str,
-                record->inode, record->me.pname.parent_inode,
-                record->me.pname.name.len, record->me.pname.name.str);
+        service_record_deal_error_log(record, result, is_error);
     }
 
     counter = replay_ctx->record_allocator.bcontexts[record->extra.arr_index].
@@ -109,9 +98,9 @@ static int parse_buffer(BinlogParseThreadContext *thread_ctx)
             char filename[PATH_MAX];
             int64_t line_count;
 
-            sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
-                    thread_ctx->r->binlog_position.index,
-                    filename, sizeof(filename));
+            sf_binlog_writer_get_filename(DATA_PATH_STR,
+                    FDIR_BINLOG_SUBDIR_NAME, thread_ctx->r->
+                    binlog_position.index, filename, sizeof(filename));
             if (fc_get_file_line_count_ex(filename, thread_ctx->r->
                         binlog_position.offset + (p - thread_ctx->r->
                             buffer.buff), &line_count) == 0)

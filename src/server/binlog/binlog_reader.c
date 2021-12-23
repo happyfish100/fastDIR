@@ -45,9 +45,9 @@ static int open_readable_binlog(ServerBinlogReader *reader)
         close(reader->fd);
     }
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
-            reader->position.index, reader->filename,
-            sizeof(reader->filename));
+    sf_binlog_writer_get_filename(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, reader->position.index,
+            reader->filename, sizeof(reader->filename));
     reader->fd = open(reader->filename, O_RDONLY);
     if (reader->fd < 0) {
         result = errno != 0 ? errno : EACCES;
@@ -365,30 +365,19 @@ static int find_data_version(ServerBinlogReader *reader,
             reader->binlog_buffer.current = rec_end;
         }
 
-        if (result == 0) {
-            if (found) {
-                break;
-            }
-            continue;
+        if (found) {
+            break;
         }
 
         if (result == EAGAIN || result == EOVERFLOW) {
             continue;
         }
-        //logInfo("binlog_detect_record result: %d", result);
 
-        if (*error_info != '\0') {
-            logError("file: "__FILE__", line: %d, "
-                    "binlog_detect_record fail, "
-                    "binlog file: %s, error info: %s",
-                    __LINE__, reader->filename, error_info);
-        } else {
-            logError("file: "__FILE__", line: %d, "
-                    "binlog_detect_record fail, "
-                    "binlog file: %s, errno: %d, error info: %s",
-                    __LINE__, reader->filename, result, STRERROR(result));
-        }
-
+        logError("file: "__FILE__", line: %d, "
+                "binlog_detect_record fail, binlog file: %s, "
+                "errno: %d, error info: %s", __LINE__,
+                reader->filename, result, (*error_info != '\0') ?
+                error_info : STRERROR(result));
         return result;
     }
 
@@ -517,7 +506,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
                 logInfo("file: "__FILE__", line: %d, "
                         "found position, index: %d, offset: %"PRId64, __LINE__,
                         reader->position.index, reader->position.offset);
-                        */
+                 */
                 return open_readable_binlog(reader);
             }
 
@@ -525,9 +514,9 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
             remain -= rend_offset;
 
             /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "====remain length: %d", __LINE__, remain);
-                    */
+            logInfo("file: "__FILE__", line: %d, ====remain length: %d, "
+                    "data_version: %"PRId64, __LINE__, remain, data_version);
+             */
         } else {
             break;
         }
@@ -535,9 +524,9 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 
     /*
     logInfo("binlog index: %d, reader->position.offset: %"PRId64", "
-                "last_data_version: %"PRId64, reader->position.index,
-                reader->position.offset,  last_data_version);
-                */
+            "last_data_version: %"PRId64, reader->position.index,
+            reader->position.offset,  last_data_version);
+     */
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 
@@ -591,7 +580,7 @@ int binlog_get_first_record_version(const int file_index,
     int64_t bytes;
     int offset;
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
             file_index, filename, sizeof(filename));
 
     *error_info = '\0';
@@ -649,7 +638,7 @@ int binlog_get_last_record_version(const int file_index,
     int64_t file_size = 0;
     int64_t bytes;
 
-    sf_binlog_writer_get_filename(FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
             file_index, filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         result = getFileSize(filename, &file_size);
@@ -832,8 +821,8 @@ static int compare_record(const FDIRBinlogRecord *r1,
     }
 
     if (r1->options.src_inode) {
-        if ((sub=fc_compare_int64(r1->hdlink.src_inode,
-                    r2->hdlink.src_inode)) != 0)
+        if ((sub=fc_compare_int64(r1->hdlink.src.inode,
+                    r2->hdlink.src.inode)) != 0)
         {
             return sub;
         }

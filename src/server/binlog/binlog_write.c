@@ -43,12 +43,15 @@ int binlog_write_init()
     const bool use_fixed_buffer_size = false;
     int result;
 
-    if ((result=sf_binlog_writer_init_by_version(&g_binlog_writer_ctx.writer,
-                    FDIR_BINLOG_SUBDIR_NAME, DATA_CURRENT_VERSION + 1,
-                    BINLOG_BUFFER_SIZE, 4096)) != 0)
+    if ((result=sf_binlog_writer_init_by_version(&g_binlog_writer_ctx.
+                    writer, DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
+                    DATA_CURRENT_VERSION + 1, BINLOG_BUFFER_SIZE,
+                    4096)) != 0)
     {
         return result;
     }
+    sf_binlog_writer_set_flags(&g_binlog_writer_ctx.writer,
+            SF_FILE_WRITER_FLAGS_WANT_DONE_VERSION);
 
     return sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
             FDIR_BINLOG_SUBDIR_NAME, &g_binlog_writer_ctx.writer,

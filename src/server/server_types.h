@@ -27,9 +27,13 @@
 #include "fastcommon/fc_list.h"
 #include "fastcommon/fc_queue.h"
 #include "fastcommon/fc_atomic.h"
+#include "fastcommon/array_allocator.h"
+#include "fastcommon/sorted_array.h"
 #include "sf/sf_types.h"
 #include "sf/idempotency/server/server_types.h"
+#include "diskallocator/binlog/common/binlog_types.h"
 #include "common/fdir_types.h"
+#include "common/fdir_server_types.h"
 
 #define FDIR_MAX_NS_SUBSCRIBERS                8
 
@@ -92,6 +96,7 @@
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
+
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
 
@@ -105,10 +110,26 @@ struct fdir_dentry_context;
 struct fdir_server_dentry;
 struct flock_entry;
 
+#define DENTRY_SKIPLIST_INIT_LEVEL_COUNT   2
+#define FDIR_DENTRY_LOADED_FLAGS_BASIC    (1 << 0)
+#define FDIR_DENTRY_LOADED_FLAGS_CHILDREN (1 << 1)
+#define FDIR_DENTRY_LOADED_FLAGS_XATTR    (1 << 2)
+#define FDIR_DENTRY_LOADED_FLAGS_CLIST    (1 << 3) /* child list for serialization */
+#define FDIR_DENTRY_LOADED_FLAGS_ALL      (FDIR_DENTRY_LOADED_FLAGS_BASIC | \
+        FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR |\
+        FDIR_DENTRY_LOADED_FLAGS_CLIST)
+
+typedef struct fdir_server_dentry_db_args {
+    IdNameArray *children;  //children inodes for update event dealer
+} FDIRServerDentryDBArgs;
+
 typedef struct fdir_server_dentry {
     int64_t inode;
-    unsigned int hash_code;   //data thread dispach & mutex lock
     string_t name;
+    short loaded_flags;
+    bool add_to_clist;  //if add to child list for serialization (just a temp variable)
+    volatile int reffer_count;
+
     FDIRDEntryStat stat;
 
     union {
@@ -122,7 +143,8 @@ typedef struct fdir_server_dentry {
     struct fdir_server_dentry *parent;
     struct fdir_namespace_entry *ns_entry;
     struct flock_entry *flock_entry;
-    struct fdir_server_dentry *ht_next;  //for inode hash table;
+    struct fdir_server_dentry *ht_next;  //for inode hash table
+    FDIRServerDentryDBArgs db_args[0];  //for data persistency, since V3.0
 } FDIRServerDentry;
 
 typedef struct fdir_server_dentry_array {
@@ -284,6 +306,7 @@ typedef struct fdir_server_context {
     union {
         struct {
             struct fast_mblock_man record_allocator;
+            struct fast_mblock_man record_parray_allocator;
             struct fast_mblock_man request_allocator; //for idempotency_request
         } service;
 

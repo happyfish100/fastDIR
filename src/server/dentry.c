@@ -29,10 +29,9 @@
 #include "service_handler.h"
 #include "inode_generator.h"
 #include "inode_index.h"
-#include "ns_manager.h"
+#include "db/change_notify.h"
+#include "db/dentry_loader.h"
 #include "dentry.h"
-
-#define INIT_LEVEL_COUNT 2
 
 typedef struct {
     string_t holder;
@@ -106,6 +105,7 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
         fast_allocator_free(&dentry->context->name_acontext, kv->value.str);
     }
 
+    dentry->kv_array->count = 0;
     if ((allocator=dentry_get_kvarray_allocator_by_capacity(
                     dentry->context, dentry->kv_array->alloc)) != NULL)
     {
@@ -113,27 +113,64 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     }
 
     dentry->kv_array = NULL;
-    dentry->kv_array->count = 0;
 }
 
-static void dentry_do_free(void *ptr)
+static void dentry_do_free(void *ptr, const int dec_count)
 {
     FDIRServerDentry *dentry;
+
     dentry = (FDIRServerDentry *)ptr;
+    if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
+        return;
+    }
 
     if (dentry->children != NULL) {
         uniq_skiplist_free(dentry->children);
+        dentry->children = NULL;
     }
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
-    if ((!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode) &&
-            S_ISLNK(dentry->stat.mode)) && dentry->link.str != NULL)
-    {
-        fast_allocator_free(&dentry->context->name_acontext,
-                dentry->link.str);
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        dentry->src_dentry = NULL;
+    } else if (S_ISLNK(dentry->stat.mode) && dentry->link.str != NULL) {
+        fast_allocator_free(&dentry->context->
+                name_acontext, dentry->link.str);
+        FC_SET_STRING_NULL(dentry->link);
     }
     dentry_free_xattrs(dentry);
+
+    if (dentry->flock_entry != NULL) {
+        inode_index_free_flock_entry(dentry);
+        dentry->flock_entry = NULL;
+    }
+
+    if (STORAGE_ENABLED) {
+        if (dentry->db_args->children != NULL) {
+            id_name_pair_t *pair;
+            id_name_pair_t *end;
+
+            end = dentry->db_args->children->elts +
+                dentry->db_args->children->count;
+            for (pair=dentry->db_args->children->elts; pair<end; pair++) {
+                dentry_strfree(dentry->context, &pair->name);
+            }
+            id_name_array_allocator_free(&ID_NAME_ARRAY_ALLOCATOR_CTX,
+                    dentry->db_args->children);
+            dentry->db_args->children = NULL;
+        }
+    }
+
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
+}
+
+static void dentry_free(void *ptr)
+{
+    dentry_do_free(ptr, 1);
+}
+
+static void dentry_free_ex(void *ctx, void *ptr)
+{
+    dentry_do_free(ptr, (long)ctx);
 }
 
 static void dentry_free_func(void *ptr, const int delay_seconds)
@@ -142,14 +179,20 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
     dentry = (FDIRServerDentry *)ptr;
 
     if (delay_seconds > 0) {
-        server_add_to_delay_free_queue(&dentry->context->db_context->
-                delay_free_context, ptr, dentry_do_free, delay_seconds);
+        server_add_to_delay_free_queue(&dentry->context->thread_ctx->
+                free_context, ptr, dentry_free, delay_seconds);
     } else {
-        dentry_do_free(ptr);
+        dentry_free(ptr);
     }
 }
 
-int dentry_init_obj(void *element, void *init_args)
+void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
+{
+    server_add_to_immediate_free_queue_ex(&dentry->context->thread_ctx->
+            free_context, (void *)(long)dec_count, dentry, dentry_free_ex);
+}
+
+static int dentry_init_obj(void *element, void *init_args)
 {
     FDIRServerDentry *dentry;
     dentry = (FDIRServerDentry *)element;
@@ -250,13 +293,14 @@ struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
     }
 }
 
-int dentry_init_context(FDIRDataThreadContext *db_context)
+int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
     FDIRDentryContext *context;
+    int element_size;
     int result;
 
-    context = &db_context->dentry_context;
-    context->db_context = db_context;
+    context = &thread_ctx->dentry_context;
+    context->thread_ctx = thread_ctx;
     if ((result=uniq_skiplist_init_ex(&context->factory,
                     max_level_count, dentry_compare, dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
@@ -265,8 +309,14 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
         return result;
     }
 
+    if (STORAGE_ENABLED) {
+        element_size = sizeof(FDIRServerDentry) +
+            sizeof(FDIRServerDentryDBArgs);
+    } else {
+        element_size = sizeof(FDIRServerDentry);
+    }
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
-                    "dentry", sizeof(FDIRServerDentry), 8 * 1024,
+                    "dentry", element_size, 8 * 1024,
                     0, dentry_init_obj, context, false)) != 0)
     {
         return result;
@@ -285,30 +335,60 @@ int dentry_init_context(FDIRDataThreadContext *db_context)
     return 0;
 }
 
-static const FDIRServerDentry *do_find_ex(FDIRNamespaceEntry *ns_entry,
-        const string_t *paths, const int count)
+static inline int find_child(FDIRDataThreadContext *thread_ctx,
+        FDIRServerDentry *parent, const string_t *name,
+        FDIRServerDentry **child)
 {
-    const string_t *p;
-    const string_t *end;
-    FDIRServerDentry *current;
+    int result;
     FDIRServerDentry target;
 
-    current = ns_entry->dentry_root;
-    end = paths + count;
-    for (p=paths; p<end; p++) {
-        if (!S_ISDIR(current->stat.mode)) {
-            return NULL;
-        }
-
-        target.name = *p;
-        current = (FDIRServerDentry *)uniq_skiplist_find(
-                current->children, &target);
-        if (current == NULL) {
-            return NULL;
+    if (STORAGE_ENABLED) {
+        if ((result=dentry_check_load(thread_ctx, parent)) != 0) {
+            *child = NULL;
+            return result;
         }
     }
 
-    return current;
+    if (!S_ISDIR(parent->stat.mode)) {
+        *child = NULL;
+        return ENOTDIR;
+    }
+
+    target.name = *name;
+    if ((*child=(FDIRServerDentry *)uniq_skiplist_find(
+                    parent->children, &target)) == NULL)
+    {
+        return ENOENT;
+    }
+
+    if (STORAGE_ENABLED) {
+        if ((result=dentry_check_load(thread_ctx, *child)) != 0) {
+            *child = NULL;
+            return result;
+        }
+    }
+    return 0;
+}
+
+static inline int do_find_ex(FDIRNamespaceEntry *ns_entry,
+        const string_t *paths, const int count,
+        FDIRServerDentry **dentry)
+{
+    int result;
+    const string_t *p;
+    const string_t *end;
+
+    *dentry = ns_entry->current.root.ptr;
+    end = paths + count;
+    for (p=paths; p<end; p++) {
+        if ((result=find_child(ns_entry->thread_ctx,
+                        *dentry, p, dentry)) != 0)
+        {
+            return result;
+        }
+    }
+
+    return 0;
 }
 
 void dentry_set_inc_alloc_bytes(FDIRServerDentry *dentry,
@@ -342,7 +422,7 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
         return result;
     }
 
-    if (ns_entry->dentry_root == NULL) {
+    if (ns_entry->current.root.ptr == NULL) {
         *parent = NULL;
         my_name->len = 0;
         my_name->str = "";
@@ -360,12 +440,12 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
 
     *my_name = path_info.paths[path_info.count - 1];
     if (path_info.count == 1) {
-        *parent = ns_entry->dentry_root;
+        *parent = ns_entry->current.root.ptr;
     } else {
-        *parent = (FDIRServerDentry *)do_find_ex(ns_entry,
-                path_info.paths, path_info.count - 1);
-        if (*parent == NULL) {
-            return ENOENT;
+        if ((result=do_find_ex(ns_entry, path_info.paths,
+                        path_info.count - 1, parent)) != 0)
+        {
+            return result;
         }
     }
 
@@ -377,13 +457,11 @@ int dentry_find_parent(const FDIRDEntryFullName *fullname,
     return 0;
 }
 
-static int dentry_find_parent_and_me(FDIRDentryContext *context,
-        const FDIRDEntryFullName *fullname, FDIRPathInfo *path_info,
-        string_t *my_name, FDIRNamespaceEntry **ns_entry,
-        FDIRServerDentry **parent, FDIRServerDentry **me,
-        const bool create_ns)
+static int dentry_find_parent_and_me(const FDIRDEntryFullName *fullname,
+        FDIRPathInfo *path_info, string_t *my_name,
+        FDIRNamespaceEntry **ns_entry, FDIRServerDentry **parent,
+        FDIRServerDentry **me)
 {
-    FDIRServerDentry target;
     int result;
 
     if (fullname->path.len == 0 || fullname->path.str[0] != '/') {
@@ -392,14 +470,13 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
         return EINVAL;
     }
 
-    *ns_entry = fdir_namespace_get(context, &fullname->ns,
-            create_ns, &result);
+    *ns_entry = fdir_namespace_get(NULL, &fullname->ns, false, &result);
     if (*ns_entry == NULL) {
         *parent = *me = NULL;
         return result;
     }
 
-    if ((*ns_entry)->dentry_root == NULL) {
+    if ((*ns_entry)->current.root.ptr == NULL) {
         *parent = *me = NULL;
         return ENOENT;
     }
@@ -408,7 +485,7 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
             path_info->paths, FDIR_MAX_PATH_COUNT, true);
     if (path_info->count == 0) {
         *parent = NULL;
-        *me = (*ns_entry)->dentry_root;
+        *me = (*ns_entry)->current.root.ptr;
         my_name->len = 0;
         my_name->str = "";
         return 0;
@@ -416,61 +493,57 @@ static int dentry_find_parent_and_me(FDIRDentryContext *context,
 
     *my_name = path_info->paths[path_info->count - 1];
     if (path_info->count == 1) {
-        *parent = (*ns_entry)->dentry_root;
+        *parent = (*ns_entry)->current.root.ptr;
     } else {
-        *parent = (FDIRServerDentry *)do_find_ex(*ns_entry,
-                path_info->paths, path_info->count - 1);
-        if (*parent == NULL) {
+        if ((result=do_find_ex(*ns_entry, path_info->paths,
+                        path_info->count - 1, parent)) != 0)
+        {
             *me = NULL;
-            return ENOENT;
+            return result;
         }
     }
 
-    if (!S_ISDIR((*parent)->stat.mode)) {
-        *parent = NULL;
-        *me = NULL;
-        return ENOTDIR;
-    }
-
-    target.name = *my_name;
-    *me = (FDIRServerDentry *)uniq_skiplist_find((*parent)->children, &target);
-    return 0;
+    return find_child((*ns_entry)->thread_ctx, *parent, my_name, me);
 }
 
-static int dentry_find_me(FDIRDentryContext *context, const string_t *ns,
-        FDIRRecordDEntry *rec_entry, FDIRNamespaceEntry **ns_entry,
-        const bool create_ns)
+static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
+        const string_t *ns, FDIRRecordDEntry *rec_entry,
+        FDIRNamespaceEntry **ns_entry, const bool create_ns)
 {
-    FDIRServerDentry target;
     int result;
 
     if (rec_entry->parent == NULL) {
-        *ns_entry = fdir_namespace_get(context, ns, create_ns, &result);
+        *ns_entry = fdir_namespace_get(thread_ctx, ns, create_ns, &result);
         if (*ns_entry == NULL) {
             return result;
         }
 
-        if ((*ns_entry)->dentry_root == NULL) {
-            return ENOENT;
+        if ((*ns_entry)->current.root.ptr == NULL) {
+            return (rec_entry->pname.name.len == 0 ? ENOENT : EINVAL);
         }
 
         if (rec_entry->pname.name.len == 0) {
-            rec_entry->dentry = (*ns_entry)->dentry_root;
+            rec_entry->dentry = (*ns_entry)->current.root.ptr;
             return 0;
         } else {
-            return ENOENT;
+            return EINVAL;
         }
     } else {
         *ns_entry = rec_entry->parent->ns_entry;
     }
 
-    target.name = rec_entry->pname.name;
-    rec_entry->dentry = (FDIRServerDentry *)uniq_skiplist_find(
-            rec_entry->parent->children, &target);
-    return 0;
+    return find_child((*ns_entry)->thread_ctx, rec_entry->parent,
+            &rec_entry->pname.name, &rec_entry->dentry);
 }
 
-int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
+#define AFFECTED_DENTRIES_ADD(record, _dentry, _op_type) \
+    do { \
+        record->affected.entries[record->affected.count].dentry = _dentry;   \
+        record->affected.entries[record->affected.count].op_type = _op_type; \
+        record->affected.count++;  \
+    } while (0)
+
+int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     FDIRServerDentry *current;
@@ -486,31 +559,23 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
-                    &record->me, &ns_entry, true)) != 0)
+    if ((result=dentry_find_me(thread_ctx, &record->ns,
+                    &record->me, &ns_entry, true)) != ENOENT)
     {
-        bool is_root_path;
-        is_root_path = (record->me.parent == NULL &&
-                record->me.pname.name.len == 0);
-        if (!(is_root_path && ns_entry != NULL && result == ENOENT)) {
-            return result;
-        }
-    }
-
-    if (record->me.dentry != NULL) {
-        return EEXIST;
+        return (result == 0 ? EEXIST : result);
     }
 
     current = (FDIRServerDentry *)fast_mblock_alloc_object(
-            &db_context->dentry_context.dentry_allocator);
+            &thread_ctx->dentry_context.dentry_allocator);
     if (current == NULL) {
         return ENOMEM;
     }
+    __sync_add_and_fetch(&current->reffer_count, 1);
 
     is_dir = S_ISDIR(record->stat.mode);
     if (is_dir) {
-        current->children = uniq_skiplist_new(&db_context->
-                dentry_context.factory, INIT_LEVEL_COUNT);
+        current->children = uniq_skiplist_new(&thread_ctx->dentry_context.
+                factory, DENTRY_SKIPLIST_INIT_LEVEL_COUNT);
         if (current->children == NULL) {
             return ENOMEM;
         }
@@ -519,22 +584,20 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
 
     current->parent = record->me.parent;
-    if ((result=dentry_strdup(&db_context->dentry_context,
+    if ((result=dentry_strdup(&thread_ctx->dentry_context,
                     &current->name, &record->me.pname.name)) != 0)
     {
         return result;
     }
 
     if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
-        current->src_dentry = record->hdlink.src_dentry;
+        current->src_dentry = record->hdlink.src.dentry;
     } else if (S_ISLNK(record->stat.mode)) {
-        if ((result=dentry_strdup(&db_context->dentry_context,
+        if ((result=dentry_strdup(&thread_ctx->dentry_context,
                         &current->link, &record->link)) != 0)
         {
             return result;
         }
-    } else {
-        FC_SET_STRING_NULL(current->link);
     }
 
     /*
@@ -569,23 +632,31 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     current->stat.nlink = 1;
     current->stat.alloc = 0;
     current->stat.space_end = 0;
+    current->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;
+        AFFECTED_DENTRIES_ADD(record, current->src_dentry,
+                da_binlog_op_type_update);
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
-            dentry_do_free(current);
+            dentry_free(current);
             return result;
         }
     }
 
     if (current->parent == NULL) {
-        ns_entry->dentry_root = current;
-    } else if ((result=uniq_skiplist_insert(current->parent->children,
-                    current)) == 0)
+        ns_entry->current.root.ptr = current;
+    } else if ((result=uniq_skiplist_insert(current->
+                    parent->children, current)) == 0)
     {
         current->parent->stat.nlink++;
     } else {
+        logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
+                "insert child {inode: %"PRId64", name: %.*s} to "
+                "skiplist fail, errno: %d, error info: %s", __LINE__,
+                current->parent->inode, current->inode, current->name.len,
+                current->name.str, result, STRERROR(result));
         return result;
     }
 
@@ -595,15 +666,16 @@ int dentry_create(FDIRDataThreadContext *db_context, FDIRBinlogRecord *record)
     }
 
     if (is_dir) {
-        db_context->dentry_context.counters.dir++;
+        thread_ctx->dentry_context.counters.dir++;
+        __sync_add_and_fetch(&ns_entry->current.counts.dir, 1);
     } else {
-        db_context->dentry_context.counters.file++;
+        thread_ctx->dentry_context.counters.file++;
+        __sync_add_and_fetch(&ns_entry->current.counts.file, 1);
     }
-    __sync_add_and_fetch(&ns_entry->dentry_count, 1);
     return 0;
 }
 
-static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
+static inline int remove_src_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
@@ -612,16 +684,24 @@ static inline int remove_src_dentry(FDIRDataThreadContext *db_context,
         return result;
     }
 
+    if (S_ISDIR(dentry->stat.mode)) {
+        __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
+        thread_ctx->dentry_context.counters.dir--;
+    } else {
+        __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
+        thread_ctx->dentry_context.counters.file--;
+    }
+
     dentry_free_func(dentry, FDIR_DELAY_FREE_SECONDS);
-    db_context->dentry_context.counters.file--;
-    __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
     return 0;
 }
 
-static int do_remove_dentry(FDIRDataThreadContext *db_context,
-        FDIRServerDentry *dentry, bool *free_dentry)
+static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record, FDIRServerDentry *dentry,
+        bool *free_dentry)
 {
     int result;
+    DABinlogOpType op_type;
 
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
         if (--(dentry->src_dentry->stat.nlink) == 0) {
@@ -631,12 +711,19 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                dentry->src_dentry->inode);
              */
 
-            if ((result=remove_src_dentry(db_context,
+            if ((result=remove_src_dentry(thread_ctx,
                             dentry->src_dentry)) != 0)
             {
                 return result;
             }
+
+            op_type = da_binlog_op_type_remove;
+        } else {
+            op_type = da_binlog_op_type_update;
         }
+
+        AFFECTED_DENTRIES_ADD(record, dentry->src_dentry, op_type);
+        AFFECTED_DENTRIES_ADD(record, dentry, da_binlog_op_type_remove);
         *free_dentry = true;
     } else {
         if (--(dentry->stat.nlink) == 0) {
@@ -644,45 +731,45 @@ static int do_remove_dentry(FDIRDataThreadContext *db_context,
                 return result;
             }
 
+            op_type = da_binlog_op_type_remove;
             *free_dentry = true;
         } else {
             /*
-            logInfo("file: "__FILE__", line: %d, "
-                    "dentry: %"PRId64", nlink: %d > 0, skip remove",
-                    __LINE__, dentry->inode, dentry->stat.nlink);
-                    */
+               logInfo("file: "__FILE__", line: %d, "
+               "dentry: %"PRId64", nlink: %d > 0, skip remove",
+               __LINE__, dentry->inode, dentry->stat.nlink);
+             */
+
+            op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }
+        AFFECTED_DENTRIES_ADD(record, dentry, op_type);
     }
 
     if (*free_dentry) {
         if (S_ISDIR(dentry->stat.mode)) {
-            db_context->dentry_context.counters.dir--;
+            thread_ctx->dentry_context.counters.dir--;
+            __sync_sub_and_fetch(&dentry->ns_entry->current.counts.dir, 1);
         } else {
-            db_context->dentry_context.counters.file--;
+            thread_ctx->dentry_context.counters.file--;
+            __sync_sub_and_fetch(&dentry->ns_entry->current.counts.file, 1);
         }
-
-        __sync_sub_and_fetch(&dentry->ns_entry->dentry_count, 1);
     }
 
     return 0;
 }
 
-int dentry_remove(FDIRDataThreadContext *db_context,
+int dentry_remove(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     bool free_dentry;
     int result;
 
-    if ((result=dentry_find_me(&db_context->dentry_context, &record->ns,
+    if ((result=dentry_find_me(thread_ctx, &record->ns,
                     &record->me, &ns_entry, false)) != 0)
     {
         return result;
-    }
-
-    if (record->me.dentry == NULL) {
-        return ENOENT;
     }
 
     if (S_ISDIR(record->me.dentry->stat.mode)) {
@@ -692,19 +779,28 @@ int dentry_remove(FDIRDataThreadContext *db_context,
     }
 
     record->inode = record->me.dentry->inode;
-    if ((result=do_remove_dentry(db_context, record->me.
-                    dentry, &free_dentry)) != 0)
+    if ((result=do_remove_dentry(thread_ctx, record,
+                    record->me.dentry, &free_dentry)) != 0)
     {
         return result;
     }
 
     if (record->me.parent == NULL) {
-        ns_entry->dentry_root = NULL;
-    } else if ((result=uniq_skiplist_delete_ex(record->me.parent->children,
-                    record->me.dentry, free_dentry)) == 0)
+        ns_entry->current.root.ptr = NULL;
+        if (free_dentry) {
+            dentry_free_func(record->me.dentry, FDIR_DELAY_FREE_SECONDS);
+        }
+    } else if ((result=uniq_skiplist_delete_ex(record->me.parent->
+                    children, record->me.dentry, free_dentry)) == 0)
     {
         record->me.parent->stat.nlink--;
     } else {
+        logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
+                "delete child {inode: %"PRId64", name: %.*s} from "
+                "skiplist fail, errno: %d, error info: %s", __LINE__,
+                record->me.parent->inode, record->me.dentry->inode,
+                record->me.dentry->name.len, record->me.dentry->name.str,
+                result, STRERROR(result));
         return result;
     }
 
@@ -722,10 +818,10 @@ static bool dentry_is_ancestor(FDIRServerDentry *dentry, FDIRServerDentry *paren
     return false;
 }
 
-static int rename_check(FDIRDataThreadContext *db_context,
+static int rename_check(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    FDIRServerDentry target;
+    int result;
 
     if (record->rename.src.parent == NULL ||
             record->rename.dest.parent == NULL)
@@ -733,22 +829,22 @@ static int rename_check(FDIRDataThreadContext *db_context,
         return EINVAL;
     }
 
-    target.name = record->rename.src.pname.name;
-    if ((record->rename.src.dentry=(FDIRServerDentry *)uniq_skiplist_find(
-                    record->rename.src.parent->children, &target)) == NULL)
+    if ((result=find_child(thread_ctx, record->rename.src.parent,
+                    &record->rename.src.pname.name,
+                    &record->rename.src.dentry)) != 0)
     {
-        return ENOENT;
+        return result;
     }
 
-    target.name = record->rename.dest.pname.name;
-    if ((record->rename.dest.dentry=(FDIRServerDentry *)uniq_skiplist_find(
-                    record->rename.dest.parent->children, &target)) == NULL)
+    if ((result=find_child(thread_ctx, record->rename.dest.parent,
+                    &record->rename.dest.pname.name,
+                    &record->rename.dest.dentry)) != 0)
     {
-        if ((record->flags & RENAME_EXCHANGE)) {
-            return ENOENT;
+        if ((record->flags & RENAME_EXCHANGE) != 0) {
+            return result;
+        } else {
+            return (result == ENOENT ? 0 : result);
         }
-
-        return 0;
     }
 
     /*
@@ -794,7 +890,7 @@ static inline void restore_dentry_name(FDIRServerDentry *dentry,
     server_delay_free_str(dentry->context, name_to_free);
 }
 
-static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
+static int set_and_store_dentry_name(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry, const string_t *new_name,
         const bool name_changed, StringHolderPtrPair *pair)
 {
@@ -806,8 +902,8 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
         return 0;
     }
 
-    if ((result=dentry_strdup(&dentry->context->db_context->
-                    dentry_context, &cloned_name, new_name)) != 0)
+    if ((result=dentry_strdup(dentry->context,
+                    &cloned_name, new_name)) != 0)
     {
         return result;
     }
@@ -826,17 +922,12 @@ static int set_and_store_dentry_name(FDIRDataThreadContext *db_context,
     return 0;
 }
 
-static int exchange_dentry(FDIRDataThreadContext *db_context,
+static int exchange_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record, const bool name_changed)
 {
     int result;
     StringHolderPtrPair old_src_pair;
     StringHolderPtrPair old_dest_pair;
-
-    if (record->rename.dest.parent == record->rename.src.parent) {
-        record->inode = record->rename.src.dentry->inode;
-        return 0;
-    }
 
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -852,7 +943,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
 
     do {
         old_src_pair.ptr = NULL;
-        if ((result=set_and_store_dentry_name(db_context,
+        if ((result=set_and_store_dentry_name(thread_ctx,
                         record->rename.src.dentry, &record->
                         rename.dest.pname.name, name_changed,
                         &old_src_pair)) != 0)
@@ -866,7 +957,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
             break;
         }
 
-        if ((result=set_and_store_dentry_name(db_context,
+        if ((result=set_and_store_dentry_name(thread_ctx,
                         record->rename.dest.dentry, &record->
                         rename.src.pname.name, name_changed,
                         &old_dest_pair)) != 0)
@@ -911,7 +1002,7 @@ static int exchange_dentry(FDIRDataThreadContext *db_context,
     return result;
 }
 
-static int move_dentry(FDIRDataThreadContext *db_context,
+static int move_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record, const bool name_changed)
 {
     int result;
@@ -923,9 +1014,10 @@ static int move_dentry(FDIRDataThreadContext *db_context,
     }
 
     do {
-        if ((result=set_and_store_dentry_name(db_context, record->rename.src.dentry,
-                        &record->rename.dest.pname.name, name_changed,
-                        &old_src_pair)) != 0)
+        if ((result=set_and_store_dentry_name(thread_ctx,
+                        record->rename.src.dentry,
+                        &record->rename.dest.pname.name,
+                        name_changed, &old_src_pair)) != 0)
         {
             break;
         }
@@ -944,8 +1036,8 @@ static int move_dentry(FDIRDataThreadContext *db_context,
         record->rename.overwritten = record->rename.dest.dentry;
         if (record->rename.dest.dentry != NULL) {
             bool free_dentry;
-            if ((result=do_remove_dentry(db_context, record->rename.
-                            dest.dentry, &free_dentry)) == 0)
+            if ((result=do_remove_dentry(thread_ctx, record, record->
+                            rename.dest.dentry, &free_dentry)) == 0)
             {
                 result = uniq_skiplist_replace_ex(record->rename.dest.parent->
                         children, record->rename.src.dentry, free_dentry);
@@ -963,6 +1055,15 @@ static int move_dentry(FDIRDataThreadContext *db_context,
             break;
         }
 
+        if (record->rename.overwritten != NULL) {
+            record->rename.src.parent->stat.nlink--;
+        } else {
+            if (record->rename.dest.parent != record->rename.src.parent) {
+                record->rename.src.parent->stat.nlink--;
+                record->rename.dest.parent->stat.nlink++;
+            }
+        }
+
         record->rename.src.dentry->parent = record->rename.dest.parent;
         record->inode = record->rename.src.dentry->inode;
         if (name_changed) {
@@ -978,13 +1079,13 @@ static int move_dentry(FDIRDataThreadContext *db_context,
     return result;
 }
 
-int dentry_rename(FDIRDataThreadContext *db_context,
+int dentry_rename(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
     bool name_changed;
 
-    if ((result=rename_check(db_context, record)) != 0) {
+    if ((result=rename_check(thread_ctx, record)) != 0) {
         return result;
     }
 
@@ -1026,10 +1127,10 @@ int dentry_rename(FDIRDataThreadContext *db_context,
             */
 
     if ((record->flags & RENAME_EXCHANGE)) {
-        return exchange_dentry(db_context, record, name_changed);
+        return exchange_dentry(thread_ctx, record, name_changed);
     } else {
         //dentry_children_print(record->rename.src.parent);
-        return move_dentry(db_context, record, name_changed);
+        return move_dentry(thread_ctx, record, name_changed);
     }
 }
 
@@ -1042,14 +1143,10 @@ int dentry_find_ex(const FDIRDEntryFullName *fullname,
     string_t my_name;
     int result;
 
-    if ((result=dentry_find_parent_and_me(NULL, fullname, &path_info,
-                    &my_name, &ns_entry, &parent, dentry, false)) != 0)
+    if ((result=dentry_find_parent_and_me(fullname, &path_info,
+                    &my_name, &ns_entry, &parent, dentry)) != 0)
     {
         return result;
-    }
-
-    if (*dentry == NULL) {
-        return ENOENT;
     }
 
     if (hdlink_follow) {
@@ -1061,22 +1158,14 @@ int dentry_find_ex(const FDIRDEntryFullName *fullname,
 int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
         FDIRServerDentry **dentry)
 {
-    FDIRServerDentry target;
+    int result;
 
-    if (!S_ISDIR(parent->stat.mode)) {
-        *dentry = NULL;
-        return ENOENT;
-    }
-
-    target.name = *name;
-    if ((*dentry=(FDIRServerDentry *)uniq_skiplist_find(
-                    parent->children, &target)) != NULL)
+    if ((result=find_child(parent->ns_entry->thread_ctx,
+                    parent, name, dentry)) == 0)
     {
         SET_HARD_LINK_DENTRY(*dentry);
-        return 0;
-    } else {
-        return ENOENT;
     }
+    return result;
 }
 
 static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int target_count)
