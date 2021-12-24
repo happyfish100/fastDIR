@@ -58,8 +58,13 @@
 #include "server_storage.h"
 #include "data_dumper.h"
 
+//#define FDIR_MBLOCK_CHECK  1
+
 static int setup_server_env(const char *config_filename);
+
+#ifdef FDIR_MBLOCK_CHECK
 static int setup_mblock_stat_task();
+#endif
 
 static bool daemon_mode = true;
 static const char *config_filename;
@@ -302,7 +307,9 @@ int main(int argc, char *argv[])
         return result;
     }
 
+#ifdef FDIR_MBLOCK_CHECK
     setup_mblock_stat_task();
+#endif
     //sched_print_all_entries();
 
     sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
@@ -333,10 +340,12 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+#ifdef FDIR_MBLOCK_CHECK
 static int mblock_stat_task_func(void *args)
 {
     //fast_mblock_manager_stat_print_ex(false, FAST_MBLOCK_ORDER_BY_ELEMENT_SIZE);
-    //fast_mblock_manager_stat_print_ex(true, FAST_MBLOCK_ORDER_BY_ALLOC_BYTES);
+    fast_mblock_manager_stat_print_ex(true, FAST_MBLOCK_ORDER_BY_USED_RATIO);
+    fast_mblock_manager_stat_print_ex(true, FAST_MBLOCK_ORDER_BY_ALLOC_BYTES);
     return 0;
 }
 
@@ -346,7 +355,7 @@ static int setup_mblock_stat_task()
     ScheduleArray schedule_array;
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
-            0, 0, 0, 300,  mblock_stat_task_func, NULL);
+            0, 0, 0, 60, mblock_stat_task_func, NULL);
 
     schedule_entry.new_thread = true;
 
@@ -354,6 +363,7 @@ static int setup_mblock_stat_task()
     schedule_array.entries = &schedule_entry;
     return sched_add_entries(&schedule_array);
 }
+#endif
 
 static int setup_server_env(const char *config_filename)
 {
