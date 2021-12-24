@@ -289,6 +289,8 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
                 "errno: %d, error info: %s", __LINE__,
                 piece_field_names[field_index], dentry->inode,
                 result, STRERROR(result));
+        fast_mblock_free_object(&g_serializer_ctx.buffer_allocator, *buffer);
+        *buffer = NULL;
         return result;
     }
 

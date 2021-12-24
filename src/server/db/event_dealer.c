@@ -379,6 +379,7 @@ static int deal_merged_entries()
         dentry_release_ex(entry->args, entry->merge_count);
     }
 
+    event_dealer_free_buffers(&MERGED_DENTRY_ARRAY);
     return result;
 }
 
@@ -418,4 +419,32 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
     }
 
     return result;
+}
+
+void event_dealer_free_buffers(FDIRDBUpdateFieldArray *array)
+{
+    FDIRDBUpdateFieldInfo *entry;
+    FDIRDBUpdateFieldInfo *end;
+
+    end = array->entries + array->count;
+    for (entry=array->entries; entry<end; entry++) {
+        if (entry->buffer == NULL) {
+            continue;
+        }
+
+        BUFFER_PTR_ARRAY.buffers[BUFFER_PTR_ARRAY.count++] = entry->buffer;
+        if (BUFFER_PTR_ARRAY.count == BUFFER_BATCH_FREE_COUNT) {
+            dentry_serializer_batch_free_buffer(
+                    BUFFER_PTR_ARRAY.buffers,
+                    BUFFER_PTR_ARRAY.count);
+            BUFFER_PTR_ARRAY.count = 0;
+        }
+    }
+
+    if (BUFFER_PTR_ARRAY.count > 0) {
+        dentry_serializer_batch_free_buffer(
+                BUFFER_PTR_ARRAY.buffers,
+                BUFFER_PTR_ARRAY.count);
+        BUFFER_PTR_ARRAY.count = 0;
+    }
 }

@@ -30,6 +30,7 @@ extern "C" {
 
     int event_dealer_do(FDIRChangeNotifyEvent *head, int *count);
 
+    void event_dealer_free_buffers(FDIRDBUpdateFieldArray *array);
 #ifdef __cplusplus
 }
 #endif

@@ -20,6 +20,7 @@
 #include "../server_global.h"
 #include "../ns_manager.h"
 #include "dentry_serializer.h"
+#include "event_dealer.h"
 #include "db_updater.h"
 
 #define REDO_TMP_FILENAME  ".dbstore.tmp"
@@ -516,6 +517,7 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
+    event_dealer_free_buffers(&ctx->array);
     return fdir_namespace_load_root();
 }
 
