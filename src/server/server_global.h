@@ -81,6 +81,7 @@ typedef struct server_global_vars {
 
     struct {
         bool enabled;
+        bool read_by_direct_io;
         char *library;
         int batch_store_on_modifies;
         int batch_store_interval;
@@ -154,6 +155,7 @@ typedef struct server_global_vars {
 #define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.cfg.index_dump_interval
 #define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.cfg.index_dump_base_time
 #define STORAGE_MEMORY_LIMIT    g_server_global_vars.storage.memory_limit
+#define READ_BY_DIRECT_IO       g_server_global_vars.storage.read_by_direct_io
 
 #define STORAGE_ENGINE_INIT_API      g_server_global_vars.storage.api.init
 #define STORAGE_ENGINE_START_API     g_server_global_vars.storage.api.start

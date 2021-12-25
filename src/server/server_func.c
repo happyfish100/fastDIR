@@ -319,6 +319,11 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         return result;
     }
 
+#ifdef OS_LINUX
+    READ_BY_DIRECT_IO = iniGetBoolValue(ini_ctx->section_name,
+            "read_by_direct_io", ini_ctx->context, false);
+#endif
+
     return 0;
 }
 
@@ -370,17 +375,26 @@ static void server_log_configs()
             STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {
-        snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
+        len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
                 ", library: %s, data_path: %s, inode_binlog_subdirs: %d"
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", memory_limit: %.2f%%}",
+                ", memory_limit: %.2f%%",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
                 STORAGE_MEMORY_LIMIT * 100);
+
+#ifdef OS_LINUX
+        len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
+                ", read_by_direct_io: %d}", READ_BY_DIRECT_IO);
+#else
+        len += snprintf(sz_server_config + len,
+                sizeof(sz_server_config) - len, "}");
+#endif
+
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }
@@ -543,6 +557,7 @@ int server_load_config(const char *filename)
     data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
+    data_cfg.read_by_direct_io = READ_BY_DIRECT_IO;
     if (STORAGE_ENABLED && (result=STORAGE_ENGINE_INIT_API(&ini_ctx,
                     CLUSTER_MY_SERVER_ID, &g_server_global_vars.
                     storage.cfg, &data_cfg)) != 0)
