@@ -3,8 +3,8 @@ Section: admin
 Priority: optional
 Maintainer: YuQing <384681@qq.com>
 Build-Depends: debhelper (>=11~),
-               libfastcommon-dev (>= 1.0.53),
-               libserverframe-dev (>= 1.1.10),
+               libfastcommon-dev (>= 1.0.54),
+               libserverframe-dev (>= 1.1.11),
                fastcfs-auth-dev (>= 2.0.0)
 Standards-Version: 4.1.4
 Homepage: http://github.com/happyfish100/fastDIR/
@@ -12,8 +12,10 @@ Homepage: http://github.com/happyfish100/fastDIR/
 Package: fastdir
 Architecture: linux-any
 Multi-Arch: foreign
-Depends: libfastcommon (>= 1.0.53),
-         libserverframe (>= 1.1.10),
+Build-Profiles: <pkg.server>
+Depends: libfastcommon (>= 1.0.54),
+         libserverframe (>= 1.1.11),
+         libfdirstorage (>= 1.0.0),
          fastcfs-auth-client (>= 2.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-server (= ${binary:Version}),
@@ -25,8 +27,10 @@ Description: high performance distributed directory service
 Package: fastdir-server
 Architecture: linux-any
 Multi-Arch: foreign
-Depends: libfastcommon (>= 1.0.53),
-         libserverframe (>= 1.1.10),
+Build-Profiles: <pkg.server>
+Depends: libfastcommon (>= 1.0.54),
+         libserverframe (>= 1.1.11),
+         libfdirstorage (>= 1.0.0),
          fastcfs-auth-client (>= 2.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-config (>= 1.0.0),
@@ -36,8 +40,9 @@ Description: FastDIR server
 Package: fastdir-client
 Architecture: linux-any
 Multi-Arch: foreign
-Depends: libfastcommon (>= 1.0.53),
-         libserverframe (>= 1.1.10),
+Build-Profiles: <pkg.client>
+Depends: libfastcommon (>= 1.0.54),
+         libserverframe (>= 1.1.11),
          fastcfs-auth-client (>= 2.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-config (>= 1.0.0),
@@ -47,6 +52,7 @@ Description: FastDIR client library and tools
 Package: fastdir-dev
 Architecture: linux-any
 Multi-Arch: foreign
+Build-Profiles: <pkg.client>
 Depends: fastdir-client (= ${binary:Version}),
          ${misc:Depends}, ${shlibs:Depends}
 Description: header files of FastDIR client library
@@ -55,6 +61,7 @@ Description: header files of FastDIR client library
 Package: fastdir-config
 Architecture: linux-any
 Multi-Arch: foreign
+Build-Profiles: <pkg.server>
 Depends: fastdir-client (= ${binary:Version})
 Description: FastDIR config files for sample
  FastDIR config files for sample including server and client
