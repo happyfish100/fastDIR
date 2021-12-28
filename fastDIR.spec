@@ -17,7 +17,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 BuildRequires: libfastcommon-devel >= 1.0.54
 BuildRequires: libserverframe-devel >= 1.1.11
-BuildRequires: FastCFS-auth-devel >= 2.0.0
+BuildRequires: FastCFS-auth-devel >= 3.0.0
 Requires: %__cp %__mv %__chmod %__grep %__mkdir %__install %__id
 Requires: libfastcommon >= 1.0.54
 Requires: libserverframe >= 1.1.11
