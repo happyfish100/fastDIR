@@ -599,6 +599,8 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
             if ((*pp)->options.flags != 0) {
                 record->parray->counts.updated++;
             }
+        } else {
+            (*pp)->options.flags = 0;
         }
     }
 

@@ -1151,12 +1151,17 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
         *xattr_name_buff = '\0';
     }
 
-    if (record->inode > 0) {
-        extra_len = sprintf(extra_buff, ", current inode: "
-                "%"PRId64, record->inode);
+    if (record->data_version != 0) {
+        extra_len = sprintf(extra_buff, ", data version: "
+                "%"PRId64, record->data_version);
     } else {
         extra_len = 0;
     }
+    if (record->inode > 0) {
+        extra_len += sprintf(extra_buff + extra_len, ", current inode: "
+                "%"PRId64, record->inode);
+    }
+
     if (record->me.pname.name.str != NULL) {
         snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
                 ", parent inode: %"PRId64", dir name: %.*s",
