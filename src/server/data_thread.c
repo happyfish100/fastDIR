@@ -1176,11 +1176,11 @@ static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-
 static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
+
     switch (record->operation) {
         case SERVICE_OP_STAT_DENTRY_INT:
         case SERVICE_OP_READ_LINK_INT:
@@ -1225,7 +1225,7 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             break;
     }
 
-    record->notify.func(record, result, result != 0);
+    record->notify.func(record, result, !(result == 0 || result == ENOENT));
     return result;
 }
 
