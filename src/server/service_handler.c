@@ -1052,7 +1052,8 @@ static void server_list_dentry_output(struct fast_task_info *task)
     int2buff(count, body_header->count);
     if (count < remain_count) {
         DENTRY_LIST_CACHE.offset += count;
-        DENTRY_LIST_CACHE.expires = g_current_time + 60;
+        DENTRY_LIST_CACHE.expires = g_current_time +
+            (FDIR_DELAY_FREE_SECONDS - 1);
         DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
 
         body_header->is_last = 0;
@@ -1348,7 +1349,7 @@ static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
 
     task = (struct fast_task_info *)record->notify.args;
     if (result != 0) {
-        logWarning("file: "__FILE__", line: %d, "
+        logDebug("file: "__FILE__", line: %d, "
                 "batch set %d dentries' size fail",
                 __LINE__, RECORD->parray->counts.total);
     }
