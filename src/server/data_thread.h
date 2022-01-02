@@ -188,7 +188,7 @@ extern "C" {
 
         context = g_data_thread_vars.thread_array.contexts +
             record->hash_code % g_data_thread_vars.thread_array.count;
-        if (STORAGE_ENABLED && record->is_update) {
+        if (STORAGE_ENABLED && record->record_type == fdir_record_type_update) {
             __sync_add_and_fetch(&context->update_notify.waiting_records, 1);
         }
         fc_queue_push(&context->queue, record);

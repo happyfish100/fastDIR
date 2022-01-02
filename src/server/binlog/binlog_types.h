@@ -91,6 +91,12 @@ typedef enum {
     fdir_dentry_type_inode = 'i'
 } FDIRDEntryType;
 
+typedef enum {
+    fdir_record_type_update = 'u',
+    fdir_record_type_query = 'q',
+    fdir_record_type_reclaim = 'r'
+} FDIRRecordType;
+
 typedef struct {
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
@@ -102,7 +108,7 @@ typedef struct fdir_binlog_record {
     string_t ns;   //namespace
     unsigned int hash_code;
     uint8_t operation;
-    bool is_update;
+    FDIRRecordType record_type;
     FDIRDEntryType dentry_type;
     int timestamp;
     int flags;

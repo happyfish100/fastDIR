@@ -1399,12 +1399,12 @@ static void flock_done_notify(FDIRBinlogRecord *record,
 }
 
 static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
-        const bool is_update, data_thread_notify_func notify_func,
+        const FDIRRecordType record_type, data_thread_notify_func notify_func,
         TaskContinueCallback continue_callback)
 {
     sf_hold_task(task);
 
-    RECORD->is_update = is_update;
+    RECORD->record_type = record_type;
     RECORD->notify.func = notify_func;  //call by data thread
     RECORD->notify.args = task;
     task->continue_callback = continue_callback;
@@ -1413,20 +1413,20 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
 }
 
 #define push_update_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, true, record_deal_done_notify, \
-            handle_record_update_done)
+    push_record_to_data_thread_queue(task, fdir_record_type_update, \
+            record_deal_done_notify, handle_record_update_done)
 
 #define push_batch_set_dsize_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, true, batch_set_dsize_done_notify, \
-            handle_batch_set_dsize_done)
+    push_record_to_data_thread_queue(task, fdir_record_type_update, \
+            batch_set_dsize_done_notify, handle_batch_set_dsize_done)
 
 #define push_query_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, false, record_deal_done_notify, \
-            handle_record_query_done)
+    push_record_to_data_thread_queue(task, fdir_record_type_query, \
+            record_deal_done_notify, handle_record_query_done)
 
 #define push_flock_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, false, flock_done_notify, \
-            handle_record_query_done)
+    push_record_to_data_thread_queue(task, fdir_record_type_query, \
+            flock_done_notify, handle_record_query_done)
 
 int service_set_record_pname_info(FDIRBinlogRecord *record,
         struct fast_task_info *task)

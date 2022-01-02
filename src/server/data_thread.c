@@ -1258,11 +1258,22 @@ static void *data_thread_func(void *arg)
         do {
             current = record;
             record = record->next;
-            if (current->is_update) {
-                ++update_count;
-                deal_update_record(thread_ctx, current);
-            } else {
-                deal_query_record(thread_ctx, current);
+            switch (current->record_type) {
+                case fdir_record_type_update:
+                    ++update_count;
+                    deal_update_record(thread_ctx, current);
+                    break;
+                case fdir_record_type_query:
+                    deal_query_record(thread_ctx, current);
+                    break;
+                case fdir_record_type_reclaim:
+                    //TODO
+                    break;
+                default:
+                    logError("file: "__FILE__", line: %d, "
+                            "invalid record type: %d",
+                            __LINE__, current->record_type);
+                    break;
             }
         } while (record != NULL && SF_G_CONTINUE_FLAG);
 

@@ -922,8 +922,8 @@ int binlog_unpack_record_ex(const char *str, const int len,
         return result;
     }
 
+    record->record_type = fdir_record_type_update;
     record->dentry_type = fdir_dentry_type_inode;
-    record->is_update = true;
     *record_end = pcontext.rec_end;
     return binlog_parse_fields(&pcontext, record);
 }
