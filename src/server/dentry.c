@@ -50,7 +50,15 @@ const int max_level_count = 20;
 
 int dentry_init()
 {
+    const int min_bits = 6;
+    const int max_bits = 16;
     int result;
+
+    if ((result=ptr_array_allocator_init(&DENTRY_PARRAY_ALLOCATOR,
+                    min_bits, max_bits)) != 0)
+    {
+        return result;
+    }
 
     if ((result=ns_manager_init()) != 0) {
         return result;
@@ -1168,46 +1176,11 @@ int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
     return result;
 }
 
-static int check_alloc_dentry_array(FDIRServerDentryArray *array, const int target_count)
-{
-    FDIRServerDentry **entries;
-    int new_alloc;
-    int bytes;
-
-    if (array->alloc >= target_count) {
-        return 0;
-    }
-
-    new_alloc = (array->alloc > 0) ? array->alloc : 4 * 1024;
-    while (new_alloc < target_count) {
-        new_alloc *= 2;
-    }
-
-    bytes = sizeof(FDIRServerDentry *) * new_alloc;
-    entries = (FDIRServerDentry **)fc_malloc(bytes);
-    if (entries == NULL) {
-        return ENOMEM;
-    }
-
-    if (array->entries != NULL) {
-        if (array->count > 0) {
-            memcpy(entries, array->entries,
-                    sizeof(FDIRServerDentry *) * array->count);
-        }
-        free(array->entries);
-    }
-
-    array->alloc = new_alloc;
-    array->entries = entries;
-    return 0;
-}
-
-int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
+int dentry_list(FDIRServerDentry *dentry, PointerArray **parray)
 {
     FDIRServerDentry *current;
     FDIRServerDentry **pp;
     UniqSkiplistIterator iterator;
-    int result;
     int count;
 
     if (!S_ISDIR(dentry->stat.mode)) {
@@ -1216,19 +1189,22 @@ int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array)
         count = uniq_skiplist_count(dentry->children);
     }
 
-    if ((result=check_alloc_dentry_array(array, count)) != 0) {
-        return result;
+    if ((*parray=ptr_array_allocator_alloc(
+                    &DENTRY_PARRAY_ALLOCATOR,
+                    count)) == NULL)
+    {
+        return ENOMEM;
     }
 
     if (!S_ISDIR(dentry->stat.mode)) {
-        array->entries[array->count++] = dentry;
+        (*parray)->elts[(*parray)->count++] = dentry;
     } else {
-        pp = array->entries;
+        pp = (FDIRServerDentry **)(*parray)->elts;
         uniq_skiplist_iterator(dentry->children, &iterator);
         while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
             *pp++ = current;
         }
-        array->count = pp - array->entries;
+        (*parray)->count = pp - (FDIRServerDentry **)(*parray)->elts;
     }
 
     return 0;

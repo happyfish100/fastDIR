@@ -65,29 +65,27 @@ extern "C" {
     int dentry_get_full_path(const FDIRServerDentry *dentry,
             BufferInfo *full_path, SFErrorInfo *error_info);
 
-    int dentry_list(FDIRServerDentry *dentry, FDIRServerDentryArray *array);
+    int dentry_list(FDIRServerDentry *dentry, PointerArray **parray);
 
     static inline int dentry_list_by_path(const FDIRDEntryFullName *fullname,
-            FDIRServerDentryArray *array)
+            PointerArray **parray)
     {
         const bool hdlink_follow = false;
         int result;
         FDIRServerDentry *dentry;
 
-        array->count = 0;
         if ((result=dentry_find_ex(fullname, &dentry, hdlink_follow)) != 0) {
             return result;
         }
 
-        return dentry_list(dentry, array);
+        return dentry_list(dentry, parray);
     }
 
-    static inline void dentry_array_free(FDIRServerDentryArray *array)
+    static inline void dentry_array_free(PointerArray **parray)
     {
-        if (array->entries != NULL) {
-            free(array->entries);
-            array->entries = NULL;
-            array->alloc = array->count = 0;
+        if (*parray != NULL) {
+            ptr_array_allocator_free(&DENTRY_PARRAY_ALLOCATOR, *parray);
+            *parray = NULL;
         }
     }
 

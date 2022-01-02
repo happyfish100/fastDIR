@@ -92,6 +92,25 @@ static inline void release_flock_task(struct fast_task_info *task,
     inode_index_flock_release(flck);
 }
 
+void free_dentry_list_cache(struct fast_task_info *task)
+{
+    FDIRServerDentry **dentry;
+    FDIRServerDentry **start;
+    FDIRServerDentry **end;
+
+    if (DENTRY_LIST_CACHE.release_start < DENTRY_LIST_CACHE.array->count) {
+        start = (FDIRServerDentry **)DENTRY_LIST_CACHE.array->elts +
+            DENTRY_LIST_CACHE.release_start;
+        end = (FDIRServerDentry **)DENTRY_LIST_CACHE.array->elts +
+            DENTRY_LIST_CACHE.array->count;
+        for (dentry=start; dentry<end; dentry++) {
+            dentry_release(*dentry);
+        }
+    }
+
+    dentry_array_free(&DENTRY_LIST_CACHE.array);
+}
+
 void service_task_finish_cleanup(struct fast_task_info *task)
 {
     switch (SERVER_TASK_TYPE) {
@@ -146,7 +165,10 @@ void service_task_finish_cleanup(struct fast_task_info *task)
         SYS_LOCK_TASK = NULL;
     }
 
-    dentry_array_free(&DENTRY_LIST_CACHE.array);
+    if (DENTRY_LIST_CACHE.array != NULL) {
+        free_dentry_list_cache(task);
+    }
+
     sf_task_finish_clean_up(task);
 }
 
@@ -1007,7 +1029,8 @@ static inline void lookup_inode_output(struct fast_task_info *task,
     TASK_CTX.common.response_done = true;
 }
 
-static void server_list_dentry_output(struct fast_task_info *task)
+static void server_list_dentry_output(struct fast_task_info *task,
+        const bool is_first)
 {
     FDIRProtoListDEntryRespBodyHeader *body_header;
     FDIRServerDentry *src_dentry;
@@ -1020,12 +1043,12 @@ static void server_list_dentry_output(struct fast_task_info *task)
     int remain_count;
     int count;
 
-    remain_count = DENTRY_LIST_CACHE.array.count -
+    remain_count = DENTRY_LIST_CACHE.array->count -
         DENTRY_LIST_CACHE.offset;
 
     buf_end = task->data + task->size;
     p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
-    start = DENTRY_LIST_CACHE.array.entries +
+    start = (FDIRServerDentry **)DENTRY_LIST_CACHE.array->elts +
         DENTRY_LIST_CACHE.offset;
     end = start + remain_count;
     for (dentry=start; dentry<end; dentry++) {
@@ -1051,9 +1074,16 @@ static void server_list_dentry_output(struct fast_task_info *task)
     body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
     int2buff(count, body_header->count);
     if (count < remain_count) {
+        if (is_first) {
+            DENTRY_LIST_CACHE.release_start = count;
+            start = (FDIRServerDentry **)DENTRY_LIST_CACHE.array->elts + count;
+            for (dentry=start; dentry<end; dentry++) {
+                dentry_hold(*dentry);
+            }
+        }
+
         DENTRY_LIST_CACHE.offset += count;
-        DENTRY_LIST_CACHE.expires = g_current_time +
-            (FDIR_DELAY_FREE_SECONDS - 1);
+        DENTRY_LIST_CACHE.expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
 
         body_header->is_last = 0;
@@ -1061,6 +1091,11 @@ static void server_list_dentry_output(struct fast_task_info *task)
     } else {
         body_header->is_last = 1;
         long2buff(0, body_header->token);
+
+        if (is_first) {
+            DENTRY_LIST_CACHE.release_start = count;
+        }
+        free_dentry_list_cache(task);
     }
 
     TASK_CTX.common.response_done = true;
@@ -1203,7 +1238,7 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 break;
             case SERVICE_OP_LIST_DENTRY_INT:
                 DENTRY_LIST_CACHE.offset = 0;
-                server_list_dentry_output(task);
+                server_list_dentry_output(task, true);
                 break;
             case SERVICE_OP_GET_XATTR_INT:
                 service_getxattr_output(task, record->me.dentry,
@@ -3041,6 +3076,13 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
         return result;
     }
 
+    if (DENTRY_LIST_CACHE.array == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid dentry list cache");
+        return EINVAL;
+    }
+
     if (DENTRY_LIST_CACHE.expires < g_current_time) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -3064,7 +3106,8 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
                 offset, DENTRY_LIST_CACHE.offset);
         return EINVAL;
     }
-    server_list_dentry_output(task);
+
+    server_list_dentry_output(task, false);
     return 0;
 }
 
@@ -3368,7 +3411,11 @@ static int service_process(struct fast_task_info *task)
             return result;
         case FDIR_SERVICE_PROTO_LIST_DENTRY_NEXT_REQ:
             if ((result=service_check_readable(task)) == 0) {
-                return service_deal_list_dentry_next(task);
+                if ((result=service_deal_list_dentry_next(task)) != 0) {
+                    if (DENTRY_LIST_CACHE.array != NULL) {
+                        free_dentry_list_cache(task);
+                    }
+                }
             }
             return result;
         case FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ:

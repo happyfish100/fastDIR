@@ -147,12 +147,6 @@ typedef struct fdir_server_dentry {
     FDIRServerDentryDBArgs db_args[0];  //for data persistency, since V3.0
 } FDIRServerDentry;
 
-typedef struct fdir_server_dentry_array {
-    int alloc;
-    int count;
-    struct fdir_server_dentry **entries;
-} FDIRServerDentryArray;  //for list entry
-
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE];  //for slave server
@@ -279,9 +273,10 @@ typedef struct server_task_arg {
         union {
             struct {
                 struct {
-                    FDIRServerDentryArray array;
+                    PointerArray *array;
                     int64_t token;
                     int offset;
+                    int release_start;
                     time_t expires;  //expire time
                 } dentry_list_cache; //for dentry_list
 
