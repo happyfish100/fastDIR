@@ -92,6 +92,10 @@ extern "C" {
     struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
             FDIRDentryContext *context, const int alloc_elts);
 
+    void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count);
+
+#define dentry_free(dentry) dentry_free_ex(dentry, 1)
+
     static inline void dentry_hold(FDIRServerDentry *dentry)
     {
         __sync_add_and_fetch(&dentry->reffer_count, 1);

@@ -123,11 +123,8 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     dentry->kv_array = NULL;
 }
 
-static void dentry_do_free(void *ptr, const int dec_count)
+void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
 {
-    FDIRServerDentry *dentry;
-
-    dentry = (FDIRServerDentry *)ptr;
     if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
         return;
     }
@@ -171,36 +168,25 @@ static void dentry_do_free(void *ptr, const int dec_count)
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
-#define dentry_free(dentry) dentry_do_free(dentry, 1)
+#define dentry_delay_free(dentry) server_delay_free_dentry( \
+            (dentry)->context->thread_ctx, dentry)
 
-static void dentry_delay_free(void *ptr)
+static void dentry_immediate_free(void *ctx, void *ptr)
 {
-    dentry_do_free(ptr, 1);
+    dentry_free_ex(ptr, (long)ctx);
 }
 
-static void dentry_delay_free_ex(void *ctx, void *ptr)
+static void dentry_free_func(FDIRServerDentry *dentry,
+        const int delay_seconds)
 {
-    dentry_do_free(ptr, (long)ctx);
-}
-
-static void dentry_free_func(void *ptr, const int delay_seconds)
-{
-    FDIRServerDentry *dentry;
-    dentry = (FDIRServerDentry *)ptr;
-
-    if (delay_seconds > 0) {
-        server_add_to_delay_free_queue(&dentry->context->thread_ctx->
-                free_context, ptr, dentry_delay_free, delay_seconds);
-    } else {
-        dentry_free(ptr);
-    }
+    dentry_delay_free(dentry);
 }
 
 void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 {
     server_add_to_immediate_free_queue_ex(&dentry->context->
             thread_ctx->free_context, (void *)(long)dec_count,
-            dentry, dentry_delay_free_ex);
+            dentry, dentry_immediate_free);
 }
 
 static int dentry_init_obj(void *element, void *init_args)
@@ -313,8 +299,8 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 
     context = &thread_ctx->dentry_context;
     context->thread_ctx = thread_ctx;
-    if ((result=uniq_skiplist_init_ex(&context->factory,
-                    max_level_count, dentry_compare, dentry_free_func,
+    if ((result=uniq_skiplist_init_ex(&context->factory, max_level_count,
+                    dentry_compare, (uniq_skiplist_free_func)dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
                     delay_free_seconds)) != 0)
     {
@@ -652,7 +638,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
                 da_binlog_op_type_update);
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
-            dentry_free(current);
+            dentry_delay_free(current);
             return result;
         }
     }
@@ -704,7 +690,7 @@ static inline int remove_src_dentry(FDIRDataThreadContext *thread_ctx,
         thread_ctx->dentry_context.counters.file--;
     }
 
-    dentry_free(dentry);
+    dentry_delay_free(dentry);
     return 0;
 }
 
@@ -800,7 +786,7 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     if (record->me.parent == NULL) {
         ns_entry->current.root.ptr = NULL;
         if (free_dentry) {
-            dentry_free(record->me.dentry);
+            dentry_delay_free(record->me.dentry);
         }
     } else if ((result=uniq_skiplist_delete_ex(record->me.parent->
                     children, record->me.dentry, free_dentry)) == 0)

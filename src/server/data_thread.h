@@ -35,6 +35,7 @@ typedef struct fdir_dentry_counters {
     int64_t file;
 } FDIRDentryCounters;
 
+struct fdir_server_dentry;
 struct fdir_data_thread_context;
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
@@ -45,24 +46,13 @@ typedef struct fdir_dentry_context {
     FDIRDentryCounters counters;
 } FDIRDentryContext;
 
-typedef struct server_delay_free_node {
-    int expires;
+typedef struct server_immediate_free_node {
     void *ctx;     //the context
     void *ptr;     //ptr to free
     server_free_func free_func;
     server_free_func_ex free_func_ex;
-    struct server_delay_free_node *next;
-} ServerDelayFreeNode;
-
-typedef struct server_delay_free_queue {
-    ServerDelayFreeNode *head;
-    ServerDelayFreeNode *tail;
-} ServerDelayFreeQueue;
-
-typedef struct server_delay_free_context {
-    time_t last_check_time;
-    ServerDelayFreeQueue queue;
-} ServerDelayFreeContext;
+    struct server_immediate_free_node *next;
+} ServerImmediateFreeNode;
 
 typedef struct server_immediate_free_context {
     volatile int waiting_count;
@@ -72,7 +62,6 @@ typedef struct server_immediate_free_context {
 typedef struct server_free_context {
     struct fast_mblock_man allocator;
     ServerImmediateFreeContext immediate;
-    ServerDelayFreeContext delay;
 } ServerFreeContext;
 
 typedef struct fdir_db_fetch_context {
@@ -89,6 +78,8 @@ typedef struct fdir_data_thread_context {
     struct fc_queue queue;
     FDIRDentryContext dentry_context;
     ServerFreeContext free_context;
+
+    struct fdir_server_dentry *delay_free_head;
 
     /* following fields for storage engine */
     FDIRDBFetchContext db_fetch_ctx;
@@ -139,12 +130,12 @@ extern "C" {
 
     void data_thread_sum_counters(FDIRDentryCounters *counters);
 
-    int server_add_to_delay_free_queue(ServerFreeContext *free_ctx,
-            void *ptr, server_free_func free_func, const int delay_seconds);
-
-    int server_add_to_delay_free_queue_ex(ServerFreeContext *free_ctx,
-            void *ctx, void *ptr, server_free_func_ex free_func_ex,
-            const int delay_seconds);
+    static inline void server_delay_free_dentry(FDIRDataThreadContext
+            *thread_ctx, struct fdir_server_dentry *dentry)
+    {
+        dentry->free_next = thread_ctx->delay_free_head;
+        thread_ctx->delay_free_head = dentry;
+    }
 
     int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
             void *ctx, void *ptr, server_free_func_ex free_func_ex);

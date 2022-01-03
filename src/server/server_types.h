@@ -142,8 +142,9 @@ typedef struct fdir_server_dentry {
     struct fdir_server_dentry *parent;
     struct fdir_namespace_entry *ns_entry;
     struct flock_entry *flock_entry;
-    struct fdir_server_dentry *ht_next;  //for inode hash table
-    FDIRServerDentryDBArgs db_args[0];  //for data persistency, since V3.0
+    struct fdir_server_dentry *free_next; //for delay free dentry
+    struct fdir_server_dentry *ht_next;   //for inode index hash table
+    FDIRServerDentryDBArgs db_args[0];    //for data persistency, since V3.0
 } FDIRServerDentry;
 
 typedef struct fdir_cluster_server_info {

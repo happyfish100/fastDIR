@@ -183,7 +183,9 @@ void change_notify_push_to_queue(FDIRChangeNotifyEvent *event)
 
 void change_notify_load_done_signal()
 {
-    while (FC_ATOMIC_GET(change_notify_ctx.waiting_count) > 0) {
+    while (FC_ATOMIC_GET(change_notify_ctx.waiting_count) > 0 &&
+            SF_G_CONTINUE_FLAG)
+    {
         pthread_cond_signal(&change_notify_ctx.queue.queue.lc_pair.cond);
         fc_sleep_ms(1);
     }
