@@ -171,12 +171,14 @@ static void dentry_do_free(void *ptr, const int dec_count)
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
-static void dentry_free(void *ptr)
+#define dentry_free(dentry) dentry_do_free(dentry, 1)
+
+static void dentry_delay_free(void *ptr)
 {
     dentry_do_free(ptr, 1);
 }
 
-static void dentry_free_ex(void *ctx, void *ptr)
+static void dentry_delay_free_ex(void *ctx, void *ptr)
 {
     dentry_do_free(ptr, (long)ctx);
 }
@@ -188,7 +190,7 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
     if (delay_seconds > 0) {
         server_add_to_delay_free_queue(&dentry->context->thread_ctx->
-                free_context, ptr, dentry_free, delay_seconds);
+                free_context, ptr, dentry_delay_free, delay_seconds);
     } else {
         dentry_free(ptr);
     }
@@ -196,8 +198,9 @@ static void dentry_free_func(void *ptr, const int delay_seconds)
 
 void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 {
-    server_add_to_immediate_free_queue_ex(&dentry->context->thread_ctx->
-            free_context, (void *)(long)dec_count, dentry, dentry_free_ex);
+    server_add_to_immediate_free_queue_ex(&dentry->context->
+            thread_ctx->free_context, (void *)(long)dec_count,
+            dentry, dentry_delay_free_ex);
 }
 
 static int dentry_init_obj(void *element, void *init_args)
@@ -303,6 +306,7 @@ struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
 
 int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
+    const int delay_free_seconds = 0;
     FDIRDentryContext *context;
     int element_size;
     int result;
@@ -312,7 +316,7 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
     if ((result=uniq_skiplist_init_ex(&context->factory,
                     max_level_count, dentry_compare, dentry_free_func,
                     16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
-                    FDIR_DELAY_FREE_SECONDS)) != 0)
+                    delay_free_seconds)) != 0)
     {
         return result;
     }
@@ -700,7 +704,7 @@ static inline int remove_src_dentry(FDIRDataThreadContext *thread_ctx,
         thread_ctx->dentry_context.counters.file--;
     }
 
-    dentry_free_func(dentry, FDIR_DELAY_FREE_SECONDS);
+    dentry_free(dentry);
     return 0;
 }
 
@@ -796,7 +800,7 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     if (record->me.parent == NULL) {
         ns_entry->current.root.ptr = NULL;
         if (free_dentry) {
-            dentry_free_func(record->me.dentry, FDIR_DELAY_FREE_SECONDS);
+            dentry_free(record->me.dentry);
         }
     } else if ((result=uniq_skiplist_delete_ex(record->me.parent->
                     children, record->me.dentry, free_dentry)) == 0)
@@ -883,11 +887,6 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static inline void free_dname(FDIRServerDentry *dentry, string_t *old_name)
-{
-    server_delay_free_str(dentry->context, old_name->str);
-}
-
 static inline void restore_dentry_name(FDIRServerDentry *dentry,
         string_t *old_name)
 {
@@ -895,7 +894,7 @@ static inline void restore_dentry_name(FDIRServerDentry *dentry,
 
     name_to_free = dentry->name.str;
     dentry->name = *old_name;
-    server_delay_free_str(dentry->context, name_to_free);
+    fast_allocator_free(&dentry->context->name_acontext, name_to_free);
 }
 
 static int set_and_store_dentry_name(FDIRDataThreadContext *thread_ctx,
@@ -992,8 +991,10 @@ static int exchange_dentry(FDIRDataThreadContext *thread_ctx,
         record->rename.dest.dentry->parent = record->rename.src.parent;
         record->inode = record->rename.src.dentry->inode;
         if (name_changed) {
-            free_dname(record->rename.src.dentry, old_src_pair.ptr);
-            free_dname(record->rename.dest.dentry, old_dest_pair.ptr);
+            dentry_strfree(record->rename.src.dentry->
+                    context, old_src_pair.ptr);
+            dentry_strfree(record->rename.dest.
+                    dentry->context, old_dest_pair.ptr);
         }
     } while (0);
 
@@ -1075,7 +1076,8 @@ static int move_dentry(FDIRDataThreadContext *thread_ctx,
         record->rename.src.dentry->parent = record->rename.dest.parent;
         record->inode = record->rename.src.dentry->inode;
         if (name_changed) {
-            free_dname(record->rename.src.dentry, old_src_pair.ptr);
+            dentry_strfree(record->rename.src.dentry->
+                    context, old_src_pair.ptr);
         }
     } while (0);
 

@@ -152,15 +152,6 @@ extern "C" {
     int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
             void *ptr, server_free_func free_func);
 
-    static inline void server_delay_free_str(FDIRDentryContext
-            *context, char *str)
-    {
-        server_add_to_delay_free_queue_ex(&context->thread_ctx->
-                free_context, &context->name_acontext, str,
-                (server_free_func_ex)fast_allocator_free,
-                FDIR_DELAY_FREE_SECONDS);
-    }
-
     static inline void server_immediate_free_str(FDIRDentryContext
             *context, char *str)
     {

@@ -427,8 +427,8 @@ int inode_index_remove_xattr(FDIRServerDentry *dentry, const string_t *name)
         return result;
     }
 
-    server_delay_free_str(dentry->context, kv->key.str);
-    server_delay_free_str(dentry->context, kv->value.str);
+    dentry_strfree(dentry->context, &kv->key);
+    dentry_strfree(dentry->context, &kv->value);
 
     end = dentry->kv_array->elts + dentry->kv_array->count;
     for (kv=kv+1; kv<end; kv++) {
@@ -471,8 +471,7 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext *context,
             memcpy(new_array->elts, dentry->kv_array->elts,
                     sizeof(key_value_pair_t) * dentry->kv_array->count);
             new_array->count = dentry->kv_array->count;
-            fast_mblock_delay_free_object(allocator - 1,
-                    dentry->kv_array, FDIR_DELAY_FREE_SECONDS);
+            fast_mblock_free_object(allocator - 1, dentry->kv_array);
         }
 
         dentry->kv_array = new_array;
@@ -528,7 +527,7 @@ int inode_index_set_xattr(FDIRServerDentry *dentry,
     if (new_create) {
         dentry->kv_array->count++;
     } else {
-        server_delay_free_str(dentry->context, kv->value.str);
+        dentry_strfree(dentry->context, &kv->value);
     }
     kv->value = value;
 
