@@ -533,7 +533,7 @@ static int check_load_children(FDIRServerDentry *parent)
     id_name_pair_t pair;
     UniqSkiplistIterator it;
 
-    if ((parent->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0) {
+    if ((parent->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST)) {
         return 0;
     }
 
@@ -567,7 +567,7 @@ static int check_load_children(FDIRServerDentry *parent)
         }
     }
 
-    parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CLIST;
+    parent->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CLIST;
     return 0;
 }
 
@@ -579,7 +579,7 @@ static int check_load_children(FDIRServerDentry *parent)
         }  \
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, (dentry)->parent, \
                 op_type, FDIR_PIECE_FIELD_INDEX_CHILDREN, 0);  \
-        if ((dentry)->parent->add_to_clist) { \
+        if ((dentry)->parent->db_args->add_to_clist) { \
             (msg)->child.id = (dentry)->inode;  \
             if ((result=dentry_strdup((dentry)->context, &(msg)-> \
                             child.name, &(dentry)->name)) != 0)   \
@@ -601,7 +601,7 @@ static int check_load_children(FDIRServerDentry *parent)
         FDIR_CHANGE_NOTIFY_FILL_MESSAGE(msg, parent, \
                 da_binlog_op_type_remove, \
                 FDIR_PIECE_FIELD_INDEX_CHILDREN, 0); \
-        (msg)->child.id = (parent->add_to_clist ? inode : -1 * inode); \
+        (msg)->child.id = (parent->db_args->add_to_clist ? inode : -1 * inode);\
         FC_SET_STRING_NULL((msg)->child.name); \
         (msg)++; \
     }
@@ -624,8 +624,8 @@ static int check_load_children(FDIRServerDentry *parent)
         GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update)
 
 #define SET_ADD_TO_CLIST_FLAG(parent)  \
-    if (parent != NULL) parent->add_to_clist = ((parent->loaded_flags & \
-                FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0)
+    if (parent != NULL) parent->db_args->add_to_clist = ((parent->db_args-> \
+                loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0)
 
 static inline void set_affected_clist_flags(FDIRBinlogRecord *record)
 {

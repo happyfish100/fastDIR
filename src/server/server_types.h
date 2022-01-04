@@ -122,13 +122,13 @@ typedef struct fdir_server_dentry_db_args {
     IdNameArray *children;         //children inodes for update event dealer
     struct fc_list_head lru_dlink; //for dentry LRU elimination
     int loaded_count;              //children loaded count
+    short loaded_flags;
+    bool add_to_clist;  //if add to child list for serialization (just a temp variable)
 } FDIRServerDentryDBArgs;
 
 typedef struct fdir_server_dentry {
     int64_t inode;
     string_t name;
-    short loaded_flags;
-    bool add_to_clist;  //if add to child list for serialization (just a temp variable)
     volatile int reffer_count;
 
     FDIRDEntryStat stat;

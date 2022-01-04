@@ -31,6 +31,7 @@
 #include "inode_index.h"
 #include "db/change_notify.h"
 #include "db/dentry_loader.h"
+#include "db/dentry_lru.h"
 #include "dentry.h"
 
 typedef struct {
@@ -163,6 +164,10 @@ void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
                     dentry->db_args->children);
             dentry->db_args->children = NULL;
         }
+
+        if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC)) {
+            dentry_lru_del(dentry);
+        }
     }
 
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
@@ -189,11 +194,12 @@ void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
             dentry, dentry_immediate_free);
 }
 
-static int dentry_init_obj(void *element, void *init_args)
+static int dentry_init_obj(FDIRServerDentry *dentry, void *init_args)
 {
-    FDIRServerDentry *dentry;
-    dentry = (FDIRServerDentry *)element;
     dentry->context = (FDIRDentryContext *)init_args;
+    if (STORAGE_ENABLED) {
+        dentry_lru_init(dentry);
+    }
     return 0;
 }
 
@@ -314,8 +320,9 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
         element_size = sizeof(FDIRServerDentry);
     }
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
-                    "dentry", element_size, 8 * 1024,
-                    0, dentry_init_obj, context, false)) != 0)
+                    "dentry", element_size, 8 * 1024, 0,
+                    (fast_mblock_alloc_init_func)dentry_init_obj,
+                    context, false)) != 0)
     {
         return result;
     }
@@ -365,6 +372,7 @@ static inline int find_child(FDIRDataThreadContext *thread_ctx,
             return result;
         }
     }
+
     return 0;
 }
 
@@ -630,7 +638,11 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     current->stat.nlink = 1;
     current->stat.alloc = 0;
     current->stat.space_end = 0;
-    current->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
+
+    if (STORAGE_ENABLED) {
+        current->db_args->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
+        dentry_lru_add(current);
+    }
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;

@@ -24,6 +24,7 @@
 #include "ns_manager.h"
 #include "dentry.h"
 #include "db/dentry_loader.h"
+#include "db/dentry_lru.h"
 #include "inode_index.h"
 
 typedef struct {
@@ -248,6 +249,9 @@ FDIRServerDentry *inode_index_find_dentry(const int64_t inode)
     dentry = find_inode_entry(bucket, inode);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
+    if (STORAGE_ENABLED && dentry != NULL) {
+        dentry_lru_move_tail(dentry);
+    }
     return dentry;
 }
 

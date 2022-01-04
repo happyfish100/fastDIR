@@ -23,14 +23,19 @@
 extern "C" {
 #endif
 
-#define dentry_lru_add(head, dentry) \
-    fc_list_add_tail(&(dentry)->db_args->lru_dlink, head)
+#define dentry_lru_init(dentry) \
+    FC_INIT_LIST_HEAD(&(dentry)->db_args->lru_dlink)
+
+#define dentry_lru_add(dentry) \
+    fc_list_add_tail(&(dentry)->db_args->lru_dlink, \
+            &(dentry)->context->thread_ctx->lru_head)
 
 #define dentry_lru_del(dentry) \
     fc_list_del_init(&(dentry)->db_args->lru_dlink)
 
-#define dentry_lru_move_tail(head, dentry) \
-    fc_list_move_tail(&(dentry)->db_args->lru_dlink, head)
+#define dentry_lru_move_tail(dentry) \
+    fc_list_move_tail(&(dentry)->db_args->lru_dlink, \
+            &(dentry)->context->thread_ctx->lru_head)
 
     int dentry_lru_eliminate(struct fc_list_head *head,
             const int target_count);

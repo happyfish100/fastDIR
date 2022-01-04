@@ -20,6 +20,7 @@
 #include "sf/sf_func.h"
 #include "../server_global.h"
 #include "../inode_index.h"
+#include "dentry_lru.h"
 #include "dentry_loader.h"
 
 typedef struct {
@@ -71,7 +72,7 @@ static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
     }
 
     memset(&(*dentry)->stat, 0, sizeof((*dentry)->stat));
-    (*dentry)->loaded_flags = 0;
+    (*dentry)->db_args->loaded_flags = 0;
     (*dentry)->inode = inode;
     if (name != NULL) {
         if ((result=dentry_strdup(&ns_entry->thread_ctx->dentry_context,
@@ -112,7 +113,7 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
     FDIRServerDentry *child;
     UniqSkiplistIterator it;
 
-    if ((parent->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CHILDREN) != 0) {
+    if ((parent->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CHILDREN)) {
         if (current_pair->inode == 0) {
             return 0;
         }
@@ -184,7 +185,7 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
     }
 
     parent->stat.nlink += id_name_array->count;
-    parent->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;
+    parent->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_CHILDREN;
     if (current_pair->inode == 0) {
         return 0;
     } else {
@@ -241,7 +242,8 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
         sf_terminate_myself();
         return result;
     }
-    dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
+    dentry->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
+    dentry_lru_add(dentry);
 
     if (S_ISDIR(dentry->stat.mode)) {
         dentry->stat.nlink = 1;   //reset nlink for directory
@@ -269,7 +271,7 @@ int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
     string_t content;
     const key_value_array_t *kv_array;
 
-    if ((dentry->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_XATTR) != 0) {
+    if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_XATTR)) {
         return 0;
     }
 
@@ -303,7 +305,7 @@ int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
             return result;
         }
     }
-    dentry->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_XATTR;
+    dentry->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_XATTR;
 
     return result;
 }
@@ -313,13 +315,15 @@ int dentry_check_load(FDIRDataThreadContext *thread_ctx,
 {
     int result;
 
-    if ((dentry->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC) == 0) {
+    if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC) == 0) {
         if ((result=dentry_load_basic(thread_ctx, dentry)) != 0) {
             return result;
         }
+    } else {
+        dentry_lru_move_tail(dentry);
     }
 
-    if (S_ISDIR(dentry->stat.mode) && (dentry->loaded_flags &
+    if (S_ISDIR(dentry->stat.mode) && (dentry->db_args->loaded_flags &
                 FDIR_DENTRY_LOADED_FLAGS_CHILDREN) == 0)
     {
         if ((result=dentry_load_children(dentry)) != 0) {
