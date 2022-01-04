@@ -88,6 +88,7 @@ typedef struct fdir_data_thread_context {
         struct fast_mblock_chain chain;        //for batch free event
         struct fdir_data_thread_context *next; //for batch free event
     } event;  //for change notify when data persistency
+    struct fc_list_head lru_head;  //for dentry LRU elimination
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {

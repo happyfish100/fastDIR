@@ -189,6 +189,8 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
         if ((result=init_db_fetch_context(&context->db_fetch_ctx)) != 0) {
             return result;
         }
+
+        FC_INIT_LIST_HEAD(&context->lru_head);
     }
 
     return 0;
