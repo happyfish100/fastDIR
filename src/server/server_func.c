@@ -30,6 +30,7 @@
 #include "fastcfs/auth/fcfs_auth_for_server.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
+#include "db/dentry_lru.h"
 #include "server_global.h"
 #include "cluster_info.h"
 #include "server_func.h"
@@ -569,6 +570,24 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    if ((SYSTEM_CPU_COUNT=get_sys_cpu_count()) <= 0) {
+        logCrit("file: "__FILE__", line: %d, "
+                "get CPU count fail", __LINE__);
+        return EINVAL;
+    }
+
+    if ((result=get_sys_total_mem_size(&SYSTEM_TOTAL_MEMORY)) != 0) {
+        return result;
+    }
+
+    if (DENTRY_ELIMINATE_INTERVAL > 0) {
+        g_server_global_vars.storage.cfg.memory_limit = (int64_t)
+            (SYSTEM_TOTAL_MEMORY * STORAGE_MEMORY_LIMIT *
+             MEMORY_LIMIT_INODE_RATIO);
+    } else {
+        g_server_global_vars.storage.cfg.memory_limit = 0;  //no limit
+    }
+
     data_cfg.path = STORAGE_PATH;
     data_cfg.binlog_buffer_size = BINLOG_BUFFER_SIZE;
     data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
@@ -583,18 +602,6 @@ int server_load_config(const char *filename)
     }
 
     iniFreeContext(&ini_context);
-
-    if ((SYSTEM_CPU_COUNT=get_sys_cpu_count()) <= 0) {
-        logCrit("file: "__FILE__", line: %d, "
-                "get CPU count fail", __LINE__);
-        return EINVAL;
-    }
-
-    if ((result=get_sys_total_mem_size(&SYSTEM_TOTAL_MEMORY)) != 0) {
-        return result;
-    }
-
     server_log_configs();
-
     return 0;
 }

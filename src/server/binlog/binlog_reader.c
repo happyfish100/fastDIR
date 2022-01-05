@@ -863,16 +863,9 @@ static int check_records_consistency(FDIRBinlogRecord *slave_records,
         if (sr->data_version < mr->data_version) {
             sr++;
         } else if (sr->data_version == mr->data_version) {
-            //TODO
-            /*
-            if (sr->source == BINLOG_SOURCE_RPC &&
-                    mr->source == BINLOG_SOURCE_RPC)
-                    */
-            {
-                if (compare_record(sr, mr) != 0) {
-                    *first_unmatched_dv = sr->data_version;
-                    return SF_CLUSTER_ERROR_BINLOG_INCONSISTENT;
-                }
+            if (compare_record(sr, mr) != 0) {
+                *first_unmatched_dv = sr->data_version;
+                return SF_CLUSTER_ERROR_BINLOG_INCONSISTENT;
             }
             sr++;
             mr++;
