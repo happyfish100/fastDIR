@@ -40,6 +40,7 @@
 #define DEFAULT_BATCH_STORE_ON_MODIFIES    102400
 #define DEFAULT_BATCH_STORE_INTERVAL           60
 #define DEFAULT_INDEX_DUMP_INTERVAL     600
+#define DEFAULT_ELIMINATE_INTERVAL        1
 
 static void log_cluster_server_config()
 {
@@ -313,10 +314,26 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         return result;
     }
 
+    DENTRY_ELIMINATE_INTERVAL = iniGetIntValue(ini_ctx->section_name,
+            "eliminate_interval", ini_ctx->context,
+            DEFAULT_ELIMINATE_INTERVAL);
     if ((result=iniGetPercentValue(ini_ctx, "memory_limit",
                     &STORAGE_MEMORY_LIMIT, 0.80)) != 0)
     {
         return result;
+    }
+
+    if (STORAGE_MEMORY_LIMIT < 0.01) {
+        logWarning("file: "__FILE__", line: %d, "
+                "memory_limit: %%%.2f is too small, set to 1%%",
+                __LINE__, STORAGE_MEMORY_LIMIT);
+        STORAGE_MEMORY_LIMIT = 0.01;
+    }
+    if (STORAGE_MEMORY_LIMIT > 0.99) {
+        logWarning("file: "__FILE__", line: %d, "
+                "memory_limit: %%%.2f is too large, set to 99%%",
+                __LINE__, STORAGE_MEMORY_LIMIT);
+        STORAGE_MEMORY_LIMIT = 0.99;
     }
 
 #ifdef OS_LINUX
@@ -380,12 +397,12 @@ static void server_log_configs()
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", memory_limit: %.2f%%",
+                ", eliminate_interval: %d s, memory_limit: %.2f%%",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
-                STORAGE_MEMORY_LIMIT * 100);
+                DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100);
 
 #ifdef OS_LINUX
         len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
@@ -571,6 +588,10 @@ int server_load_config(const char *filename)
         logCrit("file: "__FILE__", line: %d, "
                 "get CPU count fail", __LINE__);
         return EINVAL;
+    }
+
+    if ((result=get_sys_total_mem_size(&SYSTEM_TOTAL_MEMORY)) != 0) {
+        return result;
     }
 
     server_log_configs();

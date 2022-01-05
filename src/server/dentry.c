@@ -198,7 +198,7 @@ static int dentry_init_obj(FDIRServerDentry *dentry, void *init_args)
 {
     dentry->context = (FDIRDentryContext *)init_args;
     if (STORAGE_ENABLED) {
-        dentry_lru_init(dentry);
+        dentry_lru_init_dlink(dentry);
     }
     return 0;
 }

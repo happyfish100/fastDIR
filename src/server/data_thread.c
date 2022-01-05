@@ -190,7 +190,7 @@ static int init_thread_ctx(FDIRDataThreadContext *context)
             return result;
         }
 
-        FC_INIT_LIST_HEAD(&context->lru_head);
+        FC_INIT_LIST_HEAD(&context->lru_ctx.head);
     }
 
     return 0;
@@ -763,7 +763,11 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
     } else {  //parent changed
         GENERATE_MOVE_DENTRY_MESSAGES(*msg, record->rename.
                 src.parent, record->rename.src.dentry);
+
+        record->rename.src.parent->db_args->loaded_count--;
+        record->rename.src.dentry->parent->db_args->loaded_count++;
     }
+
     return 0;
 }
 

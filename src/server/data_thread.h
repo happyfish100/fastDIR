@@ -69,6 +69,12 @@ typedef struct fdir_db_fetch_context {
     SFSerializerIterator it;
 } FDIRDBFetchContext;
 
+typedef struct fdir_db_lru_context {
+    volatile int64_t total_count;
+    volatile int64_t eliminate_count;
+    struct fc_list_head head;  //for dentry LRU elimination
+} FDIRDBLRUContext;
+
 typedef struct fdir_data_thread_context {
     int index;
     struct {
@@ -88,7 +94,8 @@ typedef struct fdir_data_thread_context {
         struct fast_mblock_chain chain;        //for batch free event
         struct fdir_data_thread_context *next; //for batch free event
     } event;  //for change notify when data persistency
-    struct fc_list_head lru_head;  //for dentry LRU elimination
+
+    FDIRDBLRUContext lru_ctx;
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {

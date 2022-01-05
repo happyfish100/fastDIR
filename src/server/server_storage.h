@@ -23,6 +23,7 @@
 #include "db/event_dealer.h"
 #include "db/db_updater.h"
 #include "db/dentry_loader.h"
+#include "db/dentry_lru.h"
 
 #ifdef __cplusplus
 extern "C" {
