@@ -38,6 +38,7 @@
 #include "db/change_notify.h"
 #include "db/dentry_serializer.h"
 #include "db/dentry_loader.h"
+#include "db/dentry_lru.h"
 #include "data_thread.h"
 
 #define DATA_THREAD_RUNNING_COUNT g_data_thread_vars.running_count
@@ -1184,9 +1185,6 @@ static void *data_thread_func(void *arg)
                 case fdir_record_type_query:
                     deal_query_record(thread_ctx, current);
                     break;
-                case fdir_record_type_reclaim:
-                    //TODO
-                    break;
                 default:
                     logError("file: "__FILE__", line: %d, "
                             "invalid record type: %d",
@@ -1215,6 +1213,14 @@ static void *data_thread_func(void *arg)
                         */
 
             deal_immediate_free_queue(thread_ctx);
+        }
+
+        if (thread_ctx->lru_ctx.target_reclaims > 0) {
+            int64_t target_reclaims;
+            if ((target_reclaims=thread_ctx->lru_ctx.target_reclaims) > 0) {
+                thread_ctx->lru_ctx.target_reclaims = 0;
+                dentry_lru_eliminate(thread_ctx, target_reclaims);
+            }
         }
     }
 

@@ -71,7 +71,8 @@ typedef struct fdir_db_fetch_context {
 
 typedef struct fdir_db_lru_context {
     volatile int64_t total_count;
-    volatile int64_t eliminate_count;
+    volatile int64_t target_reclaims;
+    int64_t reclaim_count;
     struct fc_list_head head;  //for dentry LRU elimination
 } FDIRDBLRUContext;
 

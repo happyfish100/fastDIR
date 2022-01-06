@@ -20,6 +20,8 @@
 #include "sf/sf_func.h"
 #include "../server_global.h"
 #include "../data_thread.h"
+#include "../inode_index.h"
+#include "../dentry.h"
 #include "dentry_lru.h"
 
 DentryLRUContext g_dentry_lru_ctx;
@@ -48,10 +50,10 @@ static int elimination_calc_func(void *args)
         if (eliminate_count > 0) {
             ++eliminate_threads;
             if (eliminate_count >= remain_count) {
-                thread->lru_ctx.eliminate_count = remain_count;
+                thread->lru_ctx.target_reclaims = remain_count;
                 break;
             } else {
-                thread->lru_ctx.eliminate_count = eliminate_count;
+                thread->lru_ctx.target_reclaims = eliminate_count;
                 remain_count -= eliminate_count;
             }
         }
@@ -100,7 +102,98 @@ int dentry_lru_init()
     return sched_add_entries(&schedule_array);
 }
 
-int dentry_lru_eliminate(struct fc_list_head *head, const int target_count)
+static int dentry_reclaim(FDIRServerDentry *dentry)
 {
-    return 0;
+    int count;
+
+    if ((dentry->parent == NULL) || ((dentry->db_args->loaded_flags &
+                    FDIR_DENTRY_LOADED_FLAGS_BASIC) == 0))
+    {
+        fc_list_move_tail(&dentry->db_args->lru_dlink,
+                &dentry->context->thread_ctx->lru_ctx.head);
+        return 0;
+    }
+
+    /* hardlink source dentry */
+    if (!S_ISDIR(dentry->stat.mode) && dentry->stat.nlink > 1) {
+        fc_list_move_tail(&dentry->db_args->lru_dlink,
+                &dentry->context->thread_ctx->lru_ctx.head);
+        return 0;
+    }
+
+    if (__sync_add_and_fetch(&dentry->reffer_count, 0) > 1) {
+        return 0;
+    }
+
+    if (!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        inode_index_del_dentry(dentry);
+    }
+
+    if (S_ISDIR(dentry->stat.mode)) {
+        if (dentry->children != NULL) {
+            count = uniq_skiplist_count(dentry->children);
+            uniq_skiplist_free(dentry->children);
+            dentry->children = NULL;
+        } else {
+            count = 0;
+        }
+    } else {
+        count = 0;
+    }
+
+    dentry_free_for_elimination(dentry);
+    dentry_lru_del(dentry);
+    dentry->db_args->loaded_flags = 0;
+    return count;
+}
+
+void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
+        const int64_t target_reclaims)
+{
+    int64_t total_count;
+    int64_t eliminate_count;
+    int64_t loop_count;
+    int count;
+    FDIRServerDentryDBArgs *db_args;
+    FDIRServerDentryDBArgs *tmp_args;
+    FDIRServerDentry *dentry;
+
+    thread_ctx->lru_ctx.reclaim_count = 0;
+    eliminate_count = thread_ctx->lru_ctx.total_count -
+        g_dentry_lru_ctx.thread_limit;
+    if (eliminate_count <= 0) {
+        return;
+    }
+
+    if (eliminate_count > target_reclaims) {
+        eliminate_count = target_reclaims;
+    }
+
+    total_count = thread_ctx->lru_ctx.total_count;
+    loop_count = 0;
+    fc_list_for_each_entry_safe(db_args, tmp_args,
+            &thread_ctx->lru_ctx.head, lru_dlink)
+    {
+        if (loop_count++ == total_count) {
+            break;
+        }
+
+        dentry = fc_list_entry(db_args, FDIRServerDentry, db_args);
+        if (S_ISDIR(dentry->stat.mode)) {
+            if ((dentry->db_args->loaded_count != 0) ||
+                    (dentry->parent == NULL))
+            {
+                fc_list_move_tail(&dentry->db_args->lru_dlink,
+                        &thread_ctx->lru_ctx.head);
+                continue;
+            }
+        }
+
+        if ((count=dentry_reclaim(dentry)) > 0) {
+            thread_ctx->lru_ctx.reclaim_count += count;
+            if (thread_ctx->lru_ctx.reclaim_count >= eliminate_count) {
+                break;
+            }
+        }
+    }
 }

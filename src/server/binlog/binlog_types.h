@@ -93,8 +93,7 @@ typedef enum {
 
 typedef enum {
     fdir_record_type_update = 'u',
-    fdir_record_type_query = 'q',
-    fdir_record_type_reclaim = 'r'
+    fdir_record_type_query = 'q'
 } FDIRRecordType;
 
 typedef struct {

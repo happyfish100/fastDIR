@@ -124,18 +124,8 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     dentry->kv_array = NULL;
 }
 
-void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
+void dentry_free_for_elimination(FDIRServerDentry *dentry)
 {
-    if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
-        return;
-    }
-
-    if (dentry->children != NULL) {
-        uniq_skiplist_free(dentry->children);
-        dentry->children = NULL;
-    }
-
-    fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
         dentry->src_dentry = NULL;
     } else if (S_ISLNK(dentry->stat.mode) && dentry->link.str != NULL) {
@@ -169,7 +159,23 @@ void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
             dentry_lru_del(dentry);
         }
     }
+}
 
+void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
+{
+    if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
+        return;
+    }
+
+    if (!(STORAGE_ENABLED && dentry->db_args->loaded_flags == 0)) {
+        if (dentry->children != NULL) {
+            uniq_skiplist_free(dentry->children);
+            dentry->children = NULL;
+        }
+        dentry_free_for_elimination(dentry);
+    }
+
+    fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
 }
 
