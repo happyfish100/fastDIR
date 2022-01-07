@@ -1169,33 +1169,31 @@ static void *data_thread_func(void *arg)
 
     while (SF_G_CONTINUE_FLAG) {
         record = (FDIRBinlogRecord *)fc_queue_pop_all(&thread_ctx->queue);
-        if (record == NULL) {
-            continue;
-        }
+        if (record != NULL) {
+            update_count = 0;
+            do {
+                current = record;
+                record = record->next;
+                switch (current->record_type) {
+                    case fdir_record_type_update:
+                        ++update_count;
+                        deal_update_record(thread_ctx, current);
+                        break;
+                    case fdir_record_type_query:
+                        deal_query_record(thread_ctx, current);
+                        break;
+                    default:
+                        logError("file: "__FILE__", line: %d, "
+                                "invalid record type: %d",
+                                __LINE__, current->record_type);
+                        break;
+                }
+            } while (record != NULL && SF_G_CONTINUE_FLAG);
 
-        update_count = 0;
-        do {
-            current = record;
-            record = record->next;
-            switch (current->record_type) {
-                case fdir_record_type_update:
-                    ++update_count;
-                    deal_update_record(thread_ctx, current);
-                    break;
-                case fdir_record_type_query:
-                    deal_query_record(thread_ctx, current);
-                    break;
-                default:
-                    logError("file: "__FILE__", line: %d, "
-                            "invalid record type: %d",
-                            __LINE__, current->record_type);
-                    break;
+            if (STORAGE_ENABLED && update_count > 0) {
+                __sync_sub_and_fetch(&thread_ctx->update_notify.
+                        waiting_records, update_count);
             }
-        } while (record != NULL && SF_G_CONTINUE_FLAG);
-
-        if (STORAGE_ENABLED && update_count > 0) {
-            __sync_sub_and_fetch(&thread_ctx->update_notify.
-                    waiting_records, update_count);
         }
 
         if (thread_ctx->delay_free_head != NULL) {
@@ -1210,7 +1208,7 @@ static void *data_thread_func(void *arg)
                     "free_context.immediate.waiting_count: %d",
                     __LINE__, __sync_add_and_fetch(&thread_ctx->
                         free_context.immediate.waiting_count, 0));
-                        */
+             */
 
             deal_immediate_free_queue(thread_ctx);
         }

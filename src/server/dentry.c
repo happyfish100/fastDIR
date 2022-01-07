@@ -31,7 +31,6 @@
 #include "inode_index.h"
 #include "db/change_notify.h"
 #include "db/dentry_loader.h"
-#include "db/dentry_lru.h"
 #include "dentry.h"
 
 typedef struct {
@@ -161,10 +160,10 @@ void dentry_free_for_elimination(FDIRServerDentry *dentry)
     }
 }
 
-void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
+bool dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
 {
     if (__sync_sub_and_fetch(&dentry->reffer_count, dec_count) != 0) {
-        return;
+        return false;
     }
 
     if (!(STORAGE_ENABLED && dentry->db_args->loaded_flags == 0)) {
@@ -177,6 +176,7 @@ void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
+    return true;
 }
 
 #define dentry_delay_free(dentry) server_delay_free_dentry( \
@@ -203,9 +203,13 @@ void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 static int dentry_init_obj(FDIRServerDentry *dentry, void *init_args)
 {
     dentry->context = (FDIRDentryContext *)init_args;
-    if (STORAGE_ENABLED) {
-        dentry_lru_init_dlink(dentry);
-    }
+    return 0;
+}
+
+static int dentry_init_obj_with_db(FDIRServerDentry *dentry, void *init_args)
+{
+    dentry->context = (FDIRDentryContext *)init_args;
+    dentry_lru_init_dlink(dentry);
     return 0;
 }
 
@@ -306,6 +310,7 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
     const int delay_free_seconds = 0;
     FDIRDentryContext *context;
+    fast_mblock_alloc_init_func init_func;
     int element_size;
     int result;
 
@@ -322,13 +327,14 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
     if (STORAGE_ENABLED) {
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
+        init_func = (fast_mblock_alloc_init_func)dentry_init_obj_with_db;
     } else {
         element_size = sizeof(FDIRServerDentry);
+        init_func = (fast_mblock_alloc_init_func)dentry_init_obj;
     }
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
                     "dentry", element_size, 8 * 1024, 0,
-                    (fast_mblock_alloc_init_func)dentry_init_obj,
-                    context, false)) != 0)
+                    init_func, context, false)) != 0)
     {
         return result;
     }

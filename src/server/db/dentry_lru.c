@@ -56,6 +56,10 @@ static int elimination_calc_func(void *args)
                 thread->lru_ctx.target_reclaims = eliminate_count;
                 remain_count -= eliminate_count;
             }
+
+            if (fc_queue_empty(&thread->queue)) {
+                fc_queue_notify(&thread->queue);  //notify to reclaim dentries
+            }
         }
     }
 
@@ -142,7 +146,6 @@ static int dentry_reclaim(FDIRServerDentry *dentry)
     }
 
     dentry_free_for_elimination(dentry);
-    dentry_lru_del(dentry);
     dentry->db_args->loaded_flags = 0;
     return count;
 }
@@ -196,4 +199,8 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
             }
         }
     }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "loop_count: %"PRId64", reclaim_count: %"PRId64,
+            __LINE__, loop_count, thread_ctx->lru_ctx.reclaim_count);
 }

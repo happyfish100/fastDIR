@@ -20,6 +20,7 @@
 #include "server_types.h"
 #include "ns_manager.h"
 #include "data_thread.h"
+#include "db/dentry_lru.h"
 
 #define FDIR_GET_REAL_DENTRY(dentry)  \
     FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
@@ -94,9 +95,18 @@ extern "C" {
 
     void dentry_free_for_elimination(FDIRServerDentry *dentry);
 
-    void dentry_free_ex(FDIRServerDentry *dentry, const int dec_count);
+    bool dentry_free_ex(FDIRServerDentry *dentry, const int dec_count);
 
-#define dentry_free(dentry) dentry_free_ex(dentry, 1)
+    static inline void dentry_free(FDIRServerDentry *dentry)
+    {
+        if (!dentry_free_ex(dentry, 1)) {
+            if (STORAGE_ENABLED && (dentry->db_args->loaded_flags &
+                        FDIR_DENTRY_LOADED_FLAGS_BASIC) != 0)
+            {
+                dentry_lru_del(dentry);
+            }
+        }
+    }
 
     static inline void dentry_hold(FDIRServerDentry *dentry)
     {
