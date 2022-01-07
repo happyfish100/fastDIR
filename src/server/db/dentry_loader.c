@@ -97,6 +97,7 @@ static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
     }
     (*dentry)->ns_entry = ns_entry;
     __sync_add_and_fetch(&(*dentry)->reffer_count, 1);
+    __sync_add_and_fetch(&TOTAL_DENTRY_COUNT, 1);
     return 0;
 }
 

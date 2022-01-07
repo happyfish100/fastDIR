@@ -70,7 +70,6 @@ typedef struct fdir_db_fetch_context {
 } FDIRDBFetchContext;
 
 typedef struct fdir_db_lru_context {
-    volatile int64_t total_count;
     volatile int64_t target_reclaims;
     int64_t reclaim_count;
     struct fc_list_head head;  //for dentry LRU elimination
@@ -109,6 +108,8 @@ typedef struct fdir_data_thread_variables {
     volatile int running_count;
     int error_mode;
 
+    FDIRDataThreadContext *thread_end;
+    volatile int64_t total_dentries;  //total dentry count
     struct {
         volatile int64_t current_id;
         int alloc_elements_once;
@@ -126,6 +127,8 @@ typedef struct fdir_data_thread_variables {
 
 #define EVENT_ALLOC_ELEMENTS_ONCE  g_data_thread_vars.event.alloc_elements_once
 #define EVENT_ALLOC_ELEMENTS_LIMIT g_data_thread_vars.event.alloc_elements_limit
+#define TOTAL_DENTRY_COUNT g_data_thread_vars.total_dentries
+#define DATA_THREAD_END    g_data_thread_vars.thread_end
 
 #ifdef __cplusplus
 extern "C" {

@@ -176,6 +176,8 @@ bool dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
     fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
+
+    __sync_sub_and_fetch(&TOTAL_DENTRY_COUNT, 1);
     return true;
 }
 
@@ -655,6 +657,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         current->db_args->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
         dentry_lru_add(current);
     }
+    __sync_add_and_fetch(&TOTAL_DENTRY_COUNT, 1);
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;

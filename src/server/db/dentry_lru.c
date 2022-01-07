@@ -24,7 +24,12 @@
 #include "../dentry.h"
 #include "dentry_lru.h"
 
-DentryLRUContext g_dentry_lru_ctx;
+typedef struct {
+    int64_t total_limit;
+    int64_t thread_limit;  //per thread
+} DentryLRUContext;
+
+static DentryLRUContext dentry_lru_ctx;
 
 static int elimination_calc_func(void *args)
 {
@@ -34,8 +39,7 @@ static int elimination_calc_func(void *args)
     int eliminate_threads;
     FDIRDataThreadContext *thread;
 
-    eliminate_total = g_dentry_lru_ctx.total_count -
-        g_dentry_lru_ctx.total_limit;
+    eliminate_total = TOTAL_DENTRY_COUNT - dentry_lru_ctx.total_limit;
     if (eliminate_total <= 0) {
         return 0;
     }
@@ -43,28 +47,34 @@ static int elimination_calc_func(void *args)
     eliminate_threads = 0;
     remain_count = eliminate_total;
     for (thread=g_data_thread_vars.thread_array.contexts;
-            thread<g_dentry_lru_ctx.thread_end; thread++)
+            thread<DATA_THREAD_END; thread++)
     {
-        eliminate_count = thread->lru_ctx.total_count -
-            g_dentry_lru_ctx.thread_limit;
+        eliminate_count = thread->dentry_context.dentry_allocator.
+            info.element_used_count - dentry_lru_ctx.thread_limit;
         if (eliminate_count > 0) {
             ++eliminate_threads;
             if (eliminate_count >= remain_count) {
                 thread->lru_ctx.target_reclaims = remain_count;
-                break;
+                remain_count = 0;
             } else {
                 thread->lru_ctx.target_reclaims = eliminate_count;
                 remain_count -= eliminate_count;
             }
 
             if (fc_queue_empty(&thread->queue)) {
+                logInfo("thread index: %d, target_reclaims: %"PRId64, thread->index,
+                        thread->lru_ctx.target_reclaims);
                 fc_queue_notify(&thread->queue);  //notify to reclaim dentries
+            }
+
+            if (remain_count == 0) {
+                break;
             }
         }
     }
 
     logInfo("total count: %"PRId64", eliminate_total: %"PRId64", "
-            "eliminate_threads: %d", g_dentry_lru_ctx.total_count,
+            "eliminate_threads: %d", TOTAL_DENTRY_COUNT,
             eliminate_total, eliminate_threads);
     return 0;
 }
@@ -80,24 +90,22 @@ int dentry_lru_init()
     }
 
     min_dentries = 65536 * DATA_THREAD_COUNT;
-    g_dentry_lru_ctx.total_limit = (int64_t)(SYSTEM_TOTAL_MEMORY *
+    dentry_lru_ctx.total_limit = (int64_t)(SYSTEM_TOTAL_MEMORY *
             STORAGE_MEMORY_LIMIT * MEMORY_LIMIT_DENTRY_RATIO) / 300;
-    if (g_dentry_lru_ctx.total_limit < min_dentries) {
+    if (dentry_lru_ctx.total_limit < min_dentries) {
         logWarning("file: "__FILE__", line: %d, "
                 "dentry limit: %"PRId64" is too small, set to %"PRId64,
-                __LINE__, g_dentry_lru_ctx.total_limit, min_dentries);
-        g_dentry_lru_ctx.total_limit = min_dentries;
+                __LINE__, dentry_lru_ctx.total_limit, min_dentries);
+        dentry_lru_ctx.total_limit = min_dentries;
     }
 
-    g_dentry_lru_ctx.thread_limit = g_dentry_lru_ctx.total_limit /
+    dentry_lru_ctx.thread_limit = dentry_lru_ctx.total_limit /
         DATA_THREAD_COUNT;
-    g_dentry_lru_ctx.thread_end = g_data_thread_vars.
-        thread_array.contexts + DATA_THREAD_COUNT;
 
     logInfo("file: "__FILE__", line: %d, dentry total limit: %"PRId64", "
             "data thread count: %d, dentry thread limit: %"PRId64,
-            __LINE__, g_dentry_lru_ctx.total_limit, DATA_THREAD_COUNT,
-            g_dentry_lru_ctx.thread_limit);
+            __LINE__, dentry_lru_ctx.total_limit, DATA_THREAD_COUNT,
+            dentry_lru_ctx.thread_limit);
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(), 0, 0, 0,
             DENTRY_ELIMINATE_INTERVAL, elimination_calc_func, NULL);
@@ -162,9 +170,15 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
     FDIRServerDentry *dentry;
 
     thread_ctx->lru_ctx.reclaim_count = 0;
-    eliminate_count = thread_ctx->lru_ctx.total_count -
-        g_dentry_lru_ctx.thread_limit;
+    eliminate_count = thread_ctx->dentry_context.dentry_allocator.
+        info.element_used_count - dentry_lru_ctx.thread_limit;
     if (eliminate_count <= 0) {
+        logInfo("file: "__FILE__", line: %d, "
+                "total count: %"PRId64", thread dentry count: %"PRId64", "
+                "target_reclaims: %"PRId64", eliminate_count: %"PRId64" <= 0",
+                __LINE__, TOTAL_DENTRY_COUNT, thread_ctx->dentry_context.
+                dentry_allocator.info.element_used_count, target_reclaims,
+                eliminate_count);
         return;
     }
 
@@ -172,7 +186,8 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
         eliminate_count = target_reclaims;
     }
 
-    total_count = thread_ctx->lru_ctx.total_count;
+    total_count = thread_ctx->dentry_context.
+        dentry_allocator.info.element_used_count;
     loop_count = 0;
     fc_list_for_each_entry_safe(db_args, tmp_args,
             &thread_ctx->lru_ctx.head, lru_dlink)
@@ -201,6 +216,10 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
     }
 
     logInfo("file: "__FILE__", line: %d, "
-            "loop_count: %"PRId64", reclaim_count: %"PRId64,
-            __LINE__, loop_count, thread_ctx->lru_ctx.reclaim_count);
+            "total_count {old: %"PRId64", new: %"PRId64"}, "
+            "loop_count: %"PRId64", target_reclaims: %"PRId64", "
+            "reclaim_count: %"PRId64, __LINE__, total_count,
+            thread_ctx->dentry_context.dentry_allocator.info.
+            element_used_count, loop_count, eliminate_count,
+            thread_ctx->lru_ctx.reclaim_count);
 }

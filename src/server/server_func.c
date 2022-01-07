@@ -584,6 +584,9 @@ int server_load_config(const char *filename)
         g_server_global_vars.storage.cfg.memory_limit = (int64_t)
             (SYSTEM_TOTAL_MEMORY * STORAGE_MEMORY_LIMIT *
              MEMORY_LIMIT_INODE_RATIO);
+        if (g_server_global_vars.storage.cfg.memory_limit < 64 * 1024 * 1024) {
+            g_server_global_vars.storage.cfg.memory_limit = 64 * 1024 * 1024;
+        }
     } else {
         g_server_global_vars.storage.cfg.memory_limit = 0;  //no limit
     }

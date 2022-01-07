@@ -49,15 +49,12 @@ static void *data_thread_func(void *arg);
 void data_thread_sum_counters(FDIRDentryCounters *counters)
 {
     FDIRDataThreadContext *context;
-    FDIRDataThreadContext *end;
 
     counters->ns = 0;
     counters->dir = 0;
     counters->file = 0;
-    end = g_data_thread_vars.thread_array.contexts +
-        g_data_thread_vars.thread_array.count;
     for (context=g_data_thread_vars.thread_array.contexts;
-            context<end; context++)
+            context<DATA_THREAD_END; context++)
     {
         counters->ns += context->dentry_context.counters.ns;
         counters->dir += context->dentry_context.counters.dir;
@@ -202,7 +199,6 @@ static int init_data_thread_array()
     int result;
     int bytes;
     FDIRDataThreadContext *context;
-    FDIRDataThreadContext *end;
 
     bytes = sizeof(FDIRDataThreadContext) * DATA_THREAD_COUNT;
     g_data_thread_vars.thread_array.contexts =
@@ -212,9 +208,10 @@ static int init_data_thread_array()
     }
     memset(g_data_thread_vars.thread_array.contexts, 0, bytes);
 
-    end = g_data_thread_vars.thread_array.contexts + DATA_THREAD_COUNT;
+    DATA_THREAD_END = g_data_thread_vars.thread_array.
+        contexts + DATA_THREAD_COUNT;
     for (context=g_data_thread_vars.thread_array.contexts;
-            context<end; context++)
+            context<DATA_THREAD_END; context++)
     {
         context->index = context - g_data_thread_vars.thread_array.contexts;
         if ((result=init_thread_ctx(context)) != 0) {
@@ -277,12 +274,9 @@ void data_thread_destroy()
 {
     if (g_data_thread_vars.thread_array.contexts != NULL) {
         FDIRDataThreadContext *context;
-        FDIRDataThreadContext *end;
 
-        end = g_data_thread_vars.thread_array.contexts +
-            g_data_thread_vars.thread_array.count;
         for (context=g_data_thread_vars.thread_array.contexts;
-                context<end; context++)
+                context<DATA_THREAD_END; context++)
         {
             fc_queue_destroy(&context->queue);
         }
@@ -294,13 +288,10 @@ void data_thread_destroy()
 void data_thread_terminate()
 {
     FDIRDataThreadContext *context;
-    FDIRDataThreadContext *end;
     int count;
 
-    end = g_data_thread_vars.thread_array.contexts +
-        g_data_thread_vars.thread_array.count;
     for (context=g_data_thread_vars.thread_array.contexts;
-            context<end; context++)
+            context<DATA_THREAD_END; context++)
     {
         fc_queue_terminate(&context->queue);
     }
