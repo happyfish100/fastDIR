@@ -195,6 +195,16 @@ static void dentry_free_func(FDIRServerDentry *dentry,
     dentry_delay_free(dentry);
 }
 
+static void dentry_free_func_with_db(FDIRServerDentry *dentry,
+        const int delay_seconds)
+{
+    if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC)) {
+        dentry_delay_free(dentry);
+    } else {
+        dentry_free_ex(dentry, 1);
+    }
+}
+
 void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 {
     server_add_to_immediate_free_queue_ex(&dentry->context->
@@ -313,27 +323,31 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
     const int delay_free_seconds = 0;
     FDIRDentryContext *context;
     fast_mblock_alloc_init_func init_func;
+    uniq_skiplist_free_func free_func;
     int element_size;
     int result;
 
     context = &thread_ctx->dentry_context;
     context->thread_ctx = thread_ctx;
-    if ((result=uniq_skiplist_init_ex(&context->factory, max_level_count,
-                    dentry_compare, (uniq_skiplist_free_func)dentry_free_func,
-                    16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
-                    delay_free_seconds)) != 0)
-    {
-        return result;
-    }
 
     if (STORAGE_ENABLED) {
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
         init_func = (fast_mblock_alloc_init_func)dentry_init_obj_with_db;
+        free_func = (uniq_skiplist_free_func)dentry_free_func_with_db;
     } else {
         element_size = sizeof(FDIRServerDentry);
         init_func = (fast_mblock_alloc_init_func)dentry_init_obj;
+        free_func = (uniq_skiplist_free_func)dentry_free_func;
     }
+    if ((result=uniq_skiplist_init_ex(&context->factory, max_level_count,
+                    dentry_compare, free_func, 16 * 1024,
+                    SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
+                    delay_free_seconds)) != 0)
+    {
+        return result;
+    }
+
     if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
                     "dentry", element_size, 8 * 1024, 0,
                     init_func, context, false)) != 0)
