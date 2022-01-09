@@ -19,6 +19,7 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_func.h"
 #include "../server_global.h"
+#include "../dentry.h"
 #include "../inode_index.h"
 #include "dentry_lru.h"
 #include "dentry_loader.h"
@@ -65,9 +66,7 @@ static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
 {
     int result;
 
-    *dentry = (FDIRServerDentry *)fast_mblock_alloc_object(&ns_entry->
-            thread_ctx->dentry_context.dentry_allocator);
-    if (*dentry == NULL) {
+    if ((*dentry=dentry_alloc_object(ns_entry->thread_ctx)) == NULL) {
         return ENOMEM;
     }
 
@@ -97,7 +96,6 @@ static int alloc_init_dentry(FDIRNamespaceEntry *ns_entry,
     }
     (*dentry)->ns_entry = ns_entry;
     __sync_add_and_fetch(&(*dentry)->reffer_count, 1);
-    __sync_add_and_fetch(&TOTAL_DENTRY_COUNT, 1);
     return 0;
 }
 

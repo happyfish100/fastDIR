@@ -19,6 +19,7 @@
 #define _DATA_THREAD_H_
 
 #include "fastcommon/fc_queue.h"
+#include "fastcommon/fast_mblock.h"
 #include "fastcommon/server_id_func.h"
 #include "sf/sf_serializer.h"
 #include "diskallocator/dio/trunk_read_thread.h"
@@ -37,9 +38,20 @@ typedef struct fdir_dentry_counters {
 
 struct fdir_server_dentry;
 struct fdir_data_thread_context;
+
+typedef struct fdir_dentry_pool {
+    struct fdir_data_thread_context *thread_ctx;
+    struct fast_mblock_chain chain;
+    int limit;
+    int count;
+} FDIRDentryPool;
+
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
-    struct fast_mblock_man dentry_allocator;
+    struct {
+        FDIRDentryPool local_alloc;
+        FDIRDentryPool batch_free;
+    } pools;
     struct fast_mblock_man kvarray_allocators[FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT];
     struct fast_allocator_context name_acontext;
     struct fdir_data_thread_context *thread_ctx;
@@ -70,6 +82,7 @@ typedef struct fdir_db_fetch_context {
 } FDIRDBFetchContext;
 
 typedef struct fdir_db_lru_context {
+    volatile int64_t total_count;
     volatile int64_t target_reclaims;
     int64_t reclaim_count;
     struct fc_list_head head;  //for dentry LRU elimination
@@ -109,7 +122,7 @@ typedef struct fdir_data_thread_variables {
     int error_mode;
 
     FDIRDataThreadContext *thread_end;
-    volatile int64_t total_dentries;  //total dentry count
+    struct fast_mblock_man dentry_allocator;
     struct {
         volatile int64_t current_id;
         int alloc_elements_once;
@@ -127,8 +140,9 @@ typedef struct fdir_data_thread_variables {
 
 #define EVENT_ALLOC_ELEMENTS_ONCE  g_data_thread_vars.event.alloc_elements_once
 #define EVENT_ALLOC_ELEMENTS_LIMIT g_data_thread_vars.event.alloc_elements_limit
-#define TOTAL_DENTRY_COUNT g_data_thread_vars.total_dentries
 #define DATA_THREAD_END    g_data_thread_vars.thread_end
+#define DENTRY_ALLOCATOR   g_data_thread_vars.dentry_allocator
+#define TOTAL_DENTRY_COUNT DENTRY_ALLOCATOR.info.element_used_count
 
 #ifdef __cplusplus
 extern "C" {

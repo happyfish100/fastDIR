@@ -49,8 +49,8 @@ static int elimination_calc_func(void *args)
     for (thread=g_data_thread_vars.thread_array.contexts;
             thread<DATA_THREAD_END; thread++)
     {
-        eliminate_count = thread->dentry_context.dentry_allocator.
-            info.element_used_count - dentry_lru_ctx.thread_limit;
+        eliminate_count = thread->lru_ctx.total_count -
+            dentry_lru_ctx.thread_limit;
         if (eliminate_count > 0) {
             ++eliminate_threads;
             if (eliminate_count >= remain_count) {
@@ -170,15 +170,14 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
     FDIRServerDentry *dentry;
 
     thread_ctx->lru_ctx.reclaim_count = 0;
-    eliminate_count = thread_ctx->dentry_context.dentry_allocator.
-        info.element_used_count - dentry_lru_ctx.thread_limit;
+    eliminate_count = thread_ctx->lru_ctx.total_count -
+        dentry_lru_ctx.thread_limit;
     if (eliminate_count <= 0) {
         logInfo("file: "__FILE__", line: %d, "
                 "total count: %"PRId64", thread dentry count: %"PRId64", "
                 "target_reclaims: %"PRId64", eliminate_count: %"PRId64" <= 0",
-                __LINE__, TOTAL_DENTRY_COUNT, thread_ctx->dentry_context.
-                dentry_allocator.info.element_used_count, target_reclaims,
-                eliminate_count);
+                __LINE__, TOTAL_DENTRY_COUNT, thread_ctx->lru_ctx.total_count,
+                target_reclaims, eliminate_count);
         return;
     }
 
@@ -186,8 +185,7 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
         eliminate_count = target_reclaims;
     }
 
-    total_count = thread_ctx->dentry_context.
-        dentry_allocator.info.element_used_count;
+    total_count = thread_ctx->lru_ctx.total_count;
     loop_count = 0;
     fc_list_for_each_entry_safe(db_args, tmp_args,
             &thread_ctx->lru_ctx.head, lru_dlink)
@@ -215,11 +213,10 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
         }
     }
 
-    logInfo("file: "__FILE__", line: %d, "
+    logInfo("file: "__FILE__", line: %d, thread index: %d, "
             "total_count {old: %"PRId64", new: %"PRId64"}, "
             "loop_count: %"PRId64", target_reclaims: %"PRId64", "
-            "reclaim_count: %"PRId64, __LINE__, total_count,
-            thread_ctx->dentry_context.dentry_allocator.info.
-            element_used_count, loop_count, eliminate_count,
-            thread_ctx->lru_ctx.reclaim_count);
+            "reclaim_count: %"PRId64, __LINE__, thread_ctx->index,
+            total_count, thread_ctx->lru_ctx.total_count, loop_count,
+            eliminate_count, thread_ctx->lru_ctx.reclaim_count);
 }

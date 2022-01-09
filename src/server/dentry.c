@@ -47,15 +47,37 @@ const int max_level_count = 20;
         } \
     } while (0)
 
+static int dentry_init_obj_with_db(FDIRServerDentry *dentry, void *init_args)
+{
+    dentry_lru_init_dlink(dentry);
+    return 0;
+}
 
 int dentry_init()
 {
     const int min_bits = 6;
     const int max_bits = 16;
     int result;
+    int element_size;
+    fast_mblock_alloc_init_func init_func;
 
     if ((result=ptr_array_allocator_init(&DENTRY_PARRAY_ALLOCATOR,
                     min_bits, max_bits)) != 0)
+    {
+        return result;
+    }
+
+    if (STORAGE_ENABLED) {
+        element_size = sizeof(FDIRServerDentry) +
+            sizeof(FDIRServerDentryDBArgs);
+        init_func = (fast_mblock_alloc_init_func)dentry_init_obj_with_db;
+    } else {
+        element_size = sizeof(FDIRServerDentry);
+        init_func = NULL;
+    }
+    if ((result=fast_mblock_init_ex1(&DENTRY_ALLOCATOR,
+                    "dentry", element_size, 8 * 1024, 0,
+                    init_func, NULL, true)) != 0)
     {
         return result;
     }
@@ -90,6 +112,90 @@ static void dentry_children_print(FDIRServerDentry *dentry)
     }
 }
 */
+
+/* alloc dentry */
+static inline FDIRServerDentry *dentry_pool_pop(FDIRDentryPool *pool)
+{
+    struct fast_mblock_node *node;
+    FDIRServerDentry *dentry;
+
+    node = pool->chain.head;
+    if (--(pool->count) > 0) {
+        pool->chain.head = node->next;
+    }
+
+    dentry = (FDIRServerDentry *)node->data;
+    dentry->context = &pool->thread_ctx->dentry_context;
+    return dentry;
+}
+
+/* free dentry */
+static inline void dentry_pool_push(FDIRDentryPool *pool,
+        FDIRServerDentry *dentry)
+{
+    struct fast_mblock_node *node;
+
+    node = fast_mblock_to_node_ptr(dentry);
+    if (pool->count == 0) {
+        pool->chain.head = node;
+    } else {
+        pool->chain.tail->next = node;
+    }
+    pool->chain.tail = node;
+    ++(pool->count);
+}
+
+FDIRServerDentry *dentry_alloc_object(FDIRDataThreadContext *thread)
+{
+    if (thread->dentry_context.pools.batch_free.count > 0) {
+        return dentry_pool_pop(&thread->dentry_context.pools.batch_free);
+    }
+
+    if (thread->dentry_context.pools.local_alloc.count > 0) {
+        return dentry_pool_pop(&thread->dentry_context.pools.local_alloc);
+    }
+
+    if (fast_mblock_batch_alloc(&DENTRY_ALLOCATOR, thread->dentry_context.
+                pools.local_alloc.limit, &thread->dentry_context.pools.
+                local_alloc.chain) == 0)
+    {
+        if (STORAGE_ENABLED) {
+            thread->lru_ctx.total_count += thread->
+                dentry_context.pools.local_alloc.limit;
+        }
+
+        thread->dentry_context.pools.local_alloc.count = thread->
+            dentry_context.pools.local_alloc.limit;
+        return dentry_pool_pop(&thread->dentry_context.pools.local_alloc);
+    } else {
+        return NULL;
+    }
+}
+
+static inline void dentry_free_object(FDIRServerDentry *dentry)
+{
+    if (dentry->context->pools.local_alloc.count < dentry->
+            context->pools.local_alloc.limit)
+    {
+        dentry_pool_push(&dentry->context->pools.local_alloc, dentry);
+        return;
+    }
+
+    dentry_pool_push(&dentry->context->pools.batch_free, dentry);
+    if (dentry->context->pools.batch_free.count >=
+            dentry->context->pools.batch_free.limit)
+    {
+        if (STORAGE_ENABLED) {
+            dentry->context->thread_ctx->lru_ctx.total_count -=
+                dentry->context->pools.batch_free.count;
+        }
+
+        dentry->context->pools.batch_free.chain.tail->next = NULL;
+        fast_mblock_batch_free(&DENTRY_ALLOCATOR, &dentry->
+                context->pools.batch_free.chain);
+        dentry->context->pools.batch_free.count = 0;
+    }
+}
 
 static int dentry_compare(const void *p1, const void *p2)
 {
@@ -175,9 +281,7 @@ bool dentry_free_ex(FDIRServerDentry *dentry, const int dec_count)
     }
 
     fast_allocator_free(&dentry->context->name_acontext, dentry->name.str);
-    fast_mblock_free_object(&dentry->context->dentry_allocator, dentry);
-
-    __sync_sub_and_fetch(&TOTAL_DENTRY_COUNT, 1);
+    dentry_free_object(dentry);
     return true;
 }
 
@@ -210,19 +314,6 @@ void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
     server_add_to_immediate_free_queue_ex(&dentry->context->
             thread_ctx->free_context, (void *)(long)dec_count,
             dentry, dentry_immediate_free);
-}
-
-static int dentry_init_obj(FDIRServerDentry *dentry, void *init_args)
-{
-    dentry->context = (FDIRDentryContext *)init_args;
-    return 0;
-}
-
-static int dentry_init_obj_with_db(FDIRServerDentry *dentry, void *init_args)
-{
-    dentry->context = (FDIRDentryContext *)init_args;
-    dentry_lru_init_dlink(dentry);
-    return 0;
 }
 
 static int init_name_allocators(struct fast_allocator_context *name_acontext)
@@ -318,39 +409,34 @@ struct fast_mblock_man *dentry_get_kvarray_allocator_by_capacity(
     }
 }
 
+static inline void dentry_init_pool(FDIRDentryPool *pool,
+        FDIRDataThreadContext *thread_ctx, const int limit)
+{
+    pool->thread_ctx = thread_ctx;
+    pool->limit = limit;
+    pool->chain.head = pool->chain.tail = NULL;
+    pool->count = 0;
+}
+
 int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
     const int delay_free_seconds = 0;
     FDIRDentryContext *context;
-    fast_mblock_alloc_init_func init_func;
     uniq_skiplist_free_func free_func;
-    int element_size;
     int result;
 
     context = &thread_ctx->dentry_context;
     context->thread_ctx = thread_ctx;
 
     if (STORAGE_ENABLED) {
-        element_size = sizeof(FDIRServerDentry) +
-            sizeof(FDIRServerDentryDBArgs);
-        init_func = (fast_mblock_alloc_init_func)dentry_init_obj_with_db;
         free_func = (uniq_skiplist_free_func)dentry_free_func_with_db;
     } else {
-        element_size = sizeof(FDIRServerDentry);
-        init_func = (fast_mblock_alloc_init_func)dentry_init_obj;
         free_func = (uniq_skiplist_free_func)dentry_free_func;
     }
     if ((result=uniq_skiplist_init_ex(&context->factory, max_level_count,
                     dentry_compare, free_func, 16 * 1024,
                     SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
                     delay_free_seconds)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=fast_mblock_init_ex1(&context->dentry_allocator,
-                    "dentry", element_size, 8 * 1024, 0,
-                    init_func, context, false)) != 0)
     {
         return result;
     }
@@ -365,6 +451,8 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
         return result;
     }
 
+    dentry_init_pool(&context->pools.local_alloc, thread_ctx, 4096);
+    dentry_init_pool(&context->pools.batch_free, thread_ctx, 1024);
     return 0;
 }
 
@@ -599,9 +687,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         return (result == 0 ? EEXIST : result);
     }
 
-    current = (FDIRServerDentry *)fast_mblock_alloc_object(
-            &thread_ctx->dentry_context.dentry_allocator);
-    if (current == NULL) {
+    if ((current=dentry_alloc_object(thread_ctx)) == NULL) {
         return ENOMEM;
     }
     __sync_add_and_fetch(&current->reffer_count, 1);
@@ -671,7 +757,6 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         current->db_args->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
         dentry_lru_add(current);
     }
-    __sync_add_and_fetch(&TOTAL_DENTRY_COUNT, 1);
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;
