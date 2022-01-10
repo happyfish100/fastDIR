@@ -255,16 +255,10 @@ int main(int argc, char *argv[])
         }
 
 #ifdef FDIR_DUMP_DATA_FOR_DEBUG
-        if (STORAGE_ENABLED) {
-            sleep(BATCH_STORE_INTERVAL + 5);
-        }
-
-        logInfo("file: "__FILE__", line: %d, begin dump data ...", __LINE__);
-        if ((result=server_dump_data()) != 0) {
-            logInfo("server_dump_data fail, result: %d", result);
+        if ((result=server_dump_init()) != 0) {
             break;
         }
-        logInfo("file: "__FILE__", line: %d, dump data done.", __LINE__);
+        data_thread_set_dump_flag();
 #endif
 
         if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {

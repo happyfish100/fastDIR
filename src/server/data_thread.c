@@ -35,6 +35,7 @@
 #include "dentry.h"
 #include "inode_index.h"
 #include "service_handler.h"
+#include "data_dumper.h"
 #include "db/change_notify.h"
 #include "db/dentry_serializer.h"
 #include "db/dentry_loader.h"
@@ -1211,6 +1212,13 @@ static void *data_thread_func(void *arg)
                 dentry_lru_eliminate(thread_ctx, target_reclaims);
             }
         }
+
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+        if (thread_ctx->dump_flag) {
+            thread_ctx->dump_flag = false;
+            server_dump_data(thread_ctx);
+        }
+#endif
     }
 
     __sync_sub_and_fetch(&DATA_THREAD_RUNNING_COUNT, 1);

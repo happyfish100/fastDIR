@@ -24,7 +24,8 @@ extern "C" {
 #endif
 
 #ifdef FDIR_DUMP_DATA_FOR_DEBUG
-   int server_dump_data();
+    int server_dump_init();
+    int server_dump_data(struct fdir_data_thread_context *thread_ctx);
 #endif
 
 #ifdef __cplusplus

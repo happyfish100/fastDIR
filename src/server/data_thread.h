@@ -30,6 +30,10 @@
 #define FDIR_DATA_ERROR_MODE_STRICT   1   //for master update operations
 #define FDIR_DATA_ERROR_MODE_LOOSE    2   //for data load or binlog replication
 
+#define FDIR_DATA_DUMP_STATUS_NONE     0
+#define FDIR_DATA_DUMP_STATUS_DUMPING  1
+#define FDIR_DATA_DUMP_STATUS_DONE     2
+
 typedef struct fdir_dentry_counters {
     int64_t ns;
     int64_t dir;
@@ -109,6 +113,11 @@ typedef struct fdir_data_thread_context {
     } event;  //for change notify when data persistency
 
     FDIRDBLRUContext lru_ctx;
+
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+    volatile bool dump_flag;
+#endif
+
 } FDIRDataThreadContext;
 
 typedef struct fdir_data_thread_array {
@@ -128,6 +137,12 @@ typedef struct fdir_data_thread_variables {
         int alloc_elements_once;
         int alloc_elements_limit;
     } event;  //for storage engine
+
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+    volatile int dump_status;
+    volatile int dump_threads;
+#endif
+
 } FDIRDataThreadVariables;
 
 #define dentry_strdup(context, dest, src) \
@@ -143,6 +158,8 @@ typedef struct fdir_data_thread_variables {
 #define DATA_THREAD_END    g_data_thread_vars.thread_end
 #define DENTRY_ALLOCATOR   g_data_thread_vars.dentry_allocator
 #define TOTAL_DENTRY_COUNT DENTRY_ALLOCATOR.info.element_used_count
+#define DATA_DUMP_STATUS   g_data_thread_vars.dump_status
+#define DATA_DUMP_THREADS  g_data_thread_vars.dump_threads
 
 #ifdef __cplusplus
 extern "C" {
@@ -205,15 +222,14 @@ extern "C" {
     static inline int64_t data_thread_get_last_data_version()
     {
         FDIRDataThreadContext *ctx;
-        FDIRDataThreadContext *end;
         int64_t min_version;
         int64_t max_version;
 
         min_version = INT64_MAX;
         max_version = 0;
-        end = g_data_thread_vars.thread_array.contexts +
-            g_data_thread_vars.thread_array.count;
-        for (ctx=g_data_thread_vars.thread_array.contexts; ctx<end; ctx++) {
+        for (ctx=g_data_thread_vars.thread_array.contexts;
+                ctx<DATA_THREAD_END; ctx++)
+        {
             if (__sync_add_and_fetch(&ctx->update_notify.
                         waiting_records, 0) > 0)
             {
@@ -239,6 +255,34 @@ extern "C" {
         sf_serializer_iterator_init(&db_fetch_ctx->it);
         return 0;
     }
+
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+    static inline int data_thread_set_dump_flag()
+    {
+        FDIRDataThreadContext *context;
+
+        if (FC_ATOMIC_GET(DATA_DUMP_STATUS) ==
+                FDIR_DATA_DUMP_STATUS_DUMPING)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "already in progress.", __LINE__);
+            return EINPROGRESS;
+        }
+
+        __sync_add_and_fetch(&DATA_DUMP_THREADS,
+                g_data_thread_vars.thread_array.count);
+        for (context=g_data_thread_vars.thread_array.contexts;
+                context<DATA_THREAD_END; context++)
+        {
+            context->dump_flag = true;
+            if (fc_queue_empty(&context->queue)) {
+                fc_queue_notify(&context->queue);  //notify to dump
+            }
+        }
+
+        return 0;
+    }
+#endif
 
 #ifdef __cplusplus
 }
