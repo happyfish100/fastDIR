@@ -141,6 +141,7 @@ typedef struct fdir_data_thread_variables {
 #ifdef FDIR_DUMP_DATA_FOR_DEBUG
     volatile int dump_status;
     volatile int dump_threads;
+    int64_t dump_start_time_ms;
 #endif
 
 } FDIRDataThreadVariables;
@@ -160,6 +161,7 @@ typedef struct fdir_data_thread_variables {
 #define TOTAL_DENTRY_COUNT DENTRY_ALLOCATOR.info.element_used_count
 #define DATA_DUMP_STATUS   g_data_thread_vars.dump_status
 #define DATA_DUMP_THREADS  g_data_thread_vars.dump_threads
+#define DUMP_START_TIME_MS g_data_thread_vars.dump_start_time_ms
 
 #ifdef __cplusplus
 extern "C" {

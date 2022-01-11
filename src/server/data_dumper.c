@@ -222,12 +222,15 @@ int server_dump_data(struct fdir_data_thread_context *thread_ctx)
     FDIRNamespaceEntry **ns_end;
     int result;
     int old_status;
+    int64_t time_used_ms;
+    char buff[16];
 
     old_status = FC_ATOMIC_GET(DATA_DUMP_STATUS);
     if (old_status != FDIR_DATA_DUMP_STATUS_DUMPING) {
         if (__sync_bool_compare_and_swap(&DATA_DUMP_STATUS,
                     old_status, FDIR_DATA_DUMP_STATUS_DUMPING))
         {
+            DUMP_START_TIME_MS = get_current_time_ms();
             logInfo("file: "__FILE__", line: %d, "
                     "begin dump data ...", __LINE__);
         }
@@ -250,8 +253,11 @@ int server_dump_data(struct fdir_data_thread_context *thread_ctx)
         __sync_bool_compare_and_swap(&DATA_DUMP_STATUS,
                 FDIR_DATA_DUMP_STATUS_DUMPING,
                 FDIR_DATA_DUMP_STATUS_DONE);
+
+        time_used_ms = get_current_time_ms() - DUMP_START_TIME_MS;
         logInfo("file: "__FILE__", line: %d, "
-                "dump data done.", __LINE__);
+                "dump data done, time used: %s ms", __LINE__,
+                long_to_comma_str(time_used_ms, buff));
     }
 
     return result;

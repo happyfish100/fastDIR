@@ -248,8 +248,10 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
         dentry->stat.nlink = 1;   //reset nlink for directory
     }
     if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
-        result = dentry_load_inode(thread_ctx, dentry->
-                ns_entry, src_inode, &dentry->src_dentry);
+        if ((dentry->src_dentry=inode_index_find_dentry(src_inode)) == NULL) {
+            result = dentry_load_inode(thread_ctx, dentry->ns_entry,
+                    src_inode, &dentry->src_dentry);
+        }
     } else {
         if ((result=inode_index_add_dentry(dentry)) != 0) {
             logError("file: "__FILE__", line: %d, "
