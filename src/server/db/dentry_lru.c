@@ -62,8 +62,6 @@ static int elimination_calc_func(void *args)
             }
 
             if (fc_queue_empty(&thread->queue)) {
-                logInfo("thread index: %d, target_reclaims: %"PRId64, thread->index,
-                        thread->lru_ctx.target_reclaims);
                 fc_queue_notify(&thread->queue);  //notify to reclaim dentries
             }
 
@@ -73,7 +71,7 @@ static int elimination_calc_func(void *args)
         }
     }
 
-    logInfo("total count: %"PRId64", eliminate_total: %"PRId64", "
+    logDebug("total count: %"PRId64", eliminate_total: %"PRId64", "
             "eliminate_threads: %d", TOTAL_DENTRY_COUNT,
             eliminate_total, eliminate_threads);
     return 0;
@@ -102,7 +100,7 @@ int dentry_lru_init()
     dentry_lru_ctx.thread_limit = dentry_lru_ctx.total_limit /
         DATA_THREAD_COUNT;
 
-    logInfo("file: "__FILE__", line: %d, dentry total limit: %"PRId64", "
+    logDebug("file: "__FILE__", line: %d, dentry total limit: %"PRId64", "
             "data thread count: %d, dentry thread limit: %"PRId64,
             __LINE__, dentry_lru_ctx.total_limit, DATA_THREAD_COUNT,
             dentry_lru_ctx.thread_limit);
@@ -173,11 +171,6 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
     eliminate_count = thread_ctx->lru_ctx.total_count -
         dentry_lru_ctx.thread_limit;
     if (eliminate_count <= 0) {
-        logInfo("file: "__FILE__", line: %d, "
-                "total count: %"PRId64", thread dentry count: %"PRId64", "
-                "target_reclaims: %"PRId64", eliminate_count: %"PRId64" <= 0",
-                __LINE__, TOTAL_DENTRY_COUNT, thread_ctx->lru_ctx.total_count,
-                target_reclaims, eliminate_count);
         return;
     }
 
@@ -213,7 +206,7 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
         }
     }
 
-    logInfo("file: "__FILE__", line: %d, thread index: %d, "
+    logDebug("file: "__FILE__", line: %d, thread index: %d, "
             "total_count {old: %"PRId64", new: %"PRId64"}, "
             "loop_count: %"PRId64", target_reclaims: %"PRId64", "
             "reclaim_count: %"PRId64, __LINE__, thread_ctx->index,

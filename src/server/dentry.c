@@ -97,7 +97,7 @@ void dentry_destroy()
 static void dentry_children_print(FDIRServerDentry *dentry)
 {
     FDIRServerDentry *current;
-    UniqSkiplistIterator iterator;
+    UniqSkiplistIterator it;
     int i = 0;
 
     if (dentry->children == NULL) {
@@ -105,10 +105,10 @@ static void dentry_children_print(FDIRServerDentry *dentry)
         return;
     }
 
-    uniq_skiplist_iterator(dentry->children, &iterator);
-    while ((current=(FDIRServerDentry *)uniq_skiplist_next(&iterator)) != NULL) {
-        logInfo("%d. %.*s(%d)", ++i, current->name.len,
-                current->name.str, current->name.len);
+    uniq_skiplist_iterator(dentry->children, &it);
+    while ((current=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
+        logInfo("%d. %"PRId64", %.*s(%d)", ++i, current->inode,
+                current->name.len, current->name.str, current->name.len);
     }
 }
 */
@@ -654,7 +654,7 @@ static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
         *ns_entry = rec_entry->parent->ns_entry;
     }
 
-    return find_child((*ns_entry)->thread_ctx, rec_entry->parent,
+    return find_child(thread_ctx, rec_entry->parent,
             &rec_entry->pname.name, &rec_entry->dentry);
 }
 

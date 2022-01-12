@@ -1205,7 +1205,7 @@ static void *data_thread_func(void *arg)
             deal_immediate_free_queue(thread_ctx);
         }
 
-        if (thread_ctx->lru_ctx.target_reclaims > 0) {
+        if (STORAGE_ENABLED && thread_ctx->lru_ctx.target_reclaims > 0) {
             int64_t target_reclaims;
             if ((target_reclaims=thread_ctx->lru_ctx.target_reclaims) > 0) {
                 thread_ctx->lru_ctx.target_reclaims = 0;

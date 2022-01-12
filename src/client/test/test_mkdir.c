@@ -25,7 +25,7 @@
 #include "fastcommon/logger.h"
 #include "fastdir/client/fdir_client.h"
 
-#define SUBDIR_COUNT  300
+#define SUBDIR_COUNT  500
 
 static char *ns = "test";
 static char *base_path = "/test";
@@ -186,6 +186,10 @@ int main(int argc, char *argv[])
     {
         return result;
     }
+
+    fdir_client_log_config(&g_fdir_client_vars.client_ctx);
+    logDebug("idempotency_enabled: %d", g_fdir_client_vars.
+            client_ctx.idempotency_enabled);
 
     omp.mode = 0755 | S_IFDIR;
     omp.uid = geteuid();
