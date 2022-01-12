@@ -209,7 +209,7 @@ static int realloc_namespace_array(FDIRNamespacePtrArray *array)
     int bytes;
 
     if (array->alloc == 0) {
-        alloc = 128;
+        alloc = 64;
     } else {
         alloc = array->alloc * 2;
     }
@@ -223,7 +223,7 @@ static int realloc_namespace_array(FDIRNamespacePtrArray *array)
     if (array->namespaces != NULL) {
         bytes = sizeof(FDIRNamespaceEntry *) * array->count;
         memcpy(namespaces, array->namespaces, bytes);
-        free(array->namespaces);
+        sched_delay_free_ptr(array->namespaces, 30);
     }
 
     array->namespaces = namespaces;
@@ -268,7 +268,8 @@ static FDIRNamespaceEntry *create_namespace(FDIRDataThreadContext *thread_ctx,
     entry->nexts.htable = *bucket;
     *bucket = entry;
 
-    fdir_manager.array.namespaces[fdir_manager.array.count++] = entry;
+    fdir_manager.array.namespaces[fdir_manager.array.count] = entry;
+    fdir_manager.array.count++;
     thread_ctx->dentry_context.counters.ns++;
     return entry;
 }
@@ -347,11 +348,13 @@ FDIRNamespaceEntry *fdir_namespace_get_by_id(const int id)
         return fdir_manager.array.namespaces[id - 1];
     }
 
+    PTHREAD_MUTEX_LOCK(&fdir_manager.lock);
     target = &holder;
     target->id = id;
     found = bsearch(&target, fdir_manager.array.namespaces,
             fdir_manager.array.count, sizeof(FDIRNamespaceEntry *),
             (int (*)(const void *, const void *))namespace_compare_by_id);
+    PTHREAD_MUTEX_UNLOCK(&fdir_manager.lock);
     return (found != NULL ? (*found) : NULL);
 }
 
