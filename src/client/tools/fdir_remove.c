@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
         switch (ch) {
             case 'h':
                 usage(argv);
-                break;
+                return 0;
             case 'n':
                 ns = optarg;
                 break;

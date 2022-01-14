@@ -27,17 +27,19 @@
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename=%s] "
-            "host[:port]\n", argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
+            "server_id|host[:port]|all\n", argv[0],
+            FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
-static void output(FDIRClientServiceStat *stat)
+static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
     printf( "\tserver_id: %d\n"
+            "\thost: %s:%u\n"
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
-            "\tbinlog : {current_version: %"PRId64,
-            stat->server_id, stat->status,
+            "\tbinlog : {current_version: %"PRId64, stat->server_id,
+            conn->ip_addr, conn->port, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->connection.current_count,
@@ -65,14 +67,83 @@ static void output(FDIRClientServiceStat *stat)
             stat->dentry.counters.file);
 }
 
+static int service_stat_all()
+{
+    FCServerInfo *server;
+    FCServerInfo *end;
+    ConnectionInfo conn;
+    FDIRClientServiceStat stat;
+	int result;
+
+    end = FC_SID_SERVERS(g_fdir_client_vars.client_ctx.cluster.server_cfg) +
+        FC_SID_SERVER_COUNT(g_fdir_client_vars.client_ctx.cluster.server_cfg);
+    for (server=FC_SID_SERVERS(g_fdir_client_vars.client_ctx.
+                cluster.server_cfg); server<end; server++)
+    {
+        conn = server->group_addrs[g_fdir_client_vars.client_ctx.cluster.
+            service_group_index].address_array.addrs[0]->conn;
+        conn.sock = -1;
+        if ((result=fdir_client_service_stat(&g_fdir_client_vars.
+                        client_ctx, &conn, &stat)) != 0)
+        {
+            return result;
+        }
+
+        output(&stat, &conn);
+    }
+
+    return 0;
+}
+
+static int service_stat(char *host)
+{
+    ConnectionInfo conn;
+    FDIRClientServiceStat stat;
+    FCServerInfo *server;
+	int result;
+    int server_id;
+
+    if (strcmp(host, "all") == 0) {
+        return service_stat_all();
+    }
+
+    if (is_digital_string(host)) {
+        server_id = strtol(host, NULL, 10);
+        if ((server=fc_server_get_by_id(&g_fdir_client_vars.client_ctx.
+                        cluster.server_cfg, server_id)) == NULL)
+        {
+            fprintf(stderr, "server id: %d not exist\n", server_id);
+            return ENOENT;
+        }
+
+        conn = server->group_addrs[g_fdir_client_vars.client_ctx.cluster.
+            service_group_index].address_array.addrs[0]->conn;
+        conn.sock = -1;
+    } else {
+        if ((result=conn_pool_parse_server_info(host, &conn,
+                        FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
+        {
+            return result;
+        }
+    }
+
+
+    if ((result=fdir_client_service_stat(&g_fdir_client_vars.
+                    client_ctx, &conn, &stat)) != 0)
+    {
+        return result;
+    }
+
+    output(&stat, &conn);
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *host;
-    ConnectionInfo conn;
-    FDIRClientServiceStat stat;
 	int result;
 
     if (argc < 2) {
@@ -84,7 +155,7 @@ int main(int argc, char *argv[])
         switch (ch) {
             case 'h':
                 usage(argv);
-                break;
+                return 0;
             case 'c':
                 config_filename = optarg;
                 break;
@@ -103,25 +174,12 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
-    host = argv[optind];
-    if ((result=conn_pool_parse_server_info(host, &conn,
-                    FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
-    {
-        return result;
-    }
-
     if ((result=fdir_client_simple_init_with_auth(
                     config_filename, publish)) != 0)
     {
         return result;
     }
 
-    if ((result=fdir_client_service_stat(&g_fdir_client_vars.
-                    client_ctx, &conn, &stat)) != 0)
-    {
-        return result;
-    }
-
-    output(&stat);
-    return 0;
+    host = argv[optind];
+    return service_stat(host);
 }
