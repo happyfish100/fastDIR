@@ -3,9 +3,9 @@ Section: admin
 Priority: optional
 Maintainer: YuQing <384681@qq.com>
 Build-Depends: debhelper (>=11~),
-               libfastcommon-dev (>= 1.0.54),
-               libserverframe-dev (>= 1.1.11),
-               fastcfs-auth-dev (>= 2.0.0)
+               libfastcommon-dev (>= 1.0.55),
+               libserverframe-dev (>= 1.1.12),
+               fastcfs-auth-dev (>= 3.0.0)
 Standards-Version: 4.1.4
 Homepage: http://github.com/happyfish100/fastDIR/
 
@@ -13,10 +13,10 @@ Package: fastdir
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.server>
-Depends: libfastcommon (>= 1.0.54),
-         libserverframe (>= 1.1.11),
-         libfdirstorage (>= 1.0.0),
-         fastcfs-auth-client (>= 2.0.0),
+Depends: libfastcommon (>= 1.0.55),
+         libserverframe (>= 1.1.12),
+         libfdirstorage (>= 1.0.1),
+         fastcfs-auth-client (>= 3.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-server (= ${binary:Version}),
          fastdir-client (= ${binary:Version}),
@@ -28,10 +28,10 @@ Package: fastdir-server
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.server>
-Depends: libfastcommon (>= 1.0.54),
-         libserverframe (>= 1.1.11),
-         libfdirstorage (>= 1.0.0),
-         fastcfs-auth-client (>= 2.0.0),
+Depends: libfastcommon (>= 1.0.55),
+         libserverframe (>= 1.1.12),
+         libfdirstorage (>= 1.0.1),
+         fastcfs-auth-client (>= 3.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-config (>= 1.0.0),
          ${misc:Depends}, ${shlibs:Depends}
@@ -41,9 +41,9 @@ Package: fastdir-client
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.client>
-Depends: libfastcommon (>= 1.0.54),
-         libserverframe (>= 1.1.11),
-         fastcfs-auth-client (>= 2.0.0),
+Depends: libfastcommon (>= 1.0.55),
+         libserverframe (>= 1.1.12),
+         fastcfs-auth-client (>= 3.0.0),
          fastcfs-auth-config (>= 2.0.0),
          fastdir-config (>= 1.0.0),
          ${misc:Depends}, ${shlibs:Depends}
