@@ -795,8 +795,8 @@ static int server_check_and_parse_dentry(
                 REQUEST.header.body_len, req_body_len);
         return EINVAL;
     }
-    RECORD->inode = 0;
     RECORD->dentry_type = fdir_dentry_type_fullname;
+    RECORD->inode = 0;
     RECORD->ns = RECORD->me.fullname.ns;
     RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
     return 0;
@@ -1625,6 +1625,7 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
         return result;
     }
 
+    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->options.flags = 0;
     RECORD->data_version = 0;
     RECORD->inode = inode;
@@ -2397,8 +2398,8 @@ static inline int server_check_and_parse_inode(struct fast_task_info *task)
         return result;
     }
 
-    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->dentry_type = fdir_dentry_type_inode;
+    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
     RECORD->inode = buff2long(req->inode);
     FC_SET_STRING_NULL(RECORD->me.pname.name);
@@ -2522,8 +2523,8 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     }
 
     init_record_by_dsize(RECORD, &dsize);
-    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->dentry_type = fdir_dentry_type_inode;
+    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
     RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
     RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
@@ -2610,9 +2611,9 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     }
     RECORD->parray->counts.total = count;
 
+    RECORD->dentry_type = fdir_dentry_type_inode;
     FC_SET_STRING_EX(RECORD->ns, rheader->ns_str, rheader->ns_len);
     RECORD->inode = RECORD->data_version = 0;
-    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->hash_code = hash_code;
     RECORD->operation = SERVICE_OP_BATCH_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP;
@@ -2825,6 +2826,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = inode;
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
     RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
@@ -2935,6 +2937,7 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = buff2long(req->ino.inode);
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
     RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
@@ -3161,11 +3164,11 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
+    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = buff2long(ino->inode);
     FC_SET_STRING_EX(RECORD->ns, ino->ns_str, ino->ns_len);
     RECORD->hash_code = simple_hash(ino->ns_str, ino->ns_len);
     RECORD->xattr.key = name;
-    RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->operation = SERVICE_OP_GET_XATTR_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP;
     return push_query_to_data_thread_queue(task);
