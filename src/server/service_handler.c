@@ -1499,7 +1499,12 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 }
 
 #define init_record_for_create(task, mode) \
-    init_record_for_create_ex(task, mode, 0, false)
+    init_record_for_create_ex(task, mode, 0, false); \
+    if (S_ISBLK(RECORD->stat.mode) || S_ISCHR(RECORD->stat.mode)) {   \
+        RECORD->stat.rdev = buff2long(((FDIRProtoCreateDEntryFront *) \
+                    REQUEST.body)->rdev);  \
+        RECORD->options.rdev = 1;  \
+    }
 
 static void init_record_for_create_ex(struct fast_task_info *task,
         const int mode, const int size, const bool is_hdlink)
@@ -1515,7 +1520,12 @@ static void init_record_for_create_ex(struct fast_task_info *task,
                 REQUEST.body)->uid);
     RECORD->stat.gid = buff2int(((FDIRProtoCreateDEntryFront *)
                 REQUEST.body)->gid);
+
+    RECORD->stat.rdev = 0;
     RECORD->stat.size = size;
+    if (size > 0) {
+        RECORD->options.size = 1;
+    }
     RECORD->stat.atime = RECORD->stat.btime = RECORD->stat.ctime =
         RECORD->stat.mtime = g_current_time;
     RECORD->options.atime = RECORD->options.btime = RECORD->options.ctime =
@@ -2345,14 +2355,25 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
 }
 
+static inline void parse_stat_dentry_flags(struct fast_task_info *task)
+{
+    FDIRProtoStatDEntryFront *front;
+
+    front = (FDIRProtoStatDEntryFront *)REQUEST.body;
+    RECORD->flags = buff2int(front->flags);
+}
+
 static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+    {
         return result;
     }
 
+    parse_stat_dentry_flags(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2384,13 +2405,17 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
-static inline int server_check_and_parse_inode(struct fast_task_info *task)
+static inline int server_check_and_parse_inode_ex(
+        struct fast_task_info *task,
+        const int front_part_size)
 {
     FDIRProtoInodeInfo *req;
     int result;
 
-    req = (FDIRProtoInodeInfo *)REQUEST.body;
-    if ((result=server_expect_body_length(sizeof(*req) + req->ns_len)) != 0) {
+    req = (FDIRProtoInodeInfo *)(REQUEST.body + front_part_size);
+    if ((result=server_expect_body_length(front_part_size +
+                    sizeof(*req) + req->ns_len)) != 0)
+    {
         return result;
     }
 
@@ -2405,6 +2430,9 @@ static inline int server_check_and_parse_inode(struct fast_task_info *task)
     FC_SET_STRING_NULL(RECORD->me.pname.name);
     return 0;
 }
+
+#define server_check_and_parse_inode(task) \
+    server_check_and_parse_inode_ex(task, 0)
 
 static int service_deal_readlink_by_inode(struct fast_task_info *task)
 {
@@ -2436,10 +2464,13 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode(task)) != 0) {
+    if ((result=server_check_and_parse_inode_ex(task,
+                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+    {
         return result;
     }
 
+    parse_stat_dentry_flags(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2449,10 +2480,13 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_query(task)) != 0) {
+    if ((result=server_parse_pname_for_query_ex(task,
+                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+    {
         return result;
     }
 
+    parse_stat_dentry_flags(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
     return push_query_to_data_thread_queue(task);

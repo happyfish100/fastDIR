@@ -27,24 +27,25 @@
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
-        FDIRDEntryInfo *dentry)
+        const dev_t rdev, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_create_dentry,
-            fullname, omp, dentry);
+            fullname, omp, rdev, dentry);
 }
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry)
+        const FDIRClientOwnerModePair *omp, const dev_t rdev,
+        FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_create_dentry_by_pname,
-            ns, pname, omp, dentry);
+            ns, pname, omp, rdev, dentry);
 }
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,

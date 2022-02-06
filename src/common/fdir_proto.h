@@ -179,6 +179,7 @@ typedef struct fdir_proto_name_info {
 } FDIRProtoNameInfo;
 
 typedef struct fdir_proto_create_dentry_front {
+    char rdev[8];   /* device ID for special file */
     char mode[4];
     char uid[4];
     char gid[4];
@@ -286,11 +287,12 @@ typedef struct fdir_proto_dentry_stat {
     char mode[4];
     char uid[4];
     char gid[4];
-    char btime[4];  // create time
-    char atime[4];  // access time
+    char btime[4];  /* create time */
+    char atime[4];  /* access time */
     char ctime[4];  /* status change time */
     char mtime[4];  /* modify time */
     char nlink[4];  /* ref count for hard link */
+    char rdev[8];   /* device ID */
     char size[8];   /* file size in bytes */
     char alloc[8];  /* alloc space in bytes */
     char space_end[8];  /* space end offset */
@@ -307,6 +309,10 @@ typedef struct fdir_proto_modify_dentry_stat_req {
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
 } FDIRProtoLookupInodeResp;
+
+typedef struct fdir_proto_stat_dentry_front {
+    char flags[4];
+} FDIRProtoStatDEntryFront;
 
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];
@@ -611,6 +617,7 @@ static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStat *stat,
     int2buff(stat->ctime, proto->ctime);
     int2buff(stat->mtime, proto->mtime);
     int2buff(stat->nlink, proto->nlink);
+    long2buff(stat->rdev, proto->rdev);
     long2buff(stat->size, proto->size);
     long2buff(stat->alloc, proto->alloc);
     long2buff(stat->space_end, proto->space_end);
@@ -630,6 +637,7 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->ctime = buff2int(proto->ctime);
     stat->mtime = buff2int(proto->mtime);
     stat->nlink = buff2int(proto->nlink);
+    stat->rdev = buff2long(proto->rdev);
     stat->size = buff2long(proto->size);
     stat->alloc = buff2long(proto->alloc);
     stat->space_end = buff2long(proto->space_end);

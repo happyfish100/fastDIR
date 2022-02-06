@@ -63,6 +63,7 @@
 #define BINLOG_RECORD_FIELD_NAME_MTIME         "mt"
 #define BINLOG_RECORD_FIELD_NAME_UID           "ui"
 #define BINLOG_RECORD_FIELD_NAME_GID           "gi"
+#define BINLOG_RECORD_FIELD_NAME_RDEV          "rd"
 #define BINLOG_RECORD_FIELD_NAME_FILE_SIZE     "sz"
 #define BINLOG_RECORD_FIELD_NAME_SPACE_END     "se"
 #define BINLOG_RECORD_FIELD_NAME_HASH_CODE     "hc"
@@ -92,6 +93,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_MTIME         ('m' * 256 + 't')
 #define BINLOG_RECORD_FIELD_INDEX_UID           ('u' * 256 + 'i')
 #define BINLOG_RECORD_FIELD_INDEX_GID           ('g' * 256 + 'i')
+#define BINLOG_RECORD_FIELD_INDEX_RDEV          ('r' * 256 + 'd')
 #define BINLOG_RECORD_FIELD_INDEX_FILE_SIZE     ('s' * 256 + 'z')
 #define BINLOG_RECORD_FIELD_INDEX_SPACE_END     ('s' * 256 + 'e')
 #define BINLOG_RECORD_FIELD_INDEX_HASH_CODE     ('h' * 256 + 'c')
@@ -333,6 +335,12 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     if (record->options.gid) {
         fast_buffer_append(buffer, " %s=%d",
                 BINLOG_RECORD_FIELD_NAME_GID, record->stat.gid);
+    }
+
+    if (record->options.rdev) {
+        fast_buffer_append(buffer, " %s=%"PRId64,
+                BINLOG_RECORD_FIELD_NAME_RDEV,
+                (int64_t)record->stat.rdev);
     }
 
     if (record->options.size) {
@@ -627,6 +635,13 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             if (pcontext->fv.type == expect_type) {
                 record->stat.gid = pcontext->fv.value.n;
                 record->options.gid = 1;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_RDEV:
+            expect_type = BINLOG_FIELD_TYPE_INTEGER;
+            if (pcontext->fv.type == expect_type) {
+                record->stat.rdev = pcontext->fv.value.n;
+                record->options.rdev = 1;
             }
             break;
         case BINLOG_RECORD_FIELD_INDEX_FILE_SIZE:

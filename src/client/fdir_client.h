@@ -30,11 +30,12 @@ extern "C" {
 int fdir_client_create_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
-        FDIRDEntryInfo *dentry);
+        const dev_t rdev, FDIRDEntryInfo *dentry);
 
 int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, const dev_t rdev,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
         const string_t *link, const FDIRDEntryFullName *fullname,

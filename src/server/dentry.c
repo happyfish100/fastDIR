@@ -748,6 +748,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     current->stat.mtime = record->stat.mtime;
     current->stat.uid = record->stat.uid;
     current->stat.gid = record->stat.gid;
+    current->stat.rdev = record->stat.rdev;
     current->stat.size = record->stat.size;
     current->stat.nlink = 1;
     current->stat.alloc = 0;

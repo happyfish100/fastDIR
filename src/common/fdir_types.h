@@ -67,7 +67,7 @@
 #define RENAME_EXCHANGE     (1 << 1)
 #endif
 
-#define FDIR_PROTO_FLAGS_FOLLOW_SYMLINK    1
+#define FDIR_PROTO_FLAGS_FOLLOW_SYMLINK    (1 << 0)
 
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')
@@ -102,6 +102,7 @@ typedef struct fdir_dentry_stat {
     int ctime;  /* status change time */
     int mtime;  /* modify time */
     int nlink;  /* ref count for hard link and directory */
+    dev_t rdev; /* device ID */
     int64_t size;   /* file size in bytes */
     int64_t alloc;  /* alloc space in bytes */
     int64_t space_end;   /* for remove disk space when deallocate */
@@ -131,6 +132,7 @@ typedef union {
         bool mtime: 1;
         bool gid:   1;
         bool uid:   1;
+        bool rdev:  1;
         bool size:  1;
         bool inc_alloc: 1;  //for increaase space alloc
         bool space_end: 1;  //for space end offset
