@@ -164,11 +164,13 @@ int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
 #define fdir_client_lookup_inode_by_pname(client_ctx, ns, pname, inode) \
     fdir_client_lookup_inode_by_pname_ex(client_ctx, ns, pname, LOG_ERR, inode)
 
-#define fdir_client_stat_dentry_by_path(client_ctx, fullname, dentry) \
-    fdir_client_stat_dentry_by_path_ex(client_ctx, fullname, LOG_ERR, dentry)
+#define fdir_client_stat_dentry_by_path(client_ctx, fullname, flags, dentry) \
+    fdir_client_stat_dentry_by_path_ex(client_ctx, \
+            fullname, LOG_ERR, flags, dentry)
 
-#define fdir_client_stat_dentry_by_pname(client_ctx, ns, pname, dentry) \
-    fdir_client_stat_dentry_by_pname_ex(client_ctx, ns, pname, LOG_ERR, dentry)
+#define fdir_client_stat_dentry_by_pname(client_ctx, ns, pname, flags, dentry) \
+    fdir_client_stat_dentry_by_pname_ex(client_ctx, \
+            ns, pname, LOG_ERR, flags, dentry)
 
 #define fdir_client_get_xattr_by_path(client_ctx, fullname, name, value, size) \
     fdir_client_get_xattr_by_path_ex(client_ctx, \
@@ -193,15 +195,16 @@ int fdir_client_lookup_inode_by_pname_ex(FDIRClientContext *client_ctx,
         const int enoent_log_level, int64_t *inode);
 
 int fdir_client_stat_dentry_by_path_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int enoent_log_level,
-        FDIRDEntryInfo *dentry);
+        const FDIRDEntryFullName *fullname, const int flags,
+        const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_stat_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
-        const int enoent_log_level, FDIRDEntryInfo *dentry);
+        const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, FDIRDEntryInfo *dentry);
+        const string_t *ns, const int64_t inode,
+        const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, string_t *link, const int size);

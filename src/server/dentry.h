@@ -66,6 +66,8 @@ extern "C" {
     int dentry_get_full_path(const FDIRServerDentry *dentry,
             BufferInfo *full_path, SFErrorInfo *error_info);
 
+    int dentry_resolve_symlink(FDIRServerDentry **dentry);
+
     int dentry_list(FDIRServerDentry *dentry, PointerArray **parray);
 
     static inline int dentry_list_by_path(const FDIRDEntryFullName *fullname,

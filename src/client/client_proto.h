@@ -183,15 +183,15 @@ int fdir_client_proto_lookup_inode_by_pname(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        const int enoent_log_level, FDIRDEntryInfo *dentry);
+        const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
-        FDIRDEntryInfo *dentry);
+        const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_stat_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const FDIRDEntryPName *pname,
-        const int enoent_log_level, FDIRDEntryInfo *dentry);
+        const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_readlink_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,

@@ -14,11 +14,7 @@
  */
 
 
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <limits.h>
+#include <sys/param.h>
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/hash.h"
@@ -626,6 +622,82 @@ static int dentry_find_parent_and_me(const FDIRDEntryFullName *fullname,
     }
 
     return find_child((*ns_entry)->thread_ctx, *parent, my_name, me);
+}
+
+int dentry_resolve_symlink(FDIRServerDentry **dentry)
+{
+    FDIRPathInfo path_info;
+    FDIRNamespaceEntry *ns_entry;
+    char buff[PATH_MAX];
+    BufferInfo buffer;
+    char path1[PATH_MAX];
+    char path2[PATH_MAX];
+    char *full_paths[2];
+    char *full_fname;
+    SFErrorInfo error_info;
+    string_t path;
+    int result;
+    int loop;
+
+    ns_entry = (*dentry)->ns_entry;
+    if (ns_entry->current.root.ptr == NULL) {
+        *dentry = NULL;
+        return ENOENT;
+    }
+
+    *(error_info.message) = '\0';
+    buffer.buff = buff;
+    buffer.alloc_size = sizeof(buff);
+    path.str = NULL;
+    full_paths[0] = path1;
+    full_paths[1] = path2;
+    loop = 0;
+
+    do {
+        if (*(*dentry)->link.str == '/') {
+            path = (*dentry)->link;
+        } else {
+            if (path.str == NULL) {
+                if ((result=dentry_get_full_path(*dentry,
+                                &buffer, &error_info)) != 0)
+                {
+                    logError("file: "__FILE__", line: %d, "
+                            "get dentry path fail, error info: %s",
+                            __LINE__, error_info.message);
+                    *dentry = NULL;
+                    return result;
+                }
+
+                path.str = buffer.buff;
+            }
+
+            full_fname = full_paths[loop % 2];
+            path.len = normalize_path(path.str,
+                    (*dentry)->link.str,
+                    full_fname, PATH_MAX);
+            path.str = full_fname;
+        }
+
+        path_info.count = split_string_ex(&path, '/',
+                path_info.paths, FDIR_MAX_PATH_COUNT, true);
+        if (path_info.count == 0) {
+            *dentry = ns_entry->current.root.ptr;
+            return 0;
+        }
+
+        if ((result=do_find_ex(ns_entry, path_info.paths,
+                        path_info.count, dentry)) != 0)
+        {
+            return result;
+        }
+
+        if (!S_ISLNK((*dentry)->stat.mode)) {
+            return 0;
+        }
+    } while (++loop < MAXSYMLINKS);
+
+    *dentry = NULL;
+    return ELOOP;
 }
 
 static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
@@ -1325,8 +1397,8 @@ int dentry_list(FDIRServerDentry *dentry, PointerArray **parray)
     return 0;
 }
 
-int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
-        SFErrorInfo *error_info)
+int dentry_get_full_path(const FDIRServerDentry *dentry,
+        BufferInfo *full_path, SFErrorInfo *error_info)
 {
     FDIRServerDentry *current;
     string_t *parts[FDIR_MAX_PATH_COUNT];
@@ -1348,7 +1420,9 @@ int dentry_get_full_path(const FDIRServerDentry *dentry, BufferInfo *full_path,
 
     p = full_path->buff;
     for (i=count-1; i>=0; i--) {
-        if ((p - full_path->buff) + parts[i]->len + 2 > full_path->alloc_size) {
+        if ((p - full_path->buff) + parts[i]->len + 2 >
+                full_path->alloc_size)
+        {
             error_info->length = sprintf(error_info->message,
                 "path length exceeds buff size: %d",
                 full_path->alloc_size);

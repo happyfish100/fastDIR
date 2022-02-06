@@ -27,6 +27,7 @@
 static void usage(char *argv[])
 {
     fprintf(stderr, "Usage: %s [-c config_filename=%s] "
+            "[-l for follow_symlink] "
             "<-n namespace> <path>\n", argv[0],
             FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
@@ -76,6 +77,7 @@ int main(int argc, char *argv[])
     const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
+    int flags;
     char *ns;
     char *path;
     FDIRDEntryFullName fullname;
@@ -87,8 +89,9 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    flags = 0;
     ns = NULL;
-    while ((ch=getopt(argc, argv, "hc:n:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:n:l:")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -98,6 +101,9 @@ int main(int argc, char *argv[])
                 break;
             case 'c':
                 config_filename = optarg;
+                break;
+            case 'l':
+                flags |= FDIR_FLAGS_FOLLOW_SYMLINK;
                 break;
             default:
                 usage(argv);
@@ -123,7 +129,7 @@ int main(int argc, char *argv[])
     }
 
     if ((result=fdir_client_stat_dentry_by_path(&g_fdir_client_vars.
-                    client_ctx, &fullname, &dentry)) != 0)
+                    client_ctx, &fullname, flags, &dentry)) != 0)
     {
         return result;
     }

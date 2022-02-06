@@ -67,7 +67,7 @@
 #define RENAME_EXCHANGE     (1 << 1)
 #endif
 
-#define FDIR_PROTO_FLAGS_FOLLOW_SYMLINK    (1 << 0)
+#define FDIR_FLAGS_FOLLOW_SYMLINK    (1 << 0)
 
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')

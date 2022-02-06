@@ -314,6 +314,21 @@ typedef struct fdir_proto_stat_dentry_front {
     char flags[4];
 } FDIRProtoStatDEntryFront;
 
+typedef struct fdir_proto_stat_dentry_req {
+    FDIRProtoStatDEntryFront front;
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoStatDEntryReq;
+
+typedef struct fdir_proto_stat_dentry_by_inode_req {
+    FDIRProtoStatDEntryFront front;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoStatDEntryByInodeReq;
+
+typedef struct fdir_proto_stat_dentry_by_pname_req {
+    FDIRProtoStatDEntryFront front;
+    FDIRProtoDEntryByPName pname;
+} FDIRProtoStatDEntryByPNameReq;
+
 typedef struct fdir_proto_stat_dentry_resp {
     char inode[8];
     FDIRProtoDEntryStat stat;

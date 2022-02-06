@@ -83,6 +83,7 @@ static void output_dentry_stat(FDIRDEntryInfo *dentry)
 static void *thread_func(void *args)
 {
     const bool publish = false;
+    const int flags = 0;
     long thread_index;
     FDIRClientContext client_ctx;
     FCFSAuthClientContext auth_ctx;
@@ -135,7 +136,7 @@ static void *thread_func(void *args)
         }
 
         if ((result=fdir_client_stat_dentry_by_inode(&client_ctx,
-                        &poolname, inode, &dentry)) != 0)
+                        &poolname, inode, flags, &dentry)) != 0)
         {
             break;
         }

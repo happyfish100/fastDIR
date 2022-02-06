@@ -13,18 +13,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
@@ -1094,18 +1082,29 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                         record->me.pname.parent_inode, &record->
                         me.pname.name, &record->me.dentry);
             } else {
-                result = dentry_find(&record->me.fullname, &record->me.dentry);
+                result = dentry_find(&record->me.fullname,
+                        &record->me.dentry);
             }
 
             if (result == 0) {
-                if (record->operation == SERVICE_OP_GET_XATTR_INT) {
-                    result = inode_index_get_xattr(record->me.dentry,
-                            &record->xattr.key, &record->xattr.value);
-                } else if (record->operation == SERVICE_OP_LIST_XATTR_INT) {
-                    if (STORAGE_ENABLED) {
-                        result = dentry_load_xattr(thread_ctx,
-                                record->me.dentry);
-                    }
+                switch (record->operation) {
+                    case SERVICE_OP_STAT_DENTRY_INT:
+                        if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
+                                S_ISLNK(record->me.dentry->stat.mode))
+                        {
+                            result = dentry_resolve_symlink(&record->me.dentry);
+                        }
+                        break;
+                    case SERVICE_OP_GET_XATTR_INT:
+                        result = inode_index_get_xattr(record->me.dentry,
+                                &record->xattr.key, &record->xattr.value);
+                        break;
+                    case SERVICE_OP_LIST_XATTR_INT:
+                        if (STORAGE_ENABLED) {
+                            result = dentry_load_xattr(thread_ctx,
+                                    record->me.dentry);
+                        }
+                        break;
                 }
             }
 
