@@ -1499,10 +1499,10 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 }
 
 #define init_record_for_create(task, mode) \
-    init_record_for_create_ex(task, mode, false)
+    init_record_for_create_ex(task, mode, 0, false)
 
 static void init_record_for_create_ex(struct fast_task_info *task,
-        const int mode, const bool is_hdlink)
+        const int mode, const int size, const bool is_hdlink)
 {
     if (is_hdlink) {
         RECORD->stat.mode = FDIR_SET_DENTRY_HARD_LINK((mode & (~S_IFMT)));
@@ -1515,7 +1515,7 @@ static void init_record_for_create_ex(struct fast_task_info *task,
                 REQUEST.body)->uid);
     RECORD->stat.gid = buff2int(((FDIRProtoCreateDEntryFront *)
                 REQUEST.body)->gid);
-    RECORD->stat.size = 0;
+    RECORD->stat.size = size;
     RECORD->stat.atime = RECORD->stat.btime = RECORD->stat.ctime =
         RECORD->stat.mtime = g_current_time;
     RECORD->options.atime = RECORD->options.btime = RECORD->options.ctime =
@@ -1774,7 +1774,7 @@ static int parse_symlink_dentry_front(struct fast_task_info *task,
 static inline void init_record_for_symlink(struct fast_task_info *task,
         const string_t *link, const int mode)
 {
-    init_record_for_create(task, mode);
+    init_record_for_create_ex(task, mode, link->len, false);
     RECORD->link = *link;
     RECORD->options.link = 1;
 }
@@ -1857,7 +1857,7 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             RECORD->hdlink.dest.pname.name.str);
             */
 
-    init_record_for_create_ex(task, mode, true);
+    init_record_for_create_ex(task, mode, 0, true);
     RECORD->options.src_inode = 1;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
