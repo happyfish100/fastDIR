@@ -67,6 +67,7 @@
 #define RENAME_EXCHANGE     (1 << 1)
 #endif
 
+#define FDIR_FOLLOW_SYMLINK_MAX      10
 #define FDIR_FLAGS_FOLLOW_SYMLINK    (1 << 0)
 
 #define FDIR_IS_ROOT_PATH(path) \

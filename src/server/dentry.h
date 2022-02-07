@@ -22,9 +22,16 @@
 #include "data_thread.h"
 #include "db/dentry_lru.h"
 
+#define FDIR_SET_HARD_LINK_DENTRY(dentry)  \
+    do { \
+        if (FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode)) {  \
+            dentry = (dentry)->src_dentry;  \
+        } \
+    } while (0)
+
 #define FDIR_GET_REAL_DENTRY(dentry)  \
-    FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
-    (dentry)->src_dentry : dentry
+    (FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode) ? \
+    (dentry)->src_dentry : dentry)
 
 #ifdef __cplusplus
 extern "C" {

@@ -146,12 +146,14 @@ int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
 int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, const int flags,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const int64_t src_inode,
         const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
+        const FDIRClientOwnerModePair *omp, const int flags,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,

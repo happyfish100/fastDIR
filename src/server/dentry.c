@@ -14,7 +14,6 @@
  */
 
 
-#include <sys/param.h>
 #include "fastcommon/shared_func.h"
 #include "fastcommon/logger.h"
 #include "fastcommon/hash.h"
@@ -35,13 +34,6 @@ typedef struct {
 } StringHolderPtrPair;
 
 const int max_level_count = 20;
-
-#define SET_HARD_LINK_DENTRY(dentry)  \
-    do { \
-        if (FDIR_IS_DENTRY_HARD_LINK((dentry)->stat.mode)) {  \
-            dentry = (dentry)->src_dentry;  \
-        } \
-    } while (0)
 
 static int dentry_init_obj_with_db(FDIRServerDentry *dentry, void *init_args)
 {
@@ -680,21 +672,17 @@ int dentry_resolve_symlink(FDIRServerDentry **dentry)
 
         path_info.count = split_string_ex(&path, '/',
                 path_info.paths, FDIR_MAX_PATH_COUNT, true);
-        if (path_info.count == 0) {
-            *dentry = ns_entry->current.root.ptr;
-            return 0;
-        }
-
         if ((result=do_find_ex(ns_entry, path_info.paths,
                         path_info.count, dentry)) != 0)
         {
             return result;
         }
 
+        FDIR_SET_HARD_LINK_DENTRY(*dentry);
         if (!S_ISLNK((*dentry)->stat.mode)) {
             return 0;
         }
-    } while (++loop < MAXSYMLINKS);
+    } while (++loop < FDIR_FOLLOW_SYMLINK_MAX);
 
     *dentry = NULL;
     return ELOOP;
@@ -1345,7 +1333,7 @@ int dentry_find_ex(const FDIRDEntryFullName *fullname,
     }
 
     if (hdlink_follow) {
-        SET_HARD_LINK_DENTRY(*dentry);
+        FDIR_SET_HARD_LINK_DENTRY(*dentry);
     }
     return 0;
 }
@@ -1358,7 +1346,7 @@ int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
     if ((result=find_child(parent->ns_entry->thread_ctx,
                     parent, name, dentry)) == 0)
     {
-        SET_HARD_LINK_DENTRY(*dentry);
+        FDIR_SET_HARD_LINK_DENTRY(*dentry);
     }
     return result;
 }

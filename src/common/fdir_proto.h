@@ -179,7 +179,13 @@ typedef struct fdir_proto_name_info {
 } FDIRProtoNameInfo;
 
 typedef struct fdir_proto_create_dentry_front {
-    char rdev[8];   /* device ID for special file */
+    union {
+        char rdev[8]; /* for create dentry, device ID for special file */
+        struct {
+            char flags[4];  /* for hdlink */
+            char padding[4];
+        };
+    };
     char mode[4];
     char uid[4];
     char gid[4];

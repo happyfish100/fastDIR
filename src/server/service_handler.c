@@ -1855,7 +1855,7 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
 }
 
 static int do_hdlink_dentry(struct fast_task_info *task,
-        const int mode, const int resp_cmd)
+        const int mode, const int flags, const int resp_cmd)
 {
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -1868,6 +1868,7 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             */
 
     init_record_for_create_ex(task, mode, 0, true);
+    RECORD->flags = flags;
     RECORD->options.src_inode = 1;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
@@ -1876,6 +1877,7 @@ static int do_hdlink_dentry(struct fast_task_info *task,
 static int service_deal_hdlink_dentry(struct fast_task_info *task)
 {
     FDIRDEntryFullName src_fullname;
+    FDIRProtoCreateDEntryFront *front;
     int mode;
     int result;
 
@@ -1918,13 +1920,14 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     }
 
     RECORD->hdlink.src.fullname = src_fullname;
-    mode = buff2int(((FDIRProtoCreateDEntryFront *)REQUEST.body)->mode);
-    return do_hdlink_dentry(task, mode,
+    front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
+    mode = buff2int(front->mode);
+    return do_hdlink_dentry(task, mode, buff2int(front->flags),
             FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
 }
 
 static int parse_hdlink_dentry_front(struct fast_task_info *task,
-        int64_t *src_inode, int *mode)
+        int64_t *src_inode, int *mode, int *flags)
 {
     FDIRProtoHDlinkByPNameFront *front;
 
@@ -1938,6 +1941,7 @@ static int parse_hdlink_dentry_front(struct fast_task_info *task,
     front = (FDIRProtoHDlinkByPNameFront *)REQUEST.body;
     *src_inode = buff2long(front->src_inode);
     *mode = buff2int(front->common.mode);
+    *flags = buff2int(front->common.flags);
     return 0;
 }
 
@@ -1945,9 +1949,12 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
 {
     int result;
     int mode;
+    int flags;
     int64_t src_inode;
 
-    if ((result=parse_hdlink_dentry_front(task, &src_inode, &mode)) != 0) {
+    if ((result=parse_hdlink_dentry_front(task, &src_inode,
+                    &mode, &flags)) != 0)
+    {
         return result;
     }
 
@@ -1958,7 +1965,7 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
     }
 
     RECORD->hdlink.src.inode = src_inode;
-    return do_hdlink_dentry(task, mode,
+    return do_hdlink_dentry(task, mode, flags,
             FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 

@@ -380,6 +380,8 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
         {
             return result;
         }
+
+        FDIR_SET_HARD_LINK_DENTRY(record->hdlink.src.dentry);
         record->hdlink.src.inode = record->hdlink.src.dentry->inode;
     } else {
         if ((result=inode_index_get_dentry(thread_ctx, record->hdlink.
@@ -387,6 +389,18 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
         {
             return result;
         }
+    }
+
+    if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
+            S_ISLNK(record->hdlink.src.dentry->stat.mode))
+    {
+        if ((result=dentry_resolve_symlink(&record->
+                        hdlink.src.dentry)) != 0)
+        {
+            return result;
+        }
+
+        record->hdlink.src.inode = record->hdlink.src.dentry->inode;
     }
 
     if (S_ISDIR(record->hdlink.src.dentry->stat.mode) ||

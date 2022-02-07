@@ -251,16 +251,20 @@ static inline int do_update_dentry(FDIRClientContext *client_ctx,
     return result;
 }
 
-#define CLIENT_PROTO_SET_OMP(omp, proto_front) \
+#define CLIENT_PROTO_SET_OMP(omp, front) \
     do { \
-        int2buff(omp->uid, proto_front.uid);   \
-        int2buff(omp->gid, proto_front.gid);   \
-        int2buff(omp->mode, proto_front.mode); \
+        int2buff(omp->uid, front.uid);   \
+        int2buff(omp->gid, front.gid);   \
+        int2buff(omp->mode, front.mode); \
     } while (0)
 
-#define CLIENT_PROTO_SET_CREATE_FRONT(omp, _rdev, proto_front) \
-    CLIENT_PROTO_SET_OMP(omp, proto_front); \
-    long2buff(_rdev, proto_front.rdev)
+#define CLIENT_PROTO_SET_CREATE_FRONT(omp, _rdev, front) \
+    CLIENT_PROTO_SET_OMP(omp, front); \
+    long2buff(_rdev, front.rdev)
+
+#define CLIENT_PROTO_SET_LINK_FRONT(omp, _flags, front) \
+    CLIENT_PROTO_SET_OMP(omp, front); \
+    int2buff(_flags, front.flags)
 
 int fdir_client_proto_create_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
@@ -357,7 +361,8 @@ int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
 int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry)
+        const FDIRClientOwnerModePair *omp, const int flags,
+        FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoHDLinkDEntry *req;
@@ -367,7 +372,8 @@ int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_dentry(src, &req->src)) != 0) {
         return result;
     }
@@ -378,7 +384,7 @@ int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
         return result;
     }
 
-    CLIENT_PROTO_SET_OMP(omp, req->front);
+    CLIENT_PROTO_SET_LINK_FRONT(omp, flags, req->front);
     out_bytes = ((char *)(dest_pentry + 1) + dest->ns.len +
             dest->path.len) - out_buff;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_DENTRY_REQ,
@@ -392,7 +398,7 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const int64_t src_inode, const string_t *ns,
         const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
-        FDIRDEntryInfo *dentry)
+        const int flags, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoHDLinkDEntryByPName *req;
@@ -401,12 +407,13 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_pname(ns, pname, &req->dest)) != 0) {
         return result;
     }
 
-    CLIENT_PROTO_SET_OMP(omp, req->front.common);
+    CLIENT_PROTO_SET_LINK_FRONT(omp, flags, req->front.common);
     long2buff(src_inode, req->front.src_inode);
     out_bytes += ns->len + pname->name.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_REQ,
