@@ -1408,7 +1408,7 @@ int dentry_get_full_path(const FDIRServerDentry *dentry,
 
     p = full_path->buff;
     for (i=count-1; i>=0; i--) {
-        if ((p - full_path->buff) + parts[i]->len + 2 >
+        if ((p - full_path->buff) + parts[i]->len + 4 >
                 full_path->alloc_size)
         {
             error_info->length = sprintf(error_info->message,
@@ -1420,6 +1420,10 @@ int dentry_get_full_path(const FDIRServerDentry *dentry,
         *p++ = '/';
         memcpy(p, parts[i]->str, parts[i]->len);
         p += parts[i]->len;
+    }
+
+    if (S_ISDIR(dentry->stat.mode)) {
+        *p++ = '/';
     }
 
     *p = '\0';

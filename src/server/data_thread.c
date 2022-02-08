@@ -381,7 +381,6 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
             return result;
         }
 
-        FDIR_SET_HARD_LINK_DENTRY(record->hdlink.src.dentry);
         record->hdlink.src.inode = record->hdlink.src.dentry->inode;
     } else {
         if ((result=inode_index_get_dentry(thread_ctx, record->hdlink.
@@ -867,6 +866,62 @@ static int push_batch_set_dsize_to_db_update_queue(FDIRDataThreadContext
     return 0;
 }
 
+static inline void update_dentry_stat(FDIRServerDentry *dentry,
+        const FDIRBinlogRecord *record)
+{
+    if (record->options.mode) {
+        dentry->stat.mode = record->stat.mode;
+    }
+    if (record->options.atime) {
+        dentry->stat.atime = record->stat.atime;
+    }
+    if (record->options.ctime) {
+        dentry->stat.ctime = record->stat.ctime;
+    }
+    if (record->options.mtime) {
+        dentry->stat.mtime = record->stat.mtime;
+    }
+    if (record->options.uid) {
+        dentry->stat.uid = record->stat.uid;
+    }
+    if (record->options.gid) {
+        dentry->stat.gid = record->stat.gid;
+    }
+    if (record->options.size) {
+        dentry->stat.size = record->stat.size;
+    }
+    if (record->options.space_end) {
+        dentry->stat.space_end = record->stat.space_end;
+    }
+    if (record->options.inc_alloc) {
+        dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
+    }
+}
+
+static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+
+    if (record->dentry_type == fdir_dentry_type_inode) {
+        if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                        &record->me.dentry)) != 0)
+        {
+            return result;
+        }
+    } else {
+        if ((result=dentry_find(&record->me.fullname,
+                        &record->me.dentry)) != 0)
+        {
+            return result;
+        }
+        record->inode = record->me.dentry->inode;
+    }
+
+    update_dentry_stat(record->me.dentry, record);
+    return 0;
+}
+
 static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -918,7 +973,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             result = deal_record_rename_op(thread_ctx, record);
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:
-            result = inode_index_update_dentry(thread_ctx, record);
+            result = deal_update_dentry(thread_ctx, record);
             ignore_errno = 0;
             break;
         case BINLOG_OP_SET_XATTR_INT:

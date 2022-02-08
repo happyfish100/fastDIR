@@ -2661,72 +2661,60 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     return push_batch_set_dsize_to_data_thread_queue(task);
 }
 
-static int service_deal_modify_dentry_stat(struct fast_task_info *task)
+static int deal_modify_dentry_stat(struct fast_task_info *task,
+        const int resp_cmd)
 {
-    FDIRProtoModifyDentryStatReq *req;
-    FDIRDEntryStat stat;
-    int64_t inode;
+    FDIRProtoModifyStatFront *front;
     int64_t flags;
-    int64_t masked_flags;
-    int result;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP;
-    if ((result=server_check_body_length(
-                    sizeof(FDIRProtoModifyDentryStatReq) + 1,
-                    sizeof(FDIRProtoModifyDentryStatReq) + NAME_MAX)) != 0)
-    {
-        return result;
-    }
-
-    req = (FDIRProtoModifyDentryStatReq *)REQUEST.body;
-    if (req->ns_len <= 0) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "namespace length: %d is invalid which <= 0",
-                req->ns_len);
-        return EINVAL;
-    }
-    if (sizeof(FDIRProtoModifyDentryStatReq) + req->ns_len !=
-            REQUEST.header.body_len)
-    {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d",
-                REQUEST.header.body_len, (int)sizeof(
-                    FDIRProtoModifyDentryStatReq) + req->ns_len);
-        return EINVAL;
-    }
-
-    inode = buff2long(req->inode);
-    flags = buff2long(req->mflags);
-    masked_flags = (flags & dstat_mflags_mask);
-
-    if (masked_flags == 0) {
+    front = (FDIRProtoModifyStatFront *)REQUEST.body;
+    flags = buff2long(front->mflags);
+    RECORD->options.flags = (flags & dstat_mflags_mask);
+    if (RECORD->options.flags == 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "invalid flags: %"PRId64, flags);
+        free_record_object(task);
         return EINVAL;
-    }
-
-    fdir_proto_unpack_dentry_stat(&req->stat, &stat);
-
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
     }
 
     /*
     logInfo("file: "__FILE__", line: %d, "
             "flags: %"PRId64" (0x%llX), masked_flags: %"PRId64", result: %d",
-            __LINE__, flags, flags, masked_flags, result);
+            __LINE__, flags, flags, RECORD->options.flags, result);
             */
 
-
-    RECORD->dentry_type = fdir_dentry_type_inode;
-    RECORD->data_version = 0;
-    RECORD->inode = inode;
-    RECORD->options.flags = masked_flags;
-    RECORD->stat = stat;
-    FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
-    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    fdir_proto_unpack_dentry_stat(&front->stat, &RECORD->stat);
     RECORD->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+    RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
+}
+
+static int service_deal_modify_stat_by_inode(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_parse_inode_for_update(task,
+                    sizeof(FDIRProtoModifyStatFront))) != 0)
+    {
+        return result;
+    }
+
+    return deal_modify_dentry_stat(task,
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP);
+}
+
+static int service_deal_modify_stat_by_path(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_parse_dentry_for_update(task,
+                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
+    {
+        return result;
+    }
+
+    return deal_modify_dentry_stat(task,
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP);
 }
 
 static inline int service_check_readable(struct fast_task_info *task)
@@ -3273,7 +3261,8 @@ static int service_check_priv(struct fast_task_info *task)
         case FDIR_SERVICE_PROTO_RENAME_BY_PNAME_REQ:
         case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_REQ:
         case FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_REQ:
-        case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ:
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_REQ:
         case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
         case FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_REQ:
         case FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ:
@@ -3383,10 +3372,14 @@ static int service_process(struct fast_task_info *task)
             return service_process_update(task,
                     service_deal_batch_set_dentry_size,
                     FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP);
-        case FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ:
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ:
             return service_process_update(task,
-                    service_deal_modify_dentry_stat,
-                    FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP);
+                    service_deal_modify_stat_by_inode,
+                    FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP);
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_REQ:
+            return service_process_update(task,
+                    service_deal_modify_stat_by_path,
+                    FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP);
         case FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ:
             return service_process_update(task,
                     service_deal_set_xattr_by_path,

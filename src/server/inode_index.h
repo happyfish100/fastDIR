@@ -46,9 +46,6 @@ extern "C" {
     int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
-    int inode_index_update_dentry(FDIRDataThreadContext *thread_ctx,
-            FDIRBinlogRecord *record);
-
     int inode_index_set_xattr(FDIRServerDentry *dentry,
             const FDIRBinlogRecord *record);
 

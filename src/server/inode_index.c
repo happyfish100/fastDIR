@@ -346,53 +346,6 @@ int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static void update_dentry(FDIRServerDentry *dentry,
-        const FDIRBinlogRecord *record)
-{
-    if (record->options.mode) {
-        dentry->stat.mode = record->stat.mode;
-    }
-    if (record->options.atime) {
-        dentry->stat.atime = record->stat.atime;
-    }
-    if (record->options.ctime) {
-        dentry->stat.ctime = record->stat.ctime;
-    }
-    if (record->options.mtime) {
-        dentry->stat.mtime = record->stat.mtime;
-    }
-    if (record->options.uid) {
-        dentry->stat.uid = record->stat.uid;
-    }
-    if (record->options.gid) {
-        dentry->stat.gid = record->stat.gid;
-    }
-    if (record->options.size) {
-        dentry->stat.size = record->stat.size;
-    }
-    if (record->options.space_end) {
-        dentry->stat.space_end = record->stat.space_end;
-    }
-    if (record->options.inc_alloc) {
-        dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
-    }
-}
-
-int inode_index_update_dentry(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
-{
-    int result;
-
-    if ((result=inode_index_get_dentry(thread_ctx, record->inode,
-                    &record->me.dentry)) != 0)
-    {
-        return result;
-    }
-
-    update_dentry(record->me.dentry, record);
-    return 0;
-}
-
 static int get_xattr(FDIRServerDentry *dentry, const string_t *name,
         key_value_pair_t **kv)
 {

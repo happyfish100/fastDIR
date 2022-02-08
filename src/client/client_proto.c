@@ -1064,36 +1064,66 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
     return result;
 }
 
-int fdir_client_proto_modify_dentry_stat(FDIRClientContext *client_ctx,
+#define CLIENT_PROTO_SET_MODIFY_STAT_FRONT(front) \
+    long2buff(flags, front.mflags);  \
+    fdir_proto_pack_dentry_stat(stat, &front.stat)
+
+int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const int64_t inode, const int64_t flags,
         const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
-    FDIRProtoModifyDentryStatReq *req;
+    FDIRProtoModifyStatByInodeReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_UPDATE_EXTRA_BODY_SIZE +
-        sizeof(FDIRProtoModifyDentryStatReq) + NAME_MAX];
+        sizeof(FDIRProtoModifyStatByInodeReq) + NAME_MAX];
     int out_bytes;
+    int result;
 
-    if (ns->len <= 0 || ns->len > NAME_MAX) {
-        logError("file: "__FILE__", line: %d, "
-                "invalid namespace length: %d, which <= 0 or > %d",
-                __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_inode_info(
+                    ns, inode, &req->ino)) != 0)
+    {
+        return result;
     }
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
-    long2buff(inode, req->inode);
-    long2buff(flags, req->mflags);
-    req->ns_len = ns->len;
-    memcpy(req->ns_str, ns->str, ns->len);
-    fdir_proto_pack_dentry_stat(stat, &req->stat);
+    CLIENT_PROTO_SET_MODIFY_STAT_FRONT(req->front);
     out_bytes += ns->len;
-    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_REQ,
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_MODIFY_DENTRY_STAT_RESP, dentry);
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry);
+}
+
+int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const uint64_t req_id,
+        const FDIRDEntryFullName *fullname, const int64_t flags,
+        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoModifyStatByPathReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_UPDATE_EXTRA_BODY_SIZE +
+        sizeof(FDIRProtoModifyStatByPathReq) + NAME_MAX];
+    int out_bytes;
+    int result;
+
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
+    if ((result=client_check_set_proto_dentry(fullname,
+                    &req->dentry)) != 0)
+    {
+        return result;
+    }
+
+
+    CLIENT_PROTO_SET_MODIFY_STAT_FRONT(req->front);
+    out_bytes += fullname->ns.len + fullname->path.len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP, dentry);
 }
 
 int fdir_client_init_session(FDIRClientContext *client_ctx,
