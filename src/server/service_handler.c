@@ -2665,22 +2665,23 @@ static int deal_modify_dentry_stat(struct fast_task_info *task,
         const int resp_cmd)
 {
     FDIRProtoModifyStatFront *front;
-    int64_t flags;
+    int64_t mflags;
 
     front = (FDIRProtoModifyStatFront *)REQUEST.body;
-    flags = buff2long(front->mflags);
-    RECORD->options.flags = (flags & dstat_mflags_mask);
+    mflags = buff2long(front->mflags);
+    RECORD->options.flags = (mflags & dstat_mflags_mask);
     if (RECORD->options.flags == 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "invalid flags: %"PRId64, flags);
+                "invalid modify flags: %"PRId64, mflags);
         free_record_object(task);
         return EINVAL;
     }
+    RECORD->flags = buff2int(front->flags);
 
     /*
     logInfo("file: "__FILE__", line: %d, "
             "flags: %"PRId64" (0x%llX), masked_flags: %"PRId64", result: %d",
-            __LINE__, flags, flags, RECORD->options.flags, result);
+            __LINE__, mflags, mflags, RECORD->options.flags, result);
             */
 
     fdir_proto_unpack_dentry_stat(&front->stat, &RECORD->stat);

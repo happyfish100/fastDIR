@@ -218,13 +218,13 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry);
+        const string_t *ns, const int64_t inode, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry);
+        const FDIRDEntryFullName *fullname, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
         const int64_t inode, const int operation, const int64_t offset,

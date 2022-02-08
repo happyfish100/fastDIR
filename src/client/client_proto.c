@@ -1065,13 +1065,14 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
 }
 
 #define CLIENT_PROTO_SET_MODIFY_STAT_FRONT(front) \
-    long2buff(flags, front.mflags);  \
+    long2buff(mflags, front.mflags); \
+    int2buff(flags, front.flags);    \
     fdir_proto_pack_dentry_stat(stat, &front.stat)
 
 int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
+        const string_t *ns, const int64_t inode, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoModifyStatByInodeReq *req;
@@ -1099,8 +1100,8 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
+        const FDIRDEntryFullName *fullname, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoModifyStatByPathReq *req;
@@ -1116,7 +1117,6 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
     {
         return result;
     }
-
 
     CLIENT_PROTO_SET_MODIFY_STAT_FRONT(req->front);
     out_bytes += fullname->ns.len + fullname->path.len;

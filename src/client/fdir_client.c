@@ -162,25 +162,25 @@ int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_modify_stat_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
+        const string_t *ns, const int64_t inode, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_modify_stat_by_inode,
-            ns, inode, flags, stat, dentry);
+            ns, inode, mflags, stat, flags, dentry);
 }
 
 int fdir_client_modify_stat_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int64_t flags,
-        const FDIRDEntryStat *stat, FDIRDEntryInfo *dentry)
+        const FDIRDEntryFullName *fullname, const int64_t mflags,
+        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_modify_stat_by_path,
-            fullname, flags, stat, dentry);
+            fullname, mflags, stat, flags, dentry);
 }
 
 int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,

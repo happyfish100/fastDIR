@@ -918,6 +918,15 @@ static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
         record->inode = record->me.dentry->inode;
     }
 
+    if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
+            S_ISLNK(record->me.dentry->stat.mode))
+    {
+        if ((result=dentry_resolve_symlink(&record->me.dentry)) != 0) {
+            return result;
+        }
+        record->inode = record->me.dentry->inode;
+    }
+
     update_dentry_stat(record->me.dentry, record);
     return 0;
 }

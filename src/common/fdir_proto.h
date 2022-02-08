@@ -308,7 +308,8 @@ typedef struct fdir_proto_dentry_stat {
 } FDIRProtoDEntryStat;
 
 typedef struct fdir_proto_modify_stat_front {
-    char mflags[8];
+    char mflags[8];  //modify flags
+    char flags[4];   //follow syslink flags
     FDIRProtoDEntryStat stat;
 } FDIRProtoModifyStatFront;
 
