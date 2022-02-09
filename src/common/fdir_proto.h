@@ -246,11 +246,17 @@ typedef struct fdir_proto_hdlink_dentry_by_pname {
     FDIRProtoDEntryByPName dest;
 } FDIRProtoHDLinkDEntryByPName;
 
+typedef struct fdir_proto_remove_dentry_front {
+    char flags[4];
+} FDIRProtoRemoveDEntryFront;
+
 typedef struct fdir_proto_remove_dentry {
+    FDIRProtoRemoveDEntryFront front;
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoRemoveDEntry;
 
 typedef struct fdir_proto_remove_dentry_by_pname {
+    FDIRProtoRemoveDEntryFront front;
     FDIRProtoDEntryByPName pname;
 } FDIRProtoRemoveDEntryByPName;
 

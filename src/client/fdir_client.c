@@ -96,24 +96,25 @@ int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
-{
-    const SFConnectionParameters *connection_params;
-
-    SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
-            GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_dentry_ex,
-            fullname, dentry);
-}
-
-int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const FDIRDEntryFullName *fullname, const int flags,
         FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_dentry_ex,
+            fullname, flags, dentry);
+}
+
+int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRDEntryPName *pname,
+        const int flags, FDIRDEntryInfo *dentry)
+{
+    const SFConnectionParameters *connection_params;
+
+    SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_dentry_by_pname_ex,
-            ns, pname, dentry);
+            ns, pname, flags, dentry);
 }
 
 int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,

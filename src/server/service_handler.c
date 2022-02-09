@@ -1969,30 +1969,41 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 
+static int deal_remove_dentry(struct fast_task_info *task, const int resp_cmd)
+{
+    FDIRProtoRemoveDEntryFront *front;
+
+    front = (FDIRProtoRemoveDEntryFront *)REQUEST.body;
+    RECORD->flags = buff2int(front->flags);
+    RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
+    RESPONSE.header.cmd = resp_cmd;
+    return push_update_to_data_thread_queue(task);
+}
+
 static int service_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_dentry_for_update(task, 0)) != 0) {
+    if ((result=server_parse_dentry_for_update(task,
+                    sizeof(FDIRProtoRemoveDEntryFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP;
-    return push_update_to_data_thread_queue(task);
+    return deal_remove_dentry(task, FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP);
 }
 
 static int service_deal_remove_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_update(task, 0)) != 0) {
+    if ((result=server_parse_pname_for_update(task,
+                    sizeof(FDIRProtoRemoveDEntryFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP;
-    return push_update_to_data_thread_queue(task);
+    return deal_remove_dentry(task, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP);
 }
 
 static inline void parse_rename_flags(struct fast_task_info *task)

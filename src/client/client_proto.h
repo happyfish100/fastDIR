@@ -157,12 +157,13 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry);
+        const FDIRDEntryFullName *fullname, const int flags,
+        FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const FDIRDEntryPName *pname,
-        FDIRDEntryInfo *dentry);
+        const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_rename_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,

@@ -334,7 +334,8 @@ int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, FDIRDEntryInfo *dentry)
+        const FDIRDEntryFullName *fullname, const int flags,
+        FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveDEntry *req;
@@ -343,12 +344,14 @@ int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_dentry(fullname,
                     &req->dentry)) != 0)
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ,
@@ -947,7 +950,7 @@ int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
 int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *ns, const FDIRDEntryPName *pname,
-        FDIRDEntryInfo *dentry)
+        const int flags, FDIRDEntryInfo *dentry)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveDEntryByPName *req;
@@ -956,10 +959,13 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_pname(ns, pname, &req->pname)) != 0) {
         return result;
     }
+
+    int2buff(flags, req->front.flags);
     out_bytes += ns->len + pname->name.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));

@@ -33,6 +33,7 @@ static void usage(char *argv[])
 
 int main(int argc, char *argv[])
 {
+    const int flags = 0;
     const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
@@ -82,5 +83,5 @@ int main(int argc, char *argv[])
     }
 
     return fdir_client_remove_dentry(&g_fdir_client_vars.
-            client_ctx, &fullname);
+            client_ctx, &fullname, flags);
 }
