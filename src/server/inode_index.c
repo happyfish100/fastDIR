@@ -15,7 +15,6 @@
 
 #include <limits.h>
 #include <sys/stat.h>
-#include <sys/xattr.h>
 #include "fastcommon/shared_func.h"
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/logger.h"
@@ -447,14 +446,14 @@ int inode_index_set_xattr(FDIRServerDentry *dentry,
     string_t value;
 
     if ((result=get_xattr(dentry, &record->xattr.key, &kv)) == 0) {
-        if ((record->flags & FDIR_SETXATTR_FLAGS_CREATE)) {
+        if ((record->flags & FDIR_FLAGS_XATTR_CREATE)) {
             return EEXIST;
         }
         new_create = false;
     } else if (result != ENODATA) {
         return result;
     } else {
-        if ((record->flags & FDIR_SETXATTR_FLAGS_REPLACE)) {
+        if ((record->flags & FDIR_FLAGS_XATTR_REPLACE)) {
             return result;
         }
 

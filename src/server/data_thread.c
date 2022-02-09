@@ -987,6 +987,16 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             break;
         case BINLOG_OP_SET_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
+                if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
+                        S_ISLNK(record->me.dentry->stat.mode))
+                {
+                    if ((result=dentry_resolve_symlink(&record->
+                                    me.dentry)) != 0)
+                    {
+                        break;
+                    }
+                    record->inode = record->me.dentry->inode;
+                }
                 result = inode_index_set_xattr(record->me.dentry, record);
             }
             ignore_errno = 0;
