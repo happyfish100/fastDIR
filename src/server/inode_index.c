@@ -447,14 +447,14 @@ int inode_index_set_xattr(FDIRServerDentry *dentry,
     string_t value;
 
     if ((result=get_xattr(dentry, &record->xattr.key, &kv)) == 0) {
-        if (record->flags == XATTR_CREATE) {
+        if ((record->flags & FDIR_SETXATTR_FLAGS_CREATE)) {
             return EEXIST;
         }
         new_create = false;
     } else if (result != ENODATA) {
         return result;
     } else {
-        if (record->flags == XATTR_REPLACE) {
+        if ((record->flags & FDIR_SETXATTR_FLAGS_REPLACE)) {
             return result;
         }
 
