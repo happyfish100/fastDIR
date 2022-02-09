@@ -798,7 +798,7 @@ static int server_check_and_parse_dentry(
     RECORD->dentry_type = fdir_dentry_type_fullname;
     RECORD->inode = 0;
     RECORD->ns = RECORD->me.fullname.ns;
-    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
+    RECORD->hash_code = fc_simple_hash(RECORD->ns.str, RECORD->ns.len);
     return 0;
 }
 
@@ -1620,7 +1620,7 @@ static int server_parse_pname_for_query_ex(struct fast_task_info *task,
         free_record_object(task);
         return result;
     }
-    RECORD->hash_code = simple_hash(RECORD->ns.str, RECORD->ns.len);
+    RECORD->hash_code = fc_simple_hash(RECORD->ns.str, RECORD->ns.len);
     RECORD->inode = 0;
 
     return 0;
@@ -1686,7 +1686,7 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
     RECORD->data_version = 0;
     RECORD->inode = inode;
     RECORD->ns = ns;
-    RECORD->hash_code = simple_hash(ns.str, ns.len);
+    RECORD->hash_code = fc_simple_hash(ns.str, ns.len);
     FC_SET_STRING_NULL(RECORD->me.pname.name);
     return 0;
 }
@@ -2493,7 +2493,7 @@ static inline int server_check_and_parse_inode_ex(
 
     RECORD->dentry_type = fdir_dentry_type_inode;
     FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
-    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->hash_code = fc_simple_hash(req->ns_str, req->ns_len);
     RECORD->inode = buff2long(req->inode);
     FC_SET_STRING_NULL(RECORD->me.pname.name);
     return 0;
@@ -2627,7 +2627,7 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
     init_record_by_dsize(RECORD, &dsize);
     RECORD->dentry_type = fdir_dentry_type_inode;
     FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
-    RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+    RECORD->hash_code = fc_simple_hash(req->ns_str, req->ns_len);
     RECORD->operation = SERVICE_OP_SET_DSIZE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP;
     return push_update_to_data_thread_queue(task);
@@ -2689,7 +2689,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
         return EBUSY;
     }
 
-    hash_code = simple_hash(rheader->ns_str, rheader->ns_len);
+    hash_code = fc_simple_hash(rheader->ns_str, rheader->ns_len);
     rbody = (FDIRProtoBatchSetDentrySizeReqBody *)
         (rheader->ns_str + rheader->ns_len);
     rbend = rbody + count;
@@ -2920,7 +2920,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = inode;
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
-    RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
+    RECORD->hash_code = fc_simple_hash(req->ino.ns_str, req->ino.ns_len);
     RECORD->options.blocked = ((operation & LOCK_NB) == 0 ? 1 : 0);
     RECORD->flock_params = params;
     RECORD->operation = SERVICE_OP_FLOCK_APPLY_INT;
@@ -3031,7 +3031,7 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
     RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = buff2long(req->ino.inode);
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
-    RECORD->hash_code = simple_hash(req->ino.ns_str, req->ino.ns_len);
+    RECORD->hash_code = fc_simple_hash(req->ino.ns_str, req->ino.ns_len);
     flags = buff2int(req->flags);
     RECORD->options.blocked = ((flags & LOCK_NB) == 0 ? 1 : 0);
     RECORD->operation = SERVICE_OP_SYS_LOCK_APPLY_INT;
@@ -3125,7 +3125,7 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
         init_record_by_dsize(RECORD, &dsize);
         RECORD->dentry_type = fdir_dentry_type_inode;
         FC_SET_STRING_EX(RECORD->ns, req->ns_str, req->ns_len);
-        RECORD->hash_code = simple_hash(req->ns_str, req->ns_len);
+        RECORD->hash_code = fc_simple_hash(req->ns_str, req->ns_len);
         RECORD->operation = SERVICE_OP_SYS_LOCK_RELEASE_INT;
         return push_update_to_data_thread_queue(task);
     } else {

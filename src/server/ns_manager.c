@@ -278,7 +278,7 @@ static FDIRNamespaceEntry *create_namespace(FDIRDataThreadContext *thread_ctx,
     FDIRNamespaceEntry **bucket; \
     unsigned int hash_code; \
     \
-    hash_code = simple_hash((ns)->str, (ns)->len);  \
+    hash_code = fc_simple_hash((ns)->str, (ns)->len);  \
     bucket = fdir_manager.hashtable.buckets + (hash_code) % \
         g_server_global_vars.namespace_hashtable_capacity
 
