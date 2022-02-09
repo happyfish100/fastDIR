@@ -1359,7 +1359,7 @@ static inline void pack_set_xattr_fields(const key_value_pair_t *xattr,
 {
     fields->name_len = xattr->key.len;
     short2buff(xattr->value.len, fields->value_len);
-    short2buff(flags, fields->flags);
+    int2buff(flags, fields->flags);
     memcpy(fields->name_str, xattr->key.str, xattr->key.len);
     memcpy(fields->name_str + xattr->key.len,
             xattr->value.str, xattr->value.len);
@@ -1457,7 +1457,7 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
 int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const
         FDIRDEntryFullName *fullname, const string_t *name,
-        const int enoattr_log_level)
+        const int flags, const int enoattr_log_level)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByPathReq *req;
@@ -1468,7 +1468,8 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
         return result;
     }
@@ -1479,6 +1480,7 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += name->len + fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ,
@@ -1498,7 +1500,8 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
-        const int64_t inode, const string_t *name, const int enoattr_log_level)
+        const int64_t inode, const string_t *name,
+        const int flags, const int enoattr_log_level)
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByInodeReq *req;
@@ -1509,7 +1512,8 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, req_id, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, req_id, out_bytes);
     if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
         return result;
     }
@@ -1520,6 +1524,7 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += name->len + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ,
@@ -1540,7 +1545,7 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const string_t *name, const int enoattr_log_level,
-        string_t *value, const int size)
+        string_t *value, const int size, const int flags)
 {
     FDIRProtoHeader *header;
     FDIRProtoGetXAttrByPathReq *req;
@@ -1563,6 +1568,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += name->len + fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ,
@@ -1585,7 +1591,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
 int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         const string_t *name, const int enoattr_log_level,
-        string_t *value, const int size)
+        string_t *value, const int size, const int flags)
 {
     FDIRProtoHeader *header;
     FDIRProtoGetXAttrByInodeReq *req;
@@ -1606,6 +1612,7 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     if ((result=client_check_set_proto_inode_info(ns, inode, ino)) != 0) {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += name->len + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ,
@@ -1627,10 +1634,10 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        string_t *list, const int size)
+        string_t *list, const int size, const int flags)
 {
     FDIRProtoHeader *header;
-    FDIRProtoDEntryInfo *proto_dentry;
+    FDIRProtoListXAttrByPathReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoListXAttrByPathReq) + NAME_MAX + PATH_MAX];
     SFResponseInfo response;
@@ -1638,12 +1645,13 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
-            header, proto_dentry, 0, out_bytes);
+            header, req, 0, out_bytes);
     if ((result=client_check_set_proto_dentry(fullname,
-                    proto_dentry)) != 0)
+                    &req->dentry)) != 0)
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ,
@@ -1663,20 +1671,24 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
-        string_t *list, const int size)
+        string_t *list, const int size, const int flags)
 {
     FDIRProtoHeader *header;
-    FDIRProtoInodeInfo *req;
+    FDIRProtoListXAttrByInodeReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
-        sizeof(FDIRProtoInodeInfo) + NAME_MAX];
+        sizeof(FDIRProtoListXAttrByInodeReq) + NAME_MAX];
     SFResponseInfo response;
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
-    if ((result=client_check_set_proto_inode_info(ns, inode, req)) != 0) {
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, 0, out_bytes);
+    if ((result=client_check_set_proto_inode_info(
+                    ns, inode, &req->ino)) != 0)
+    {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ,

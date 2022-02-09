@@ -208,24 +208,24 @@ int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_remove_xattr_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const string_t *name,
-        const int enoattr_log_level)
+        const int flags, const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_path,
-            fullname, name, enoattr_log_level);
+            fullname, name, flags, enoattr_log_level);
 }
 
 int fdir_client_remove_xattr_by_inode_ex(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const string_t *name,
-        const int enoattr_log_level)
+        const int flags, const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_inode,
-            ns, inode, name, enoattr_log_level);
+            ns, inode, name, flags, enoattr_log_level);
 }
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
@@ -334,35 +334,38 @@ int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
 
 int fdir_client_get_xattr_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const string_t *name,
-        const int enoattr_log_level, string_t *value, const int size)
+        const int enoattr_log_level, string_t *value,
+        const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_path,
-            fullname, name, enoattr_log_level, value, size);
+            fullname, name, enoattr_log_level, value, size, flags);
 }
 
 int fdir_client_get_xattr_by_inode_ex(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, const string_t *name,
-        const int enoattr_log_level, string_t *value, const int size)
+        const int enoattr_log_level, string_t *value,
+        const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_inode,
-            ns, inode, name, enoattr_log_level, value, size);
+            ns, inode, name, enoattr_log_level, value, size, flags);
 }
 
 int fdir_client_list_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, string_t *list, const int size)
+        const FDIRDEntryFullName *fullname, string_t *list,
+        const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_xattr_by_path,
-            fullname, list, size);
+            fullname, list, size, flags);
 }
 
 int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode,
-        string_t *list, const int size)
+        const string_t *ns, const int64_t inode, string_t *list,
+        const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_xattr_by_inode,
-            ns, inode, list, size);
+            ns, inode, list, size, flags);
 }

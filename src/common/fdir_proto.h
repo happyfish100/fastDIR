@@ -438,8 +438,8 @@ typedef struct fdir_proto_list_dentry_resp_body_part {
 typedef struct fdir_proto_set_xattr_fields {
     unsigned char name_len;
     char value_len[2];
-    char flags[2];
-    char padding[3];
+    char padding[1];
+    char flags[4];
     char name_str[0];
     //char value_str[0];
 } FDIRProtoSetXAttrFields;
@@ -454,25 +454,34 @@ typedef struct fdir_proto_set_xattr_by_inode_req {
     FDIRProtoInodeInfo ino;
 } FDIRProtoSetXAttrByInodeReq;
 
+typedef struct fdir_proto_xattr_front {
+    char flags[4];
+} FDIRProtoXAttrFront;
+
 typedef struct fdir_proto_get_xattr_by_path_req {
+    FDIRProtoXAttrFront front;
     FDIRProtoNameInfo name;
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoGetXAttrByPathReq;
 
 typedef struct fdir_proto_get_xattr_by_node_req {
+    FDIRProtoXAttrFront front;
     FDIRProtoNameInfo name;
     FDIRProtoInodeInfo ino;
 } FDIRProtoGetXAttrByInodeReq;
 
+typedef struct fdir_proto_list_xattr_by_inode_req {
+    FDIRProtoXAttrFront front;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoListXAttrByInodeReq;
+
 typedef struct fdir_proto_list_xattr_by_path_req {
+    FDIRProtoXAttrFront front;
     FDIRProtoDEntryInfo dentry;
 } FDIRProtoListXAttrByPathReq;
 
-typedef FDIRProtoGetXAttrByPathReq FDIRProtoRemoveXAttrByPathReq;
-typedef struct fdir_proto_remove_xattr_by_node_req {
-    FDIRProtoNameInfo name;
-    FDIRProtoInodeInfo ino;
-} FDIRProtoRemoveXAttrByInodeReq;
+typedef FDIRProtoGetXAttrByPathReq  FDIRProtoRemoveXAttrByPathReq;
+typedef FDIRProtoGetXAttrByInodeReq FDIRProtoRemoveXAttrByInodeReq;
 
 typedef struct fdir_proto_service_stat_resp {
     char server_id[4];

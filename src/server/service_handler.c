@@ -2161,7 +2161,7 @@ static int parse_xattr_fields(struct fast_task_info *task,
     return 0;
 }
 
-static inline int service_do_setxattr(struct fast_task_info *task,
+static inline int do_setxattr(struct fast_task_info *task,
         const key_value_pair_t *xattr, const int flags,
         const int resp_cmd)
 {
@@ -2224,7 +2224,7 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    return service_do_setxattr(task, &xattr, buff2short(fields->flags),
+    return do_setxattr(task, &xattr, buff2int(fields->flags),
             FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
 }
 
@@ -2266,17 +2266,17 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    return service_do_setxattr(task, &xattr, buff2short(fields->flags),
+    return do_setxattr(task, &xattr, buff2int(fields->flags),
             FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
 }
 
 static int parse_xattr_name_info(struct fast_task_info *task,
-        const int fixed_size, string_t *name)
+        const int min_size, string_t *name)
 {
     int result;
     FDIRProtoNameInfo *proto_name;
 
-    if ((result=server_check_min_body_length(fixed_size + 1)) != 0) {
+    if ((result=server_check_min_body_length(min_size + 1)) != 0) {
         return result;
     }
 
@@ -2286,10 +2286,11 @@ static int parse_xattr_name_info(struct fast_task_info *task,
     return 0;
 }
 
-static inline int service_do_removexattr(struct fast_task_info *task,
+static inline int do_removexattr(struct fast_task_info *task,
         const string_t *name, const int resp_cmd)
 {
     RECORD->xattr.key = *name;
+    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
     RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
@@ -2300,7 +2301,7 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
     int result;
     int min_body_len;
     int fields_part_len;;
-    int fixed_size;
+    int min_size;
     string_t name;
 
     if ((result=server_check_min_body_length(sizeof(
@@ -2309,8 +2310,8 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    fixed_size = sizeof(FDIRProtoRemoveXAttrByPathReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
+    min_size = sizeof(FDIRProtoRemoveXAttrByPathReq) + 1;
+    if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
@@ -2322,14 +2323,15 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
         return EINVAL;
     }
 
-    fields_part_len = sizeof(FDIRProtoNameInfo) + name.len;
+    fields_part_len = sizeof(FDIRProtoXAttrFront) +
+        sizeof(FDIRProtoNameInfo) + name.len;
     if ((result=parse_dentry_for_xattr_update(task,
                     fields_part_len)) != 0)
     {
         return result;
     }
 
-    return service_do_removexattr(task, &name,
+    return do_removexattr(task, &name,
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP);
 }
 
@@ -2338,7 +2340,7 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
     string_t name;
     int min_body_len;
     int front_part_size;
-    int fixed_size;
+    int min_size;
     int result;
 
     if ((result=server_check_body_length(
@@ -2349,8 +2351,8 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    fixed_size = sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
+    min_size = sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1;
+    if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
@@ -2362,14 +2364,15 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
         return EINVAL;
     }
 
-    front_part_size = sizeof(FDIRProtoNameInfo) + name.len;
+    front_part_size = sizeof(FDIRProtoXAttrFront) +
+        sizeof(FDIRProtoNameInfo) + name.len;
     if ((result=server_parse_inode_for_update(
                     task, front_part_size)) != 0)
     {
         return result;
     }
 
-    return service_do_removexattr(task, &name,
+    return do_removexattr(task, &name,
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
 }
 
@@ -3155,63 +3158,65 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
     return 0;
 }
 
+static inline int do_getxattr(struct fast_task_info *task,
+        const int resp_cmd)
+{
+    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
+    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
+    RESPONSE.header.cmd = resp_cmd;
+    return push_query_to_data_thread_queue(task);
+}
+
 static int service_get_xattr_by_path(struct fast_task_info *task)
 {
     int result;
-    int fixed_size;
+    int min_size;
     string_t name;
 
-    fixed_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
+    min_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
+    if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
     if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoXAttrFront) +
                     sizeof(FDIRProtoNameInfo) + name.len)) != 0)
     {
         return result;
     }
 
     RECORD->xattr.key = name;
-    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP;
-    return push_query_to_data_thread_queue(task);
+    return do_getxattr(task, FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP);
 }
 
 static int service_get_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
-    int fixed_size;
-    int expect_blen;
+    int min_size;
     string_t name;
-    FDIRProtoInodeInfo *ino;
 
-    fixed_size = sizeof(FDIRProtoGetXAttrByInodeReq) + 1;
-    if ((result=parse_xattr_name_info(task, fixed_size, &name)) != 0) {
-        return result;
-    }
-    ino = (FDIRProtoInodeInfo *)(REQUEST.body + sizeof(
-                FDIRProtoNameInfo) + name.len);
-    expect_blen = sizeof(FDIRProtoGetXAttrByInodeReq) +
-        name.len + ino->ns_len;
-    if (expect_blen != REQUEST.header.body_len) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "request body length: %d != expect: %d",
-                REQUEST.header.body_len, expect_blen);
-        return EINVAL;
-    }
-
-    if ((result=alloc_record_object(task)) != 0) {
+    min_size = sizeof(FDIRProtoGetXAttrByInodeReq) + 1;
+    if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
-    RECORD->dentry_type = fdir_dentry_type_inode;
-    RECORD->inode = buff2long(ino->inode);
-    FC_SET_STRING_EX(RECORD->ns, ino->ns_str, ino->ns_len);
-    RECORD->hash_code = simple_hash(ino->ns_str, ino->ns_len);
+    if ((result=server_check_and_parse_inode_ex(task,
+                    sizeof(FDIRProtoXAttrFront) +
+                    sizeof(FDIRProtoNameInfo) + name.len)) != 0)
+    {
+        return result;
+    }
+
     RECORD->xattr.key = name;
-    RECORD->operation = SERVICE_OP_GET_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP;
+    return do_getxattr(task, FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP);
+}
+
+static inline int do_listxattr(struct fast_task_info *task,
+        const int resp_cmd)
+{
+    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
+    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
+    RESPONSE.header.cmd = resp_cmd;
     return push_query_to_data_thread_queue(task);
 }
 
@@ -3219,26 +3224,26 @@ static int service_list_xattr_by_path(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoXAttrFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP;
-    return push_query_to_data_thread_queue(task);
+    return do_listxattr(task, FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP);
 }
 
 static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode(task)) != 0) {
+    if ((result=server_check_and_parse_inode_ex(task,
+                    sizeof(FDIRProtoXAttrFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP;
-    return push_query_to_data_thread_queue(task);
+    return do_listxattr(task, FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP);
 }
 
 static int service_check_priv(struct fast_task_info *task)

@@ -456,24 +456,38 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     return dentry_rename(thread_ctx, record);
 }
 
-static inline int xattr_update_prepare(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
+static inline int xattr_update_prepare(FDIRDataThreadContext
+        *thread_ctx, FDIRBinlogRecord *record)
 {
     int result;
 
     if (record->dentry_type == fdir_dentry_type_inode) {
-        return inode_index_get_dentry(thread_ctx,
-                record->inode, &record->me.dentry);
+        if ((result=inode_index_get_dentry(thread_ctx, record->inode,
+                        &record->me.dentry)) != 0)
+        {
+            return result;
+        }
+    } else {
+        if ((result=dentry_find(&record->me.fullname,
+                        &record->me.dentry)) != 0)
+        {
+            return result;
+        }
+
+        record->inode = record->me.dentry->inode;
     }
 
-    if ((result=dentry_find(&record->me.fullname, &record->me.dentry)) != 0) {
-        return result;
+    if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
+            S_ISLNK(record->me.dentry->stat.mode))
+    {
+        if ((result=dentry_resolve_symlink(&record->
+                        me.dentry)) != 0)
+        {
+            return result;
+        }
+        record->inode = record->me.dentry->inode;
     }
 
-    record->inode = record->me.dentry->inode;
-    record->me.pname.name = record->me.dentry->name;
-    record->me.pname.parent_inode = (record->me.dentry->parent != NULL ?
-            record->me.dentry->parent->inode : 0);
     return 0;
 }
 
@@ -986,20 +1000,10 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = 0;
             break;
         case BINLOG_OP_SET_XATTR_INT:
+            ignore_errno = 0;
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
-                if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
-                        S_ISLNK(record->me.dentry->stat.mode))
-                {
-                    if ((result=dentry_resolve_symlink(&record->
-                                    me.dentry)) != 0)
-                    {
-                        break;
-                    }
-                    record->inode = record->me.dentry->inode;
-                }
                 result = inode_index_set_xattr(record->me.dentry, record);
             }
-            ignore_errno = 0;
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
             if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
@@ -1177,21 +1181,28 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             if (result == 0) {
                 switch (record->operation) {
                     case SERVICE_OP_STAT_DENTRY_INT:
+                    case SERVICE_OP_GET_XATTR_INT:
+                    case SERVICE_OP_LIST_XATTR_INT:
                         if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
                                 S_ISLNK(record->me.dentry->stat.mode))
                         {
-                            result = dentry_resolve_symlink(&record->me.dentry);
+                            if ((result=dentry_resolve_symlink(
+                                            &record->me.dentry)) != 0)
+                            {
+                                break;
+                            }
                         }
-                        break;
-                    case SERVICE_OP_GET_XATTR_INT:
-                        result = inode_index_get_xattr(record->me.dentry,
-                                &record->xattr.key, &record->xattr.value);
-                        break;
-                    case SERVICE_OP_LIST_XATTR_INT:
-                        if (STORAGE_ENABLED) {
-                            result = dentry_load_xattr(thread_ctx,
-                                    record->me.dentry);
+
+                        if (record->operation == SERVICE_OP_GET_XATTR_INT) {
+                            result = inode_index_get_xattr(record->me.dentry,
+                                    &record->xattr.key, &record->xattr.value);
+                        } else if (record->operation == SERVICE_OP_LIST_XATTR_INT) {
+                            if (STORAGE_ENABLED) {
+                                result = dentry_load_xattr(thread_ctx,
+                                        record->me.dentry);
+                            }
                         }
+
                         break;
                 }
             }

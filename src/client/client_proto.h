@@ -283,30 +283,30 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
 int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const
         FDIRDEntryFullName *fullname, const string_t *name,
-        const int enoattr_log_level);
+        const int flags, const int enoattr_log_level);
 
 int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
-        const int64_t inode, const string_t *name,
+        const int64_t inode, const string_t *name, const int flags,
         const int enoattr_log_level);
 
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const string_t *name, const int enoattr_log_level,
-        string_t *value, const int size);
+        string_t *value, const int size, const int flags);
 
 int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         const string_t *name, const int enoattr_log_level,
-        string_t *value, const int size);
+        string_t *value, const int size, const int flags);
 
 int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        string_t *list, const int size);
+        string_t *list, const int size, const int flags);
 
 int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
-        string_t *list, const int size);
+        string_t *list, const int size, const int flags);
 
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
