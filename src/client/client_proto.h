@@ -17,6 +17,7 @@
 #ifndef _FDIR_CLIENT_PROTO_H
 #define _FDIR_CLIENT_PROTO_H
 
+#include <dirent.h>
 #include "fastcommon/fast_mpool.h"
 #include "sf/sf_proto.h"
 #include "fdir_types.h"
@@ -39,11 +40,18 @@ typedef struct fdir_client_buffer {
     char *buff;            //recv buffer
 } FDIRClientBuffer;
 
+#define DENTRY_ARRAY_COMMON_FIELDS(type) \
+    int alloc;  \
+    int count;  \
+    type *entries; \
+    FDIRClientBuffer buffer
+
+typedef struct fdir_client_common_dentry_array {
+    DENTRY_ARRAY_COMMON_FIELDS(void);
+} FDIRClientCommonDentryArray;
+
 typedef struct fdir_client_dentry_array {
-    int alloc;
-    int count;
-    FDIRClientDentry *entries;
-    FDIRClientBuffer buffer;
+    DENTRY_ARRAY_COMMON_FIELDS(FDIRClientDentry);
     struct {
         struct {
             struct fast_mpool_man holder;
@@ -54,6 +62,10 @@ typedef struct fdir_client_dentry_array {
         bool cloned;
     } name_allocator;
 } FDIRClientDentryArray;
+
+typedef struct fdir_client_compact_dentry_array {
+    DENTRY_ARRAY_COMMON_FIELDS(struct dirent);
+} FDIRClientCompactDentryArray;
 
 typedef struct fdir_client_service_stat {
     int server_id;
@@ -323,6 +335,12 @@ int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
     fdir_client_dentry_array_init_ex(array, NULL)
 
 void fdir_client_dentry_array_free(FDIRClientDentryArray *array);
+
+void fdir_client_compact_dentry_array_init(
+        FDIRClientCompactDentryArray *array);
+
+void fdir_client_compact_dentry_array_free(
+        FDIRClientCompactDentryArray *array);
 
 int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
         ConnectionInfo *conn);

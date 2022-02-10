@@ -279,6 +279,7 @@ typedef struct server_task_arg {
                     int64_t token;
                     int offset;
                     int release_start;
+                    bool compact_output;
                     time_t expires;  //expire time
                 } dentry_list_cache; //for dentry_list
 

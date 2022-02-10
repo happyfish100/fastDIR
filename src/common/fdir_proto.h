@@ -186,12 +186,13 @@ typedef struct fdir_proto_create_dentry_front {
         char rdev[8]; /* for create dentry, device ID for special file */
         struct {
             char flags[4];  /* for hdlink */
-            char padding[4];
+            char padding1[4];
         };
     };
     char mode[4];
     char uid[4];
     char gid[4];
+    char padding2[4];
 } FDIRProtoCreateDEntryFront;
 
 typedef struct fdir_proto_create_dentry_req {
@@ -248,6 +249,7 @@ typedef struct fdir_proto_hdlink_dentry_by_pname {
 
 typedef struct fdir_proto_remove_dentry_front {
     char flags[4];
+    char padding[4];
 } FDIRProtoRemoveDEntryFront;
 
 typedef struct fdir_proto_remove_dentry {
@@ -262,6 +264,7 @@ typedef struct fdir_proto_remove_dentry_by_pname {
 
 typedef struct fdir_proto_rename_dentry_front {
     char flags[4];
+    char padding[4];
 } FDIRProtoRenameDEntryFront;
 
 typedef struct fdir_proto_rename_dentry {
@@ -335,6 +338,7 @@ typedef struct fdir_proto_lookup_inode_resp {
 
 typedef struct fdir_proto_stat_dentry_front {
     char flags[4];
+    char padding[4];
 } FDIRProtoStatDEntryFront;
 
 typedef struct fdir_proto_stat_dentry_req {
@@ -411,9 +415,20 @@ typedef struct fdir_proto_sys_unlock_dentry_req {
     char ns_str[0];       //namespace for hash code
 } FDIRProtoSysUnlockDEntryReq;
 
-typedef struct fdir_proto_list_dentry_by_path_body {
+typedef struct fdir_proto_list_dentry_front {
+    char flags[4];
+    char padding[4];
+} FDIRProtoListDEntryFront;
+
+typedef struct fdir_proto_list_dentry_by_path_req {
+    FDIRProtoListDEntryFront front;
     FDIRProtoDEntryInfo dentry;
-} FDIRProtoListDEntryByPathBody;
+} FDIRProtoListDEntryByPathReq;
+
+typedef struct fdir_proto_list_dentry_by_inode_req {
+    FDIRProtoListDEntryFront front;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoListDEntryByInodeReq;
 
 typedef struct fdir_proto_list_dentry_next_body {
     char token[8];
@@ -421,19 +436,36 @@ typedef struct fdir_proto_list_dentry_next_body {
     char padding[4];
 } FDIRProtoListDEntryNextBody;
 
-typedef struct fdir_proto_list_dentry_resp_body_header {
+typedef struct fdir_proto_list_dentry_resp_body_common_header {
     char token[8];
-    char count[4];
+    char count[4];  //current dentry count
     char is_last;
     char padding[3];
-} FDIRProtoListDEntryRespBodyHeader;
+} FDIRProtoListDEntryRespBodyCommonHeader;
 
-typedef struct fdir_proto_list_dentry_resp_body_part {
+typedef struct fdir_proto_list_dentry_resp_body_first_header {
+    FDIRProtoListDEntryRespBodyCommonHeader common;
+    char total_count[4];
+} FDIRProtoListDEntryRespBodyFirstHeader;
+
+typedef FDIRProtoListDEntryRespBodyCommonHeader
+    FDIRProtoListDEntryRespBodyNextHeader;
+
+typedef struct fdir_proto_list_dentry_resp_common_part {
     char inode[8];
-    FDIRProtoDEntryStat stat;
     unsigned char name_len;
     char name_str[0];
-} FDIRProtoListDEntryRespBodyPart;
+} FDIRProtoListDEntryRespCommonPart;
+
+typedef struct fdir_proto_list_dentry_resp_complete_part {
+    FDIRProtoDEntryStat stat;
+    FDIRProtoListDEntryRespCommonPart common;
+} FDIRProtoListDEntryRespCompletePart;
+
+typedef struct fdir_proto_list_dentry_resp_compact_part {
+    char mode[4];
+    FDIRProtoListDEntryRespCommonPart common;
+} FDIRProtoListDEntryRespCompactPart;
 
 typedef struct fdir_proto_set_xattr_fields {
     unsigned char name_len;
@@ -456,6 +488,7 @@ typedef struct fdir_proto_set_xattr_by_inode_req {
 
 typedef struct fdir_proto_xattr_front {
     char flags[4];
+    char padding[4];
 } FDIRProtoXAttrFront;
 
 typedef struct fdir_proto_get_xattr_by_path_req {

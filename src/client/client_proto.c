@@ -72,6 +72,29 @@ void fdir_client_dentry_array_free(FDIRClientDentryArray *array)
     }
 }
 
+void fdir_client_compact_dentry_array_init(
+        FDIRClientCompactDentryArray *array)
+{
+    array->alloc = array->count = 0;
+    array->entries = NULL;
+    init_client_buffer(&array->buffer);
+}
+
+void fdir_client_compact_dentry_array_free(
+        FDIRClientCompactDentryArray *array)
+{
+    if (array->buffer.buff != array->buffer.fixed) {
+        free(array->buffer.buff);
+        init_client_buffer(&array->buffer);
+    }
+
+    if (array->entries != NULL) {
+        free(array->entries);
+        array->entries = NULL;
+        array->alloc = array->count = 0;
+    }
+}
+
 int fdir_client_namespace_stat_array_init(FDIRClientNamespaceStatArray *array)
 {
     int result;
@@ -1749,7 +1772,7 @@ static int check_realloc_dentry_array(SFResponseInfo *response,
     }
 
     if (array->alloc == 0) {
-        new_alloc = 256;
+        new_alloc = 4;
     } else {
         new_alloc = 2 * array->alloc;
     }
@@ -1775,42 +1798,74 @@ static int check_realloc_dentry_array(SFResponseInfo *response,
     return 0;
 }
 
-static int parse_list_dentry_response_body(ConnectionInfo *conn,
+typedef int (*list_dentry_parse_resp_body_func)(SFResponseInfo *response,
+        void *array, string_t *next_token, const bool is_first);
+
+static int parse_list_dentry_response_body(
         SFResponseInfo *response, FDIRClientDentryArray *array,
-        string_t *next_token)
+        string_t *next_token, const bool is_first)
 {
-    FDIRProtoListDEntryRespBodyHeader *body_header;
-    FDIRProtoListDEntryRespBodyPart *part;
+    FDIRProtoListDEntryRespBodyFirstHeader *first_header;
+    FDIRProtoListDEntryRespBodyCommonHeader *common_header;
+    FDIRProtoListDEntryRespCompletePart *part;
     FDIRClientDentry *cd;
     FDIRClientDentry *start;
     FDIRClientDentry *end;
     char *p;
     int result;
+    int common_header_len;
+    int total_count;
     int entry_len;
     int count;
 
-    if (response->header.body_len < sizeof(FDIRProtoListDEntryRespBodyHeader)) {
+    if (is_first) {
+        common_header_len = sizeof(FDIRProtoListDEntryRespBodyFirstHeader);
+        first_header = (FDIRProtoListDEntryRespBodyFirstHeader *)
+            array->buffer.buff;
+        common_header = &first_header->common;
+
+        total_count = buff2int(first_header->total_count);
+        if ((result=check_realloc_dentry_array(response,
+                        array, total_count)) != 0)
+        {
+            return result;
+        }
+    } else {
+        common_header_len = sizeof(FDIRProtoListDEntryRespBodyNextHeader);
+        common_header = (FDIRProtoListDEntryRespBodyCommonHeader *)
+            array->buffer.buff;
+    }
+
+    if (response->header.body_len < common_header_len) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "server %s:%u response body length: %d < expected: %d",
-                conn->ip_addr, conn->port, response->header.body_len,
-                (int)sizeof(FDIRProtoListDEntryRespBodyHeader));
+                "response body length: %d < expected: %d",
+                response->header.body_len, common_header_len);
         return EINVAL;
     }
 
-    body_header = (FDIRProtoListDEntryRespBodyHeader *)array->buffer.buff;
-    count = buff2int(body_header->count);
-    next_token->str = body_header->token;
-    if (body_header->is_last) {
+    p = array->buffer.buff + common_header_len;
+    count = buff2int(common_header->count);
+    if (array->count + count > array->alloc) {
+        response->error.length = snprintf(response->error.message,
+                sizeof(response->error.message),
+                "sum count: %d > alloc: %d (current count: %d)",
+                array->count + count, array->alloc, count);
+        return EOVERFLOW;
+    }
+
+    next_token->str = common_header->token;
+    if (common_header->is_last) {
         next_token->len = 0;
     } else {
-        next_token->len = sizeof(body_header->token);
+        next_token->len = sizeof(common_header->token);
 
         if (!array->name_allocator.inited) {
             if ((result=fast_mpool_init(array->name_allocator.
                             mpool.ptr, 64 * 1024, 8)) != 0)
             {
-                response->error.length = sprintf(response->error.message,
+                response->error.length = sprintf(
+                        response->error.message,
                         "fast_mpool_init fail");
                 return result;
             }
@@ -1819,34 +1874,31 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
         array->name_allocator.used = true;
     }
 
-    if ((result=check_realloc_dentry_array(response, array, count)) != 0) {
-        return result;
-    }
-
-    p = array->buffer.buff + sizeof(FDIRProtoListDEntryRespBodyHeader);
     start = array->entries + array->count;
     end = start + count;
     for (cd=start; cd<end; cd++) {
-        part = (FDIRProtoListDEntryRespBodyPart *)p;
-        entry_len = sizeof(FDIRProtoListDEntryRespBodyPart) + part->name_len;
+        part = (FDIRProtoListDEntryRespCompletePart *)p;
+        entry_len = sizeof(FDIRProtoListDEntryRespCompletePart) +
+            part->common.name_len;
         if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
             response->error.length = snprintf(response->error.message,
                     sizeof(response->error.message),
-                    "server %s:%u response body length exceeds header's %d",
-                    conn->ip_addr, conn->port, response->header.body_len);
+                    "response body length exceeds header's %d",
+                    response->header.body_len);
             return EINVAL;
         }
 
-        cd->dentry.inode = buff2long(part->inode);
+        cd->dentry.inode = buff2long(part->common.inode);
         fdir_proto_unpack_dentry_stat(&part->stat, &cd->dentry.stat);
-        if (body_header->is_last && !array->name_allocator.cloned) {
-            FC_SET_STRING_EX(cd->name, part->name_str, part->name_len);
+        if (common_header->is_last && !array->name_allocator.cloned) {
+            FC_SET_STRING_EX(cd->name, part->common.name_str,
+                    part->common.name_len);
         } else if ((result=fast_mpool_alloc_string_ex(array->
                         name_allocator.mpool.ptr, &cd->name,
-                        part->name_str, part->name_len)) != 0)
+                        part->common.name_str, part->common.name_len)) != 0)
         {
             response->error.length = sprintf(response->error.message,
-                    "strdup %d bytes fail", part->name_len);
+                    "strdup %d bytes fail", part->common.name_len);
             return result;
         }
 
@@ -1856,9 +1908,8 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
     if ((int)(p - array->buffer.buff) != response->header.body_len) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
-                "server %s:%u response body length: %d != header's %d",
-                conn->ip_addr, conn->port, (int)(p - array->buffer.buff),
-                response->header.body_len);
+                "response body length: %d != header's %d",
+                (int)(p - array->buffer.buff), response->header.body_len);
         return EINVAL;
     }
 
@@ -1868,9 +1919,12 @@ static int parse_list_dentry_response_body(ConnectionInfo *conn,
 
 static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, SFResponseInfo *response,
-        FDIRClientDentryArray *array, string_t *next_token)
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array,
+        string_t *next_token, const bool is_first)
 {
     int result;
+
     if ((result=check_realloc_client_buffer(response, &array->buffer)) != 0) {
         return result;
     }
@@ -1888,12 +1942,13 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
         return result;
     }
 
-    return parse_list_dentry_response_body(conn, response, array, next_token);
+    return deal_func(response, array, next_token, is_first);
 }
 
-static int do_list_dentry_next(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, string_t *next_token,
-        SFResponseInfo *response, FDIRClientDentryArray *array)
+static int do_list_dentry_next(FDIRClientContext *client_ctx, ConnectionInfo
+        *conn, string_t *next_token, SFResponseInfo *response,
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array)
 {
     FDIRProtoHeader *header;
     FDIRProtoListDEntryNextBody *entry_body;
@@ -1914,7 +1969,7 @@ static int do_list_dentry_next(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
         return deal_list_dentry_response_body(client_ctx,
-                conn, response, array, next_token);
+                conn, response, deal_func, array, next_token, false);
     }
 
     return result;
@@ -1922,20 +1977,21 @@ static int do_list_dentry_next(FDIRClientContext *client_ctx,
 
 static int deal_list_dentry_response(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, SFResponseInfo *response,
-        FDIRClientDentryArray *array)
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array)
 {
     string_t next_token;
     int result;
 
-    if ((result=deal_list_dentry_response_body(client_ctx, conn,
-                    response, array, &next_token)) != 0)
+    if ((result=deal_list_dentry_response_body(client_ctx, conn, response,
+                    deal_func, array, &next_token, true)) != 0)
     {
         return result;
     }
 
     while (next_token.len > 0) {
-        if ((result=do_list_dentry_next(client_ctx, conn,
-                        &next_token, response, array)) != 0)
+        if ((result=do_list_dentry_next(client_ctx, conn, &next_token,
+                        response, deal_func, array)) != 0)
         {
             break;
         }
@@ -1944,23 +2000,21 @@ static int deal_list_dentry_response(FDIRClientContext *client_ctx,
     return result;
 }
 
-static int list_dentry(FDIRClientContext *client_ctx, ConnectionInfo *conn,
-        char *out_buff, const int out_bytes, FDIRClientDentryArray *array)
+static int list_dentry(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, char *out_buff, const int out_bytes,
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array)
 {
     SFResponseInfo response;
     int result;
 
-    array->count = 0;
-    if (array->name_allocator.used && !array->name_allocator.cloned) {
-        fast_mpool_reset(array->name_allocator.mpool.ptr);  //buffer recycle
-        array->name_allocator.used = false;
-    }
     response.error.length = 0;
     if ((result=sf_send_and_check_response_header(conn, out_buff, out_bytes,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_LIST_DENTRY_RESP)) == 0)
     {
-        result = deal_list_dentry_response(client_ctx, conn, &response, array);
+        result = deal_list_dentry_response(client_ctx,
+                conn, &response, deal_func, array);
     }
 
     if (result != 0) {
@@ -1970,51 +2024,93 @@ static int list_dentry(FDIRClientContext *client_ctx, ConnectionInfo *conn,
     return result;
 }
 
-int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
+static int list_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        FDIRClientDentryArray *array)
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array, const int flags)
 {
     FDIRProtoHeader *header;
-    FDIRProtoListDEntryByPathBody *entry_body;
+    FDIRProtoListDEntryByPathReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
-        sizeof(FDIRProtoListDEntryByPathBody) + NAME_MAX + PATH_MAX];
+        sizeof(FDIRProtoListDEntryByPathReq) + NAME_MAX + PATH_MAX];
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
-            header, entry_body, 0, out_bytes);
+            header, req, 0, out_bytes);
     if ((result=client_check_set_proto_dentry(fullname,
-                    &entry_body->dentry)) != 0)
+                    &req->dentry)) != 0)
     {
         return result;
     }
+    int2buff(flags, req->front.flags);
 
     out_bytes += fullname->ns.len + fullname->path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
-    return list_dentry(client_ctx, conn, out_buff, out_bytes, array);
+    return list_dentry(client_ctx, conn, out_buff,
+            out_bytes, deal_func, array);
+}
+
+static inline void reset_dentry_array(FDIRClientDentryArray *array)
+{
+    array->count = 0;
+    if (array->name_allocator.used && !array->name_allocator.cloned) {
+        fast_mpool_reset(array->name_allocator.mpool.ptr);  //buffer recycle
+        array->name_allocator.used = false;
+    }
+}
+
+int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        FDIRClientDentryArray *array)
+{
+    const int flags = 0;
+
+    reset_dentry_array(array);
+    return list_dentry_by_path(client_ctx, conn, fullname,
+            (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
+            (FDIRClientCommonDentryArray *)array, flags);
+}
+
+static int list_dentry_by_inode(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        list_dentry_parse_resp_body_func deal_func,
+        FDIRClientCommonDentryArray *array, const int flags)
+{
+    FDIRProtoHeader *header;
+    FDIRProtoListDEntryByInodeReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
+        sizeof(FDIRProtoListDEntryByInodeReq) + NAME_MAX];
+    int out_bytes;
+    int result;
+
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, 0, out_bytes);
+    if ((result=client_check_set_proto_inode_info(
+                    ns, inode, &req->ino)) != 0)
+    {
+        return result;
+    }
+    int2buff(flags, req->front.flags);
+
+    out_bytes += ns->len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    return list_dentry(client_ctx, conn, out_buff,
+            out_bytes, deal_func, array);
 }
 
 int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         FDIRClientDentryArray *array)
 {
-    FDIRProtoHeader *header;
-    FDIRProtoInodeInfo *req;
-    char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
-        sizeof(FDIRProtoInodeInfo) + NAME_MAX];
-    int out_bytes;
-    int result;
+    const int flags = 0;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
-    if ((result=client_check_set_proto_inode_info(ns, inode, req)) != 0) {
-        return result;
-    }
-
-    out_bytes += ns->len;
-    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
-            out_bytes - sizeof(FDIRProtoHeader));
-    return list_dentry(client_ctx, conn, out_buff, out_bytes, array);
+    reset_dentry_array(array);
+    return list_dentry_by_inode(client_ctx, conn, ns, inode,
+            (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
+            (FDIRClientCommonDentryArray *)array, flags);
 }
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,

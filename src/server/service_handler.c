@@ -1032,47 +1032,73 @@ static inline void lookup_inode_output(struct fast_task_info *task,
 static void server_list_dentry_output(struct fast_task_info *task,
         const bool is_first)
 {
-    FDIRProtoListDEntryRespBodyHeader *body_header;
+    FDIRProtoListDEntryRespBodyFirstHeader *first_header;
+    FDIRProtoListDEntryRespBodyCommonHeader *common_header;
     FDIRServerDentry *src_dentry;
     FDIRServerDentry **dentry;
     FDIRServerDentry **start;
     FDIRServerDentry **end;
-    FDIRProtoListDEntryRespBodyPart *body_part;
+    FDIRProtoListDEntryRespCompletePart *complete;
+    FDIRProtoListDEntryRespCompactPart *compact;
+    FDIRProtoListDEntryRespCommonPart *common;
     char *p;
     char *buf_end;
+    int part_fixed_size;
     int remain_count;
     int count;
 
     remain_count = DENTRY_LIST_CACHE.array->count -
         DENTRY_LIST_CACHE.offset;
+    part_fixed_size = (DENTRY_LIST_CACHE.compact_output ?
+            sizeof(FDIRProtoListDEntryRespCompactPart) :
+            sizeof(FDIRProtoListDEntryRespCompletePart));
 
     buf_end = task->data + task->size;
-    p = SF_PROTO_RESP_BODY(task) + sizeof(FDIRProtoListDEntryRespBodyHeader);
+    if (is_first) {
+        first_header = (FDIRProtoListDEntryRespBodyFirstHeader *)
+            SF_PROTO_RESP_BODY(task);
+        int2buff(DENTRY_LIST_CACHE.array->count, first_header->total_count);
+
+        common_header = &first_header->common;
+        p = (char *)(first_header + 1);
+    } else {
+        common_header = (FDIRProtoListDEntryRespBodyCommonHeader *)
+            SF_PROTO_RESP_BODY(task);
+        p = (char *)(common_header + 1);
+    }
+
     start = (FDIRServerDentry **)DENTRY_LIST_CACHE.array->elts +
         DENTRY_LIST_CACHE.offset;
     end = start + remain_count;
     for (dentry=start; dentry<end; dentry++) {
         src_dentry = FDIR_GET_REAL_DENTRY(*dentry);
-        if (buf_end - p < sizeof(FDIRProtoListDEntryRespBodyPart) +
-                (*dentry)->name.len)
-        {
+        if (buf_end - p < part_fixed_size + (*dentry)->name.len) {
             break;
         }
-        body_part = (FDIRProtoListDEntryRespBodyPart *)p;
-        long2buff(src_dentry->inode, body_part->inode);
 
-        fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
-                &body_part->stat, true);
-        body_part->name_len = (*dentry)->name.len;
-        memcpy(body_part->name_str, (*dentry)->name.str, (*dentry)->name.len);
-        p += sizeof(FDIRProtoListDEntryRespBodyPart) + (*dentry)->name.len;
+        if (DENTRY_LIST_CACHE.compact_output) {
+            compact = (FDIRProtoListDEntryRespCompactPart *)p;
+            common = &compact->common;
+
+            int2buff(src_dentry->stat.mode, compact->mode);
+        } else {
+            complete = (FDIRProtoListDEntryRespCompletePart *)p;
+            common = &complete->common;
+
+            fdir_proto_pack_dentry_stat_ex(&src_dentry->stat,
+                    &complete->stat, true);
+        }
+
+        long2buff(src_dentry->inode, common->inode);
+        common->name_len = (*dentry)->name.len;
+        memcpy(common->name_str, (*dentry)->name.str, (*dentry)->name.len);
+        p += part_fixed_size + (*dentry)->name.len;
     }
     count = dentry - start;
     RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
 
-    body_header = (FDIRProtoListDEntryRespBodyHeader *)SF_PROTO_RESP_BODY(task);
-    int2buff(count, body_header->count);
+    int2buff(count, common_header->count);
     if (count < remain_count) {
         if (is_first) {
             DENTRY_LIST_CACHE.release_start = count;
@@ -1086,11 +1112,11 @@ static void server_list_dentry_output(struct fast_task_info *task,
         DENTRY_LIST_CACHE.expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
 
-        body_header->is_last = 0;
-        long2buff(DENTRY_LIST_CACHE.token, body_header->token);
+        common_header->is_last = 0;
+        long2buff(DENTRY_LIST_CACHE.token, common_header->token);
     } else {
-        body_header->is_last = 1;
-        long2buff(0, body_header->token);
+        common_header->is_last = 1;
+        long2buff(0, common_header->token);
 
         if (is_first) {
             DENTRY_LIST_CACHE.release_start = count;
@@ -1238,6 +1264,8 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 break;
             case SERVICE_OP_LIST_DENTRY_INT:
                 DENTRY_LIST_CACHE.offset = 0;
+                DENTRY_LIST_CACHE.compact_output = (record->flags &
+                        FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT) != 0;
                 server_list_dentry_output(task, true);
                 break;
             case SERVICE_OP_GET_XATTR_INT:
@@ -3086,28 +3114,37 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
     }
 }
 
+static inline int deal_list_dentry(struct fast_task_info *task)
+{
+    RECORD->flags = buff2int(((FDIRProtoListDEntryFront *)REQUEST.body)->flags);
+    RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
+    return push_query_to_data_thread_queue(task);
+}
+
 static int service_deal_list_dentry_by_path(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoListDEntryFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
-    return push_query_to_data_thread_queue(task);
+    return deal_list_dentry(task);
 }
 
 static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode(task)) != 0) {
+    if ((result=server_check_and_parse_inode_ex(task,
+                    sizeof(FDIRProtoListDEntryFront))) != 0)
+    {
         return result;
     }
 
-    RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
-    return push_query_to_data_thread_queue(task);
+    return deal_list_dentry(task);
 }
 
 static int service_deal_list_dentry_next(struct fast_task_info *task)
