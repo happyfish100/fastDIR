@@ -328,6 +328,14 @@ int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         FDIRClientDentryArray *array);
 
+int fdir_client_proto_list_compact_dentry_by_path(FDIRClientContext
+        *client_ctx, ConnectionInfo *conn, const FDIRDEntryFullName
+        *fullname, FDIRClientCompactDentryArray *array);
+
+int fdir_client_proto_list_compact_dentry_by_inode(FDIRClientContext
+        *client_ctx, ConnectionInfo *conn, const string_t *ns,
+        const int64_t inode, FDIRClientCompactDentryArray *array);
+
 int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
         struct fast_mpool_man *mpool);
 

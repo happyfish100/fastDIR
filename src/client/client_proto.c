@@ -1759,14 +1759,13 @@ static int check_realloc_client_buffer(SFResponseInfo *response,
 }
 
 static int check_realloc_dentry_array(SFResponseInfo *response,
-        FDIRClientDentryArray *array, const int inc_count)
+        FDIRClientCommonDentryArray *array, const int element_size,
+        const int target_count)
 {
-    FDIRClientDentry *new_entries;
-    int target_count;
+    void *new_entries;
     int new_alloc;
     int bytes;
 
-    target_count = array->count + inc_count;
     if (target_count <= array->alloc) {
         return 0;
     }
@@ -1780,17 +1779,18 @@ static int check_realloc_dentry_array(SFResponseInfo *response,
         new_alloc *= 2;
     }
 
-    bytes = sizeof(FDIRClientDentry) * new_alloc;
-    new_entries = (FDIRClientDentry *)fc_malloc(bytes);
+    bytes = element_size * new_alloc;
+    new_entries = fc_malloc(bytes);
     if (new_entries == NULL) {
-        response->error.length = sprintf(response->error.message,
+        response->error.length = sprintf(
+                response->error.message,
                 "malloc %d bytes fail", bytes);
         return ENOMEM;
     }
 
     if (array->count > 0) {
         memcpy(new_entries, array->entries,
-                sizeof(FDIRClientDentry) * array->count);
+                element_size * array->count);
         free(array->entries);
     }
     array->entries = new_entries;
@@ -1798,25 +1798,16 @@ static int check_realloc_dentry_array(SFResponseInfo *response,
     return 0;
 }
 
-typedef int (*list_dentry_parse_resp_body_func)(SFResponseInfo *response,
-        void *array, string_t *next_token, const bool is_first);
-
-static int parse_list_dentry_response_body(
-        SFResponseInfo *response, FDIRClientDentryArray *array,
-        string_t *next_token, const bool is_first)
+static int parse_list_dentry_bheader(SFResponseInfo *response,
+        FDIRClientCommonDentryArray *array, const int element_size,
+        string_t *next_token, const bool is_first, bool *is_last,
+        int *count, char **p)
 {
     FDIRProtoListDEntryRespBodyFirstHeader *first_header;
     FDIRProtoListDEntryRespBodyCommonHeader *common_header;
-    FDIRProtoListDEntryRespCompletePart *part;
-    FDIRClientDentry *cd;
-    FDIRClientDentry *start;
-    FDIRClientDentry *end;
-    char *p;
-    int result;
     int common_header_len;
     int total_count;
-    int entry_len;
-    int count;
+    int result;
 
     if (is_first) {
         common_header_len = sizeof(FDIRProtoListDEntryRespBodyFirstHeader);
@@ -1825,8 +1816,8 @@ static int parse_list_dentry_response_body(
         common_header = &first_header->common;
 
         total_count = buff2int(first_header->total_count);
-        if ((result=check_realloc_dentry_array(response,
-                        array, total_count)) != 0)
+        if ((result=check_realloc_dentry_array(response, array,
+                        element_size, total_count)) != 0)
         {
             return result;
         }
@@ -1844,22 +1835,53 @@ static int parse_list_dentry_response_body(
         return EINVAL;
     }
 
-    p = array->buffer.buff + common_header_len;
-    count = buff2int(common_header->count);
-    if (array->count + count > array->alloc) {
+    *count = buff2int(common_header->count);
+    if (array->count + *count > array->alloc) {
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
                 "sum count: %d > alloc: %d (current count: %d)",
-                array->count + count, array->alloc, count);
+                array->count + *count, array->alloc, *count);
         return EOVERFLOW;
     }
 
+    *p = array->buffer.buff + common_header_len;
+    *is_last = (common_header->is_last == 1);
     next_token->str = common_header->token;
     if (common_header->is_last) {
         next_token->len = 0;
     } else {
         next_token->len = sizeof(common_header->token);
+    }
 
+    return 0;
+}
+
+typedef int (*list_dentry_parse_resp_body_func)(SFResponseInfo *response,
+        void *array, string_t *next_token, const bool is_first);
+
+static int parse_list_dentry_response_body(
+        SFResponseInfo *response, FDIRClientDentryArray *array,
+        string_t *next_token, const bool is_first)
+{
+    FDIRProtoListDEntryRespCompletePart *part;
+    FDIRClientDentry *cd;
+    FDIRClientDentry *start;
+    FDIRClientDentry *end;
+    char *p;
+    int result;
+    int entry_len;
+    int count;
+    bool is_last;
+
+    if ((result=parse_list_dentry_bheader(response,
+                    (FDIRClientCommonDentryArray *)array,
+                    sizeof(FDIRClientDentry), next_token,
+                    is_first, &is_last, &count, &p)) != 0)
+    {
+        return result;
+    }
+
+    if (!is_last) {
         if (!array->name_allocator.inited) {
             if ((result=fast_mpool_init(array->name_allocator.
                             mpool.ptr, 64 * 1024, 8)) != 0)
@@ -1890,7 +1912,7 @@ static int parse_list_dentry_response_body(
 
         cd->dentry.inode = buff2long(part->common.inode);
         fdir_proto_unpack_dentry_stat(&part->stat, &cd->dentry.stat);
-        if (common_header->is_last && !array->name_allocator.cloned) {
+        if (is_last && !array->name_allocator.cloned) {
             FC_SET_STRING_EX(cd->name, part->common.name_str,
                     part->common.name_len);
         } else if ((result=fast_mpool_alloc_string_ex(array->
@@ -1901,6 +1923,95 @@ static int parse_list_dentry_response_body(
                     "strdup %d bytes fail", part->common.name_len);
             return result;
         }
+
+        p += entry_len;
+    }
+
+    if ((int)(p - array->buffer.buff) != response->header.body_len) {
+        response->error.length = snprintf(response->error.message,
+                sizeof(response->error.message),
+                "response body length: %d != header's %d",
+                (int)(p - array->buffer.buff), response->header.body_len);
+        return EINVAL;
+    }
+
+    array->count += count;
+    return 0;
+}
+
+static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
+        FDIRClientCompactDentryArray *array,
+        string_t *next_token, const bool is_first)
+{
+    FDIRProtoListDEntryRespCompactPart *part;
+    struct dirent *cd;
+    struct dirent *start;
+    struct dirent *end;
+    char *p;
+    int result;
+    int entry_len;
+    int count;
+    int mode;
+    bool is_last;
+
+    if ((result=parse_list_dentry_bheader(response,
+                    (FDIRClientCommonDentryArray *)array,
+                    sizeof(struct dirent), next_token,
+                    is_first, &is_last, &count, &p)) != 0)
+    {
+        return result;
+    }
+
+    start = array->entries + array->count;
+    end = start + count;
+    for (cd=start; cd<end; cd++) {
+        part = (FDIRProtoListDEntryRespCompactPart *)p;
+        entry_len = sizeof(FDIRProtoListDEntryRespCompactPart) +
+            part->common.name_len;
+        if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
+            response->error.length = snprintf(response->error.message,
+                    sizeof(response->error.message),
+                    "response body length exceeds header's %d",
+                    response->header.body_len);
+            return EINVAL;
+        }
+
+        mode = buff2int(part->mode);
+        cd->d_ino = buff2long(part->common.inode);
+
+#ifdef HAVE_DIRENT_D_NAMLEN
+        cd->d_namlen =
+#endif
+        snprintf(cd->d_name, sizeof(cd->d_name), "%.*s",
+                part->common.name_len, part->common.name_str);
+
+#ifdef HAVE_DIRENT_D_TYPE
+        if (S_ISBLK(mode)) {
+            cd->d_type = DT_BLK;
+        } else if (S_ISCHR(mode)) {
+            cd->d_type = DT_CHR;
+        } else if (S_ISDIR(mode)) {
+            cd->d_type = DT_DIR;
+        } else if (S_ISFIFO(mode)) {
+            cd->d_type = DT_FIFO;
+        } else if (S_ISREG(mode)) {
+            cd->d_type = DT_REG;
+        } else if (S_ISLNK(mode)) {
+            cd->d_type = DT_LNK;
+        } else if (S_ISSOCK(mode)) {
+            cd->d_type = DT_SOCK;
+        } else {
+            cd->d_type = DT_UNKNOWN;
+        }
+#endif
+
+#ifdef HAVE_DIRENT_D_RECLEN
+        cd->d_reclen = sizeof(struct dirent);
+#endif
+
+#ifdef HAVE_DIRENT_D_OFF
+        cd->d_off = (int)(cd - array->entries);
+#endif
 
         p += entry_len;
     }
@@ -2061,18 +2172,6 @@ static inline void reset_dentry_array(FDIRClientDentryArray *array)
     }
 }
 
-int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
-        FDIRClientDentryArray *array)
-{
-    const int flags = 0;
-
-    reset_dentry_array(array);
-    return list_dentry_by_path(client_ctx, conn, fullname,
-            (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
-            (FDIRClientCommonDentryArray *)array, flags);
-}
-
 static int list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         list_dentry_parse_resp_body_func deal_func,
@@ -2101,6 +2200,18 @@ static int list_dentry_by_inode(FDIRClientContext *client_ctx,
             out_bytes, deal_func, array);
 }
 
+int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        FDIRClientDentryArray *array)
+{
+    const int flags = 0;
+
+    reset_dentry_array(array);
+    return list_dentry_by_path(client_ctx, conn, fullname,
+            (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
+            (FDIRClientCommonDentryArray *)array, flags);
+}
+
 int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         FDIRClientDentryArray *array)
@@ -2110,6 +2221,30 @@ int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
     reset_dentry_array(array);
     return list_dentry_by_inode(client_ctx, conn, ns, inode,
             (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
+            (FDIRClientCommonDentryArray *)array, flags);
+}
+
+int fdir_client_proto_list_compact_dentry_by_path(FDIRClientContext
+        *client_ctx, ConnectionInfo *conn, const FDIRDEntryFullName
+        *fullname, FDIRClientCompactDentryArray *array)
+{
+    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT;
+
+    array->count = 0;
+    return list_dentry_by_path(client_ctx, conn, fullname,
+            (list_dentry_parse_resp_body_func)parse_list_compact_dentry_rbody,
+            (FDIRClientCommonDentryArray *)array, flags);
+}
+
+int fdir_client_proto_list_compact_dentry_by_inode(FDIRClientContext
+        *client_ctx, ConnectionInfo *conn, const string_t *ns,
+        const int64_t inode, FDIRClientCompactDentryArray *array)
+{
+    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT;
+
+    array->count = 0;
+    return list_dentry_by_inode(client_ctx, conn, ns, inode,
+            (list_dentry_parse_resp_body_func)parse_list_compact_dentry_rbody,
             (FDIRClientCommonDentryArray *)array, flags);
 }
 

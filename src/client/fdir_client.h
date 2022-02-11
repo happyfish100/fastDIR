@@ -235,7 +235,18 @@ int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array);
 
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, FDIRClientDentryArray *array);
+        const string_t *ns, const int64_t inode,
+        FDIRClientDentryArray *array);
+
+int fdir_client_list_compact_dentry_by_path(
+        FDIRClientContext *client_ctx,
+        const FDIRDEntryFullName *fullname,
+        FDIRClientCompactDentryArray *array);
+
+int fdir_client_list_compact_dentry_by_inode(
+        FDIRClientContext *client_ctx,
+        const string_t *ns, const int64_t inode,
+        FDIRClientCompactDentryArray *array);
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
         const string_t *ns, FDIRClientNamespaceStat *stat);
