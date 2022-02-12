@@ -2000,8 +2000,6 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
             cd->d_type = DT_LNK;
         } else if (S_ISSOCK(mode)) {
             cd->d_type = DT_SOCK;
-        } else if (S_ISWHT(mode)) {
-            cd->d_type = DT_WHT;
         } else {
             cd->d_type = DT_UNKNOWN;
         }

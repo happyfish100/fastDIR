@@ -2308,7 +2308,8 @@ static int parse_xattr_name_info(struct fast_task_info *task,
         return result;
     }
 
-    proto_name = (FDIRProtoNameInfo *)REQUEST.body;
+    proto_name = (FDIRProtoNameInfo *)(REQUEST.body +
+            sizeof(FDIRProtoXAttrFront));
     name->len = proto_name->len;
     name->str = proto_name->str;
     return 0;

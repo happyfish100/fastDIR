@@ -958,11 +958,15 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     }
 
     if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_ENABLED)) {
-        if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_DIR)) {
+        if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_DIR) ==
+                FDIR_UNLINK_FLAGS_MATCH_DIR)
+        {
             if (!S_ISDIR(record->me.dentry->stat.mode)) {
                 return ENOTDIR;
             }
-        } else if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_FILE)) {
+        } else if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_FILE) ==
+                FDIR_UNLINK_FLAGS_MATCH_FILE)
+        {
             if (S_ISDIR(record->me.dentry->stat.mode)) {
                 return EISDIR;
             }
