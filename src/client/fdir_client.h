@@ -23,16 +23,23 @@
 #include "client_global.h"
 #include "client_proto.h"
 
+#define fdir_client_create_dentry(client_ctx, fullname, omp, dentry) \
+        fdir_client_create_dentry_ex(client_ctx, fullname, omp, 0, dentry)
+
+#define fdir_client_create_dentry_by_pname(client_ctx, ns, pname, omp, dentry) \
+        fdir_client_create_dentry_by_pname_ex(client_ctx, \
+                ns, pname, omp, 0, dentry)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int fdir_client_create_dentry(FDIRClientContext *client_ctx,
+int fdir_client_create_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
         const dev_t rdev, FDIRDEntryInfo *dentry);
 
-int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
+int fdir_client_create_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
         const FDIRClientOwnerModePair *omp, const dev_t rdev,
         FDIRDEntryInfo *dentry);

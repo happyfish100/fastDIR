@@ -103,6 +103,6 @@ int main(int argc, char *argv[])
     }
 
     omp.mode |= S_IFDIR;
-    return fdir_client_create_dentry(&g_fdir_client_vars.client_ctx,
-                    &fullname, &omp, 0, &dentry);
+    return fdir_client_create_dentry(&g_fdir_client_vars.
+            client_ctx, &fullname, &omp, &dentry);
 }

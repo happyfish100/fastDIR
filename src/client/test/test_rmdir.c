@@ -43,11 +43,12 @@ static void usage(char *argv[])
 
 static int remove_dentry(FDIRDEntryFullName *fullname)
 {
+    const int flags = 0;
 	int result;
 
     ++total_count;
     if ((result=fdir_client_remove_dentry(&g_fdir_client_vars.
-                    client_ctx, fullname)) != 0)
+                    client_ctx, fullname, flags)) != 0)
     {
         if (ignore_noent_error && result == ENOENT) {
             ++ignore_count;

@@ -38,11 +38,13 @@ static void usage(char *argv[])
 
 static int get_xattr(const string_t *name)
 {
+    const int flags = 0;
     char fixed_buff[1024];
     char *hex_buff;
     int result;
     if ((result=fdir_client_get_xattr_by_path(&g_fdir_client_vars.client_ctx,
-                    &fullname, name, &value, FDIR_XATTR_MAX_VALUE_SIZE)) != 0)
+                    &fullname, name, &value, FDIR_XATTR_MAX_VALUE_SIZE,
+                    flags)) != 0)
     {
         return result;
     }
@@ -79,6 +81,7 @@ static int dump_xattrs()
 {
 #define MAX_NM_LIST_SIZE  (8 * 1024)
 
+    const int flags = 0;
     char buff[MAX_NM_LIST_SIZE];
     string_t list;
     string_t names[FDIR_XATTR_KVARRAY_MAX_ELEMENTS];
@@ -89,7 +92,7 @@ static int dump_xattrs()
 
     list.str = buff;
     if ((result=fdir_client_list_xattr_by_path(&g_fdir_client_vars.client_ctx,
-                    &fullname, &list, MAX_NM_LIST_SIZE)) != 0)
+                    &fullname, &list, MAX_NM_LIST_SIZE, flags)) != 0)
     {
         return result;
     }

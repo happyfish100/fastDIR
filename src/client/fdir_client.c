@@ -24,7 +24,7 @@
 #define GET_READABLE_CONNECTION(cm, arg1, result) \
     (cm)->ops.get_readable_connection(cm, arg1, result)
 
-int fdir_client_create_dentry(FDIRClientContext *client_ctx,
+int fdir_client_create_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
         const dev_t rdev, FDIRDEntryInfo *dentry)
@@ -36,7 +36,7 @@ int fdir_client_create_dentry(FDIRClientContext *client_ctx,
             fullname, omp, rdev, dentry);
 }
 
-int fdir_client_create_dentry_by_pname(FDIRClientContext *client_ctx,
+int fdir_client_create_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRDEntryPName *pname,
         const FDIRClientOwnerModePair *omp, const dev_t rdev,
         FDIRDEntryInfo *dentry)

@@ -116,6 +116,6 @@ int main(int argc, char *argv[])
                 client_ctx, &fullname, &xattr, flags);
     } else {
         return fdir_client_remove_xattr_by_path(&g_fdir_client_vars.
-                client_ctx, &fullname, &xattr.key);
+                client_ctx, &fullname, &xattr.key, flags);
     }
 }
