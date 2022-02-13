@@ -26,9 +26,22 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
+    fprintf(stdout, "Usage: %s [-c config_filename=%s] "
             "<-n namespace> <path>\n", argv[0],
             FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
+    fputs("\n\
+List information about the FILES in path of namespace specified with -n.\n\
+Sort entries alphabetically.\n\n\
+  -c      specify the FastDIR client config file name,\n\
+           if none of -c is specified, will use default file name: /etc/fastcfs/fdir/client.conf.\n\n\
+  -n      specify the namespace for FastDIR to list.\n\n\
+  -h      show command fdir_list usage.\n\
+  \n\
+  namespace:\n\
+          the namespace for FastDIR in fuse.conf.\n\n\
+  path:\n\
+          the path to list in namespace.\n\
+          / indicator will list root directory.\n", stdout);
 }
 
 static void output_dentry_array(FDIRClientDentryArray *array)
