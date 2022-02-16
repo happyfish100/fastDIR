@@ -1568,6 +1568,24 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
     return result;
 }
 
+#define RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, \
+        out_bytes, response, resp_cmd, value, size) \
+    response.error.length = 0; \
+    if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) { \
+        char in_buff[4]; \
+        if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,  \
+                        &response, client_ctx->common_cfg.network_timeout,\
+                        resp_cmd, in_buff, sizeof(in_buff))) == 0) \
+        { \
+            value->len = buff2int(in_buff); \
+        } \
+    } else { \
+        result = sf_send_and_recv_response_ex1(conn, out_buff, out_bytes, \
+                &response, client_ctx->common_cfg.network_timeout, \
+                resp_cmd, value->str, size, &value->len); \
+    }
+
+
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
         const string_t *name, const int enoattr_log_level,
@@ -1600,12 +1618,9 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
-    response.error.length = 0;
-    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
-                    &response, client_ctx->common_cfg.network_timeout,
-                    FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP, value->str,
-                    size, &value->len)) != 0)
-    {
+    RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
+            FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP, value, size);
+    if (result != 0) {
         log_level = (result == ENOENT || result == ENODATA) ?
             enoattr_log_level : LOG_ERR;
         sf_log_network_error_ex(&response, conn, result, log_level);
@@ -1644,12 +1659,9 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
-    response.error.length = 0;
-    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
-                    &response, client_ctx->common_cfg.network_timeout,
-                    FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP, value->str,
-                    size, &value->len)) != 0)
-    {
+    RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
+            FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP, value, size);
+    if (result != 0) {
         log_level = (result == ENOENT || result == ENODATA) ?
             enoattr_log_level : LOG_ERR;
         sf_log_network_error_ex(&response, conn, result, log_level);
@@ -1683,12 +1695,9 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
-    response.error.length = 0;
-    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
-                    &response, client_ctx->common_cfg.network_timeout,
-                    FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP, list->str,
-                    size, &list->len)) != 0)
-    {
+    RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
+            FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP, list, size);
+    if (result != 0) {
         sf_log_network_error(&response, conn, result);
     }
 
@@ -1719,12 +1728,10 @@ int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
-    response.error.length = 0;
-    if ((result=sf_send_and_recv_response_ex1(conn, out_buff, out_bytes,
-                    &response, client_ctx->common_cfg.network_timeout,
-                    FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP, list->str,
-                    size, &list->len)) != 0)
-    {
+
+    RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
+            FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP, list, size);
+    if (result != 0) {
         sf_log_network_error(&response, conn, result);
     }
 

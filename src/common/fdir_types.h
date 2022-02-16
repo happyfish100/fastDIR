@@ -71,6 +71,7 @@
 #define FDIR_FLAGS_FOLLOW_SYMLINK    (1 << 0)
 #define FDIR_FLAGS_XATTR_CREATE      (1 << 1)  //for setxattr
 #define FDIR_FLAGS_XATTR_REPLACE     (1 << 2)  //for setxattr
+#define FDIR_FLAGS_XATTR_GET_SIZE    (1 << 3)  //for getxattr and listxattr
 
 #define FDIR_UNLINK_FLAGS_MATCH_ENABLED (1 << 8)
 #define FDIR_UNLINK_FLAGS_MATCH_DIR  ((1 << 1) | FDIR_UNLINK_FLAGS_MATCH_ENABLED)

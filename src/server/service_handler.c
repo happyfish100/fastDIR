@@ -1128,19 +1128,25 @@ static void server_list_dentry_output(struct fast_task_info *task,
 }
 
 static inline void service_getxattr_output(struct fast_task_info *task,
-        FDIRServerDentry *dentry, const string_t *value)
+        const string_t *value, const int flags)
 {
-    RESPONSE.header.body_len = value->len;
-    memcpy(SF_PROTO_RESP_BODY(task), value->str, value->len);
+    if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) {
+        RESPONSE.header.body_len = 4;
+        int2buff(value->len, SF_PROTO_RESP_BODY(task));
+    } else {
+        RESPONSE.header.body_len = value->len;
+        memcpy(SF_PROTO_RESP_BODY(task), value->str, value->len);
+    }
     TASK_CTX.common.response_done = true;
 }
 
 static void service_do_listxattr(struct fast_task_info *task,
-        FDIRServerDentry *dentry)
+        FDIRServerDentry *dentry, const int flags)
 {
     const key_value_pair_t *kv;
     const key_value_pair_t *kv_end;
     char *p;
+    int body_len;
 
     p = SF_PROTO_RESP_BODY(task);
     if (dentry->kv_array != NULL) {
@@ -1155,13 +1161,24 @@ static void service_do_listxattr(struct fast_task_info *task,
                         __LINE__, dentry->kv_array->count);
                 break;
             }
-            memcpy(p, kv->key.str, kv->key.len);
-            p += kv->key.len;
-            *p++ = '\0';
+
+            if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) {
+                p += kv->key.len + 1;
+            } else {
+                memcpy(p, kv->key.str, kv->key.len);
+                p += kv->key.len;
+                *p++ = '\0';
+            }
         }
     }
 
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    body_len = p - SF_PROTO_RESP_BODY(task);
+    if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) {
+        RESPONSE.header.body_len = 4;
+        int2buff(body_len, SF_PROTO_RESP_BODY(task));
+    } else {
+        RESPONSE.header.body_len = body_len;
+    }
     TASK_CTX.common.response_done = true;
 }
 
@@ -1269,11 +1286,12 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 server_list_dentry_output(task, true);
                 break;
             case SERVICE_OP_GET_XATTR_INT:
-                service_getxattr_output(task, record->me.dentry,
-                        &record->xattr.value);
+                service_getxattr_output(task, &record->xattr.value,
+                        record->flags);
                 break;
             case SERVICE_OP_LIST_XATTR_INT:
-                service_do_listxattr(task, record->me.dentry);
+                service_do_listxattr(task, record->me.dentry,
+                        record->flags);
                 break;
             default:
                 break;
