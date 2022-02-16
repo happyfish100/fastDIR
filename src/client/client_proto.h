@@ -17,8 +17,47 @@
 #ifndef _FDIR_CLIENT_PROTO_H
 #define _FDIR_CLIENT_PROTO_H
 
-#include <dirent.h>
 #include "fastcommon/fast_mpool.h"
+
+#ifdef OS_LINUX
+
+typedef struct fdir_dirent {
+#ifndef __USE_FILE_OFFSET64
+    __ino_t d_ino;
+#else
+    __ino64_t d_ino;
+#endif
+
+#ifdef HAVE_DIRENT_D_OFF
+#ifndef __USE_FILE_OFFSET64
+    __off_t d_off;
+#else
+    __off64_t d_off;
+#endif
+#endif
+
+#ifdef HAVE_DIRENT_D_RECLEN
+    unsigned short int d_reclen;
+#endif
+
+#ifdef HAVE_DIRENT_D_TYPE
+    unsigned char d_type;
+#endif
+
+#ifdef HAVE_DIRENT_D_NAMLEN
+    uint8_t  d_namlen;
+#endif
+
+    char d_name[256];       /* We must not include limits.h! */
+} FDIRDirent;
+
+#else
+
+#include <dirent.h>
+typedef struct dirent FDIRDirent;
+
+#endif
+
 #include "sf/sf_proto.h"
 #include "fdir_types.h"
 #include "client_types.h"
@@ -64,7 +103,7 @@ typedef struct fdir_client_dentry_array {
 } FDIRClientDentryArray;
 
 typedef struct fdir_client_compact_dentry_array {
-    DENTRY_ARRAY_COMMON_FIELDS(struct dirent);
+    DENTRY_ARRAY_COMMON_FIELDS(FDIRDirent);
 } FDIRClientCompactDentryArray;
 
 typedef struct fdir_client_service_stat {

@@ -20,6 +20,9 @@
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/connection_pool.h"
+#ifdef OS_LINUX
+#include <dirent.h>
+#endif
 #include "fdir_proto.h"
 #include "fdir_func.h"
 #include "client_global.h"
@@ -1944,9 +1947,9 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
         string_t *next_token, const bool is_first)
 {
     FDIRProtoListDEntryRespCompactPart *part;
-    struct dirent *cd;
-    struct dirent *start;
-    struct dirent *end;
+    FDIRDirent *cd;
+    FDIRDirent *start;
+    FDIRDirent *end;
     char *p;
     int result;
     int entry_len;
@@ -1956,7 +1959,7 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
 
     if ((result=parse_list_dentry_bheader(response,
                     (FDIRClientCommonDentryArray *)array,
-                    sizeof(struct dirent), next_token,
+                    sizeof(FDIRDirent), next_token,
                     is_first, &is_last, &count, &p)) != 0)
     {
         return result;
@@ -2006,7 +2009,7 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
 #endif
 
 #ifdef HAVE_DIRENT_D_RECLEN
-        cd->d_reclen = sizeof(struct dirent);
+        cd->d_reclen = sizeof(FDIRDirent);
 #endif
 
 #ifdef HAVE_DIRENT_D_OFF
