@@ -17,50 +17,13 @@
 #ifndef _FDIR_CLIENT_PROTO_H
 #define _FDIR_CLIENT_PROTO_H
 
-#include "fastcommon/fast_mpool.h"
-
-#ifdef OS_LINUX
-
-typedef struct fdir_dirent {
-#ifndef __USE_FILE_OFFSET64
-    __ino_t d_ino;
-#else
-    __ino64_t d_ino;
-#endif
-
-#ifdef HAVE_DIRENT_D_OFF
-#ifndef __USE_FILE_OFFSET64
-    __off_t d_off;
-#else
-    __off64_t d_off;
-#endif
-#endif
-
-#ifdef HAVE_DIRENT_D_RECLEN
-    unsigned short int d_reclen;
-#endif
-
-#ifdef HAVE_DIRENT_D_TYPE
-    unsigned char d_type;
-#endif
-
-#ifdef HAVE_DIRENT_D_NAMLEN
-    uint8_t  d_namlen;
-#endif
-
-    char d_name[256];       /* We must not include limits.h! */
-} FDIRDirent;
-
-#else
-
 #include <dirent.h>
-typedef struct dirent FDIRDirent;
-
-#endif
-
+#include "fastcommon/fast_mpool.h"
 #include "sf/sf_proto.h"
 #include "fdir_types.h"
 #include "client_types.h"
+
+typedef struct dirent FDIRDirent;
 
 typedef struct fdir_client_owner_mode_pair {
     uid_t uid;
