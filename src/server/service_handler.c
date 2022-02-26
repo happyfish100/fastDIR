@@ -2770,7 +2770,7 @@ static int service_deal_modify_stat_by_path(struct fast_task_info *task)
     int result;
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
+                    sizeof(FDIRProtoModifyStatFront))) != 0)
     {
         return result;
     }
