@@ -881,9 +881,11 @@ static int push_batch_set_dsize_to_db_update_queue(FDIRDataThreadContext
 }
 
 static inline void update_dentry_stat(FDIRServerDentry *dentry,
-        const FDIRBinlogRecord *record)
+        FDIRBinlogRecord *record)
 {
     if (record->options.mode) {
+        record->stat.mode = (dentry->stat.mode & S_IFMT) |
+            (record->stat.mode & ALLPERMS);
         dentry->stat.mode = record->stat.mode;
     }
     if (record->options.atime) {
