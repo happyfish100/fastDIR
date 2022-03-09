@@ -956,6 +956,7 @@ int binlog_detect_record(const char *str, const int len,
         return result;
     }
 
+    record.data_version = 0;
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }
