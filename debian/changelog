@@ -1,4 +1,35 @@
-fastdir (3.1.0-1) UNRELEASED; urgency=medium
+fastdir (3.2.0-1) unstable; urgency=medium
+
+  * README-zh_CN.md improved
+  * README-zh_CN.md changed
+  * bugfixed: server_parse_inode_for_update MUST set dentry_type
+  * set stat.size to link length for symlink
+  * add field rdev for mknod
+  * stat_dentry_xxx support flags
+  * link_dentry_xxx support flags
+  * support update dentry stat by path
+  * update dentry stat support flags
+  * remove dentry support flags
+  * define macros for XATTR_CREATE and XATTR_REPLACE
+  * setxattr flags support follow symlink
+  * get/list/remove xattr support flags
+  * list dentry support flags (compact output)
+  * impl. list compact dentry for POSIX readdir
+  * compile OK for new adding flags
+  * bugfixed for remove dentry flags check
+  * define struct fdir_dirent for Linux preload
+  * support get size for getxattr and listxattr
+  * simple_hash rename to fc_simple_hash
+  * use struct dirent directly in Linux
+  * correct parse dentry front size for service_deal_modify_stat_by_path
+  * bugfixed: update field "mode" correctly
+  * upgrade version to 3.2.0
+  * make.sh: change DEBUG_FLAG to 0
+  * remove compile warning
+
+ -- YuQing <384681@qq.com>  Sun, 13 Mar 2022 17:02:19 +0800
+
+fastdir (3.1.0-1) unstable; urgency=medium
 
   * upgrade version to 3.1.0
 
