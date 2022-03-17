@@ -97,7 +97,7 @@ int ns_manager_init()
         sizeof(FDIRNSSubscribeEntry) * FDIR_MAX_NS_SUBSCRIBERS;
     if ((result=fast_mblock_init_ex1(&fdir_manager.ns_allocator,
                     "ns_entry", element_size, 4096, 0,
-                    (fast_mblock_alloc_init_func)ns_alloc_init_func,
+                    (fast_mblock_object_init_func)ns_alloc_init_func,
                     NULL, false)) != 0)
     {
         return result;

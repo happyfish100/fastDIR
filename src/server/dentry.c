@@ -47,7 +47,7 @@ int dentry_init()
     const int max_bits = 16;
     int result;
     int element_size;
-    fast_mblock_alloc_init_func init_func;
+    fast_mblock_object_init_func init_func;
 
     if ((result=ptr_array_allocator_init(&DENTRY_PARRAY_ALLOCATOR,
                     min_bits, max_bits)) != 0)
@@ -58,7 +58,7 @@ int dentry_init()
     if (STORAGE_ENABLED) {
         element_size = sizeof(FDIRServerDentry) +
             sizeof(FDIRServerDentryDBArgs);
-        init_func = (fast_mblock_alloc_init_func)dentry_init_obj_with_db;
+        init_func = (fast_mblock_object_init_func)dentry_init_obj_with_db;
     } else {
         element_size = sizeof(FDIRServerDentry);
         init_func = NULL;
@@ -362,7 +362,7 @@ static int init_kvarray_allocators(struct fast_mblock_man
         element_size = sizeof(SFKeyValueArray) +
             sizeof(key_value_pair_t) * alloc_count;
         if ((result=fast_mblock_init_ex1(mblock, name, element_size,
-                        alloc_elements_once, 0, (fast_mblock_alloc_init_func)
+                        alloc_elements_once, 0, (fast_mblock_object_init_func)
                         kvarray_alloc_init, mblock, false)) != 0)
         {
             return result;
