@@ -13,14 +13,14 @@ Package: fastdir
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.server>
-Depends: libfastcommon (>= 1.0.56),
-         libserverframe (>= 1.1.13),
-         libfdirstorage (>= 1.0.1),
-         fastcfs-auth-client (>= 3.0.0),
-         fastcfs-auth-config (>= 2.0.0),
+Depends: libfastcommon (>= ${libfastcommon:Version}),
+         libserverframe (>= ${libserverframe:Version}),
+         libfdirstorage (>= ${libfdirstorage:Version}),
+         fastcfs-auth-client (>= ${fastcfs-auth-client:Version}),
+         fastcfs-auth-config (>= ${fastcfs-auth-config:Version}),
          fastdir-server (= ${binary:Version}),
          fastdir-client (= ${binary:Version}),
-         ${misc:Depends}, ${shlibs:Depends}
+         ${misc:Depends}
 Description: high performance distributed directory service
  high performance distributed directory service
 
@@ -28,12 +28,12 @@ Package: fastdir-server
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.server>
-Depends: libfastcommon (>= 1.0.56),
-         libserverframe (>= 1.1.13),
-         libfdirstorage (>= 1.0.1),
-         fastcfs-auth-client (>= 3.0.0),
-         fastcfs-auth-config (>= 2.0.0),
-         fastdir-config (>= 1.0.0),
+Depends: libfastcommon (>= ${libfastcommon:Version}),
+         libserverframe (>= ${libserverframe:Version}),
+         libfdirstorage (>= ${libfdirstorage:Version}),
+         fastcfs-auth-client (>= ${fastcfs-auth-client:Version}),
+         fastcfs-auth-config (>= ${fastcfs-auth-config:Version}),
+         fastdir-config (>= ${fastdir-config:Version}),
          ${misc:Depends}, ${shlibs:Depends}
 Description: FastDIR server
 
@@ -41,11 +41,11 @@ Package: fastdir-client
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.client>
-Depends: libfastcommon (>= 1.0.56),
-         libserverframe (>= 1.1.13),
-         fastcfs-auth-client (>= 3.0.0),
-         fastcfs-auth-config (>= 2.0.0),
-         fastdir-config (>= 1.0.0),
+Depends: libfastcommon (>= ${libfastcommon:Version}),
+         libserverframe (>= ${libserverframe:Version}),
+         fastcfs-auth-client (>= ${fastcfs-auth-client:Version}),
+         fastcfs-auth-config (>= ${fastcfs-auth-config:Version}),
+         fastdir-config (>= ${fastdir-config:Version}),
          ${misc:Depends}, ${shlibs:Depends}
 Description: FastDIR client library and tools
 
@@ -54,14 +54,14 @@ Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.client>
 Depends: fastdir-client (= ${binary:Version}),
-         ${misc:Depends}, ${shlibs:Depends}
+         ${misc:Depends}
 Description: header files of FastDIR client library
  This package provides the header files of libfdirclient
 
 Package: fastdir-config
 Architecture: linux-any
 Multi-Arch: foreign
-Build-Profiles: <pkg.server>
+Build-Profiles: <pkg.client> <pkg.server>
 Depends: fastdir-client (= ${binary:Version})
 Description: FastDIR config files for sample
  FastDIR config files for sample including server and client
