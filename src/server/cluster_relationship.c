@@ -460,7 +460,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         }
 
         g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_STRICT;
-        binlog_write_set_order_by(SF_BINLOG_THREAD_TYPE_ORDER_BY_VERSION);
+        binlog_write_set_order_by(SF_BINLOG_WRITER_TYPE_ORDER_BY_VERSION);
         binlog_write_set_next_version();
 
         old_status = __sync_add_and_fetch(&new_master->status, 0);
@@ -546,7 +546,7 @@ void cluster_relationship_trigger_reselect_master()
     struct nio_thread_data *data_end;
 
     g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
-    binlog_write_set_order_by(SF_BINLOG_THREAD_TYPE_ORDER_BY_NONE);
+    binlog_write_set_order_by(SF_BINLOG_WRITER_TYPE_ORDER_BY_NONE);
 
     cluster_unset_master();
     __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);

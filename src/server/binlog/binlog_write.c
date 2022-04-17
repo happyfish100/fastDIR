@@ -53,9 +53,14 @@ int binlog_write_init()
     sf_binlog_writer_set_flags(&g_binlog_writer_ctx.writer,
             SF_FILE_WRITER_FLAGS_WANT_DONE_VERSION);
 
-    return sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
-            FDIR_BINLOG_SUBDIR_NAME, &g_binlog_writer_ctx.writer,
-            SF_BINLOG_THREAD_ORDER_MODE_VARY,
-            SF_BINLOG_THREAD_TYPE_ORDER_BY_NONE, binlog_init_buffer_size,
-            writer_count, use_fixed_buffer_size);
+    if ((result=sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
+                    FDIR_BINLOG_SUBDIR_NAME, &g_binlog_writer_ctx.writer,
+                    SF_BINLOG_THREAD_ORDER_MODE_VARY, binlog_init_buffer_size,
+                    writer_count, use_fixed_buffer_size)) != 0)
+    {
+        return result;
+    }
+
+    return sf_binlog_writer_change_order_by(&g_binlog_writer_ctx.writer,
+            SF_BINLOG_WRITER_TYPE_ORDER_BY_NONE);
 }
