@@ -110,6 +110,11 @@ static int load_master_election_config(const char *cluster_filename)
             &ini_ctx, "master_lost_timeout", 3, 1, 300);
     ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
             &ini_ctx, "max_wait_time", 30, 1, 3600);
+    if ((result=sf_load_quorum_config(&MASTER_ELECTION_QUORUM,
+                    &ini_ctx)) != 0)
+    {
+        return result;
+    }
 
     iniFreeContext(&ini_context);
     return 0;
@@ -378,7 +383,7 @@ static void server_log_configs()
             "inode_hashtable_capacity = %"PRId64", "
             "inode_shared_locks_count = %d, "
             "cluster server count = %d, "
-            "master-election {master_lost_timeout: %ds, "
+            "master-election {quorum: %s, master_lost_timeout: %ds, "
             "max_wait_time: %ds}, storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
@@ -389,6 +394,7 @@ static void server_log_configs()
             g_server_global_vars.namespace_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
+            sf_get_quorum_caption(MASTER_ELECTION_QUORUM),
             ELECTION_MASTER_LOST_TIMEOUT, ELECTION_MAX_WAIT_TIME,
             STORAGE_ENABLED);
 

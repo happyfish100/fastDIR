@@ -247,7 +247,8 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
     return (int)status1->server_id - (int)status2->server_id;
 }
 
-static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
+static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
+        const bool log_connect_error)
 {
     const int connect_timeout = 2;
     const int network_timeout = 2;
@@ -262,9 +263,9 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
         server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
     } else {
-        if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            server_status->cs->server),
-                        &conn, connect_timeout)) != 0)
+        if ((result=fc_server_make_connection_ex(&CLUSTER_GROUP_ADDRESS_ARRAY(
+                            server_status->cs->server), &conn,
+                        connect_timeout, NULL, log_connect_error)) != 0)
         {
             return result;
         }
@@ -277,7 +278,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status)
 }
 
 static int cluster_get_master(FDIRClusterServerStatus *server_status,
-        int *active_count)
+        const bool log_connect_error, int *active_count)
 {
 #define STATUS_ARRAY_FIXED_COUNT  8
 	FDIRClusterServerInfo *server;
@@ -306,7 +307,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 	end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
 	for (server=CLUSTER_SERVER_ARRAY.servers; server<end; server++) {
 		current_status->cs = server;
-        r = cluster_get_server_status(current_status);
+        r = cluster_get_server_status(current_status, log_connect_error);
 		if (r == 0) {
 			current_status++;
 		} else if (r != ENOENT) {
@@ -545,6 +546,10 @@ void cluster_relationship_trigger_reselect_master()
     struct nio_thread_data *thread_data;
     struct nio_thread_data *data_end;
 
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        return;
+    }
+
     g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
     binlog_write_set_order_by(SF_BINLOG_WRITER_TYPE_ORDER_BY_NONE);
 
@@ -644,8 +649,10 @@ static int cluster_select_master()
     int max_sleep_secs;
     int sleep_secs;
     int remain_time;
+    bool need_log;
     bool force_sleep;
     time_t start_time;
+    time_t last_log_time;
     char status_prompt[512];
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
@@ -654,19 +661,53 @@ static int cluster_select_master()
 		"selecting master...", __LINE__);
 
     start_time = g_current_time;
+    last_log_time = 0;
+    sleep_secs = 10;
     max_sleep_secs = 1;
     i = 0;
     while (CLUSTER_MASTER_ATOM_PTR == NULL) {
-        if ((result=cluster_get_master(&server_status, &active_count)) != 0) {
+        if (sleep_secs > 1) {
+            need_log = true;
+            last_log_time = g_current_time;
+        } else if (g_current_time - last_log_time > 8) {
+            need_log = ((i + 1) % 10 == 0);
+            if (need_log) {
+                last_log_time = g_current_time;
+            }
+        } else {
+            need_log = false;
+        }
+
+        if ((result=cluster_get_master(&server_status,
+                        need_log, &active_count)) != 0)
+        {
             return result;
         }
+
+        ++i;
+        if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+                    CLUSTER_SERVER_ARRAY.count, active_count) &&
+                !FORCE_MASTER_ELECTION)
+        {
+            sleep_secs = 1;
+            if (need_log) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "round %dth select master fail because alive server "
+                        "count: %d < half of total server count: %d, "
+                        "try again after %d seconds.", __LINE__, i,
+                        active_count, CLUSTER_SERVER_ARRAY.count,
+                        sleep_secs);
+            }
+            sleep(sleep_secs);
+            continue;
+        }
+
         if ((active_count == CLUSTER_SERVER_ARRAY.count) ||
                 (active_count >= 2 && server_status.is_master))
         {
             break;
         }
 
-        ++i;
         if ((server_status.status < FDIR_SERVER_STATUS_OFFLINE) &&
                 !FORCE_MASTER_ELECTION)
         {
@@ -700,18 +741,19 @@ static int cluster_select_master()
             if (force_sleep) {
                 sleep_secs = max_sleep_secs;
             } else {
-                sleep_secs = 0;
+                sleep_secs = 1;
             }
         }
-        logInfo("file: "__FILE__", line: %d, "
-                "round %dth select master, alive server count: %d "
-                "< server count: %d, %stry again after %d seconds.",
-                __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
-                status_prompt, sleep_secs);
 
-        if (sleep_secs > 0) {
-            sleep(sleep_secs);
+        if (need_log) {
+            logWarning("file: "__FILE__", line: %d, "
+                    "round %dth select master, alive server count: %d "
+                    "< server count: %d, %stry again after %d seconds.",
+                    __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
+                    status_prompt, sleep_secs);
         }
+
+        sleep(sleep_secs);
         if (max_sleep_secs < 32) {
             max_sleep_secs *= 2;
         }

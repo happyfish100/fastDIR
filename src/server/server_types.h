@@ -162,6 +162,7 @@ typedef struct fdir_cluster_server_info {
 typedef struct fdir_cluster_server_array {
     FDIRClusterServerInfo *servers;
     int count;
+    volatile int alives;
     volatile int change_version;
 } FDIRClusterServerArray;
 

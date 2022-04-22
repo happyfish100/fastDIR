@@ -52,6 +52,7 @@ typedef struct server_global_vars {
         FDIRClusterServerArray server_array;
 
         struct {
+            SFElectionQuorum quorum;
             bool force;
             int master_lost_timeout;
             int max_wait_time;
@@ -104,6 +105,8 @@ typedef struct server_global_vars {
 #define SYSTEM_CPU_COUNT       g_server_global_vars.system.cpu_count
 #define SYSTEM_TOTAL_MEMORY    g_server_global_vars.system.total_memory
 
+#define MASTER_ELECTION_QUORUM g_server_global_vars.cluster. \
+    master_election.quorum
 #define FORCE_MASTER_ELECTION  g_server_global_vars.cluster. \
     master_election.force
 #define ELECTION_MASTER_LOST_TIMEOUT g_server_global_vars.cluster. \
