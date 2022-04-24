@@ -75,7 +75,11 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
         client_ctx->common_cfg.network_timeout = SF_DEFAULT_NETWORK_TIMEOUT;
     }
 
-    sf_load_read_rule_config(&client_ctx->common_cfg.read_rule, ini_ctx);
+    if ((result=sf_load_read_rule_config(&client_ctx->common_cfg.
+                    read_rule, ini_ctx)) != 0)
+    {
+        return result;
+    }
 
     if ((result=sf_load_cluster_config_ex(&client_ctx->cluster, ini_ctx,
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT, full_cluster_filename,

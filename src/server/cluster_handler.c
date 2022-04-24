@@ -77,6 +77,18 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     switch (SERVER_TASK_TYPE) {
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
+                FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.alives);
+                if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+                            CLUSTER_SERVER_ARRAY.count,
+                            CLUSTER_SERVER_ARRAY.alives))
+                {
+                    logWarning("file: "__FILE__", line: %d, "
+                            "trigger re-select master because alive server "
+                            "count: %d < half of total server count: %d ...",
+                            __LINE__, CLUSTER_SERVER_ARRAY.alives,
+                            CLUSTER_SERVER_ARRAY.count);
+                    cluster_relationship_trigger_reselect_master();
+                }
                 CLUSTER_PEER = NULL;
             } else {
                 logError("file: "__FILE__", line: %d, "
@@ -240,6 +252,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
+    FC_ATOMIC_INC(CLUSTER_SERVER_ARRAY.alives);
     return 0;
 }
 

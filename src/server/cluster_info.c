@@ -60,6 +60,7 @@ static int init_cluster_server_array()
     }
 
     CLUSTER_SERVER_ARRAY.count = FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG);
+    CLUSTER_SERVER_ARRAY.alives = 1;
     return 0;
 }
 
