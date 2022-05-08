@@ -79,7 +79,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             if (CLUSTER_PEER != NULL) {
                 FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.alives);
                 if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
-                            CLUSTER_SERVER_ARRAY.count,
+                            VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
                             CLUSTER_SERVER_ARRAY.alives))
                 {
                     logWarning("file: "__FILE__", line: %d, "

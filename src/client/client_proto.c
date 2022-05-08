@@ -242,7 +242,7 @@ int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
     {
         conn_params->buffer_size = buff2int(join_resp.buffer_size);
     } else {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -271,7 +271,7 @@ static inline int do_update_dentry(FDIRClientContext *client_ctx,
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        sf_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -478,7 +478,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
             *dentry = NULL;
         }
     } else {
-        sf_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -644,7 +644,7 @@ static int query_by_dentry_fullname(FDIRClientContext *client_ctx,
                     resp_cmd, in_buff, in_len)) != 0)
     {
         log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -701,7 +701,7 @@ int fdir_client_proto_lookup_inode_by_pname(FDIRClientContext *client_ctx,
     } else {
         *inode = -1;
         log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -739,7 +739,7 @@ int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
         log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -773,7 +773,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -856,7 +856,7 @@ static inline int do_stat_dentry(FDIRClientContext *client_ctx,
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
         log_level = (result == ENOENT) ? enoent_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -1098,7 +1098,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP)) != 0)
     {
-        sf_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -1234,7 +1234,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        sf_log_network_error(&response, session->mconn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -1280,7 +1280,7 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         *owner_id = buff2long(getlk_resp.owner.id);
         *pid = buff2int(getlk_resp.owner.pid);
     } else {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -1323,7 +1323,7 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         *file_size = buff2long(resp.size);
         *space_end = buff2long(resp.space_end);
     } else {
-        sf_log_network_error(&response, session->mconn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -1382,7 +1382,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
                     &response, session->ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_RESP, NULL, 0)) != 0)
     {
-        sf_log_network_error(&response, session->mconn, result);
+        fdir_log_network_error(&response, session->mconn, result);
     }
 
     return result;
@@ -1438,7 +1438,7 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP)) != 0)
     {
-        sf_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -1482,7 +1482,7 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP)) != 0)
     {
-        sf_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result);
     }
 
     return result;
@@ -1525,7 +1525,7 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_RESP)) != 0)
     {
-        sf_log_network_error_for_delete(&response,
+        fdir_log_network_error_for_delete(&response,
                 conn, result, enoattr_log_level);
     }
 
@@ -1569,7 +1569,7 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP)) != 0)
     {
-        sf_log_network_error_for_delete(&response,
+        fdir_log_network_error_for_delete(&response,
                 conn, result, enoattr_log_level);
     }
 
@@ -1631,7 +1631,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
     if (result != 0) {
         log_level = (result == ENOENT || result == ENODATA) ?
             enoattr_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -1672,7 +1672,7 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     if (result != 0) {
         log_level = (result == ENOENT || result == ENODATA) ?
             enoattr_log_level : LOG_ERR;
-        sf_log_network_error_ex(&response, conn, result, log_level);
+        fdir_log_network_error_ex(&response, conn, result, log_level);
     }
 
     return result;
@@ -1706,7 +1706,7 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
     RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
             FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP, list, size);
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -1740,7 +1740,7 @@ int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
     RECV_SIZE_OR_VAR_RESPONSE(client_ctx, conn, out_buff, out_bytes, response,
             FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP, list, size);
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -2147,7 +2147,7 @@ static int list_dentry(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -2293,7 +2293,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_SERVICE_STAT_RESP,
                     (char *)&stat_resp, sizeof(FDIRProtoServiceStatResp))) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     SF_CLIENT_RELEASE_CONNECTION(&client_ctx->cm, conn, result);
@@ -2403,7 +2403,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (stat=stats; body_part<body_end; body_part++, stat++) {
@@ -2450,7 +2450,7 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_MASTER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         master->server_id = buff2int(server_resp.server_id);
         memcpy(master->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
@@ -2486,7 +2486,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP,
                     (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         server->server_id = buff2int(server_resp.server_id);
         memcpy(server->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
@@ -2571,7 +2571,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     }
 
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     } else {
         body_end = body_part + (*count);
         for (slave=slaves; body_part<body_end; body_part++, slave++) {
@@ -2631,7 +2631,7 @@ int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
         stat->inode.avail = buff2long(resp.inode_counters.avail);
         stat->space.used = buff2long(resp.used_bytes);
     } else {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -2658,7 +2658,7 @@ int fdir_client_proto_nss_subscribe(FDIRClientContext *client_ctx,
                     client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -2773,7 +2773,7 @@ int fdir_client_proto_nss_fetch(FDIRClientContext *client_ctx,
                     FDIR_SERVICE_PROTO_NSS_FETCH_RESP, &array->buffer,
                     sizeof(FDIRProtoNSSFetchRespBodyHeader))) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
         return result;
     }
 

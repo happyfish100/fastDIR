@@ -28,6 +28,7 @@
 #include "sf/sf_service.h"
 #include "sf/sf_binlog_writer.h"
 #include "fastcfs/auth/fcfs_auth_for_server.h"
+#include "fastcfs/vote/fcfs_vote_client.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
 #include "db/dentry_lru.h"
@@ -111,13 +112,14 @@ static int load_master_election_config(const char *cluster_filename)
     ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
             &ini_ctx, "max_wait_time", 30, 1, 3600);
     if ((result=sf_load_quorum_config(&MASTER_ELECTION_QUORUM,
-                    &ini_ctx)) != 0)
+                    &ini_ctx)) == 0)
     {
-        return result;
+        result = fcfs_vote_client_init_for_server(
+                &ini_ctx, &VOTE_NODE_ENABLED);
     }
 
     iniFreeContext(&ini_context);
-    return 0;
+    return result;
 }
 
 static int load_cluster_config(IniFullContext *ini_ctx,
@@ -383,8 +385,9 @@ static void server_log_configs()
             "inode_hashtable_capacity = %"PRId64", "
             "inode_shared_locks_count = %d, "
             "cluster server count = %d, "
-            "master-election {quorum: %s, master_lost_timeout: %ds, "
-            "max_wait_time: %ds}, storage-engine { enabled: %d",
+            "master-election {quorum: %s, vote_node_enabled: %d, "
+            "master_lost_timeout: %ds, max_wait_time: %ds}, "
+            "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
@@ -395,8 +398,8 @@ static void server_log_configs()
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
             sf_get_quorum_caption(MASTER_ELECTION_QUORUM),
-            ELECTION_MASTER_LOST_TIMEOUT, ELECTION_MAX_WAIT_TIME,
-            STORAGE_ENABLED);
+            VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
+            ELECTION_MAX_WAIT_TIME, STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {
         len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,

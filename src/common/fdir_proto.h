@@ -548,14 +548,15 @@ typedef struct fdir_proto_service_stat_resp {
 
 typedef struct fdir_proto_cluster_stat_resp_body_header {
     char count[4];
+    char padding[4];
 } FDIRProtoClusterStatRespBodyHeader;
 
 typedef struct fdir_proto_cluster_stat_resp_body_part {
     char server_id[4];
     char is_master;
     char status;
-    char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
+    char ip_addr[IP_ADDRESS_SIZE];
 } FDIRProtoClusterStatRespBodyPart;
 
 typedef struct fdir_proto_namespace_stat_req {
@@ -578,19 +579,22 @@ typedef struct fdir_proto_namespace_stat_resp {
    */
 typedef struct fdir_proto_get_server_resp {
     char server_id[4];
-    char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
+    char padding[2];
+    char ip_addr[IP_ADDRESS_SIZE];
 } FDIRProtoGetServerResp;
 
 typedef struct fdir_proto_get_slaves_resp_body_header {
     char count[2];
+    char padding[6];
 } FDIRProtoGetSlavesRespBodyHeader;
 
 typedef struct fdir_proto_get_slaves_resp_body_part {
     char server_id[4];
-    char ip_addr[IP_ADDRESS_SIZE];
     char port[2];
     char status;
+    char padding[1];
+    char ip_addr[IP_ADDRESS_SIZE];
 } FDIRProtoGetSlavesRespBodyPart;
 
 typedef struct fdir_proto_get_server_status_req {
@@ -601,6 +605,7 @@ typedef struct fdir_proto_get_server_status_req {
 typedef struct fdir_proto_get_server_status_resp {
     char is_master;
     char status;
+    char padding[2];
     char server_id[4];
     char data_version[8];
 } FDIRProtoGetServerStatusResp;
@@ -675,6 +680,20 @@ typedef struct fdir_proto_nss_fetch_resp_body_part {
     char used_bytes[8];
     FDIRProtoNameInfo ns_name;
 } FDIRProtoNSSFetchRespBodyPart;
+
+#define fdir_log_network_error_ex(response, conn, result, log_level) \
+    sf_log_network_error_ex(response, conn, "fdir", result, log_level)
+
+#define fdir_log_network_error(response, conn, result) \
+    sf_log_network_error(response, conn, "fdir", result)
+
+#define fdir_log_network_error_for_update(response, conn, result) \
+    sf_log_network_error_for_update(response, conn, "fdir", result)
+
+#define fdir_log_network_error_for_delete(response, \
+        conn, result, enoent_log_level) \
+    sf_log_network_error_for_delete(response, conn, \
+            "fdir", result, enoent_log_level)
 
 #ifdef __cplusplus
 extern "C" {

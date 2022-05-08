@@ -101,7 +101,7 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
     int result;
 
     server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
-    if ((result=sf_connection_manager_init_ex(cm, "FastDIR",
+    if ((result=sf_connection_manager_init_ex(cm, "fdir",
                     &client_ctx->common_cfg, group_count,
                     client_ctx->cluster.service_group_index,
                     server_count, max_count_per_entry, max_idle_time,

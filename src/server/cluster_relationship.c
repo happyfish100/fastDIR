@@ -73,7 +73,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
 			sizeof(out_buff), &response, network_timeout,
             FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
         return result;
     }
 
@@ -140,7 +140,7 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
                     sizeof(out_buff), &response, network_timeout,
                     SF_PROTO_ACK)) != 0)
     {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
     }
 
     return result;
@@ -196,7 +196,7 @@ static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
     }
 
     if (result != 0) {
-        sf_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, conn, result);
         return result;
     }
 
@@ -264,7 +264,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
         return 0;
     } else {
         if ((result=fc_server_make_connection_ex(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            server_status->cs->server), &conn,
+                            server_status->cs->server), &conn, "fdir",
                         connect_timeout, NULL, log_connect_error)) != 0)
         {
             return result;
@@ -358,7 +358,8 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     int result;
 
     if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                        cs->server), &conn, SF_G_CONNECT_TIMEOUT)) != 0)
+                        cs->server), &conn, "fdir",
+                    SF_G_CONNECT_TIMEOUT)) != 0)
     {
         *bConnectFail = true;
         return result;
@@ -374,7 +375,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
                     sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
                     SF_PROTO_ACK)) != 0)
     {
-        sf_log_network_error(&response, &conn, result);
+        fdir_log_network_error(&response, &conn, result);
     }
 
     conn_pool_disconnect_server(&conn);
@@ -686,8 +687,8 @@ static int cluster_select_master()
 
         ++i;
         if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
-                    CLUSTER_SERVER_ARRAY.count, active_count) &&
-                !FORCE_MASTER_ELECTION)
+                    VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
+                    active_count) && !FORCE_MASTER_ELECTION)
         {
             sleep_secs = 1;
             if (need_log) {
@@ -822,7 +823,8 @@ static int cluster_ping_master(ConnectionInfo *conn, const int timeout)
     if (conn->sock < 0) {
         connect_timeout = FC_MIN(SF_G_CONNECT_TIMEOUT, timeout);
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
-                            master->server), conn, connect_timeout)) != 0)
+                            master->server), conn, "fdir",
+                        connect_timeout)) != 0)
         {
             return result;
         }
