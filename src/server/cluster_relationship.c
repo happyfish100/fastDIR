@@ -13,24 +13,13 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <time.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/sched_thread.h"
 #include "sf/sf_func.h"
+#include "fastcfs/vote/fcfs_vote_client.h"
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "server_binlog.h"
@@ -38,7 +27,15 @@
 #include "inode_generator.h"
 #include "cluster_relationship.h"
 
-FDIRClusterServerInfo *g_next_master = NULL;
+#define ELECTION_MAX_SLEEP_SECS   32
+
+#define NEED_REQUEST_VOTE_NODE(active_count) \
+    SF_QUORUM_NEED_REQUEST_VOTE_NODE(MASTER_ELECTION_QUORUM, \
+            VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count, active_count)
+
+#define NEED_CHECK_VOTE_NODE() \
+    SF_QUORUM_NEED_CHECK_VOTE_NODE(MASTER_ELECTION_QUORUM, \
+            VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count)
 
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
@@ -47,6 +44,30 @@ typedef struct fdir_cluster_server_status {
     int server_id;
     int64_t data_version;
 } FDIRClusterServerStatus;
+
+typedef struct fdir_cluster_relationship_context {
+    ConnectionInfo vote_connection;
+    time_t master_elected_time;
+} FDIRClusterRelationshipContext;
+
+#define VOTE_CONNECTION     relationship_ctx.vote_connection
+#define MASTER_ELECTED_TIME relationship_ctx.master_elected_time
+
+static FDIRClusterRelationshipContext relationship_ctx = {
+    {-1, 0}, 0
+};
+
+static int get_vote_server_status(FDIRClusterServerStatus *server_status);
+
+static inline void proto_unpack_server_status(
+        FDIRProtoGetServerStatusResp *resp,
+        FDIRClusterServerStatus *server_status)
+{
+    server_status->is_master = resp->is_master;
+    server_status->status = resp->status;
+    server_status->server_id = buff2int(resp->server_id);
+    server_status->data_version = buff2long(resp->data_version);
+}
 
 static int proto_get_server_status(ConnectionInfo *conn,
         const int network_timeout,
@@ -98,10 +119,7 @@ static int proto_get_server_status(ConnectionInfo *conn,
     }
 
     resp = (FDIRProtoGetServerStatusResp *)in_body;
-    server_status->is_master = resp->is_master;
-    server_status->status = resp->status;
-    server_status->server_id = buff2int(resp->server_id);
-    server_status->data_version = buff2long(resp->data_version);
+    proto_unpack_server_status(resp, server_status);
     return 0;
 }
 
@@ -291,7 +309,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 	int i;
 
 	memset(server_status, 0, sizeof(FDIRClusterServerStatus));
-    if (CLUSTER_SERVER_ARRAY.count < STATUS_ARRAY_FIXED_COUNT) {
+    if (CLUSTER_SERVER_ARRAY.count <= STATUS_ARRAY_FIXED_COUNT) {
         cs_status = status_array;
     } else {
         int bytes;
@@ -318,25 +336,37 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 	*active_count = current_status - cs_status;
     if (*active_count == 0) {
         logError("file: "__FILE__", line: %d, "
-                "get server status fail, "
-                "server count: %d", __LINE__,
-                CLUSTER_SERVER_ARRAY.count);
+                "get server status fail, server count: %d",
+                __LINE__, CLUSTER_SERVER_ARRAY.count);
         return result == 0 ? ENOENT : result;
     }
 
-	qsort(cs_status, *active_count, sizeof(FDIRClusterServerStatus),
-		cluster_cmp_server_status);
+    if (NEED_REQUEST_VOTE_NODE(*active_count)) {
+        current_status->cs = NULL;
+        if (get_vote_server_status(current_status) == 0) {
+            ++(*active_count);
+        }
+    }
+
+	qsort(cs_status, *active_count,
+            sizeof(FDIRClusterServerStatus),
+            cluster_cmp_server_status);
 
 	for (i=0; i<*active_count; i++) {
-        logDebug("file: "__FILE__", line: %d, "
-                "server_id: %d, ip addr %s:%u, is_master: %d, "
-                "status: %d(%s), data_version: %"PRId64, __LINE__,
-                cs_status[i].server_id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
-                cs_status[i].is_master, cs_status[i].status,
-                fdir_get_server_status_caption(cs_status[i].status),
-                cs_status[i].data_version);
+        if (cs_status[i].cs == NULL) {
+            logDebug("file: "__FILE__", line: %d, "
+                    "%d. status from vote server", __LINE__, i + 1);
+        } else {
+            logDebug("file: "__FILE__", line: %d, "
+                    "server_id: %d, ip addr %s:%u, is_master: %d, "
+                    "status: %d(%s), data_version: %"PRId64, __LINE__,
+                    cs_status[i].server_id,
+                    CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
+                    CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
+                    cs_status[i].is_master, cs_status[i].status,
+                    fdir_get_server_status_caption(cs_status[i].status),
+                    cs_status[i].data_version);
+        }
     }
 
 	memcpy(server_status, cs_status + (*active_count - 1),
@@ -386,32 +416,28 @@ int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master)
 {
     FDIRClusterServerInfo *next_master;
 
-    next_master = g_next_master;
+    next_master = CLUSTER_NEXT_MASTER;
     if (next_master == NULL) {
-        g_next_master = master;
+        CLUSTER_NEXT_MASTER = master;
     } else if (next_master != master) {
         logError("file: "__FILE__", line: %d, "
                 "try to set next master id: %d, "
                 "but next master: %d already exist",
                 __LINE__, master->server->id, next_master->server->id);
-        g_next_master = NULL;
+        CLUSTER_NEXT_MASTER = NULL;
         return EEXIST;
     }
 
     return 0;
 }
 
-static inline void cluster_unset_master()
+static inline bool cluster_unset_master(FDIRClusterServerInfo *master)
 {
-    FDIRClusterServerInfo *old_master;
-
-    old_master = CLUSTER_MASTER_ATOM_PTR;
-    if (old_master != NULL) {
-        if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR,
-                    old_master, NULL))
-        {
-            __sync_bool_compare_and_swap(&old_master->is_master, 1, 0);
-        }
+    if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR, master, NULL)) {
+        __sync_bool_compare_and_swap(&master->is_master, 1, 0);
+        return true;
+    } else {
+        return false;
     }
 }
 
@@ -513,6 +539,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         binlog_local_consumer_replication_start();
     }
 
+    MASTER_ELECTED_TIME = g_current_time;
     __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
     return 0;
 }
@@ -523,7 +550,7 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
     FDIRClusterServerInfo *next_master;
     int result;
 
-    next_master = g_next_master;
+    next_master = CLUSTER_NEXT_MASTER;
     if (next_master == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "next master is NULL", __LINE__);
@@ -533,28 +560,36 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master)
         logError("file: "__FILE__", line: %d, "
                 "next master server id: %d != expected server id: %d",
                 __LINE__, next_master->server->id, master->server->id);
-        g_next_master = NULL;
+        CLUSTER_NEXT_MASTER = NULL;
         return EBUSY;
     }
 
     result = cluster_relationship_set_master(master, start_time);
-    g_next_master = NULL;
+    CLUSTER_NEXT_MASTER = NULL;
     return result;
 }
 
 void cluster_relationship_trigger_reselect_master()
 {
+    FDIRClusterServerInfo *master;
     struct nio_thread_data *thread_data;
     struct nio_thread_data *data_end;
 
-    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+    master = CLUSTER_MASTER_ATOM_PTR;
+    if (CLUSTER_MYSELF_PTR != master) {
         return;
+    }
+
+    if (!cluster_unset_master(master)) {
+        return;
+    }
+
+    if (NEED_CHECK_VOTE_NODE()) {
+        vote_client_proto_close_connection(&VOTE_CONNECTION);
     }
 
     g_data_thread_vars.error_mode = FDIR_DATA_ERROR_MODE_LOOSE;
     binlog_write_set_order_by(SF_BINLOG_WRITER_TYPE_ORDER_BY_NONE);
-
-    cluster_unset_master();
     __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
 
     data_end = CLUSTER_SF_CTX.thread_data + CLUSTER_SF_CTX.work_threads;
@@ -567,7 +602,7 @@ void cluster_relationship_trigger_reselect_master()
     binlog_producer_destroy();
 }
 
-static int cluster_notify_next_master(FDIRClusterServerInfo *cs,
+static int cluster_pre_set_next_master(FDIRClusterServerInfo *cs,
         FDIRClusterServerStatus *server_status, bool *bConnectFail)
 {
     FDIRClusterServerInfo *master;
@@ -594,52 +629,235 @@ static int cluster_commit_next_master(FDIRClusterServerInfo *cs,
     }
 }
 
+static inline void fill_join_request(FCFSVoteClientJoinRequest *join_request,
+        const bool persistent)
+{
+    join_request->server_id = CLUSTER_MY_SERVER_ID;
+    join_request->is_leader = (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR);
+    join_request->group_id = 1;
+    join_request->response_size = sizeof(FDIRProtoGetServerStatusResp);
+    join_request->service_id = FCFS_VOTE_SERVICE_ID_FDIR;
+    join_request->persistent = persistent;
+}
+
+static int get_vote_server_status(FDIRClusterServerStatus *server_status)
+{
+    FCFSVoteClientJoinRequest join_request;
+    FDIRProtoGetServerStatusResp resp;
+    int result;
+
+    fill_join_request(&join_request, false);
+    if ((result=fcfs_vote_client_get_vote(&join_request,
+                    CLUSTER_CONFIG_SIGN_BUF, NULL,
+                    (char *)&resp, sizeof(resp))) == 0)
+    {
+        proto_unpack_server_status(&resp, server_status);
+    }
+    return result;
+}
+
+static int notify_vote_next_leader(FDIRClusterServerStatus *server_status,
+        const unsigned char vote_req_cmd)
+{
+    FCFSVoteClientJoinRequest join_request;
+
+    fill_join_request(&join_request, false);
+    return fcfs_vote_client_notify_next_leader(&join_request, vote_req_cmd);
+}
+
+static inline int vote_node_active_check()
+{
+    int result;
+    FCFSVoteClientJoinRequest join_request;
+
+    if (VOTE_CONNECTION.sock < 0) {
+        fill_join_request(&join_request, true);
+        if ((result=fcfs_vote_client_join(&VOTE_CONNECTION,
+                        &join_request)) != 0)
+        {
+            return result;
+        }
+    }
+
+    if ((result=vote_client_proto_active_check(&VOTE_CONNECTION)) != 0) {
+        vote_client_proto_close_connection(&VOTE_CONNECTION);
+    }
+
+    return result;
+}
+
+static int master_check(int *active_count)
+{
+    FDIRClusterServerInfo *server;
+    FDIRClusterServerInfo *end;
+    FDIRClusterServerStatus server_status;
+    int result;
+
+    *active_count = 0;
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (server=CLUSTER_SERVER_ARRAY.servers; server<end; server++) {
+        server_status.cs = server;
+        result = cluster_get_server_status(&server_status, false);
+        if (result == 0) {
+            ++(*active_count);
+        } else if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
+            return result;
+        }
+    }
+
+    if (NEED_REQUEST_VOTE_NODE(*active_count)) {
+        server_status.cs = NULL;
+        if (get_vote_server_status(&server_status) == 0) {
+            ++(*active_count);
+        }
+    }
+
+    if (sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+                VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
+                *active_count))
+    {
+        return 0;
+    } else {
+        return EBUSY;
+    }
+}
+
+int cluster_relationship_master_quorum_check()
+{
+    int result;
+    int active_count;
+
+    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives);
+    if (NEED_CHECK_VOTE_NODE()) {
+        if ((result=vote_node_active_check()) == 0) {
+            if (active_count < CLUSTER_SERVER_ARRAY.count) {
+                ++active_count;
+            }
+        } else {
+            if (result == SF_CLUSTER_ERROR_LEADER_INCONSISTENT) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "trigger re-select master because master "
+                        "inconsistent with the vote node", __LINE__);
+                cluster_relationship_trigger_reselect_master();
+                return EBUSY;
+            }
+        }
+    }
+
+    if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+                VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
+                active_count))
+    {
+        if (g_current_time - MASTER_ELECTED_TIME <= ELECTION_MAX_SLEEP_SECS) {
+            result = master_check(&active_count);
+        } else {
+            result = EBUSY;
+        }
+        if (result !=  0) {
+            if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
+                logWarning("file: "__FILE__", line: %d, "
+                        "trigger re-select master because master "
+                        "inconsistent with other server", __LINE__);
+            } else {
+                logWarning("file: "__FILE__", line: %d, "
+                        "trigger re-select master because alive server "
+                        "count: %d < half of total server count: %d ...",
+                        __LINE__, active_count, CLUSTER_SERVER_ARRAY.count);
+            }
+
+            cluster_relationship_trigger_reselect_master();
+            return EBUSY;
+        }
+    }
+
+    return 0;
+}
+
+typedef int (*cluster_notify_next_master_func)(FDIRClusterServerInfo *cs,
+        FDIRClusterServerStatus *server_status, bool *bConnectFail);
+
+static int notify_next_master(cluster_notify_next_master_func notify_func,
+        FDIRClusterServerStatus *server_status, const unsigned
+        char vote_req_cmd, int *success_count)
+{
+    FDIRClusterServerInfo *server;
+    FDIRClusterServerInfo *send;
+    int result;
+    bool bConnectFail;
+
+    result = ENOENT;
+    *success_count = 0;
+    send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
+        if ((result=notify_func(server, server_status, &bConnectFail)) != 0) {
+            if (!bConnectFail) {
+                return result;
+            }
+        } else {
+            ++(*success_count);
+        }
+    }
+
+    if (NEED_CHECK_VOTE_NODE()) {
+        result = notify_vote_next_leader(server_status, vote_req_cmd);
+        if (result == 0) {
+            if (*success_count < CLUSTER_SERVER_ARRAY.count) {
+                ++(*success_count);
+            }
+        } else if (result == SF_CLUSTER_ERROR_LEADER_INCONSISTENT) {
+            return -1 * result;
+        }
+    }
+
+    if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+                    VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
+                    *success_count))
+    {
+        return EAGAIN;
+    }
+
+    return 0;
+}
+
 static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 {
-	FDIRClusterServerInfo *server;
-	FDIRClusterServerInfo *send;
-	int result;
-	bool bConnectFail;
-	int success_count;
+    int result;
+    int success_count;
+    const char *caption;
 
-	result = ENOENT;
-	send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
-	success_count = 0;
-	for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
-		if ((result=cluster_notify_next_master(server,
-				server_status, &bConnectFail)) != 0)
-		{
-			if (!bConnectFail) {
-				return result;
-			}
-		} else {
-			success_count++;
-		}
-	}
+    if ((result=notify_next_master(cluster_pre_set_next_master, server_status,
+                    FCFS_VOTE_SERVICE_PROTO_PRE_SET_NEXT_LEADER,
+                    &success_count)) != 0)
+    {
+        return result;
+    }
 
-	if (success_count == 0) {
-		return result;
-	}
+    if ((result=notify_next_master(cluster_commit_next_master, server_status,
+                    FCFS_VOTE_SERVICE_PROTO_COMMIT_NEXT_LEADER,
+                    &success_count)) != 0)
+    {
+        if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT ||
+                result == -SF_CLUSTER_ERROR_LEADER_INCONSISTENT)
+        {
+            if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
+                caption = "other server";
+            } else {
+                caption = "the vote node";
+                result = SF_CLUSTER_ERROR_MASTER_INCONSISTENT;
+            }
+            logWarning("file: "__FILE__", line: %d, "
+                    "trigger re-select master because master "
+                    "inconsistent with %s", __LINE__, caption);
+        } else {
+            logWarning("file: "__FILE__", line: %d, "
+                    "trigger re-select master because alive server "
+                    "count: %d < half of total server count: %d ...",
+                    __LINE__, success_count, CLUSTER_SERVER_ARRAY.count);
+        }
+        cluster_relationship_trigger_reselect_master();
+    }
 
-	result = ENOENT;
-	success_count = 0;
-	for (server=CLUSTER_SERVER_ARRAY.servers; server<send; server++) {
-		if ((result=cluster_commit_next_master(server,
-				server_status, &bConnectFail)) != 0)
-		{
-			if (!bConnectFail) {
-				return result;
-			}
-		} else {
-			success_count++;
-		}
-	}
-
-	if (success_count == 0) {
-		return result;
-	}
-
-	return 0;
+    return result;
 }
 
 static int cluster_select_master()
@@ -755,7 +973,7 @@ static int cluster_select_master()
         }
 
         sleep(sleep_secs);
-        if (max_sleep_secs < 32) {
+        if (max_sleep_secs < ELECTION_MAX_SLEEP_SECS) {
             max_sleep_secs *= 2;
         }
     }
@@ -803,23 +1021,20 @@ static int cluster_select_master()
 	return 0;
 }
 
-static int cluster_ping_master(ConnectionInfo *conn, const int timeout)
+static int cluster_ping_master(FDIRClusterServerInfo *master,
+        ConnectionInfo *conn, const int timeout, bool *is_ping)
 {
     int result;
     int connect_timeout;
     int network_timeout;
-    FDIRClusterServerInfo *master;
 
-    master = CLUSTER_MASTER_ATOM_PTR;
     if (CLUSTER_MYSELF_PTR == master) {
-        return 0;  //do not need ping myself
-    }
-
-    if (master == NULL) {
-        return ENOENT;
+        *is_ping = false;
+        return cluster_relationship_master_quorum_check();
     }
 
     network_timeout = FC_MIN(SF_G_NETWORK_TIMEOUT, timeout);
+    *is_ping = true;
     if (conn->sock < 0) {
         connect_timeout = FC_MIN(SF_G_CONNECT_TIMEOUT, timeout);
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
@@ -849,6 +1064,7 @@ static void *cluster_thread_entrance(void* arg)
     int fail_count;
     int sleep_seconds;
     int ping_remain_time;
+    bool is_ping;
     time_t ping_start_time;
     FDIRClusterServerInfo *master;
     ConnectionInfo mconn;  //master connection
@@ -882,11 +1098,13 @@ static void *cluster_thread_entrance(void* arg)
             if (ping_remain_time < 2) {
                 ping_remain_time = 2;
             }
-            if (cluster_ping_master(&mconn, ping_remain_time) == 0) {
+            if (cluster_ping_master(master, &mconn,
+                        ping_remain_time, &is_ping) == 0)
+            {
                 fail_count = 0;
                 ping_start_time = g_current_time;
                 sleep_seconds = 1;
-            } else {
+            } else if (is_ping) {
                 ++fail_count;
                 logError("file: "__FILE__", line: %d, "
                         "%dth ping master id: %d, ip %s:%u fail",
@@ -898,13 +1116,15 @@ static void *cluster_thread_entrance(void* arg)
                         ELECTION_MASTER_LOST_TIMEOUT)
                 {
                     if (fail_count > 1) {
-                        cluster_unset_master();
+                        cluster_unset_master(master);
                         fail_count = 0;
                     }
                     sleep_seconds = 0;
                 } else {
                     sleep_seconds = 1;
                 }
+            } else {
+                sleep_seconds = 0;   //master check fail
             }
         }
 
@@ -920,6 +1140,7 @@ int cluster_relationship_init()
 {
 	pthread_t tid;
 
+    VOTE_CONNECTION.sock = -1;
 	return fc_create_thread(&tid, cluster_thread_entrance, NULL,
             SF_G_THREAD_STACK_SIZE);
 }

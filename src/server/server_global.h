@@ -46,6 +46,7 @@ typedef struct server_global_vars {
     struct {
         FCFSAuthClientFullContext auth;
         uint16_t id;  //cluster id for generate inode
+        FDIRClusterServerInfo *next_master;
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
         SFClusterConfig config;
@@ -130,6 +131,7 @@ typedef struct server_global_vars {
 #define CLUSTER_MASTER_ATOM_PTR ((FDIRClusterServerInfo *)__sync_add_and_fetch( \
         &CLUSTER_MASTER_PTR, 0))
 
+#define CLUSTER_NEXT_MASTER     g_server_global_vars.cluster.next_master
 
 #define CLUSTER_SERVER_ARRAY    g_server_global_vars.cluster.server_array
 

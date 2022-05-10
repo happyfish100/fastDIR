@@ -27,8 +27,6 @@
 extern "C" {
 #endif
 
-extern FDIRClusterServerInfo *g_next_master;
-
 int cluster_relationship_init();
 int cluster_relationship_destroy();
 
@@ -37,6 +35,8 @@ int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master);
 int cluster_relationship_commit_master(FDIRClusterServerInfo *master);
 
 void cluster_relationship_trigger_reselect_master();
+
+int cluster_relationship_master_quorum_check();
 
 #ifdef __cplusplus
 }

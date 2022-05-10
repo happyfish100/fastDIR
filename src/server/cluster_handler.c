@@ -78,17 +78,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
                 FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.alives);
-                if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
-                            VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
-                            CLUSTER_SERVER_ARRAY.alives))
-                {
-                    logWarning("file: "__FILE__", line: %d, "
-                            "trigger re-select master because alive server "
-                            "count: %d < half of total server count: %d ...",
-                            __LINE__, CLUSTER_SERVER_ARRAY.alives,
-                            CLUSTER_SERVER_ARRAY.count);
-                    cluster_relationship_trigger_reselect_master();
-                }
+                cluster_relationship_master_quorum_check();
                 CLUSTER_PEER = NULL;
             } else {
                 logError("file: "__FILE__", line: %d, "
@@ -550,7 +540,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return ENOENT;
     }
 
-    next_master = g_next_master;
+    next_master = CLUSTER_NEXT_MASTER;
     if (next_master != NULL) {
         if (next_master != peer) {
             RESPONSE.error.length = sprintf(
