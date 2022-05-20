@@ -31,6 +31,7 @@
 typedef struct server_global_vars {
 
     int namespace_hashtable_capacity;
+    int node_hashtable_capacity;
 
     int dentry_max_data_size;
 

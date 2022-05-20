@@ -192,6 +192,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "NAMESPACE_STAT_REQ";
         case FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP:
             return "NAMESPACE_STAT_RESP";
+        case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ:
+            return "GENERATE_NODE_ID_REQ";
+        case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_RESP:
+            return "GENERATE_NODE_ID_RESP";
         case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
             return "GET_MASTER_REQ";
         case FDIR_SERVICE_PROTO_GET_MASTER_RESP:

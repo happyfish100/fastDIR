@@ -184,6 +184,30 @@ static inline int service_check_master(struct fast_task_info *task)
     return 0;
 }
 
+static int service_deal_generate_node_id(struct fast_task_info *task)
+{
+    int result;
+    int node_id;
+    FDIRProtoGenerateNodeIdReq *req;
+    FDIRProtoGenerateNodeIdResp *resp;
+
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoGenerateNodeIdReq *)REQUEST.body;
+    node_id = buff2int(req->node_id);
+
+    //task->client_ip
+
+    resp = (FDIRProtoGenerateNodeIdResp *)SF_PROTO_RESP_BODY(task);
+    int2buff(node_id, resp->node_id);
+    RESPONSE.header.body_len = sizeof(FDIRProtoGenerateNodeIdResp);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GENERATE_NODE_ID_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
 static int service_deal_client_join(struct fast_task_info *task)
 {
     int result;
@@ -2816,7 +2840,7 @@ static int service_process_update(struct fast_task_info *task,
 }
 
 static int compare_flock_task(FLockTask *flck, const int64_t inode,
-        const FDIRFlockParams *params)
+        const FlockParams *params)
 {
     int sub;
     if ((sub=fc_compare_int64(flck->owner.id, params->owner.id)) != 0) {
@@ -2839,7 +2863,7 @@ static int compare_flock_task(FLockTask *flck, const int64_t inode,
 }
 
 static int flock_unlock_dentry(struct fast_task_info *task,
-        const int64_t inode, const FDIRFlockParams *params)
+        const int64_t inode, const FlockParams *params)
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
@@ -2872,7 +2896,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     int result;
     short operation;
     int64_t inode;
-    FDIRFlockParams params;
+    FlockParams params;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
@@ -3574,6 +3598,11 @@ static int service_process(struct fast_task_info *task)
             return service_deal_cluster_stat(task);
         case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
             return service_deal_namespace_stat(task);
+        case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ:
+            if ((result=service_check_master(task)) == 0) {
+                return service_deal_generate_node_id(task);
+            }
+            return result;
         case FDIR_SERVICE_PROTO_GET_MASTER_REQ:
             if ((result=service_deal_get_master(task)) == 0) {
                 RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_MASTER_RESP;

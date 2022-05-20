@@ -56,7 +56,7 @@ extern "C" {
             const string_t *name, string_t *value);
 
     FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
-            const int64_t inode, const FDIRFlockParams *params, const bool block,
+            const int64_t inode, const FlockParams *params, const bool block,
             struct fast_task_info *task, int *result);
 
     void inode_index_flock_release(FLockTask *ftask);

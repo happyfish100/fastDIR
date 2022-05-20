@@ -107,6 +107,8 @@
 #define FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ       79
 #define FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP      80
 
+#define FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ     81  //for file lock
+#define FDIR_SERVICE_PROTO_GENERATE_NODE_ID_RESP    82
 #define FDIR_SERVICE_PROTO_GET_MASTER_REQ           83
 #define FDIR_SERVICE_PROTO_GET_MASTER_RESP          84
 #define FDIR_SERVICE_PROTO_GET_SLAVES_REQ           85
@@ -573,6 +575,14 @@ typedef struct fdir_proto_namespace_stat_resp {
 
     char used_bytes[8];
 } FDIRProtoNamespaceStatResp;
+
+typedef struct fdir_proto_generate_node_id_req {
+    char key[8];
+    char node_id[4];
+    char padding[4];
+} FDIRProtoGenerateNodeIdReq;
+
+typedef FDIRProtoGenerateNodeIdReq FDIRProtoGenerateNodeIdResp;
 
 /* for FDIR_SERVICE_PROTO_GET_MASTER_RESP and
    FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP
