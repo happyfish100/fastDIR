@@ -33,23 +33,11 @@
 typedef void (*sys_lock_release_callback)(FDIRServerDentry *dentry, void *args);
 
 struct flock_region;
-typedef struct flock_owner {
-    pid_t   pid;
-    int64_t id;   //owner id
-} FlockOwner;
-
-typedef struct flock_params {
-    short type;
-    FlockOwner owner;
-    int64_t offset;
-    int64_t length;
-} FlockParams;
-
 typedef struct flock_task {
     /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
     short type;
     short which_queue;
-    FlockOwner owner;
+    FDIRFlockOwner owner;
     struct flock_region *region;
     struct fast_task_info *task;
     FDIRServerDentry *dentry;

@@ -144,7 +144,7 @@ typedef struct fdir_binlog_record {
 
     union {
         FDIRDEntryStat stat;
-        FlockParams flock_params;
+        FDIRFlockParams flock_params;
     };
 
     union {

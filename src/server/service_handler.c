@@ -2816,7 +2816,7 @@ static int service_process_update(struct fast_task_info *task,
 }
 
 static int compare_flock_task(FLockTask *flck, const int64_t inode,
-        const FlockParams *params)
+        const FDIRFlockParams *params)
 {
     int sub;
     if ((sub=fc_compare_int64(flck->owner.id, params->owner.id)) != 0) {
@@ -2839,7 +2839,7 @@ static int compare_flock_task(FLockTask *flck, const int64_t inode,
 }
 
 static int flock_unlock_dentry(struct fast_task_info *task,
-        const int64_t inode, const FlockParams *params)
+        const int64_t inode, const FDIRFlockParams *params)
 {
     FLockTask *flck;
     fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
@@ -2872,7 +2872,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     int result;
     short operation;
     int64_t inode;
-    FlockParams params;
+    FDIRFlockParams params;
 
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
     req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
