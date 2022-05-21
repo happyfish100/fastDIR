@@ -382,6 +382,7 @@ static void server_log_configs()
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
             "namespace_hashtable_capacity = %d, "
+            "node_hashtable_capacity = %d, "
             "inode_hashtable_capacity = %"PRId64", "
             "inode_shared_locks_count = %d, "
             "cluster server count = %d, "
@@ -395,6 +396,7 @@ static void server_log_configs()
             g_server_global_vars.reload_interval_ms,
             g_server_global_vars.check_alive_interval,
             g_server_global_vars.namespace_hashtable_capacity,
+            g_server_global_vars.node_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
             sf_get_quorum_caption(MASTER_ELECTION_QUORUM),
@@ -538,6 +540,14 @@ int server_load_config(const char *filename)
             FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY);
     if (g_server_global_vars.namespace_hashtable_capacity <= 0) {
         g_server_global_vars.namespace_hashtable_capacity =
+            FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY;
+    }
+
+    g_server_global_vars.node_hashtable_capacity = iniGetIntValue(NULL,
+            "node_hashtable_capacity", &ini_context,
+            FDIR_NODE_HASHTABLE_DEFAULT_CAPACITY);
+    if (g_server_global_vars.node_hashtable_capacity <= 0) {
+        g_server_global_vars.node_hashtable_capacity =
             FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY;
     }
 

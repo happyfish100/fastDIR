@@ -24,6 +24,14 @@
 #define GET_READABLE_CONNECTION(cm, arg1, result) \
     (cm)->ops.get_readable_connection(cm, arg1, result)
 
+int fdir_client_generate_node_id(FDIRClientContext *client_ctx,
+        uint32_t *node_id, int64_t *key)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_MASTER_CONNECTION, 0, fdir_client_proto_generate_node_id,
+            node_id, key);
+}
+
 int fdir_client_create_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
@@ -390,4 +398,91 @@ int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_xattr_by_inode,
             ns, inode, list, size, flags);
+}
+
+#define FDIR_CLIENT_NODE_ITEM_ID   "id"
+#define FDIR_CLIENT_NODE_ITEM_KEY  "key"
+
+static inline void fdir_client_get_node_info_filename(
+        char *filename, const int size)
+{
+    snprintf(filename, size, "%s/.fdir-client-node",
+            g_fdir_client_vars.base_path);
+}
+
+static int fdir_client_save_node_info(const int64_t key)
+{
+    char buff[256];
+    char filename[PATH_MAX];
+    int len;
+
+    len = sprintf(buff, "%s=%u\n"
+            "%s=%"PRId64"\n",
+            FDIR_CLIENT_NODE_ITEM_ID, FDIR_CLIENT_NODE_ID,
+            FDIR_CLIENT_NODE_ITEM_KEY, key);
+    fdir_client_get_node_info_filename(filename, sizeof(filename));
+    return safeWriteToFile(filename, buff, len);
+}
+
+static int fdir_client_load_node_info(int64_t *key)
+{
+    IniContext ini_context;
+    char filename[PATH_MAX];
+    int result;
+
+    fdir_client_get_node_info_filename(filename, sizeof(filename));
+    if (access(filename, F_OK) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        if (result == ENOENT) {
+            FDIR_CLIENT_NODE_ID = 0;
+            *key = 0;
+            return 0;
+        }
+
+        logError("file: "__FILE__", line: %d, "
+                "access file %s fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+        return result;
+    }
+
+    if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "load from file \"%s\" fail, error code: %d",
+                __LINE__, filename, result);
+        return result;
+    }
+
+    FDIR_CLIENT_NODE_ID = iniGetIntValue(NULL,
+            FDIR_CLIENT_NODE_ITEM_ID, &ini_context, 0);
+    *key = iniGetInt64Value(NULL, FDIR_CLIENT_NODE_ITEM_KEY,
+            &ini_context, 0);
+
+    iniFreeContext(&ini_context);
+    return 0;
+}
+
+int fdir_client_init_node_id(FDIRClientContext *client_ctx)
+{
+    int result;
+    uint32_t old_node_id;
+    int64_t old_key;
+    int64_t new_key;
+
+    if ((result=fdir_client_load_node_info(&old_key)) != 0) {
+        return result;
+    }
+
+    old_node_id = FDIR_CLIENT_NODE_ID;
+    new_key = old_key;
+    if ((result=fdir_client_generate_node_id(client_ctx,
+                    &FDIR_CLIENT_NODE_ID, &new_key)) != 0)
+    {
+        return result;
+    }
+
+    if (FDIR_CLIENT_NODE_ID != old_node_id || new_key != old_key) {
+        return fdir_client_save_node_info(new_key);
+    }
+
+    return 0;
 }

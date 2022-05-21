@@ -133,7 +133,7 @@ int node_manager_add_node(uint32_t *id, int64_t *key, const char *ip_addr)
         }
 
         *id = ++fdir_node_manager.current_id;
-        *key = (int64_t)rand() | (int64_t)rand();
+        *key = (int64_t)getIpaddrByName(ip_addr, NULL, 0) | (int64_t)rand();
     }
     PTHREAD_MUTEX_UNLOCK(&fdir_node_manager.lock);
 

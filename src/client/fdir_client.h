@@ -34,6 +34,9 @@
 extern "C" {
 #endif
 
+int fdir_client_generate_node_id(FDIRClientContext *client_ctx,
+        uint32_t *node_id, int64_t *key);
+
 int fdir_client_create_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname,
         const FDIRClientOwnerModePair *omp,
@@ -257,6 +260,9 @@ int fdir_client_list_compact_dentry_by_inode(
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
         const string_t *ns, FDIRClientNamespaceStat *stat);
+
+//init node id for flock
+int fdir_client_init_node_id(FDIRClientContext *client_ctx);
 
 #ifdef __cplusplus
 }

@@ -51,6 +51,7 @@
 #include "cluster_relationship.h"
 #include "common_handler.h"
 #include "ns_manager.h"
+#include "node_manager.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -187,7 +188,8 @@ static inline int service_check_master(struct fast_task_info *task)
 static int service_deal_generate_node_id(struct fast_task_info *task)
 {
     int result;
-    int node_id;
+    uint32_t node_id;
+    int64_t key;
     FDIRProtoGenerateNodeIdReq *req;
     FDIRProtoGenerateNodeIdResp *resp;
 
@@ -197,11 +199,16 @@ static int service_deal_generate_node_id(struct fast_task_info *task)
 
     req = (FDIRProtoGenerateNodeIdReq *)REQUEST.body;
     node_id = buff2int(req->node_id);
-
-    //task->client_ip
+    key = buff2long(req->key);
+    if ((result=node_manager_add_node(&node_id,
+                    &key, task->client_ip)) != 0)
+    {
+        return result;
+    }
 
     resp = (FDIRProtoGenerateNodeIdResp *)SF_PROTO_RESP_BODY(task);
     int2buff(node_id, resp->node_id);
+    long2buff(key, resp->key);
     RESPONSE.header.body_len = sizeof(FDIRProtoGenerateNodeIdResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GENERATE_NODE_ID_RESP;
     TASK_CTX.common.response_done = true;

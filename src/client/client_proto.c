@@ -203,6 +203,38 @@ static inline int client_check_set_proto_name_info(
     return 0;
 }
 
+int fdir_client_proto_generate_node_id(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, uint32_t *node_id, int64_t *key)
+{
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoGenerateNodeIdReq)];
+    FDIRProtoHeader *header;
+    FDIRProtoGenerateNodeIdReq *req;
+    FDIRProtoGenerateNodeIdResp resp;
+    SFResponseInfo response;
+    int result;
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoGenerateNodeIdReq *)(header + 1);
+    int2buff(*node_id, req->node_id);
+    long2buff(*key, req->key);
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ,
+            sizeof(FDIRProtoGenerateNodeIdReq));
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
+                    &response, client_ctx->common_cfg.network_timeout,
+                    FDIR_SERVICE_PROTO_GENERATE_NODE_ID_RESP, (char *)&resp,
+                    sizeof(FDIRProtoGenerateNodeIdResp))) == 0)
+    {
+        *node_id = buff2int(resp.node_id);
+        *key = buff2long(resp.key);
+    } else {
+        fdir_log_network_error(&response, conn, result);
+    }
+
+    return result;
+}
+
 int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, SFConnectionParameters *conn_params)
 {

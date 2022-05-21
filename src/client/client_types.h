@@ -57,6 +57,7 @@ typedef struct fdir_client_context {
     FDIRClientConnManagerType conn_manager_type;
     bool cloned;
     bool idempotency_enabled;
+    uint32_t node_id;   //for flock
     SFClientCommonConfig common_cfg;
     FCFSAuthClientFullContext auth;
 } FDIRClientContext;

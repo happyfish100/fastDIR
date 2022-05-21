@@ -26,6 +26,8 @@ typedef struct fdir_client_global_vars {
     FDIRClientContext client_ctx;
 } FDIRClientGlobalVars;
 
+#define FDIR_CLIENT_NODE_ID g_fdir_client_vars.client_ctx.node_id
+
 #ifdef __cplusplus
 extern "C" {
 #endif

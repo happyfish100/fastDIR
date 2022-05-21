@@ -131,6 +131,9 @@ int fdir_client_init_session(FDIRClientContext *client_ctx,
 void fdir_client_close_session(FDIRClientSession *session,
         const bool force_close);
 
+int fdir_client_proto_generate_node_id(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, uint32_t *node_id, int64_t *key);
+
 int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, SFConnectionParameters *conn_params);
 
