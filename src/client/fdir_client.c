@@ -238,12 +238,11 @@ int fdir_client_remove_xattr_by_inode_ex(FDIRClientContext *client_ctx,
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
         const string_t *ns, const int64_t inode, int *operation,
-        int64_t *offset, int64_t *length, int64_t *owner_id,
-        pid_t *pid, uint32_t *node_id)
+        int64_t *offset, int64_t *length, FDIRFlockOwner *owner)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_getlk_dentry, ns,
-            inode, operation, offset, length, owner_id, pid, node_id);
+            inode, operation, offset, length, owner);
 }
 
 int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,

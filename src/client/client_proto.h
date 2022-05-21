@@ -244,28 +244,22 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *fullname, const int64_t mflags,
         const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry);
 
-int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
+int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
         const int64_t inode, const int operation, const int64_t offset,
-        const int64_t length, const int64_t owner_id, const pid_t pid);
-
-static inline int fdir_client_flock_dentry_ex(FDIRClientSession *session,
-        const string_t *ns, const int64_t inode, const int operation,
-        const int64_t offset, const int64_t length)
-{
-    return fdir_client_flock_dentry_ex2(session, ns, inode, operation,
-            offset, length, (long)pthread_self(), getpid());
-}
+        const int64_t length, const FDIRFlockOwner *owner);
 
 static inline int fdir_client_flock_dentry(FDIRClientSession *session,
-        const string_t *ns, const int64_t inode, const int operation)
+        const string_t *ns, const int64_t inode, const int operation,
+        const FDIRFlockOwner *owner)
 {
-    return fdir_client_flock_dentry_ex(session, ns, inode, operation, 0, 0);
+    return fdir_client_flock_dentry_ex(session,
+            ns, inode, operation, 0, 0, owner);
 }
 
 int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         int *operation, int64_t *offset, int64_t *length,
-        int64_t *owner_id, pid_t *pid, uint32_t *node_id);
+        FDIRFlockOwner *owner);
 
 int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const int flags,

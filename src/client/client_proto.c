@@ -1229,9 +1229,9 @@ void fdir_client_close_session(FDIRClientSession *session,
     session->mconn = NULL;
 }
 
-int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
+int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
         const int64_t inode, const int operation, const int64_t offset,
-        const int64_t length, const int64_t owner_id, const pid_t pid)
+        const int64_t length, const FDIRFlockOwner *owner)
 {
     FDIRProtoHeader *header;
     FDIRProtoFlockDEntryReq *req;
@@ -1256,8 +1256,8 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
     long2buff(offset, req->offset);
     long2buff(length, req->length);
     int2buff(FDIR_CLIENT_NODE_ID, req->owner.node);
-    int2buff(pid, req->owner.pid);
-    long2buff(owner_id, req->owner.id);
+    int2buff(owner->pid, req->owner.pid);
+    long2buff(owner->id, req->owner.id);
 
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
@@ -1277,7 +1277,7 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
 int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         int *operation, int64_t *offset, int64_t *length,
-        int64_t *owner_id, pid_t *pid, uint32_t *node_id)
+        FDIRFlockOwner *owner)
 {
     FDIRProtoHeader *header;
     FDIRProtoGetlkDEntryReq *req;
@@ -1300,8 +1300,8 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
     long2buff(*offset, req->offset);
     long2buff(*length, req->length);
     int2buff(FDIR_CLIENT_NODE_ID, req->owner.node);
-    int2buff(*pid, req->owner.pid);
-    long2buff(*owner_id, req->owner.id);
+    int2buff(owner->pid, req->owner.pid);
+    long2buff(owner->id, req->owner.id);
 
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
@@ -1315,9 +1315,9 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         *operation = buff2int(getlk_resp.type);
         *offset = buff2long(getlk_resp.offset);
         *length = buff2long(getlk_resp.length);
-        *owner_id = buff2long(getlk_resp.owner.id);
-        *pid = buff2int(getlk_resp.owner.pid);
-        *node_id = buff2int(getlk_resp.node_id);
+        owner->node = buff2int(getlk_resp.owner.node);
+        owner->pid = buff2int(getlk_resp.owner.pid);
+        owner->id = buff2long(getlk_resp.owner.id);
     } else {
         fdir_log_network_error(&response, conn, result);
     }
