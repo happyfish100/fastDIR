@@ -240,8 +240,8 @@ int flock_apply(FLockContext *ctx, const int64_t offset,
     FLockTask *holder;
     bool global_conflict;
 
-    if ((ftask->region=get_region(ctx, ftask->dentry->flock_entry,
-                    offset, length)) == NULL)
+    if ((ftask->region=get_region(ctx, ftask->dentry->
+                    flock_entry, offset, length)) == NULL)
     {
         return ENOMEM;
     }

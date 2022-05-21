@@ -106,10 +106,12 @@ static int create_node(FDIRNodeEntry **bucket, const int id,
 int node_manager_add_node(uint32_t *id, int64_t *key, const char *ip_addr)
 {
     int result = EAGAIN;
+    int64_t ip;
     FDIRNodeEntry *entry;
 
     PTHREAD_MUTEX_LOCK(&fdir_node_manager.lock);
     while (1) {
+        //logInfo("id: %u, key: %"PRId64", ip_addr: %s", *id, *key, ip_addr);
         NODE_SET_HT_BUCKET(*id);
         entry = *bucket;
         while (entry != NULL && entry->id != *id) {
@@ -132,8 +134,9 @@ int node_manager_add_node(uint32_t *id, int64_t *key, const char *ip_addr)
             break;
         }
 
+        ip = getIpaddrByName(ip_addr, NULL, 0);
         *id = ++fdir_node_manager.current_id;
-        *key = (int64_t)getIpaddrByName(ip_addr, NULL, 0) | (int64_t)rand();
+        *key = (ip << 32) | (int64_t)rand();
     }
     PTHREAD_MUTEX_UNLOCK(&fdir_node_manager.lock);
 

@@ -265,7 +265,7 @@ static inline int fdir_client_flock_dentry(FDIRClientSession *session,
 int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         int *operation, int64_t *offset, int64_t *length,
-        int64_t *owner_id, pid_t *pid);
+        int64_t *owner_id, pid_t *pid, uint32_t *node_id);
 
 int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const int flags,

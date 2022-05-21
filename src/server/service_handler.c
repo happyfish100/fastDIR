@@ -2916,8 +2916,9 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     inode = buff2long(req->ino.inode);
     params.offset = buff2long(req->offset);
     params.length = buff2long(req->length);
-    params.owner.id = buff2long(req->owner.id);
+    params.owner.node = buff2int(req->owner.node);
     params.owner.pid = buff2int(req->owner.pid);
+    params.owner.id = buff2long(req->owner.id);
     operation = buff2int(req->operation);
 
     /*
@@ -2967,7 +2968,6 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     int64_t inode;
     int64_t offset;
     int64_t length;
-    int pid;
     short operation;
     int result;
     FLockRegion region;
@@ -2984,7 +2984,9 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     offset = buff2long(req->offset);
     length = buff2long(req->length);
     operation = buff2int(req->operation);
-    pid = buff2int(req->pid);
+    ftask.owner.node = buff2int(req->owner.node);
+    ftask.owner.pid = buff2int(req->owner.pid);
+    ftask.owner.id = buff2long(req->owner.id);
 
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -3011,19 +3013,17 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     result = inode_index_flock_getlk(inode, &ftask);
     if (result == 0 || result == ENOENT) {
         resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_RESP_BODY(task);
+        int2buff(ftask.owner.node, resp->owner.node);
+        int2buff(ftask.owner.pid, resp->owner.pid);
+        long2buff(ftask.owner.id, resp->owner.id);
         if (result == 0) {
             int2buff(ftask.type, resp->type);
             long2buff(ftask.region->offset, resp->offset);
             long2buff(ftask.region->length, resp->length);
-            long2buff(ftask.owner.id, resp->owner.id);
-            int2buff(ftask.owner.pid, resp->owner.pid);
         } else {
             int2buff(LOCK_UN, resp->type);
             long2buff(offset, resp->offset);
             long2buff(length, resp->length);
-            int2buff(pid, resp->owner.pid);
-            long2buff(0, resp->owner.id);
-
             result = 0;
         }
 

@@ -1245,7 +1245,8 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
         return EFAULT;
     }
 
-    SF_PROTO_CLIENT_SET_REQ(session->ctx, out_buff, header, req, 0, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(session->ctx, out_buff,
+            header, req, 0, out_bytes);
     if ((result=client_check_set_proto_inode_info(
                     ns, inode, &req->ino)) != 0)
     {
@@ -1254,8 +1255,9 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
     int2buff(operation, req->operation);
     long2buff(offset, req->offset);
     long2buff(length, req->length);
-    long2buff(owner_id, req->owner.id);
+    int2buff(FDIR_CLIENT_NODE_ID, req->owner.node);
     int2buff(pid, req->owner.pid);
+    long2buff(owner_id, req->owner.id);
 
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
@@ -1275,18 +1277,20 @@ int fdir_client_flock_dentry_ex2(FDIRClientSession *session, const string_t *ns,
 int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns, const int64_t inode,
         int *operation, int64_t *offset, int64_t *length,
-        int64_t *owner_id, pid_t *pid)
+        int64_t *owner_id, pid_t *pid, uint32_t *node_id)
 {
     FDIRProtoHeader *header;
     FDIRProtoGetlkDEntryReq *req;
-    char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
+    char out_buff[sizeof(FDIRProtoHeader) +
+        SF_PROTO_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoGetlkDEntryReq) + NAME_MAX];
     FDIRProtoGetlkDEntryResp getlk_resp;
     SFResponseInfo response;
     int out_bytes;
     int result;
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, 0, out_bytes);
     if ((result=client_check_set_proto_inode_info(
                     ns, inode, &req->ino)) != 0)
     {
@@ -1295,7 +1299,9 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
     int2buff(*operation, req->operation);
     long2buff(*offset, req->offset);
     long2buff(*length, req->length);
-    int2buff(*pid, req->pid);
+    int2buff(FDIR_CLIENT_NODE_ID, req->owner.node);
+    int2buff(*pid, req->owner.pid);
+    long2buff(*owner_id, req->owner.id);
 
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ,
@@ -1311,6 +1317,7 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         *length = buff2long(getlk_resp.length);
         *owner_id = buff2long(getlk_resp.owner.id);
         *pid = buff2int(getlk_resp.owner.pid);
+        *node_id = buff2int(getlk_resp.node_id);
     } else {
         fdir_log_network_error(&response, conn, result);
     }

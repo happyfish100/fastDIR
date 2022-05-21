@@ -45,6 +45,7 @@
 #include "server_func.h"
 #include "dentry.h"
 #include "ns_subscribe.h"
+#include "node_manager.h"
 #include "cluster_relationship.h"
 #include "inode_generator.h"
 #include "server_binlog.h"
@@ -223,6 +224,10 @@ int main(int argc, char *argv[])
         }
 
         if ((result=ns_subscribe_init()) != 0) {
+            break;
+        }
+
+        if ((result=node_manager_init()) != 0) {
             break;
         }
 

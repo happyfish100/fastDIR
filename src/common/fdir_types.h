@@ -161,4 +161,10 @@ typedef struct fdir_set_dentry_size_info {
 
 typedef SFBinlogWriterStat FDIRBinlogWriterStat;
 
+typedef struct fdir_flock_owner {
+    uint32_t node; //client node id
+    pid_t    pid;
+    int64_t  id;   //owner id
+} FDIRFlockOwner;
+
 #endif

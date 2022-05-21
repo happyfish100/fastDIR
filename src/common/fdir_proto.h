@@ -365,10 +365,11 @@ typedef struct fdir_proto_stat_dentry_resp {
 
 typedef struct fdir_proto_flock_dentry_req {
     char offset[8];  /* lock region offset */
-    char length[8];  /* lock region  length, 0 for until end of file */
+    char length[8];  /* lock region length, 0 for until end of file */
     struct {
-        char id[8];  //owner id
+        char node[4]; // client node id
         char pid[4];
+        char id[8];   //owner id
     } owner;
     char operation[4]; /* lock operation, LOCK_SH for read shared lock,
                          LOCK_EX for write exclusive lock,
@@ -379,20 +380,26 @@ typedef struct fdir_proto_flock_dentry_req {
 
 typedef struct fdir_proto_getlk_dentry_req {
     char offset[8];  /* lock region offset */
-    char length[8];  /* lock region  length, 0 for until end of file */
+    char length[8];  /* lock region length, 0 for until end of file */
+    struct {
+        char node[4]; //client node id
+        char pid[4];
+        char id[8];   //owner id
+    } owner;
     char operation[4];
-    char pid[4];
     FDIRProtoInodeInfo ino;
 } FDIRProtoGetlkDEntryReq;
 
 typedef struct fdir_proto_getlk_dentry_resp {
     char offset[8];  /* lock region offset */
-    char length[8];  /* lock region  length, 0 for until end of file */
+    char length[8];  /* lock region length, 0 for until end of file */
     struct {
-        char id[8];  //owner id
+        char node[4]; //client node id
         char pid[4];
+        char id[8];   //owner id
     } owner;
     char type[4];
+    char padding[4];
 } FDIRProtoGetlkDEntryResp;
 
 typedef struct fdir_proto_sys_lock_dentry_req {
