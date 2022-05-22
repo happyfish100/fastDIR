@@ -60,6 +60,17 @@ typedef struct sys_lock_task {
     struct fc_list_head dlink;
 } SysLockTask;
 
+#define FLOCK_TASK_PTR_FIXED_COUNT 4
+
+typedef struct flock_task_ptr_array {
+    struct {
+        FLockTask *fixed[FLOCK_TASK_PTR_FIXED_COUNT];
+        FLockTask **pp;
+    } ftasks;
+    int count;
+    int alloc;
+} FLockTaskPtrArray;
+
 typedef struct flock_region {
     int64_t offset;   /* starting offset */
     int64_t length;   /* 0 means until end of file */
@@ -123,6 +134,9 @@ extern "C" {
     int flock_apply(FLockContext *ctx, const int64_t offset,
             const int64_t length, FLockTask *ftask, const bool block);
 
+    int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
+            const FlockParams *params, FLockTaskPtrArray *ftask_parray);
+
     void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
 
     int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask);
@@ -143,6 +157,21 @@ extern "C" {
             const bool block);
     
     int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task);
+
+    static inline void flock_task_ptr_array_init(FLockTaskPtrArray *array)
+    {
+        array->ftasks.pp = array->ftasks.fixed;
+        array->alloc = FLOCK_TASK_PTR_FIXED_COUNT;
+        array->count = 0;
+    }
+
+    static inline void flock_task_ptr_array_free(FLockTaskPtrArray *array)
+    {
+        if (array->ftasks.pp != array->ftasks.fixed) {
+            free(array->ftasks.pp);
+            array->ftasks.pp = NULL;
+        }
+    }
 
 #ifdef __cplusplus
 }

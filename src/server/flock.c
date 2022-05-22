@@ -149,42 +149,88 @@ static inline void remove_from_locked(FLockTask *ftask)
     fc_list_del_init(&ftask->flink);
 }
 
-static inline bool is_region_overlap(FLockRegion *r1, FLockRegion *r2)
+static inline bool is_region_overlap(
+        const int64_t offset1, const int64_t length1,
+        const int64_t offset2, const int64_t length2)
 {
-    if (r1->offset < r2->offset) {
-        return (r1->length == 0) || (r1->offset + r1->length > r2->offset);
-    } else if (r1->offset == r2->offset) {
+    if (offset1 < offset2) {
+        return (length1 == 0) || (offset1 + length1 > offset2);
+    } else if (offset1 == offset2) {
         return true;
     } else {
-        return (r2->length == 0) || (r2->offset + r2->length > r1->offset);
+        return (length2 == 0) || (offset2 + length2 > offset1);
     }
 }
 
-static inline FLockTask *get_conflict_ftask_by_region(FLockEntry *entry,
-        FLockTask *ftask, const bool check_waiting, int *conflict_regions)
+static inline bool is_region_contain(
+        const int64_t offset1, const int64_t length1,
+        const int64_t offset2, const int64_t length2)
+{
+    if (offset1 < offset2) {
+        return (length1 == 0) || (length2 > 0 && offset1 +
+                length1 >= offset2 + length2);
+    } else if (offset1 == offset2) {
+        return (length1 == 0) || (length2 > 0 && length1 > length2);
+    } else {
+        return (length2 == 0) || (length1 > 0 && offset2 +
+                length2 > offset1 + length1);
+    }
+}
+
+#define IS_REGION_OVERLAP(r1, r2)  \
+    is_region_overlap(r1->offset, r1->length, r2->offset, r2->length)
+
+#define IS_FLOCK_CONFLICT(t1, t2)  \
+    (t1->owner.node != t2->owner.node || t1->owner.id != t2->owner.id) && \
+    (t1->type == LOCK_EX || t2->type == LOCK_EX)
+
+static inline FLockTask *get_conflict_ftask(
+        struct fc_list_head *head, const FLockTask *ftask)
+{
+    FLockTask *current;
+
+    fc_list_for_each_entry(current, head, flink) {
+        if (IS_FLOCK_CONFLICT(ftask, current)) {
+            return current;
+        }
+    }
+
+    return NULL;
+}
+
+static inline FLockTask *get_conflict_ftask_by_region(
+        FLockEntry *entry, const FLockTask *ftask,
+        const bool check_waiting, int *conflict_regions)
 {
     FLockRegion *region;
-    FLockTask *wait;
+    FLockTask *conflict;
     FLockTask *found;
+    struct fc_list_head *heads[2];
+    int count;
+    int i;
 
     found = NULL;
     *conflict_regions = 0;
     fc_list_for_each_entry(region, &entry->regions, dlink) {
-        if (is_region_overlap(ftask->region, region)) {
-            if (check_waiting && (wait=fc_list_first_entry(&region->waiting,
-                            FLockTask, flink)) != NULL)
+        if (IS_REGION_OVERLAP(ftask->region, region)) {
+            count = 0;
+            if ((ftask->type == LOCK_EX && region->locked.reads > 0)
+                    || (region->locked.writes > 0))
             {
-                (*conflict_regions)++;
-                if (found == NULL) {
-                    found = wait;
-                }
-            } else if ((region->locked.writes > 0) || (ftask->type == LOCK_EX &&
-                        region->locked.reads > 0))
-            {
-                (*conflict_regions)++;
-                if (found == NULL) {
-                    found = fc_list_first_entry(&region->locked.head,
-                            FLockTask, flink);
+                heads[count++] = &region->locked.head;
+            }
+
+            if (check_waiting && !fc_list_empty(&region->waiting)) {
+                heads[count++] = &region->waiting;
+            }
+
+            for (i=0; i<count; i++) {
+                if ((conflict=get_conflict_ftask(heads[i], ftask)) != NULL) {
+                    (*conflict_regions)++;
+                    if (found == NULL) {
+                        found = conflict;
+                    }
+                    break;
                 }
             }
         } else if ((ftask->region->length > 0) && (ftask->region->offset +
@@ -197,8 +243,8 @@ static inline FLockTask *get_conflict_ftask_by_region(FLockEntry *entry,
     return found;
 }
 
-static inline FLockTask *get_conflict_flock_task(FLockTask *ftask,
-        bool *global_conflict)
+static inline FLockTask *get_conflict_flock_task(
+        const FLockTask *ftask, bool *global_conflict)
 {
     const bool check_waiting = true;
     FLockTask *found;
@@ -220,7 +266,9 @@ static inline FLockTask *get_conflict_flock_task(FLockTask *ftask,
     fc_list_for_each_entry(wait, &ftask->dentry->
             flock_entry->waiting_tasks, flink)
     {
-        if (is_region_overlap(ftask->region, wait->region)) {
+        if (IS_REGION_OVERLAP(ftask->region, wait->region) &&
+                IS_FLOCK_CONFLICT(ftask, wait))
+        {
             *global_conflict = true;
             return wait;
         }
@@ -268,6 +316,73 @@ int flock_apply(FLockContext *ctx, const int64_t offset,
         fc_list_add_tail(&ftask->flink, &ftask->region->waiting);
     }
     return EINPROGRESS;
+}
+
+static int realloc_task_ptr_array(FLockTaskPtrArray *array)
+{
+    int new_alloc;
+    FLockTask **new_ftasks;
+
+    new_alloc = array->alloc * 2;
+    new_ftasks = fc_malloc(sizeof(FLockTask *) * new_alloc);
+    if (new_ftasks == NULL) {
+        return ENOMEM;
+    }
+
+    memcpy(new_ftasks, array->ftasks.pp,
+            sizeof(FLockTask *) * array->count);
+    if (array->ftasks.pp != array->ftasks.fixed) {
+        free(array->ftasks.pp);
+    }
+
+    array->ftasks.pp = new_ftasks;
+    array->alloc = new_alloc;
+    return 0;
+}
+
+int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
+        const FlockParams *params, FLockTaskPtrArray *ftask_parray)
+{
+    int result;
+    int i;
+    FLockRegion *region;
+    FLockTask *ftask;
+
+    flock_task_ptr_array_init(ftask_parray);
+    fc_list_for_each_entry(region, &dentry->flock_entry->regions, dlink) {
+        if (is_region_overlap(params->offset, params->length,
+                    region->offset, region->length))
+        {
+            if (!is_region_contain(params->offset, params->length,
+                        region->offset, region->length))
+            {
+                continue;
+            }
+
+            fc_list_for_each_entry(ftask, &region->locked.head, flink) {
+                if (ftask_parray->count >= ftask_parray->alloc) {
+                    if ((result=realloc_task_ptr_array(ftask_parray)) != 0) {
+                        return result;
+                    }
+                }
+                ftask_parray->ftasks.pp[ftask_parray->count++] = ftask;
+            }
+        } else if ((params->length > 0) && (params->offset +
+                    params->length < region->offset))
+        {
+            break;
+        }
+    }
+
+    if (ftask_parray->count == 0) {
+        return ENOENT;
+    }
+
+    for (i=0; i<ftask_parray->count; i++) {
+        flock_release(ctx, dentry->flock_entry, ftask_parray->ftasks.pp[i]);
+    }
+
+    return 0;
 }
 
 int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)

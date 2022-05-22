@@ -39,8 +39,8 @@
 #define SERVICE_OP_BATCH_SET_DSIZE_INT  102
 
 #define SERVICE_OP_SYS_LOCK_APPLY_INT   111
-#define SERVICE_OP_FLOCK_APPLY_INT      112
-#define SERVICE_OP_SYS_LOCK_RELEASE_INT 113
+#define SERVICE_OP_SYS_LOCK_RELEASE_INT 112
+#define SERVICE_OP_FLOCK_APPLY_INT      113
 
 #define SERVICE_OP_STAT_DENTRY_INT  121
 #define SERVICE_OP_READ_LINK_INT    122
@@ -134,6 +134,7 @@ typedef struct fdir_binlog_record {
         struct fdir_record_ptr_array *parray; //for batch set dsize
         FLockTask *ftask;  //for flock apply
         SysLockTask *stask; //for sys lock apply
+        FLockTaskPtrArray ftask_parray;  //for flock unlock
     };
 
     /* affected dentries for rename and remove operation */

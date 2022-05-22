@@ -1140,8 +1140,14 @@ static int deal_flock_apply(FDIRDataThreadContext *thread_ctx,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    record->ftask = inode_index_flock_apply(thread_ctx, record->inode,
-            &record->flock_params, record->options.blocked, task, &result);
+    if (record->flock_params.type == LOCK_UN) {
+        result = inode_index_flock_unlock(thread_ctx, record->inode,
+                &record->flock_params, &record->ftask_parray);
+    } else {
+        record->ftask = inode_index_flock_apply(thread_ctx,
+                record->inode, &record->flock_params,
+                record->options.blocked, task, &result);
+    }
     return result;
 }
 

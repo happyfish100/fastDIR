@@ -82,7 +82,7 @@ int service_handler_init()
 }
 
 int service_handler_destroy()
-{   
+{
     return 0;
 }
 
@@ -1480,11 +1480,35 @@ static void flock_done_notify(FDIRBinlogRecord *record,
         const int result, const bool is_error)
 {
     struct fast_task_info *task;
+    FLockTask *flck;
+    FLockTask **pp;
+    FLockTask **end;
     int newr;
+    bool found;
 
     newr = result;
     task = (struct fast_task_info *)record->notify.args;
-    if (record->ftask == NULL) {
+    if (record->flock_params.type == LOCK_UN) {
+        if (result == 0) {
+            end = record->ftask_parray.ftasks.pp +
+                record->ftask_parray.count;
+            for (pp=record->ftask_parray.ftasks.pp; pp<end; pp++) {
+                found = false;
+                fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
+                    if (*pp == flck) {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found) {
+                    release_flock_task(task, *pp);
+                }
+            }
+
+            flock_task_ptr_array_free(&RECORD->ftask_parray);
+        }
+    } else if (record->ftask == NULL) {
         logWarning("file: "__FILE__", line: %d, "
                 "inode: %"PRId64", %s fail, errno: %d, error info: %s",
                 __LINE__, record->inode, get_operation_caption(
@@ -2846,57 +2870,6 @@ static int service_process_update(struct fast_task_info *task,
     return result;
 }
 
-static int compare_flock_task(FLockTask *flck, const int64_t inode,
-        const FlockParams *params)
-{
-    int sub;
-    if ((sub=fc_compare_int64(flck->owner.id, params->owner.id)) != 0) {
-        return sub;
-    }
-
-    if ((sub=fc_compare_int64(flck->dentry->inode, inode)) != 0) {
-        return sub;
-    }
-
-    if ((sub=fc_compare_int64(flck->region->offset, params->offset)) != 0) {
-        return sub;
-    }
-
-    if ((sub=fc_compare_int64(flck->region->length, params->length)) != 0) {
-        return sub;
-    }
-
-    return 0;
-}
-
-static int flock_unlock_dentry(struct fast_task_info *task,
-        const int64_t inode, const FlockParams *params)
-{
-    FLockTask *flck;
-    fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
-
-        /*
-        logInfo("==type: %d, which_queue: %d, inode: %"PRId64", "
-                "offset: %"PRId64", length: %"PRId64", "
-                "owner.id: %"PRId64", owner.pid: %d",
-                flck->type, flck->which_queue, flck->dentry->inode,
-                flck->region->offset, flck->region->length,
-                flck->owner.id, flck->owner.pid);
-                */
-
-        if (flck->which_queue != FDIR_FLOCK_TASK_IN_LOCKED_QUEUE) {
-            continue;
-        }
-
-        if (compare_flock_task(flck, inode, params) == 0) {
-            release_flock_task(task, flck);
-            return 0;
-        }
-    }
-
-    return ENOENT;
-}
-
 static int service_deal_flock_dentry(struct fast_task_info *task)
 {
     FDIRProtoFlockDEntryReq *req;
@@ -2931,10 +2904,8 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             */
 
     if (operation & LOCK_UN) {
-        return flock_unlock_dentry(task, inode, &params);
-    }
-
-    if (operation & LOCK_EX) {
+        params.type = LOCK_UN;
+    } else if (operation & LOCK_EX) {
         params.type = LOCK_EX;
     } else if (operation & LOCK_SH) {
         params.type = LOCK_SH;
@@ -2956,7 +2927,11 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     RECORD->options.blocked = ((operation & LOCK_NB) == 0 ? 1 : 0);
     RECORD->flock_params = params;
     RECORD->operation = SERVICE_OP_FLOCK_APPLY_INT;
-    RECORD->ftask = NULL;
+    if (params.type == LOCK_UN) {
+        flock_task_ptr_array_init(&RECORD->ftask_parray);
+    } else {
+        RECORD->ftask = NULL;
+    }
     return push_flock_to_data_thread_queue(task);
 }
 
@@ -3059,6 +3034,7 @@ static int service_deal_sys_lock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    RECORD->flock_params.type = LOCK_EX;
     RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = buff2long(req->ino.inode);
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);

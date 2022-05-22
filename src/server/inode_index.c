@@ -552,6 +552,35 @@ FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
     return ftask;
 }
 
+int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, const FlockParams *params,
+        FLockTaskPtrArray *ftask_parray)
+{
+    int result;
+    FDIRServerDentry *dentry;
+
+    if ((result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
+        return result;
+    }
+
+    {
+        SET_INODE_HASHTABLE_CTX(inode);
+        PTHREAD_MUTEX_LOCK(&ctx->lock);
+        do {
+            if (dentry->flock_entry == NULL) {
+                result = ENOENT;
+                break;
+            }
+
+            result = flock_unlock(&ctx->flock_ctx,
+                    dentry, params, ftask_parray);
+        } while (0);
+        PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+    }
+
+    return result;
+}
+
 int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
 {
     int result;
