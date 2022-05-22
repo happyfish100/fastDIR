@@ -2895,12 +2895,12 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     operation = buff2int(req->operation);
 
     /*
-    logInfo("file: "__FILE__", line: %d, "
+    logInfo("file: "__FILE__", line: %d, func: %s, "
             "sock: %d, operation: %d, inode: %"PRId64", "
-            "offset: %"PRId64", length: %"PRId64", "
-            "owner.id: %"PRId64", owner.pid: %d", __LINE__,
-            task->event.fd, operation, inode, params.offset,
-            params.length, params.owner.id, params.owner.pid);
+            "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
+            "owner.id: %"PRId64", owner.pid: %d", __LINE__, __FUNCTION__,
+            task->event.fd, operation, inode, params.offset, params.length,
+            params.owner.node, params.owner.id, params.owner.pid);
             */
 
     if (operation & LOCK_UN) {
@@ -2964,10 +2964,12 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     ftask.owner.id = buff2long(req->owner.id);
 
     /*
-    logInfo("file: "__FILE__", line: %d, "
-            "operation: %d, inode: %"PRId64", "
-            "offset: %"PRId64", length: %"PRId64, 
-            __LINE__, operation, inode, offset, length);
+    logInfo("file: "__FILE__", line: %d, func: %s, "
+            "sock: %d, operation: %d, inode: %"PRId64", "
+            "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
+            "owner.id: %"PRId64", owner.pid: %d", __LINE__, __FUNCTION__,
+            task->event.fd, operation, inode, offset, length,
+            ftask.owner.node, ftask.owner.id, ftask.owner.pid);
             */
 
     if (operation & LOCK_EX) {

@@ -136,6 +136,14 @@ static inline void add_to_locked(FLockTask *ftask)
     }
     ftask->which_queue = FDIR_FLOCK_TASK_IN_LOCKED_QUEUE;
     fc_list_add_tail(&ftask->flink, &ftask->region->locked.head);
+
+    /*
+    logInfo("add type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
+            "length: %"PRId64", reads: %d, writes: %d",
+            ftask->type, ftask->owner.node, ftask->owner.id,
+            ftask->region->offset, ftask->region->length,
+            ftask->region->locked.reads, ftask->region->locked.writes);
+            */
 }
 
 static inline void remove_from_locked(FLockTask *ftask)
@@ -147,6 +155,14 @@ static inline void remove_from_locked(FLockTask *ftask)
     }
     ftask->which_queue = FDIR_FLOCK_TASK_NOT_IN_QUEUE;
     fc_list_del_init(&ftask->flink);
+
+    /*
+    logInfo("remove type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
+            "length: %"PRId64", reads: %d, writes: %d",
+            ftask->type, ftask->owner.node, ftask->owner.id,
+            ftask->region->offset, ftask->region->length,
+            ftask->region->locked.reads, ftask->region->locked.writes);
+        */
 }
 
 static inline bool is_region_overlap(

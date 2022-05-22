@@ -1268,7 +1268,8 @@ int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        fdir_log_network_error(&response, session->mconn, result);
+        fdir_log_network_error_for_delete(&response,
+                session->mconn, result, LOG_DEBUG);
     }
 
     return result;
@@ -1319,7 +1320,8 @@ int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
         owner->pid = buff2int(getlk_resp.owner.pid);
         owner->id = buff2long(getlk_resp.owner.id);
     } else {
-        fdir_log_network_error(&response, conn, result);
+        fdir_log_network_error_for_delete(&response,
+                conn, result, LOG_DEBUG);
     }
 
     return result;
