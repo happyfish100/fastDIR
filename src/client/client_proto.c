@@ -1240,6 +1240,7 @@ int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
     SFResponseInfo response;
     int out_bytes;
     int result;
+    bool wait_lock;
 
     if (session->mconn == NULL) {
         return EFAULT;
@@ -1262,14 +1263,31 @@ int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
     out_bytes += ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
+
+    wait_lock = ((operation & (LOCK_UN | LOCK_NB)) == 0);
     response.error.length = 0;
     if ((result=sf_send_and_recv_response(session->mconn, out_buff,
                     out_bytes, &response, session->ctx->common_cfg.
                     network_timeout, FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
                     NULL, 0)) != 0)
     {
-        fdir_log_network_error_for_delete(&response,
-                session->mconn, result, LOG_DEBUG);
+        if (!(result == ETIMEDOUT && wait_lock)) {
+            fdir_log_network_error_for_delete(&response,
+                    session->mconn, result, LOG_DEBUG);
+        }
+    }
+
+    while (result == ETIMEDOUT && wait_lock) {
+        if ((result=sf_recv_response(session->mconn, &response,
+                        session->ctx->common_cfg.network_timeout,
+                        FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP,
+                        NULL, 0)) != 0)
+        {
+            if (result != ETIMEDOUT) {
+                fdir_log_network_error_for_delete(&response,
+                        session->mconn, result, LOG_DEBUG);
+            }
+        }
     }
 
     return result;
