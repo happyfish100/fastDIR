@@ -83,6 +83,11 @@
 #define RBUFFER           TASK_CTX.service.rbuffer
 #define FTASK_HEAD_PTR    &TASK_CTX.service.ftasks
 #define SYS_LOCK_TASK     TASK_CTX.service.sys_lock_task
+#define SERVICE_FTYPE     TASK_CTX.service.flock_type
+#define SERVICE_FLOCK     TASK_CTX.service.flock
+#define SERVICE_FTASK     SERVICE_FLOCK.ftask
+#define SERVICE_STASK     SERVICE_FLOCK.stask
+#define FTASK_PARRAY      SERVICE_FLOCK.ftask_parray
 #define WAITING_RPC_COUNT TASK_CTX.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
@@ -108,7 +113,7 @@ typedef struct fdir_path_info {
 struct fdir_namespace_entry;
 struct fdir_dentry_context;
 struct fdir_server_dentry;
-struct flock_entry;
+struct fdir_flock_entry;
 
 #define DENTRY_SKIPLIST_INIT_LEVEL_COUNT   2
 #define FDIR_DENTRY_LOADED_FLAGS_BASIC    (1 << 0)
@@ -144,7 +149,7 @@ typedef struct fdir_server_dentry {
     UniqSkiplist *children;
     struct fdir_server_dentry *parent;
     struct fdir_namespace_entry *ns_entry;
-    struct flock_entry *flock_entry;
+    struct fdir_flock_entry *flock_entry;
     struct fdir_server_dentry *free_next; //for delay free dentry
     struct fdir_server_dentry *ht_next;   //for inode index hash table
     FDIRServerDentryDBArgs db_args[0];    //for data persistency, since V3.0
@@ -247,8 +252,6 @@ typedef struct fdir_slave_replication_ptr_array {
 } FDIRSlaveReplicationPtrArray;
 
 struct fdir_binlog_record;
-struct flock_task;
-struct sys_lock_task;
 
 typedef struct fdir_ns_subscriber {
     int index;  //for allocating FDIRNSSubscribeEntry
@@ -256,6 +259,51 @@ typedef struct fdir_ns_subscriber {
     struct fc_list_head dlink;  //for subscriber's chain
     struct fdir_ns_subscriber *next;  //for freelist
 } FDIRNSSubscriber;
+
+struct fdir_flock_region;
+
+typedef struct fdir_flock_params {
+    short type;
+    FDIRFlockOwner owner;
+    int64_t offset;
+    int64_t length;
+} FDIRFlockParams;
+
+typedef struct fdir_flock_task {
+    /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
+    short type;
+    short which_queue;
+    FDIRFlockOwner owner;
+    struct fdir_flock_region *region;
+    struct fast_task_info *task;
+    FDIRServerDentry *dentry;
+    struct fc_list_head flink;  //for flock queue
+    struct fc_list_head clink;  //for connection double link chain
+} FDIRFLockTask;
+
+typedef struct fdir_sys_lock_task {
+    short status;
+    struct fast_task_info *task;
+    FDIRServerDentry *dentry;
+    struct fc_list_head dlink;
+} FDIRSysLockTask;
+
+#define FDIR_FLOCK_TASK_PTR_FIXED_COUNT 2
+
+typedef struct fdir_flock_task_ptr_array {
+    struct {
+        FDIRFLockTask *fixed[FDIR_FLOCK_TASK_PTR_FIXED_COUNT];
+        FDIRFLockTask **pp;
+    } ftasks;
+    int count;
+    int alloc;
+} FDIRFLockTaskPtrArray;
+
+typedef union {
+    FDIRFLockTask *ftask;   //for flock apply
+    FDIRSysLockTask *stask; //for sys lock apply
+    FDIRFLockTaskPtrArray ftask_parray;  //for flock unlock
+} FDIRFLockTaskInfo;
 
 typedef struct server_task_arg {
     struct {
@@ -285,8 +333,12 @@ typedef struct server_task_arg {
                     time_t expires;  //expire time
                 } dentry_list_cache; //for dentry_list
 
-                struct fc_list_head ftasks;  //for flock
-                struct sys_lock_task *sys_lock_task; //for append and ftruncate
+                struct {
+                    int flock_type;  //LOCK_EX, LOCK_SH, LOCK_UN
+                    struct fc_list_head ftasks;
+                    FDIRSysLockTask *sys_lock_task; //for sys lock apply
+                    FDIRFLockTaskInfo flock;
+                };
 
                 struct idempotency_request *idempotency_request;
                 struct fdir_binlog_record *record;

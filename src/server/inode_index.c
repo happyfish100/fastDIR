@@ -503,12 +503,12 @@ int inode_index_get_xattr(FDIRServerDentry *dentry,
     return result;
 }
 
-FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, const FlockParams *params, const bool block,
+FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, const FDIRFlockParams *params, const bool block,
         struct fast_task_info *task, int *result)
 {
     FDIRServerDentry *dentry;
-    FLockTask *ftask;
+    FDIRFLockTask *ftask;
 
     if ((*result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
         return NULL;
@@ -553,8 +553,8 @@ FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
 }
 
 int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, const FlockParams *params,
-        FLockTaskPtrArray *ftask_parray)
+        const int64_t inode, const FDIRFlockParams *params,
+        FDIRFLockTaskPtrArray *ftask_parray)
 {
     int result;
     FDIRServerDentry *dentry;
@@ -581,7 +581,7 @@ int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
+int inode_index_flock_getlk(const int64_t inode, FDIRFLockTask *ftask)
 {
     int result;
 
@@ -603,7 +603,7 @@ int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask)
     return result;
 }
 
-void inode_index_flock_release(FLockTask *ftask)
+void inode_index_flock_release(FDIRFLockTask *ftask)
 {
     SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
     PTHREAD_MUTEX_LOCK(&ctx->lock);
@@ -615,12 +615,12 @@ void inode_index_flock_release(FLockTask *ftask)
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
-SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
+FDIRSysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
         const int64_t inode, const bool block,
         struct fast_task_info *task, int *result)
 {
     FDIRServerDentry *dentry;
-    SysLockTask  *sys_task;
+    FDIRSysLockTask  *sys_task;
 
     if ((*result=inode_index_get_dentry(thread_ctx, inode, &dentry)) != 0) {
         return NULL;
@@ -660,7 +660,7 @@ SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
     return sys_task;
 }
 
-int inode_index_sys_lock_release(SysLockTask *sys_task)
+int inode_index_sys_lock_release(FDIRSysLockTask *sys_task)
 {
     int result;
     SET_INODE_HASHTABLE_CTX(sys_task->dentry->inode);

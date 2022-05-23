@@ -32,70 +32,31 @@
 
 typedef void (*sys_lock_release_callback)(FDIRServerDentry *dentry, void *args);
 
-struct flock_region;
-
-typedef struct fdir_flock_params {
-    short type;
-    FDIRFlockOwner owner;
-    int64_t offset;
-    int64_t length;
-} FlockParams;
-
-typedef struct flock_task {
-    /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
-    short type;
-    short which_queue;
-    FDIRFlockOwner owner;
-    struct flock_region *region;
-    struct fast_task_info *task;
-    FDIRServerDentry *dentry;
-    struct fc_list_head flink;  //for flock queue
-    struct fc_list_head clink;  //for connection double link chain
-} FLockTask;
-
-typedef struct sys_lock_task {
-    short status;
-    struct fast_task_info *task;
-    FDIRServerDentry *dentry;
-    struct fc_list_head dlink;
-} SysLockTask;
-
-#define FLOCK_TASK_PTR_FIXED_COUNT 4
-
-typedef struct flock_task_ptr_array {
-    struct {
-        FLockTask *fixed[FLOCK_TASK_PTR_FIXED_COUNT];
-        FLockTask **pp;
-    } ftasks;
-    int count;
-    int alloc;
-} FLockTaskPtrArray;
-
-typedef struct flock_region {
+typedef struct fdir_flock_region {
     int64_t offset;   /* starting offset */
     int64_t length;   /* 0 means until end of file */
 
     struct {
         int reads;
         int writes;
-        struct fc_list_head head;  //element: FLockTask
+        struct fc_list_head head;  //element: FDIRFLockTask
     } locked;
-    struct fc_list_head waiting;  //element: FLockTask for local
+    struct fc_list_head waiting;  //element: FDIRFLockTask for local
 
     int ref_count;
     struct fc_list_head dlink;
-} FLockRegion;
+} FDIRFLockRegion;
 
-typedef struct flock_entry {
-    struct fc_list_head regions; //FLockRegion order by offset and length
-    struct fc_list_head waiting_tasks;  //element: FLockTask for global
+typedef struct fdir_flock_entry {
+    struct fc_list_head regions; //FDIRFLockRegion order by offset and length
+    struct fc_list_head waiting_tasks;  //element: FDIRFLockTask for global
     struct {
-        SysLockTask *locked_task;
-        struct fc_list_head waiting;  //element: SysLockTask
+        FDIRSysLockTask *locked_task;
+        struct fc_list_head waiting;  //element: FDIRSysLockTask
     } sys_lock;  //system lock for file append and ftruncate
 } FLockEntry;
 
-typedef struct flock_context {
+typedef struct fdir_flock_context {
     struct {
         struct fast_mblock_man entry;
         struct fast_mblock_man region;
@@ -121,51 +82,51 @@ extern "C" {
         fast_mblock_free_object(&ctx->allocators.entry, entry);
     }
 
-    static inline FLockTask *flock_alloc_ftask(FLockContext *ctx)
+    static inline FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx)
     {
-        return (FLockTask *)fast_mblock_alloc_object(&ctx->allocators.ftask);
+        return (FDIRFLockTask *)fast_mblock_alloc_object(&ctx->allocators.ftask);
     }
 
-    static inline void flock_free_ftask(FLockContext *ctx, FLockTask *ftask)
+    static inline void flock_free_ftask(FLockContext *ctx, FDIRFLockTask *ftask)
     {
         fast_mblock_free_object(&ctx->allocators.ftask, ftask);
     }
 
     int flock_apply(FLockContext *ctx, const int64_t offset,
-            const int64_t length, FLockTask *ftask, const bool block);
+            const int64_t length, FDIRFLockTask *ftask, const bool block);
 
     int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
-            const FlockParams *params, FLockTaskPtrArray *ftask_parray);
+            const FDIRFlockParams *params, FDIRFLockTaskPtrArray *ftask_parray);
 
-    void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask);
+    void flock_release(FLockContext *ctx, FLockEntry *entry, FDIRFLockTask *ftask);
 
-    int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask);
+    int flock_get_conflict_lock(FLockContext *ctx, FDIRFLockTask *ftask);
 
-    static inline SysLockTask *flock_alloc_sys_task(FLockContext *ctx)
+    static inline FDIRSysLockTask *flock_alloc_sys_task(FLockContext *ctx)
     {
-        return (SysLockTask *)fast_mblock_alloc_object(
+        return (FDIRSysLockTask *)fast_mblock_alloc_object(
                 &ctx->allocators.sys_task);
     }
 
     static inline void flock_free_sys_task(FLockContext *ctx,
-            SysLockTask *sys_task)
+            FDIRSysLockTask *sys_task)
     {
         fast_mblock_free_object(&ctx->allocators.sys_task, sys_task);
     }
 
-    int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
+    int sys_lock_apply(FLockEntry *entry, FDIRSysLockTask *sys_task,
             const bool block);
     
-    int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task);
+    int sys_lock_release(FLockEntry *entry, FDIRSysLockTask *sys_task);
 
-    static inline void flock_task_ptr_array_init(FLockTaskPtrArray *array)
+    static inline void flock_task_ptr_array_init(FDIRFLockTaskPtrArray *array)
     {
         array->ftasks.pp = array->ftasks.fixed;
-        array->alloc = FLOCK_TASK_PTR_FIXED_COUNT;
+        array->alloc = FDIR_FLOCK_TASK_PTR_FIXED_COUNT;
         array->count = 0;
     }
 
-    static inline void flock_task_ptr_array_free(FLockTaskPtrArray *array)
+    static inline void flock_task_ptr_array_free(FDIRFLockTaskPtrArray *array)
     {
         if (array->ftasks.pp != array->ftasks.fixed) {
             free(array->ftasks.pp);

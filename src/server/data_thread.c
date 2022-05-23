@@ -1140,15 +1140,20 @@ static int deal_flock_apply(FDIRDataThreadContext *thread_ctx,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    if (record->flock_params.type == LOCK_UN) {
-        result = inode_index_flock_unlock(thread_ctx, record->inode,
-                &record->flock_params, &record->ftask_parray);
-    } else {
-        record->ftask = inode_index_flock_apply(thread_ctx,
-                record->inode, &record->flock_params,
-                record->options.blocked, task, &result);
-    }
+    record->flock->ftask = inode_index_flock_apply(thread_ctx,
+            record->inode, &record->flock_params,
+            record->options.blocked, task, &result);
     return result;
+}
+
+static int deal_flock_unlock(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    return inode_index_flock_unlock(thread_ctx, record->inode,
+            &record->flock_params, &record->flock->ftask_parray);
 }
 
 static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
@@ -1158,8 +1163,8 @@ static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
-    record->stask = inode_index_sys_lock_apply(thread_ctx, record->inode,
-            record->options.blocked, task, &result);
+    record->flock->stask = inode_index_sys_lock_apply(thread_ctx,
+            record->inode, record->options.blocked, task, &result);
     return result;
 }
 
@@ -1221,6 +1226,9 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             break;
         case SERVICE_OP_FLOCK_APPLY_INT:
             result = deal_flock_apply(thread_ctx, record);
+            break;
+        case SERVICE_OP_FLOCK_UNLOCK_INT:
+            result = deal_flock_unlock(thread_ctx, record);
             break;
         case SERVICE_OP_SYS_LOCK_APPLY_INT:
             result = deal_sys_lock_apply(thread_ctx, record);

@@ -40,14 +40,14 @@ static int flock_entry_alloc_init_func(void *element, void *args)
 
 static int flock_task_alloc_init_func(void *element, void *args)
 {
-    FC_INIT_LIST_HEAD(&((FLockTask *)element)->flink);
-    FC_INIT_LIST_HEAD(&((FLockTask *)element)->clink);
+    FC_INIT_LIST_HEAD(&((FDIRFLockTask *)element)->flink);
+    FC_INIT_LIST_HEAD(&((FDIRFLockTask *)element)->clink);
     return 0;
 }
 
 static int sys_task_alloc_init_func(void *element, void *args)
 {
-    FC_INIT_LIST_HEAD(&((SysLockTask *)element)->dlink);
+    FC_INIT_LIST_HEAD(&((FDIRSysLockTask *)element)->dlink);
     return 0;
 }
 
@@ -62,21 +62,21 @@ int flock_init(FLockContext *ctx)
     }
 
     if ((result=fast_mblock_init_ex1(&ctx->allocators.region,
-                    "flock_region", sizeof(FLockRegion), 4096,
+                    "flock_region", sizeof(FDIRFLockRegion), 4096,
                     0, NULL, NULL, false)) != 0)
     {
         return result;
     }
 
     if ((result=fast_mblock_init_ex1(&ctx->allocators.ftask,
-                    "flock_task", sizeof(FLockTask), 4096,
+                    "flock_task", sizeof(FDIRFLockTask), 4096,
                     0, flock_task_alloc_init_func, NULL, false)) != 0)
     {
         return result;
     }
 
     if ((result=fast_mblock_init_ex1(&ctx->allocators.sys_task,
-                    "sys_lck_task", sizeof(SysLockTask), 4096,
+                    "sys_lck_task", sizeof(FDIRSysLockTask), 4096,
                     0, sys_task_alloc_init_func, NULL, false)) != 0)
     {
         return result;
@@ -91,11 +91,11 @@ void flock_destroy(FLockContext *ctx)
     fast_mblock_destroy(&ctx->allocators.region);
 }
 
-static FLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
+static FDIRFLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
         const int64_t offset, const int64_t length)
 {
-    FLockRegion *region;
-    FLockRegion *new_region;
+    FDIRFLockRegion *region;
+    FDIRFLockRegion *new_region;
 
     fc_list_for_each_entry(region, &entry->regions, dlink) {
         if (offset == region->offset) {
@@ -110,7 +110,7 @@ static FLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
         }
     }
 
-    new_region = (FLockRegion *)fast_mblock_alloc_object(
+    new_region = (FDIRFLockRegion *)fast_mblock_alloc_object(
             &ctx->allocators.region);
     if (new_region == NULL) {
         return NULL;
@@ -127,7 +127,7 @@ static FLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
     return new_region;
 }
 
-static inline void add_to_locked(FLockTask *ftask)
+static inline void add_to_locked(FDIRFLockTask *ftask)
 {
     if (ftask->type == LOCK_SH) {
         ftask->region->locked.reads++;
@@ -146,7 +146,7 @@ static inline void add_to_locked(FLockTask *ftask)
             */
 }
 
-static inline void remove_from_locked(FLockTask *ftask)
+static inline void remove_from_locked(FDIRFLockTask *ftask)
 {
     if (ftask->type == LOCK_SH) {
         ftask->region->locked.reads--;
@@ -200,10 +200,10 @@ static inline bool is_region_contain(
     (t1->owner.node != t2->owner.node || t1->owner.id != t2->owner.id) && \
     (t1->type == LOCK_EX || t2->type == LOCK_EX)
 
-static inline FLockTask *get_conflict_ftask(
-        struct fc_list_head *head, const FLockTask *ftask)
+static inline FDIRFLockTask *get_conflict_ftask(
+        struct fc_list_head *head, const FDIRFLockTask *ftask)
 {
-    FLockTask *current;
+    FDIRFLockTask *current;
 
     fc_list_for_each_entry(current, head, flink) {
         if (IS_FLOCK_CONFLICT(ftask, current)) {
@@ -214,13 +214,13 @@ static inline FLockTask *get_conflict_ftask(
     return NULL;
 }
 
-static inline FLockTask *get_conflict_ftask_by_region(
-        FLockEntry *entry, const FLockTask *ftask,
+static inline FDIRFLockTask *get_conflict_ftask_by_region(
+        FLockEntry *entry, const FDIRFLockTask *ftask,
         const bool check_waiting, int *conflict_regions)
 {
-    FLockRegion *region;
-    FLockTask *conflict;
-    FLockTask *found;
+    FDIRFLockRegion *region;
+    FDIRFLockTask *conflict;
+    FDIRFLockTask *found;
     struct fc_list_head *heads[2];
     int count;
     int i;
@@ -259,12 +259,12 @@ static inline FLockTask *get_conflict_ftask_by_region(
     return found;
 }
 
-static inline FLockTask *get_conflict_flock_task(
-        const FLockTask *ftask, bool *global_conflict)
+static inline FDIRFLockTask *get_conflict_flock_task(
+        const FDIRFLockTask *ftask, bool *global_conflict)
 {
     const bool check_waiting = true;
-    FLockTask *found;
-    FLockTask *wait;
+    FDIRFLockTask *found;
+    FDIRFLockTask *wait;
     int conflict_regions;
 
     if ((found=get_conflict_ftask_by_region(ftask->dentry->flock_entry,
@@ -299,9 +299,9 @@ static inline FLockTask *get_conflict_flock_task(
 }
 
 int flock_apply(FLockContext *ctx, const int64_t offset,
-        const int64_t length, FLockTask *ftask, const bool block)
+        const int64_t length, FDIRFLockTask *ftask, const bool block)
 {
-    FLockTask *holder;
+    FDIRFLockTask *holder;
     bool global_conflict;
 
     if ((ftask->region=get_region(ctx, ftask->dentry->
@@ -334,19 +334,19 @@ int flock_apply(FLockContext *ctx, const int64_t offset,
     return EINPROGRESS;
 }
 
-static int realloc_task_ptr_array(FLockTaskPtrArray *array)
+static int realloc_task_ptr_array(FDIRFLockTaskPtrArray *array)
 {
     int new_alloc;
-    FLockTask **new_ftasks;
+    FDIRFLockTask **new_ftasks;
 
     new_alloc = array->alloc * 2;
-    new_ftasks = fc_malloc(sizeof(FLockTask *) * new_alloc);
+    new_ftasks = fc_malloc(sizeof(FDIRFLockTask *) * new_alloc);
     if (new_ftasks == NULL) {
         return ENOMEM;
     }
 
     memcpy(new_ftasks, array->ftasks.pp,
-            sizeof(FLockTask *) * array->count);
+            sizeof(FDIRFLockTask *) * array->count);
     if (array->ftasks.pp != array->ftasks.fixed) {
         free(array->ftasks.pp);
     }
@@ -357,12 +357,12 @@ static int realloc_task_ptr_array(FLockTaskPtrArray *array)
 }
 
 int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
-        const FlockParams *params, FLockTaskPtrArray *ftask_parray)
+        const FDIRFlockParams *params, FDIRFLockTaskPtrArray *ftask_parray)
 {
     int result;
     int i;
-    FLockRegion *region;
-    FLockTask *ftask;
+    FDIRFLockRegion *region;
+    FDIRFLockTask *ftask;
 
     flock_task_ptr_array_init(ftask_parray);
     fc_list_for_each_entry(region, &dentry->flock_entry->regions, dlink) {
@@ -401,10 +401,10 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
     return 0;
 }
 
-int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)
+int flock_get_conflict_lock(FLockContext *ctx, FDIRFLockTask *ftask)
 {
     bool global_conflict;
-    FLockTask *holder;
+    FDIRFLockTask *holder;
 
     if ((holder=get_conflict_flock_task(ftask, &global_conflict)) == NULL) {
         return ENOENT;
@@ -420,13 +420,13 @@ int flock_get_conflict_lock(FLockContext *ctx, FLockTask *ftask)
 static int awake_waiting_tasks(FLockEntry *entry,
         struct fc_list_head *waiting_head, const bool check_waiting)
 {
-    FLockTask *wait;
+    FDIRFLockTask *wait;
     int conflict_regions;
     int count;
 
     count = 0;
     while ((wait=fc_list_first_entry(waiting_head,
-                    FLockTask, flink)) != NULL)
+                    FDIRFLockTask, flink)) != NULL)
     {
         if (get_conflict_ftask_by_region(entry, wait, check_waiting,
                     &conflict_regions) != NULL)
@@ -444,7 +444,7 @@ static int awake_waiting_tasks(FLockEntry *entry,
     return count;
 }
 
-void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask)
+void flock_release(FLockContext *ctx, FLockEntry *entry, FDIRFLockTask *ftask)
 {
     switch (ftask->which_queue) {
         case FDIR_FLOCK_TASK_IN_LOCKED_QUEUE:
@@ -467,7 +467,7 @@ void flock_release(FLockContext *ctx, FLockEntry *entry, FLockTask *ftask)
     }
 }
 
-int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
+int sys_lock_apply(FLockEntry *entry, FDIRSysLockTask *sys_task,
         const bool block)
 {
     if (entry->sys_lock.locked_task == NULL) {
@@ -489,9 +489,9 @@ int sys_lock_apply(FLockEntry *entry, SysLockTask *sys_task,
     return EINPROGRESS;
 }
 
-int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task)
+int sys_lock_release(FLockEntry *entry, FDIRSysLockTask *sys_task)
 {
-    SysLockTask *wait;
+    FDIRSysLockTask *wait;
 
     if (sys_task->status == FDIR_SYS_TASK_STATUS_WAITING) {
         sys_task->status = FDIR_SYS_TASK_STATUS_NONE;
@@ -511,7 +511,7 @@ int sys_lock_release(FLockEntry *entry, SysLockTask *sys_task)
     }
 
     if ((wait=fc_list_first_entry(&entry->sys_lock.waiting,
-                    SysLockTask, dlink)) != NULL)
+                    FDIRSysLockTask, dlink)) != NULL)
     {
         wait->status = FDIR_SYS_TASK_STATUS_LOCKED;
         entry->sys_lock.locked_task = wait;

@@ -55,23 +55,23 @@ extern "C" {
     int inode_index_get_xattr(FDIRServerDentry *dentry,
             const string_t *name, string_t *value);
 
-    FLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
-            const int64_t inode, const FlockParams *params, const bool block,
+    FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
+            const int64_t inode, const FDIRFlockParams *params, const bool block,
             struct fast_task_info *task, int *result);
 
     int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
-            const int64_t inode, const FlockParams *params,
-            FLockTaskPtrArray *ftask_parray);
+            const int64_t inode, const FDIRFlockParams *params,
+            FDIRFLockTaskPtrArray *ftask_parray);
 
-    void inode_index_flock_release(FLockTask *ftask);
+    void inode_index_flock_release(FDIRFLockTask *ftask);
 
-    int inode_index_flock_getlk(const int64_t inode, FLockTask *ftask);
+    int inode_index_flock_getlk(const int64_t inode, FDIRFLockTask *ftask);
 
-    SysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
+    FDIRSysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
             const int64_t inode, const bool block,
             struct fast_task_info *task, int *result);
 
-    int inode_index_sys_lock_release(SysLockTask *sys_task);
+    int inode_index_sys_lock_release(FDIRSysLockTask *sys_task);
 
     void inode_index_free_flock_entry(FDIRServerDentry *dentry);
 
