@@ -89,26 +89,13 @@ int service_handler_destroy()
 static inline void release_flock_task(FDIRFLockTask *flck)
 {
     fc_list_del_init(&flck->clink);
-    flck->task = NULL;
     inode_index_flock_release(flck);
 }
 
-void service_add_flock_task(struct fast_task_info *task,
+static inline void service_add_flock_task(struct fast_task_info *task,
         FDIRFLockTask *flck)
 {
-    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
     fc_list_add_tail(&flck->clink, FTASK_HEAD_PTR);
-    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
-}
-
-void service_remove_flock_task(struct fast_task_info *task,
-        FDIRFLockTask *flck)
-{
-    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
-    if (flck->task == task) {
-        release_flock_task(flck);
-    }
-    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
 }
 
 static void free_dentry_list_cache(struct fast_task_info *task)
@@ -132,6 +119,7 @@ static void free_dentry_list_cache(struct fast_task_info *task)
 
 void service_task_finish_cleanup(struct fast_task_info *task)
 {
+    SERVER_TASK_VERSION++;
     switch (SERVER_TASK_TYPE) {
         case SF_SERVER_TASK_TYPE_CHANNEL_HOLDER:
         case SF_SERVER_TASK_TYPE_CHANNEL_USER:
@@ -171,7 +159,6 @@ void service_task_finish_cleanup(struct fast_task_info *task)
         IDEMPOTENCY_CHANNEL = NULL;
     }
 
-    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
     if (!fc_list_empty(FTASK_HEAD_PTR)) {
         FDIRFLockTask *flck;
         FDIRFLockTask *next;
@@ -179,7 +166,6 @@ void service_task_finish_cleanup(struct fast_task_info *task)
             release_flock_task(flck);
         }
     }
-    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
 
     if (SYS_LOCK_TASK != NULL) {
         inode_index_sys_lock_release(SYS_LOCK_TASK);
@@ -3732,7 +3718,7 @@ int service_deal_task(struct fast_task_info *task, const int stage)
     }
 }
 
-int record_parray_alloc_init(void *element, void *args)
+static int record_parray_alloc_init(void *element, void *args)
 {
     FDIRRecordPtrArray *parray;
     parray = (FDIRRecordPtrArray *)element;
@@ -3780,10 +3766,72 @@ void *service_alloc_thread_extra_data(const int thread_index)
         return NULL;
     }
 
-    if (init_pthread_lock(&server_context->service.lock) != 0) {
+    if (fast_mblock_init_ex1(&server_context->service.event_allocator,
+                "ftask_event", sizeof(FDIRFTaskChangeEvent),
+                1024, 0, NULL, NULL, true) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+
+    if (fc_queue_init(&server_context->service.queue, (long)
+                (&((FDIRFTaskChangeEvent *)NULL)->next)) != 0)
+    {
         free(server_context);
         return NULL;
     }
 
     return server_context;
+}
+
+static void deal_ftask_events(FDIRServerContext *server_ctx,
+        FDIRFTaskChangeEvent *head)
+{
+    FDIRFTaskChangeEvent *event;
+    struct fast_task_info *task;
+
+    do {
+        event = head;
+        head = head->next;
+
+        task = event->ftasks.current->task;
+        if (event->type == FDIR_FTASK_CHANGE_EVENT_INSERT) {
+            if (((FDIRServerTaskArg *)task->arg)->context.
+                    task_version == event->task_version)
+            {
+                service_add_flock_task(task, event->ftasks.current);
+            } else {
+            }
+        } else { //remove
+            if (((FDIRServerTaskArg *)task->arg)->context.
+                    task_version == event->task_version)
+            {
+                fc_list_del_init(&event->ftasks.current->clink);
+            } else {
+            }
+        }
+
+        if (event->ftasks.origin != NULL) {
+            flock_release_ftask(event->ftasks.origin);
+        }
+        flock_release_ftask(event->ftasks.current);
+
+        fast_mblock_free_object(&server_ctx->service.
+                event_allocator, event);
+    } while (head != NULL);
+
+    //inode_index_flock_release();
+}
+
+int service_thread_loop_callback(struct nio_thread_data *thread_data)
+{
+    FDIRServerContext *server_ctx;
+    FDIRFTaskChangeEvent *head;
+
+    server_ctx = (FDIRServerContext *)thread_data->arg;
+    if ((head=fc_queue_try_pop_all(&server_ctx->service.queue)) != NULL) {
+        deal_ftask_events(server_ctx, head);
+    }
+
+    return 0;
 }

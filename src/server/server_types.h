@@ -92,6 +92,7 @@
 #define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
 #define SERVER_TASK_TYPE     TASK_CTX.task_type
+#define SERVER_TASK_VERSION  TASK_CTX.task_version
 #define CLUSTER_PEER         TASK_CTX.shared.cluster.peer
 #define CLUSTER_REPLICA      TASK_CTX.shared.cluster.replica
 #define CLUSTER_CONSUMER_CTX TASK_CTX.shared.cluster.consumer_ctx
@@ -261,6 +262,7 @@ typedef struct fdir_ns_subscriber {
 } FDIRNSSubscriber;
 
 struct fdir_flock_region;
+struct fdir_flock_context;
 
 typedef struct fdir_flock_params {
     short type;
@@ -272,13 +274,15 @@ typedef struct fdir_flock_params {
 typedef struct fdir_flock_task {
     /* LOCK_SH for shared read lock, LOCK_EX for exclusive write lock  */
     short type;
-    short which_queue;
+    volatile short which_queue;
+    volatile int reffer_count;
     FDIRFlockOwner owner;
     struct fdir_flock_region *region;
+    struct fdir_flock_context *flock_ctx;
     struct fast_task_info *task;
     FDIRServerDentry *dentry;
-    struct fc_list_head flink;  //for flock queue
     struct fc_list_head clink;  //for connection double link chain
+    struct fc_list_head flink;  //for flock chain and queue
 } FDIRFLockTask;
 
 typedef struct fdir_sys_lock_task {
@@ -305,10 +309,21 @@ typedef union {
     FDIRFLockTaskPtrArray ftask_parray;  //for flock unlock
 } FDIRFLockTaskInfo;
 
+typedef struct fdir_ftask_change_event {
+    int type;
+    uint32_t task_version;  //for ABA check
+    struct {
+        FDIRFLockTask *origin;
+        FDIRFLockTask *current;
+    } ftasks;
+    struct fdir_ftask_change_event *next;
+} FDIRFTaskChangeEvent;
+
 typedef struct server_task_arg {
     struct {
         SFCommonTaskContext common;
         int task_type;
+        uint32_t task_version;  //for ABA check
 
         union {
             struct {
@@ -360,7 +375,8 @@ typedef struct fdir_server_context {
             struct fast_mblock_man record_allocator;
             struct fast_mblock_man record_parray_allocator;
             struct fast_mblock_man request_allocator; //for idempotency_request
-            pthread_mutex_t lock;
+            struct fast_mblock_man event_allocator; //element: FDIRFTaskChangeEvent
+            struct fc_queue queue; //for flock unlock, element: FDIRFTaskChangeEvent
         } service;
 
         struct {

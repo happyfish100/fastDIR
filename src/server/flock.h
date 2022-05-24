@@ -30,6 +30,9 @@
 #define FDIR_SYS_TASK_STATUS_LOCKED    1
 #define FDIR_SYS_TASK_STATUS_WAITING   2
 
+#define FDIR_FTASK_CHANGE_EVENT_INSERT  'I'
+#define FDIR_FTASK_CHANGE_EVENT_REMOVE  'R'
+
 typedef void (*sys_lock_release_callback)(FDIRServerDentry *dentry, void *args);
 
 typedef struct fdir_flock_region {
@@ -84,12 +87,26 @@ extern "C" {
 
     static inline FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx)
     {
-        return (FDIRFLockTask *)fast_mblock_alloc_object(&ctx->allocators.ftask);
+        FDIRFLockTask *ftask;
+        if ((ftask=fast_mblock_alloc_object(&ctx->
+                        allocators.ftask)) != NULL)
+        {
+            FC_ATOMIC_INC(ftask->reffer_count);
+        }
+        return ftask;
     }
 
-    static inline void flock_free_ftask(FLockContext *ctx, FDIRFLockTask *ftask)
+    static inline void flock_hold_ftask(FDIRFLockTask *ftask)
     {
-        fast_mblock_free_object(&ctx->allocators.ftask, ftask);
+        FC_ATOMIC_INC(ftask->reffer_count);
+    }
+
+    static inline void flock_release_ftask(FDIRFLockTask *ftask)
+    {
+        if (FC_ATOMIC_DEC(ftask->reffer_count) == 0) {
+            fast_mblock_free_object(&ftask->flock_ctx->
+                    allocators.ftask, ftask);
+        }
     }
 
     int flock_apply(FLockContext *ctx, const int64_t offset,

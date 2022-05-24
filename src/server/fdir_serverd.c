@@ -287,8 +287,9 @@ int main(int argc, char *argv[])
         sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 
         result = sf_service_init_ex2(&g_sf_context, "service",
-                service_alloc_thread_extra_data, NULL,
-                NULL, sf_proto_set_body_length, service_deal_task,
+                service_alloc_thread_extra_data,
+                service_thread_loop_callback, NULL,
+                sf_proto_set_body_length, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
                 init_nio_task, NULL);

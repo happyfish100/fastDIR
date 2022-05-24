@@ -74,6 +74,7 @@ int cluster_recv_timeout_callback(struct fast_task_info *task)
 
 void cluster_task_finish_cleanup(struct fast_task_info *task)
 {
+    SERVER_TASK_VERSION++;
     switch (SERVER_TASK_TYPE) {
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {

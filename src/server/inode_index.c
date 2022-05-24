@@ -541,8 +541,9 @@ FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
                     params->length, ftask, block);
             if (*result == 0 || *result == EINPROGRESS) {
                 dentry_hold(dentry);
+                flock_hold_ftask(ftask);
             } else {
-                flock_free_ftask(&ctx->flock_ctx, ftask);
+                flock_release_ftask(ftask);
                 ftask = NULL;
             }
         } while (0);
@@ -611,7 +612,7 @@ void inode_index_flock_release(FDIRFLockTask *ftask)
         flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
     }
     dentry_release(ftask->dentry);
-    flock_free_ftask(&ctx->flock_ctx, ftask);
+    flock_release_ftask(ftask);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 

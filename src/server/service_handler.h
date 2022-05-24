@@ -25,6 +25,7 @@
 #include "server_types.h"
 #include "binlog/binlog_types.h"
 #include "inode_index.h"
+#include "flock.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +36,7 @@ int service_handler_destroy();
 int service_deal_task(struct fast_task_info *task, const int stage);
 void service_task_finish_cleanup(struct fast_task_info *task);
 void *service_alloc_thread_extra_data(const int thread_index);
-//int service_thread_loop(struct nio_thread_data *thread_data);
+int service_thread_loop_callback(struct nio_thread_data *thread_data);
 
 int service_set_record_pname_info(FDIRBinlogRecord *record,
         struct fast_task_info *task);
@@ -73,6 +74,31 @@ static inline int service_sys_lock_release(struct fast_task_info *task,
     } else {
         return ENOENT;
     }
+}
+
+static inline int service_push_to_ftask_event_queue(const int event_type,
+        FDIRFLockTask *origin_ftask, FDIRFLockTask *current_ftask)
+{
+    struct fast_task_info *task;
+    FDIRFTaskChangeEvent *event;
+
+    task = current_ftask->task;
+    if ((event=fast_mblock_alloc_object(&SERVER_CTX->
+                    service.event_allocator)) == NULL)
+    {
+        return ENOMEM;
+    }
+
+    event->type = event_type;
+    event->task_version = SERVER_TASK_VERSION;
+    event->ftasks.origin = origin_ftask;
+    event->ftasks.current = current_ftask;
+    if (origin_ftask != NULL) {
+        flock_hold_ftask(origin_ftask);
+    }
+    flock_hold_ftask(current_ftask);
+    fc_queue_push_silence(&SERVER_CTX->service.queue, event);
+    return 0;
 }
 
 #ifdef __cplusplus
