@@ -360,6 +360,7 @@ typedef struct fdir_server_context {
             struct fast_mblock_man record_allocator;
             struct fast_mblock_man record_parray_allocator;
             struct fast_mblock_man request_allocator; //for idempotency_request
+            pthread_mutex_t lock;
         } service;
 
         struct {

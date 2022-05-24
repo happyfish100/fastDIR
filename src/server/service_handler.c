@@ -86,14 +86,32 @@ int service_handler_destroy()
     return 0;
 }
 
-static inline void release_flock_task(struct fast_task_info *task,
-        FDIRFLockTask *flck)
+static inline void release_flock_task(FDIRFLockTask *flck)
 {
     fc_list_del_init(&flck->clink);
+    flck->task = NULL;
     inode_index_flock_release(flck);
 }
 
-void free_dentry_list_cache(struct fast_task_info *task)
+void service_add_flock_task(struct fast_task_info *task,
+        FDIRFLockTask *flck)
+{
+    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
+    fc_list_add_tail(&flck->clink, FTASK_HEAD_PTR);
+    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
+}
+
+void service_remove_flock_task(struct fast_task_info *task,
+        FDIRFLockTask *flck)
+{
+    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
+    if (flck->task == task) {
+        release_flock_task(flck);
+    }
+    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
+}
+
+static void free_dentry_list_cache(struct fast_task_info *task)
 {
     FDIRServerDentry **dentry;
     FDIRServerDentry **start;
@@ -153,13 +171,15 @@ void service_task_finish_cleanup(struct fast_task_info *task)
         IDEMPOTENCY_CHANNEL = NULL;
     }
 
+    PTHREAD_MUTEX_LOCK(&SERVER_CTX->service.lock);
     if (!fc_list_empty(FTASK_HEAD_PTR)) {
         FDIRFLockTask *flck;
         FDIRFLockTask *next;
         fc_list_for_each_entry_safe(flck, next, FTASK_HEAD_PTR, clink) {
-            release_flock_task(task, flck);
+            release_flock_task(flck);
         }
     }
+    PTHREAD_MUTEX_UNLOCK(&SERVER_CTX->service.lock);
 
     if (SYS_LOCK_TASK != NULL) {
         inode_index_sys_lock_release(SYS_LOCK_TASK);
@@ -1507,7 +1527,7 @@ static int handle_flock_done(struct fast_task_info *task)
                     }
 
                     if (found) {
-                        release_flock_task(task, *pp);
+                        release_flock_task(*pp);
                     }
                 }
             }
@@ -1526,11 +1546,17 @@ static int handle_flock_done(struct fast_task_info *task)
                 sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
             }
         } else if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ) {
-            fc_list_add_tail(&SERVICE_FTASK->clink, FTASK_HEAD_PTR);
+            service_add_flock_task(task, SERVICE_FTASK);
             if (result != 0) {
                 result = TASK_STATUS_CONTINUE;
                 task->continue_callback = handle_record_query_done;
             }
+        }
+    } else {  //task canceled
+        if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ) {
+            inode_index_sys_lock_release(SERVICE_STASK);
+        } else if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ) {
+            inode_index_flock_release(SERVICE_FTASK);
         }
     }
 
@@ -3720,7 +3746,7 @@ void *service_alloc_thread_extra_data(const int thread_index)
     FDIRServerContext *server_context;
     int element_size;
 
-    server_context = (FDIRServerContext *)fc_malloc(sizeof(FDIRServerContext));
+    server_context = fc_malloc(sizeof(FDIRServerContext));
     if (server_context == NULL) {
         return NULL;
     }
@@ -3750,6 +3776,11 @@ void *service_alloc_thread_extra_data(const int thread_index)
                 1024, 0, idempotency_request_alloc_init,
                 &server_context->service.request_allocator, true) != 0)
     {
+        free(server_context);
+        return NULL;
+    }
+
+    if (init_pthread_lock(&server_context->service.lock) != 0) {
         free(server_context);
         return NULL;
     }
