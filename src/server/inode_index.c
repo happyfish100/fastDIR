@@ -527,7 +527,7 @@ FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
                 }
             }
 
-            if ((ftask=flock_alloc_ftask(&ctx->flock_ctx)) == NULL) {
+            if ((ftask=flock_alloc_ftask(&ctx->flock_ctx, dentry)) == NULL) {
                 *result = ENOMEM;
                 ftask = NULL;
                 break;
@@ -535,12 +535,10 @@ FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
 
             ftask->type = params->type;
             ftask->owner = params->owner;
-            ftask->dentry = dentry;
             ftask->task = task;
             *result = flock_apply(&ctx->flock_ctx, params->offset,
                     params->length, ftask, block);
             if (*result == 0 || *result == EINPROGRESS) {
-                dentry_hold(dentry);
                 flock_hold_ftask(ftask);
             } else {
                 flock_release_ftask(ftask);
@@ -554,8 +552,7 @@ FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
 }
 
 int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, const FDIRFlockParams *params,
-        FDIRFLockTaskPtrArray *ftask_parray)
+        const int64_t inode, const FDIRFlockParams *params)
 {
     int result;
     FDIRServerDentry *dentry;
@@ -573,8 +570,7 @@ int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
                 break;
             }
 
-            result = flock_unlock(&ctx->flock_ctx,
-                    dentry, params, ftask_parray);
+            result = flock_unlock(&ctx->flock_ctx, dentry, params);
         } while (0);
         PTHREAD_MUTEX_UNLOCK(&ctx->lock);
     }
@@ -611,7 +607,6 @@ void inode_index_flock_release(FDIRFLockTask *ftask)
     if (ftask->dentry->flock_entry != NULL) {
         flock_release(&ctx->flock_ctx, ftask->dentry->flock_entry, ftask);
     }
-    dentry_release(ftask->dentry);
     flock_release_ftask(ftask);
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }

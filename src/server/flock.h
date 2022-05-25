@@ -85,35 +85,21 @@ extern "C" {
         fast_mblock_free_object(&ctx->allocators.entry, entry);
     }
 
-    static inline FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx)
-    {
-        FDIRFLockTask *ftask;
-        if ((ftask=fast_mblock_alloc_object(&ctx->
-                        allocators.ftask)) != NULL)
-        {
-            FC_ATOMIC_INC(ftask->reffer_count);
-        }
-        return ftask;
-    }
+    FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx,
+            FDIRServerDentry *dentry);
 
     static inline void flock_hold_ftask(FDIRFLockTask *ftask)
     {
         FC_ATOMIC_INC(ftask->reffer_count);
     }
 
-    static inline void flock_release_ftask(FDIRFLockTask *ftask)
-    {
-        if (FC_ATOMIC_DEC(ftask->reffer_count) == 0) {
-            fast_mblock_free_object(&ftask->flock_ctx->
-                    allocators.ftask, ftask);
-        }
-    }
+    void flock_release_ftask(FDIRFLockTask *ftask);
 
     int flock_apply(FLockContext *ctx, const int64_t offset,
             const int64_t length, FDIRFLockTask *ftask, const bool block);
 
     int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
-            const FDIRFlockParams *params, FDIRFLockTaskPtrArray *ftask_parray);
+            const FDIRFlockParams *params);
 
     void flock_release(FLockContext *ctx, FLockEntry *entry, FDIRFLockTask *ftask);
 
@@ -135,21 +121,6 @@ extern "C" {
             const bool block);
     
     int sys_lock_release(FLockEntry *entry, FDIRSysLockTask *sys_task);
-
-    static inline void flock_task_ptr_array_init(FDIRFLockTaskPtrArray *array)
-    {
-        array->ftasks.pp = array->ftasks.fixed;
-        array->alloc = FDIR_FLOCK_TASK_PTR_FIXED_COUNT;
-        array->count = 0;
-    }
-
-    static inline void flock_task_ptr_array_free(FDIRFLockTaskPtrArray *array)
-    {
-        if (array->ftasks.pp != array->ftasks.fixed) {
-            free(array->ftasks.pp);
-            array->ftasks.pp = NULL;
-        }
-    }
 
 #ifdef __cplusplus
 }

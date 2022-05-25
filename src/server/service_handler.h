@@ -76,13 +76,13 @@ static inline int service_sys_lock_release(struct fast_task_info *task,
     }
 }
 
-static inline int service_push_to_ftask_event_queue(const int event_type,
-        FDIRFLockTask *origin_ftask, FDIRFLockTask *current_ftask)
+static inline int service_push_to_ftask_event_queue(
+        const int event_type, FDIRFLockTask *ftask)
 {
     struct fast_task_info *task;
     FDIRFTaskChangeEvent *event;
 
-    task = current_ftask->task;
+    task = ftask->task;
     if ((event=fast_mblock_alloc_object(&SERVER_CTX->
                     service.event_allocator)) == NULL)
     {
@@ -91,12 +91,8 @@ static inline int service_push_to_ftask_event_queue(const int event_type,
 
     event->type = event_type;
     event->task_version = SERVER_TASK_VERSION;
-    event->ftasks.origin = origin_ftask;
-    event->ftasks.current = current_ftask;
-    if (origin_ftask != NULL) {
-        flock_hold_ftask(origin_ftask);
-    }
-    flock_hold_ftask(current_ftask);
+    event->ftask = ftask;
+    flock_hold_ftask(ftask);
     fc_queue_push_silence(&SERVER_CTX->service.queue, event);
     return 0;
 }

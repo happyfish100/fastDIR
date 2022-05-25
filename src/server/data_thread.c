@@ -1153,7 +1153,7 @@ static int deal_flock_unlock(FDIRDataThreadContext *thread_ctx,
 
     task = (struct fast_task_info *)record->notify.args;
     return inode_index_flock_unlock(thread_ctx, record->inode,
-            &record->flock_params, &record->flock->ftask_parray);
+            &record->flock_params);
 }
 
 static int deal_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
@@ -1238,7 +1238,8 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             break;
     }
 
-    record->notify.func(record, result, !(result == 0 || result == ENOENT));
+    record->notify.func(record, result, !(result == 0 ||
+                result == ENOENT || result == EINPROGRESS));
     return result;
 }
 

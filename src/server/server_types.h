@@ -87,7 +87,6 @@
 #define SERVICE_FLOCK     TASK_CTX.service.flock
 #define SERVICE_FTASK     SERVICE_FLOCK.ftask
 #define SERVICE_STASK     SERVICE_FLOCK.stask
-#define FTASK_PARRAY      SERVICE_FLOCK.ftask_parray
 #define WAITING_RPC_COUNT TASK_CTX.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
@@ -292,30 +291,15 @@ typedef struct fdir_sys_lock_task {
     struct fc_list_head dlink;
 } FDIRSysLockTask;
 
-#define FDIR_FLOCK_TASK_PTR_FIXED_COUNT 2
-
-typedef struct fdir_flock_task_ptr_array {
-    struct {
-        FDIRFLockTask *fixed[FDIR_FLOCK_TASK_PTR_FIXED_COUNT];
-        FDIRFLockTask **pp;
-    } ftasks;
-    int count;
-    int alloc;
-} FDIRFLockTaskPtrArray;
-
 typedef union {
     FDIRFLockTask *ftask;   //for flock apply
     FDIRSysLockTask *stask; //for sys lock apply
-    FDIRFLockTaskPtrArray ftask_parray;  //for flock unlock
 } FDIRFLockTaskInfo;
 
 typedef struct fdir_ftask_change_event {
     int type;
     uint32_t task_version;  //for ABA check
-    struct {
-        FDIRFLockTask *origin;
-        FDIRFLockTask *current;
-    } ftasks;
+    FDIRFLockTask *ftask;
     struct fdir_ftask_change_event *next;
 } FDIRFTaskChangeEvent;
 

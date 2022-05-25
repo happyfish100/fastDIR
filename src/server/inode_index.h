@@ -60,8 +60,7 @@ extern "C" {
             struct fast_task_info *task, int *result);
 
     int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
-            const int64_t inode, const FDIRFlockParams *params,
-            FDIRFLockTaskPtrArray *ftask_parray);
+            const int64_t inode, const FDIRFlockParams *params);
 
     void inode_index_flock_release(FDIRFLockTask *ftask);
 

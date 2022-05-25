@@ -86,18 +86,6 @@ int service_handler_destroy()
     return 0;
 }
 
-static inline void release_flock_task(FDIRFLockTask *flck)
-{
-    fc_list_del_init(&flck->clink);
-    inode_index_flock_release(flck);
-}
-
-static inline void service_add_flock_task(struct fast_task_info *task,
-        FDIRFLockTask *flck)
-{
-    fc_list_add_tail(&flck->clink, FTASK_HEAD_PTR);
-}
-
 static void free_dentry_list_cache(struct fast_task_info *task)
 {
     FDIRServerDentry **dentry;
@@ -163,7 +151,8 @@ void service_task_finish_cleanup(struct fast_task_info *task)
         FDIRFLockTask *flck;
         FDIRFLockTask *next;
         fc_list_for_each_entry_safe(flck, next, FTASK_HEAD_PTR, clink) {
-            release_flock_task(flck);
+            fc_list_del_init(&flck->clink);
+            inode_index_flock_release(flck);
         }
     }
 
@@ -1493,33 +1482,9 @@ static int handle_sys_lock_done(struct fast_task_info *task)
 static int handle_flock_done(struct fast_task_info *task)
 {
     int result;
-    FDIRFLockTask *flck;
-    FDIRFLockTask **pp;
-    FDIRFLockTask **end;
-    bool found;
 
     result = RESPONSE_STATUS;
     if (SERVICE_FTYPE == LOCK_UN) {
-        if (result == 0) {
-            if (!ioevent_is_canceled(task)) {
-                end = FTASK_PARRAY.ftasks.pp + FTASK_PARRAY.count;
-                for (pp=FTASK_PARRAY.ftasks.pp; pp<end; pp++) {
-                    found = false;
-                    fc_list_for_each_entry(flck, FTASK_HEAD_PTR, clink) {
-                        if (*pp == flck) {
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (found) {
-                        release_flock_task(*pp);
-                    }
-                }
-            }
-
-            flock_task_ptr_array_free(&FTASK_PARRAY);
-        }
     } else if (SERVICE_FTASK == NULL) {
         //error
     } else if (!ioevent_is_canceled(task)) {
@@ -1532,7 +1497,7 @@ static int handle_flock_done(struct fast_task_info *task)
                 sys_lock_dentry_output(task, SYS_LOCK_TASK->dentry);
             }
         } else if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_FLOCK_DENTRY_REQ) {
-            service_add_flock_task(task, SERVICE_FTASK);
+            fc_list_add_tail(&SERVICE_FTASK->clink, FTASK_HEAD_PTR);
             if (result != 0) {
                 result = TASK_STATUS_CONTINUE;
                 task->continue_callback = handle_record_query_done;
@@ -2966,11 +2931,10 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     RECORD->flock = &SERVICE_FLOCK;
     if (params.type == LOCK_UN) {
         RECORD->operation = SERVICE_OP_FLOCK_UNLOCK_INT;
-        flock_task_ptr_array_init(&FTASK_PARRAY);
     } else {
         RECORD->operation = SERVICE_OP_FLOCK_APPLY_INT;
-        SERVICE_FTASK = NULL;
     }
+    SERVICE_FTASK = NULL;
     SERVICE_FTYPE = params.type;
     return push_flock_to_data_thread_queue(task);
 }
@@ -3794,33 +3758,29 @@ static void deal_ftask_events(FDIRServerContext *server_ctx,
         event = head;
         head = head->next;
 
-        task = event->ftasks.current->task;
-        if (event->type == FDIR_FTASK_CHANGE_EVENT_INSERT) {
-            if (((FDIRServerTaskArg *)task->arg)->context.
-                    task_version == event->task_version)
-            {
-                service_add_flock_task(task, event->ftasks.current);
-            } else {
-            }
-        } else { //remove
-            if (((FDIRServerTaskArg *)task->arg)->context.
-                    task_version == event->task_version)
-            {
-                fc_list_del_init(&event->ftasks.current->clink);
-            } else {
+        task = event->ftask->task;
+        if (((FDIRServerTaskArg *)task->arg)->context.
+                task_version == event->task_version)
+        {
+            if (event->type == FDIR_FTASK_CHANGE_EVENT_INSERT) {
+                if (FC_ATOMIC_GET(event->ftask->which_queue) ==
+                        FDIR_FLOCK_TASK_IN_LOCKED_QUEUE)
+                {
+                    fc_list_add_tail(&event->ftask->clink, FTASK_HEAD_PTR);
+                    flock_hold_ftask(event->ftask);
+                }
+            } else { //remove
+                if (!fc_list_empty(&event->ftask->clink)) {
+                    fc_list_del_init(&event->ftask->clink);
+                    flock_release_ftask(event->ftask);
+                }
             }
         }
 
-        if (event->ftasks.origin != NULL) {
-            flock_release_ftask(event->ftasks.origin);
-        }
-        flock_release_ftask(event->ftasks.current);
-
+        flock_release_ftask(event->ftask);
         fast_mblock_free_object(&server_ctx->service.
                 event_allocator, event);
     } while (head != NULL);
-
-    //inode_index_flock_release();
 }
 
 int service_thread_loop_callback(struct nio_thread_data *thread_data)

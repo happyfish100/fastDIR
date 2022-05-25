@@ -94,6 +94,34 @@ void flock_destroy(FLockContext *ctx)
     fast_mblock_destroy(&ctx->allocators.region);
 }
 
+FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx, FDIRServerDentry *dentry)
+{
+    FDIRFLockTask *ftask;
+    if ((ftask=fast_mblock_alloc_object(&ctx->
+                    allocators.ftask)) != NULL)
+    {
+        ftask->dentry = dentry;
+        dentry_hold(dentry);
+        FC_ATOMIC_INC(ftask->reffer_count);
+
+        logInfo("######alloc flock task: %p, element count: %"PRId64,
+                ftask, ctx->allocators.ftask.info.element_used_count);
+    }
+    return ftask;
+}
+
+void flock_release_ftask(FDIRFLockTask *ftask)
+{
+    if (FC_ATOMIC_DEC(ftask->reffer_count) == 0) {
+        logInfo("@@@@@@free flock task: %p, element count: %"PRId64,
+                ftask, ftask->flock_ctx->allocators.ftask.info.element_used_count);
+
+        dentry_release(ftask->dentry);
+        fast_mblock_free_object(&ftask->flock_ctx->
+                allocators.ftask, ftask);
+    }
+}
+
 static FDIRFLockRegion *get_region(FLockContext *ctx, FLockEntry *entry,
         const int64_t offset, const int64_t length)
 {
@@ -140,13 +168,11 @@ static inline void add_to_locked(FDIRFLockTask *ftask)
     FC_ATOMIC_SET(ftask->which_queue, FDIR_FLOCK_TASK_IN_LOCKED_QUEUE);
     fc_list_add_tail(&ftask->flink, &ftask->region->locked.head);
 
-    /*
     logInfo("add type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
             "length: %"PRId64", reads: %d, writes: %d",
             ftask->type, ftask->owner.node, ftask->owner.id,
             ftask->region->offset, ftask->region->length,
             ftask->region->locked.reads, ftask->region->locked.writes);
-            */
 }
 
 static inline void remove_from_locked(FDIRFLockTask *ftask)
@@ -160,13 +186,11 @@ static inline void remove_from_locked(FDIRFLockTask *ftask)
     fc_list_del_init(&ftask->flink);
     ftask->region->ref_count--;
 
-    /*
     logInfo("remove type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
             "length: %"PRId64", reads: %d, writes: %d",
             ftask->type, ftask->owner.node, ftask->owner.id,
             ftask->region->offset, ftask->region->length,
             ftask->region->locked.reads, ftask->region->locked.writes);
-        */
 }
 
 static inline FDIRFLockTask *flock_task_duplicate(FDIRFLockTask *ftask,
@@ -174,15 +198,15 @@ static inline FDIRFLockTask *flock_task_duplicate(FDIRFLockTask *ftask,
 {
     FDIRFLockTask *new_ftask;
 
-    if ((new_ftask=flock_alloc_ftask(ftask->flock_ctx)) == NULL) {
+    if ((new_ftask=flock_alloc_ftask(ftask->flock_ctx,
+                    ftask->dentry)) == NULL)
+    {
         return NULL;
     }
 
     new_ftask->type = ftask->type;
     new_ftask->owner = ftask->owner;
-    new_ftask->dentry = ftask->dentry;
     new_ftask->task = ftask->task;
-    dentry_hold(ftask->dentry);
     if ((new_ftask->region=get_region(ftask->flock_ctx, ftask->dentry->
                     flock_entry, new_offset, new_length)) == NULL)
     {
@@ -432,6 +456,7 @@ void flock_release(FLockContext *ctx, FLockEntry *entry, FDIRFLockTask *ftask)
             if (!fc_list_empty(&entry->waiting_tasks)) {
                 awake_waiting_tasks(entry, &entry->waiting_tasks, true);
             }
+            flock_release_ftask(ftask);
             break;
         case FDIR_FLOCK_TASK_IN_REGION_WAITING_QUEUE:
         case FDIR_FLOCK_TASK_IN_GLOBAL_WAITING_QUEUE:
@@ -462,7 +487,7 @@ static inline void flock_awake_regions(FLockEntry *entry,
 }
 
 int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
-        const FDIRFlockParams *params, FDIRFLockTaskPtrArray *ftask_parray)
+        const FDIRFlockParams *params)
 {
 #define FIXED_REGION_COUNT 16
     int result;
@@ -477,7 +502,13 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
     FDIRFLockTask *tmp;
     FDIRFLockRegion *regions[FIXED_REGION_COUNT];
 
+
+    logInfo("unlock node: %u, owner id: %"PRId64", offset: %"PRId64", "
+            "length: %"PRId64, params->owner.node, params->owner.id,
+            params->offset, params->length);
+
     change_count = region_count = 0;
+    result = 0;
     fc_list_for_each_entry(region, &dentry->flock_entry->regions, dlink) {
         if ((params->length > 0) && (params->offset +
                     params->length <= region->offset))
@@ -499,7 +530,7 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
                 remove_from_locked(ftask);
                 if ((result=service_push_to_ftask_event_queue(
                                 FDIR_FTASK_CHANGE_EVENT_REMOVE,
-                                NULL, ftask)) != 0)
+                                ftask)) != 0)
                 {
                     break;
                 }
@@ -532,6 +563,7 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
                     continue;
                 }
 
+                /* right remain of the ftask */
                 if (!(params->length == 0 || (region->length > 0 &&
                                 region->offset + region->length <=
                                 params->offset + params->length)))
@@ -542,7 +574,7 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
                     new_ftask = flock_task_duplicate(ftask, offset, length);
                     if ((result=service_push_to_ftask_event_queue(
                                     FDIR_FTASK_CHANGE_EVENT_INSERT,
-                                    ftask, new_ftask)) != 0)
+                                    new_ftask)) != 0)
                     {
                         break;
                     }
@@ -552,6 +584,10 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
                         params->offset - region->offset);
                 ++change_count;
             }
+        }
+
+        if (result != 0) {
+            break;
         }
 
         if (change_count - old_count > 0) {
@@ -568,11 +604,13 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
         flock_awake_regions(dentry->flock_entry, regions, region_count);
     }
 
-    if (change_count == 0) {
+    if (result != 0) {
+        return result;
+    } else if (change_count == 0) {
         return ENOENT;
+    } else {
+        return 0;
     }
-
-    return 0;
 }
 
 int sys_lock_apply(FLockEntry *entry, FDIRSysLockTask *sys_task,
