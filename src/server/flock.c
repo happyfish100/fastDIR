@@ -104,8 +104,10 @@ FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx, FDIRServerDentry *dentry)
         dentry_hold(dentry);
         FC_ATOMIC_INC(ftask->reffer_count);
 
+        /*
         logInfo("######alloc flock task: %p, element count: %"PRId64,
                 ftask, ctx->allocators.ftask.info.element_used_count);
+                */
     }
     return ftask;
 }
@@ -113,8 +115,10 @@ FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx, FDIRServerDentry *dentry)
 void flock_release_ftask(FDIRFLockTask *ftask)
 {
     if (FC_ATOMIC_DEC(ftask->reffer_count) == 0) {
+        /*
         logInfo("@@@@@@free flock task: %p, element count: %"PRId64,
                 ftask, ftask->flock_ctx->allocators.ftask.info.element_used_count);
+                */
 
         dentry_release(ftask->dentry);
         fast_mblock_free_object(&ftask->flock_ctx->
@@ -168,11 +172,13 @@ static inline void add_to_locked(FDIRFLockTask *ftask)
     FC_ATOMIC_SET(ftask->which_queue, FDIR_FLOCK_TASK_IN_LOCKED_QUEUE);
     fc_list_add_tail(&ftask->flink, &ftask->region->locked.head);
 
+    /*
     logInfo("add type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
             "length: %"PRId64", reads: %d, writes: %d",
             ftask->type, ftask->owner.node, ftask->owner.id,
             ftask->region->offset, ftask->region->length,
             ftask->region->locked.reads, ftask->region->locked.writes);
+            */
 }
 
 static inline void remove_from_locked(FDIRFLockTask *ftask)
@@ -186,11 +192,13 @@ static inline void remove_from_locked(FDIRFLockTask *ftask)
     fc_list_del_init(&ftask->flink);
     ftask->region->ref_count--;
 
+    /*
     logInfo("remove type: %d, node: %u, owner id: %"PRId64", offset: %"PRId64", "
             "length: %"PRId64", reads: %d, writes: %d",
             ftask->type, ftask->owner.node, ftask->owner.id,
             ftask->region->offset, ftask->region->length,
             ftask->region->locked.reads, ftask->region->locked.writes);
+            */
 }
 
 static inline FDIRFLockTask *flock_task_duplicate(FDIRFLockTask *ftask,
@@ -503,9 +511,11 @@ int flock_unlock(FLockContext *ctx, FDIRServerDentry *dentry,
     FDIRFLockRegion *regions[FIXED_REGION_COUNT];
 
 
+    /*
     logInfo("unlock node: %u, owner id: %"PRId64", offset: %"PRId64", "
             "length: %"PRId64, params->owner.node, params->owner.id,
             params->offset, params->length);
+            */
 
     change_count = region_count = 0;
     result = 0;
