@@ -96,8 +96,8 @@
 #define CLUSTER_REPLICA      TASK_CTX.shared.cluster.replica
 #define CLUSTER_CONSUMER_CTX TASK_CTX.shared.cluster.consumer_ctx
 #define IDEMPOTENCY_CHANNEL  TASK_CTX.shared.service.idempotency_channel
+#define NS_SUBSCRIBER        TASK_CTX.shared.service.subscriber
 #define IDEMPOTENCY_REQUEST  TASK_CTX.service.idempotency_request
-#define NS_SUBSCRIBER        TASK_CTX.subscriber
 
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
@@ -303,55 +303,52 @@ typedef struct fdir_ftask_change_event {
     struct fdir_ftask_change_event *next;
 } FDIRFTaskChangeEvent;
 
-typedef struct server_task_arg {
-    struct {
-        SFCommonTaskContext common;
-        int task_type;
-        uint32_t task_version;  //for ABA check
+typedef struct {
+    SFCommonTaskContext common;
+    int task_type;
+    uint32_t task_version;  //for ABA check
 
+    union {
         union {
-            struct {
-                struct idempotency_channel *idempotency_channel;
-            } service;
-
-            union {
-                FDIRClusterServerInfo *peer;   //the peer server in the cluster
-                FDIRSlaveReplication *replica; //master side
-                struct replica_consumer_thread_context *consumer_ctx;//slave side
-            } cluster;
-        } shared;
-
-        union {
-            struct {
-                struct {
-                    PointerArray *array;
-                    int64_t token;
-                    int offset;
-                    int release_start;
-                    bool compact_output;
-                    time_t expires;  //expire time
-                } dentry_list_cache; //for dentry_list
-
-                struct {
-                    int flock_type;  //LOCK_EX, LOCK_SH, LOCK_UN
-                    struct fc_list_head ftasks;
-                    FDIRSysLockTask *sys_lock_task; //for sys lock apply
-                    FDIRFLockTaskInfo flock;
-                };
-
-                struct idempotency_request *idempotency_request;
-                struct fdir_binlog_record *record;
-                struct server_binlog_record_buffer *rbuffer;
-                volatile int waiting_rpc_count;
-            } service;
-
+            struct idempotency_channel *idempotency_channel;
             FDIRNSSubscriber *subscriber;
+        } service;
+
+        union {
+            FDIRClusterServerInfo *peer;   //the peer server in the cluster
+            FDIRSlaveReplication *replica; //master side
+            struct replica_consumer_thread_context *consumer_ctx;//slave side
+        } cluster;
+    } shared;
+
+    struct {
+        struct {
+            PointerArray *array;
+            int64_t token;
+            int offset;
+            int release_start;
+            bool compact_output;
+            time_t expires;  //expire time
+        } dentry_list_cache; //for dentry_list
+
+        struct {
+            int flock_type;  //LOCK_EX, LOCK_SH, LOCK_UN
+            struct fc_list_head ftasks;
+            FDIRSysLockTask *sys_lock_task; //for sys lock apply
+            FDIRFLockTaskInfo flock;
         };
 
-    } context;
+        struct idempotency_request *idempotency_request;
+        struct fdir_binlog_record *record;
+        struct server_binlog_record_buffer *rbuffer;
+        volatile int waiting_rpc_count;
+    } service;
 
+} FSServerTaskContext;
+
+typedef struct server_task_arg {
+    FSServerTaskContext context;
 } FDIRServerTaskArg;
-
 
 typedef struct fdir_server_context {
     union {
