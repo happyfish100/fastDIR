@@ -38,8 +38,8 @@ static inline int binlog_write_set_order_by(const short order_by)
 
 static inline int binlog_write_set_next_version()
 {
-    return sf_binlog_writer_change_next_version(&g_binlog_writer_ctx.writer,
-            __sync_sub_and_fetch(&DATA_CURRENT_VERSION, 0) + 1);
+    return sf_binlog_writer_change_next_version(&g_binlog_writer_ctx.
+            writer, FC_ATOMIC_GET(DATA_CURRENT_VERSION) + 1);
 }
 
 static inline int64_t binlog_writer_get_last_version()
@@ -64,7 +64,9 @@ static inline void binlog_get_current_write_position(
             &g_binlog_writer_ctx.writer, position);
 }
 
-static inline int push_to_binlog_write_queue(ServerBinlogRecordBuffer *rbuffer)
+static inline int push_to_binlog_write_queue(
+        ServerBinlogRecordBuffer *rbuffer,
+        const int record_count)
 {
     SFBinlogWriterBuffer *wbuffer;
 
@@ -96,6 +98,7 @@ static inline int push_to_binlog_write_queue(ServerBinlogRecordBuffer *rbuffer)
     wbuffer->bf.length = rbuffer->buffer.length;
     wbuffer->version = rbuffer->data_version;
     sf_push_to_binlog_write_queue(&g_binlog_writer_ctx.writer, wbuffer);
+    __sync_add_and_fetch(&BINLOG_RECORD_COUNT, record_count);
     return 0;
 }
 

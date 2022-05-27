@@ -370,6 +370,7 @@ static void *deal_binlog_thread_func(void *arg)
     struct common_blocked_node *node;
     struct common_blocked_node *current;
     ServerBinlogRecordBuffer *rb;
+    int record_count;
 
     logDebug("file: "__FILE__", line: %d, "
             "deal_binlog_thread_func start", __LINE__);
@@ -398,10 +399,11 @@ static void *deal_binlog_thread_func(void *arg)
                     rb->data_version.last);
                     */
 
-            if (binlog_replay_deal_buffer(&ctx->replay_ctx,
-                    rb->buffer.data, rb->buffer.length, NULL) == 0)
+            if (binlog_replay_deal_buffer(&ctx->replay_ctx, NULL,
+                        rb->buffer.data, rb->buffer.length,
+                        &record_count) == 0)
             {
-                if (push_to_binlog_write_queue(rb) != 0) {
+                if (push_to_binlog_write_queue(rb, record_count) != 0) {
                     logCrit("file: "__FILE__", line: %d, "
                             "push_to_binlog_write_queue fail, "
                             "program exit!", __LINE__);

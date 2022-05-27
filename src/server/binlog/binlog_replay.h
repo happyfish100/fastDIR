@@ -59,8 +59,8 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
 void binlog_replay_destroy(BinlogReplayContext *replay_ctx);
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
-         const char *buff, const int len,
-         SFBinlogFilePosition *binlog_position);
+         const SFBinlogFilePosition *binlog_position, const char *buff,
+         const int len, int *record_count);
 
 #ifdef __cplusplus
 }

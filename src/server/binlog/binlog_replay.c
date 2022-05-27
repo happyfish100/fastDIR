@@ -136,8 +136,8 @@ void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
 }
 
 int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
-         const char *buff, const int len,
-         SFBinlogFilePosition *binlog_position)
+         const SFBinlogFilePosition *binlog_position, const char *buff,
+         const int len, int *record_count)
 {
     const char *p;
     const char *end;
@@ -145,8 +145,10 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *rec_end;
     char error_info[SF_ERROR_INFO_SIZE];
+    int64_t old_record_count;
     int result;
 
+    old_record_count = replay_ctx->record_count;
     *error_info = '\0';
     p = buff;
     end = p + len;
@@ -224,15 +226,17 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         PTHREAD_MUTEX_UNLOCK(&replay_ctx->lcp.lock);
 
         if (replay_ctx->fail_count > 0) {
-            return replay_ctx->last_errno;
+            return (replay_ctx->last_errno != 0 ?
+                    replay_ctx->last_errno : EIO);
         }
     }
 
     /*
     logInfo("record_count: %"PRId64", waiting_count: %d, skip_count: %"PRId64,
-            replay_ctx->record_count, __sync_add_and_fetch(&replay_ctx->waiting_count, 0),
+            replay_ctx->record_count, FC_ATOMIC_GET(replay_ctx->waiting_count),
             replay_ctx->skip_count);
             */
 
-    return replay_ctx->fail_count > 0 ? replay_ctx->last_errno : 0;
+    *record_count = replay_ctx->record_count - old_record_count;
+    return 0;
 }

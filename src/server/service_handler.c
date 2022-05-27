@@ -937,7 +937,7 @@ static int handle_replica_done(struct fast_task_info *task)
     service_idempotency_request_finish(task, 0);
 
     if (RBUFFER != NULL) {
-        result = push_to_binlog_write_queue(RBUFFER);
+        result = push_to_binlog_write_queue(RBUFFER, 1);
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
     } else {

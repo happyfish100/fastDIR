@@ -126,6 +126,7 @@ int server_load_data()
     }
 
     if (result == 0) {
+        FC_ATOMIC_SET(BINLOG_RECORD_COUNT, replay_ctx.record_count);
         end_time = get_current_time_ms();
         logInfo("file: "__FILE__", line: %d, "
                 "load data done. record count: %"PRId64", "
