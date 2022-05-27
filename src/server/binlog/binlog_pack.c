@@ -158,6 +158,8 @@ static inline const char *get_operation_label(const int operation)
             return BINLOG_OP_SET_XATTR_STR;
         case BINLOG_OP_REMOVE_XATTR_INT:
             return BINLOG_OP_REMOVE_XATTR_STR;
+        case BINLOG_OP_NO_OP_INT:
+            return BINLOG_OP_NO_OP_STR;
         default:
             return BINLOG_OP_NONE_STR;
     }
@@ -189,6 +191,10 @@ static inline int get_operation_integer(const string_t *operation)
                 BINLOG_OP_REMOVE_XATTR_LEN))
     {
         return BINLOG_OP_REMOVE_XATTR_INT;
+    } else if (fc_string_equal2(operation, BINLOG_OP_NO_OP_STR,
+                BINLOG_OP_NO_OP_LEN))
+    {
+        return BINLOG_OP_NO_OP_INT;
     } else {
         return BINLOG_OP_NONE_INT;
     }
