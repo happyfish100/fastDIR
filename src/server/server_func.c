@@ -352,11 +352,34 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
     return 0;
 }
 
+static void binlog_dedup_config_to_string(char *buff, const int size)
+{
+    int len;
+
+    len = snprintf(buff, size, "binlog-dedup {enabled: %d",
+            BINLOG_DEDUP_ENABLED);
+    if (BINLOG_DEDUP_ENABLED) {
+        len += snprintf(buff + len, size - len, ", target_ratio=%.2f%%, "
+                "dedup_time=%02d:%02d", BINLOG_DEDUP_RATIO * 100.00,
+                BINLOG_DEDUP_TIME.hour, BINLOG_DEDUP_TIME.minute);
+    }
+    len += snprintf(buff + len, size - len, "}");
+}
+
+static void binlog_delete_config_to_string(char *buff, const int size)
+{
+    snprintf(buff, size, "binlog-delete {keep_days: %d, "
+            "delete_time=%02d:%02d}", BINLOG_KEEP_DAYS,
+            BINLOG_DELETE_TIME.hour, BINLOG_DELETE_TIME.minute);
+}
+
 static void server_log_configs()
 {
     char sz_server_config[1024];
     char sz_global_config[512];
     char sz_slowlog_config[256];
+    char sz_binlog_delete_config[128];
+    char sz_binlog_dedup_config[128];
     char sz_service_config[128];
     char sz_cluster_config[128];
     char sz_auth_config[1024];
@@ -428,11 +451,18 @@ static void server_log_configs()
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }
 
-    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, %s, %s",
-            g_fdir_global_vars.version.major, g_fdir_global_vars.version.minor,
+    binlog_delete_config_to_string(sz_binlog_delete_config,
+            sizeof(sz_binlog_delete_config));
+    binlog_dedup_config_to_string(sz_binlog_dedup_config,
+            sizeof(sz_binlog_dedup_config));
+
+    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, "
+            "%s, %s, %s, %s", g_fdir_global_vars.version.major,
+            g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch, sz_global_config,
             sz_slowlog_config, sz_service_config, sz_cluster_config,
-            sz_server_config, sz_auth_config);
+            sz_server_config, sz_binlog_delete_config,
+            sz_binlog_dedup_config, sz_auth_config);
     log_local_host_ip_addrs();
     log_cluster_server_config();
 }
@@ -451,6 +481,50 @@ static int load_binlog_buffer_size(IniFullContext *ini_ctx)
         BINLOG_BUFFER_SIZE = FDIR_DEFAULT_BINLOG_BUFFER_SIZE;
     } else {
         BINLOG_BUFFER_SIZE = bytes;
+    }
+
+    return 0;
+}
+
+static int load_binlog_delete_config(IniContext *ini_context,
+        const char *filename)
+{
+    const char *section_name = "binlog-delete";
+    int result;
+    IniFullContext ini_ctx;
+
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, section_name, ini_context);
+    BINLOG_KEEP_DAYS = iniGetIntValue(section_name,
+            "keep_days", ini_context, 180);
+    if ((result=get_time_item_from_conf_ex(&ini_ctx, "delete_time",
+                    &BINLOG_DELETE_TIME, 2, 0, false)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
+
+static int load_binlog_dedup_config(IniContext *ini_context,
+        const char *filename)
+{
+    const char *section_name = "binlog-dedup";
+    int result;
+    IniFullContext ini_ctx;
+
+    FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, section_name, ini_context);
+    BINLOG_DEDUP_ENABLED = iniGetBoolValue(section_name,
+            "enabled", ini_context, true);
+    if ((result=iniGetPercentValue(&ini_ctx, "target_ratio",
+                    &BINLOG_DEDUP_RATIO, 0.20)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=get_time_item_from_conf_ex(&ini_ctx, "dedup_time",
+                    &BINLOG_DEDUP_TIME, 3, 0, false)) != 0)
+    {
+        return result;
     }
 
     return 0;
@@ -620,6 +694,14 @@ int server_load_config(const char *filename)
                     CLUSTER_MY_SERVER_ID, &g_server_global_vars.
                     storage.cfg, &data_cfg)) != 0)
     {
+        return result;
+    }
+
+    if ((result=load_binlog_delete_config(&ini_context, filename)) != 0) {
+        return result;
+    }
+
+    if ((result=load_binlog_dedup_config(&ini_context, filename)) != 0) {
         return result;
     }
 

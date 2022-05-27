@@ -77,13 +77,22 @@ typedef struct server_global_vars {
     } inode;
 
     struct {
-        volatile uint64_t current_version; //binlog version
+        volatile uint64_t current_version; //binlog data version
         string_t path;   //data path
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
         bool load_done;
     } data;  //for binlog
+
+    struct {
+        bool dedup_enabled;
+        double target_dedup_ratio;
+        TimeInfo dedup_time;
+        volatile int64_t record_count;
+        int keep_days;
+        TimeInfo delete_time;
+    } binlog;
 
     struct {
         bool enabled;
@@ -179,6 +188,13 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
 #define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
+
+#define BINLOG_RECORD_COUNT  g_server_global_vars.binlog.record_count
+#define BINLOG_DEDUP_ENABLED g_server_global_vars.binlog.dedup_enabled
+#define BINLOG_DEDUP_RATIO   g_server_global_vars.binlog.target_dedup_ratio
+#define BINLOG_DEDUP_TIME    g_server_global_vars.binlog.dedup_time
+#define BINLOG_KEEP_DAYS     g_server_global_vars.binlog.keep_days
+#define BINLOG_DELETE_TIME   g_server_global_vars.binlog.delete_time
 
 #define SLOW_LOG                g_server_global_vars.slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg
