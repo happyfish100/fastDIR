@@ -35,6 +35,7 @@
 #define BINLOG_OP_SET_XATTR_INT      5
 #define BINLOG_OP_REMOVE_XATTR_INT   6
 #define BINLOG_OP_NO_OP_INT         10
+#define BINLOG_OP_DUMP_DENTRY_INT   11
 
 #define SERVICE_OP_SET_DSIZE_INT        101
 #define SERVICE_OP_BATCH_SET_DSIZE_INT  102
@@ -58,6 +59,7 @@
 #define BINLOG_OP_UPDATE_DENTRY_STR  "up"
 #define BINLOG_OP_SET_XATTR_STR      "sx"
 #define BINLOG_OP_REMOVE_XATTR_STR   "rx"
+#define BINLOG_OP_DUMP_DENTRY_STR    "dm"
 #define BINLOG_OP_NO_OP_STR          "no"
 
 #define BINLOG_OP_CREATE_DENTRY_LEN  (sizeof(BINLOG_OP_CREATE_DENTRY_STR) - 1)
@@ -66,6 +68,7 @@
 #define BINLOG_OP_UPDATE_DENTRY_LEN  (sizeof(BINLOG_OP_UPDATE_DENTRY_STR) - 1)
 #define BINLOG_OP_SET_XATTR_LEN      (sizeof(BINLOG_OP_SET_XATTR_STR) - 1)
 #define BINLOG_OP_REMOVE_XATTR_LEN   (sizeof(BINLOG_OP_REMOVE_XATTR_STR) - 1)
+#define BINLOG_OP_DUMP_DENTRY_LEN    (sizeof(BINLOG_OP_DUMP_DENTRY_STR) - 1)
 #define BINLOG_OP_NO_OP_LEN          (sizeof(BINLOG_OP_NO_OP_STR) - 1)
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
@@ -154,6 +157,8 @@ typedef struct fdir_binlog_record {
         string_t link;
         key_value_pair_t xattr;
     };
+
+    SFKeyValueArray xattr_kvarray;  //for BINLOG_OP_DUMP_DENTRY_INT
 
     //must be the last to avoid being overwritten by memset
     struct {

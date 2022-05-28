@@ -1014,6 +1014,23 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             }
             ignore_errno = ENODATA;
             break;
+        case BINLOG_OP_DUMP_DENTRY_INT:
+            if ((result=check_parent(thread_ctx, record)) != 0) {
+                break;
+            }
+
+            if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+                if ((result=set_hdlink_src_dentry(thread_ctx,
+                                record)) != 0)
+                {
+                    ignore_errno = 0;
+                    break;
+                }
+            }
+            result = dentry_create(thread_ctx, record);
+            //TODO
+            ignore_errno = EEXIST;
+            break;
         case SERVICE_OP_SYS_LOCK_RELEASE_INT:
             ignore_errno = 0;
             if ((result=service_sys_lock_release((struct fast_task_info *)
@@ -1081,17 +1098,19 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
         }
 
-        if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT) {
-            result = push_batch_set_dsize_to_db_update_queue(
-                    thread_ctx, record);
-        } else {
-            result = push_to_db_update_queue(thread_ctx, record);
-        }
-        if (result != 0) {
-            logCrit("file: "__FILE__", line: %d, "
-                    "push_to_db_update_queue fail, "
-                    "program exit!", __LINE__);
-            sf_terminate_myself();
+        if (record->operation != BINLOG_OP_NO_OP_INT) {
+            if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT) {
+                result = push_batch_set_dsize_to_db_update_queue(
+                        thread_ctx, record);
+            } else {
+                result = push_to_db_update_queue(thread_ctx, record);
+            }
+            if (result != 0) {
+                logCrit("file: "__FILE__", line: %d, "
+                        "push_to_db_update_queue fail, "
+                        "program exit!", __LINE__);
+                sf_terminate_myself();
+            }
         }
     }
 

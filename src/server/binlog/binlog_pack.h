@@ -23,8 +23,6 @@
 
 #define BINLOG_RECORD_MIN_SIZE            64
 #define BINLOG_RECORD_MAX_SIZE          9999
-#define BINLOG_RECORD_SIZE_STRLEN          4
-#define BINLOG_RECORD_SIZE_PRINTF_FMT  "%04d"
 
 #ifdef __cplusplus
 extern "C" {

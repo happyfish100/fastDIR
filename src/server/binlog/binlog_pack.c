@@ -35,6 +35,9 @@
 #include "binlog_producer.h"
 #include "binlog_pack.h"
 
+#define BINLOG_RECORD_SIZE_MIN_STRLEN  4
+#define BINLOG_RECORD_SIZE_PRINTF_FMT  "%04d"
+
 #define BINLOG_RECORD_START_TAG_CHAR '<'
 #define BINLOG_RECORD_START_TAG_STR  "<rec"
 #define BINLOG_RECORD_START_TAG_LEN (sizeof(BINLOG_RECORD_START_TAG_STR) - 1)
@@ -71,6 +74,7 @@
 #define BINLOG_RECORD_FIELD_NAME_SRC_INODE     "si"
 #define BINLOG_RECORD_FIELD_NAME_XATTR_NAME    "xn"
 #define BINLOG_RECORD_FIELD_NAME_XATTR_VALUE   "xv"
+#define BINLOG_RECORD_FIELD_NAME_XATTR_LIST    "xl"  //for data dump
 
 #define BINLOG_RECORD_FIELD_NAME_DEST_PARENT   BINLOG_RECORD_FIELD_NAME_PARENT
 #define BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME  BINLOG_RECORD_FIELD_NAME_SUBNAME
@@ -101,6 +105,7 @@
 #define BINLOG_RECORD_FIELD_INDEX_SRC_INODE     ('s' * 256 + 'i')
 #define BINLOG_RECORD_FIELD_INDEX_XATTR_NAME    ('x' * 256 + 'n')
 #define BINLOG_RECORD_FIELD_INDEX_XATTR_VALUE   ('x' * 256 + 'v')
+#define BINLOG_RECORD_FIELD_INDEX_XATTR_LIST    ('x' * 256 + 'l')
 
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
@@ -158,6 +163,8 @@ static inline const char *get_operation_label(const int operation)
             return BINLOG_OP_SET_XATTR_STR;
         case BINLOG_OP_REMOVE_XATTR_INT:
             return BINLOG_OP_REMOVE_XATTR_STR;
+        case BINLOG_OP_DUMP_DENTRY_INT:
+            return BINLOG_OP_DUMP_DENTRY_STR;
         case BINLOG_OP_NO_OP_INT:
             return BINLOG_OP_NO_OP_STR;
         default:
@@ -191,6 +198,10 @@ static inline int get_operation_integer(const string_t *operation)
                 BINLOG_OP_REMOVE_XATTR_LEN))
     {
         return BINLOG_OP_REMOVE_XATTR_INT;
+    } else if (fc_string_equal2(operation, BINLOG_OP_DUMP_DENTRY_STR,
+                BINLOG_OP_DUMP_DENTRY_LEN))
+    {
+        return BINLOG_OP_DUMP_DENTRY_INT;
     } else if (fc_string_equal2(operation, BINLOG_OP_NO_OP_STR,
                 BINLOG_OP_NO_OP_LEN))
     {
@@ -259,7 +270,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
 
     //reserve record size spaces
     old_len = buffer->length;
-    buffer->length += BINLOG_RECORD_SIZE_STRLEN;
+    buffer->length += BINLOG_RECORD_SIZE_MIN_STRLEN;
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_START_TAG_STR,
             BINLOG_RECORD_START_TAG_LEN);
@@ -398,7 +409,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
             BINLOG_RECORD_END_TAG_LEN);
 
-    record_len = buffer->length - old_len - BINLOG_RECORD_SIZE_STRLEN;
+    record_len = buffer->length - old_len - BINLOG_RECORD_SIZE_MIN_STRLEN;
     if (record_len > BINLOG_RECORD_MAX_SIZE) {
         logError("file: "__FILE__", line: %d, "
                 "record length: %d is too large, exceeds %d",
@@ -407,7 +418,7 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     }
 
     sprintf(buffer->data + old_len, BINLOG_RECORD_SIZE_PRINTF_FMT, record_len);
-    *(buffer->data + old_len + BINLOG_RECORD_SIZE_STRLEN) =
+    *(buffer->data + old_len + BINLOG_RECORD_SIZE_MIN_STRLEN) =
         BINLOG_RECORD_START_TAG_CHAR;  //restore the start char
     return 0;
 }
@@ -886,19 +897,19 @@ static int binlog_check_record(const char *str, const int len,
         return EINVAL;
     }
 
-    if (record_len < BINLOG_RECORD_MIN_SIZE - BINLOG_RECORD_SIZE_STRLEN)
+    if (record_len < BINLOG_RECORD_MIN_SIZE - BINLOG_RECORD_SIZE_MIN_STRLEN)
     {
         sprintf(pcontext->error_info, "record length: %d is too short",
                 record_len);
         return EINVAL;
     }
-    if (record_len > len - BINLOG_RECORD_SIZE_STRLEN) {
+    if (record_len > len - BINLOG_RECORD_SIZE_MIN_STRLEN) {
         sprintf(pcontext->error_info, "record length: %d out of bound",
                 record_len);
         return EOVERFLOW;
     }
 
-    pcontext->rec_end = str + BINLOG_RECORD_SIZE_STRLEN + record_len;
+    pcontext->rec_end = str + BINLOG_RECORD_SIZE_MIN_STRLEN + record_len;
     if (memcmp(pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
                 BINLOG_RECORD_END_TAG_STR,
                 BINLOG_RECORD_END_TAG_LEN) != 0)
@@ -986,11 +997,11 @@ static bool binlog_is_record_start(const char *str, const int len,
     if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
        return false;
     }
-    if (rec_start - str != BINLOG_RECORD_SIZE_STRLEN) {
+    if (rec_start - str != BINLOG_RECORD_SIZE_MIN_STRLEN) {
         return false;
     }
 
-    if (record_len > len - BINLOG_RECORD_SIZE_STRLEN) {
+    if (record_len > len - BINLOG_RECORD_SIZE_MIN_STRLEN) {
         return false;
     }
 
@@ -1000,7 +1011,7 @@ static bool binlog_is_record_start(const char *str, const int len,
         return false;
     }
 
-    pcontext->rec_end = str + BINLOG_RECORD_SIZE_STRLEN + record_len;
+    pcontext->rec_end = str + BINLOG_RECORD_SIZE_MIN_STRLEN + record_len;
     if (memcmp(pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
                 BINLOG_RECORD_END_TAG_STR,
                 BINLOG_RECORD_END_TAG_LEN) == 0)
@@ -1031,7 +1042,7 @@ int binlog_detect_record_forward(const char *str, const int len,
                     end - p)) != NULL)
     {
         const char *start;
-        start = rec_start - BINLOG_RECORD_SIZE_STRLEN;
+        start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
         if ((start >= str) && binlog_is_record_start(
                     start, end - start, &pcontext))
         {
@@ -1078,7 +1089,7 @@ int binlog_detect_record_reverse(const char *str, const int len,
     while (l > 0 && (rec_start=fc_memrchr(str,
                     BINLOG_RECORD_START_TAG_CHAR, l)) != NULL)
     {
-        start = rec_start - BINLOG_RECORD_SIZE_STRLEN;
+        start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
         if ((start >= str) && binlog_is_record_start(
                     start, len - (start - str), &pcontext))
         {
