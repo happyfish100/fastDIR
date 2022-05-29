@@ -19,10 +19,15 @@
 #define _BINLOG_PACK_H_
 
 #include "fastcommon/fast_mpool.h"
+#include "fastcommon/json_parser.h"
 #include "binlog_types.h"
 
 #define BINLOG_RECORD_MIN_SIZE            64
 #define BINLOG_RECORD_MAX_SIZE          9999
+
+typedef struct {
+    fc_json_context_t json_ctx;
+} BinlogPackContext;
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,12 +35,16 @@ extern "C" {
 
 int binlog_pack_init();
 
-int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer);
+int binlog_pack_record_ex(BinlogPackContext *context,
+        const FDIRBinlogRecord *record, FastBuffer *buffer);
 
 int binlog_unpack_record_ex(const char *str, const int len,
         FDIRBinlogRecord *record, const char **record_end,
         char *error_info, const int error_size,
         struct fast_mpool_man *mpool);
+
+#define binlog_pack_record(record, buffer) \
+    binlog_pack_record_ex(NULL, record, buffer)
 
 #define binlog_unpack_record(str, len, record, record_end, \
         error_info, error_size) \

@@ -265,54 +265,6 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     return 0;
 }
 
-int binlog_reader_next_record(ServerBinlogReader *reader,
-        FDIRBinlogRecord *record)
-{
-    int result;
-    int len;
-    char *rec_end;
-    char error_info[SF_ERROR_INFO_SIZE];
-
-    len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
-    if (len < BINLOG_RECORD_MIN_SIZE &&
-            (result=binlog_reader_read(reader)) != 0)
-    {
-        return result;
-    }
-
-    result = binlog_unpack_record(reader->binlog_buffer.current, len,
-            record, (const char **)&rec_end, error_info, sizeof(error_info));
-    if (result == EAGAIN || result == EOVERFLOW) {
-        if ((result=binlog_reader_read(reader)) != 0) {
-            return result;
-        }
-
-        len = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
-        result = binlog_unpack_record(reader->binlog_buffer.current, len,
-                record, (const char **)&rec_end,
-                error_info, sizeof(error_info));
-    }
-
-    if (result != 0) {
-        if (*error_info != '\0') {
-            logError("file: "__FILE__", line: %d, "
-                    "binlog_unpack_record fail, "
-                    "binlog file: %s, error info: %s",
-                    __LINE__, reader->filename, error_info);
-        } else {
-            logError("file: "__FILE__", line: %d, "
-                    "binlog_unpack_record fail, "
-                    "binlog file: %s, errno: %d, error info: %s",
-                    __LINE__, reader->filename, result, STRERROR(result));
-        }
-
-        return result;
-    }
-
-    reader->binlog_buffer.current = rec_end;
-    return result;
-}
-
 static int find_data_version(ServerBinlogReader *reader,
         const int64_t last_data_version)
 {
@@ -705,7 +657,7 @@ int binlog_get_max_record_version(int64_t *data_version)
     return result;
 }
 
-int binlog_unpack_records(const string_t *buffer,
+static int binlog_unpack_records(const string_t *buffer,
         FDIRBinlogRecord *records, const int size, int *count)
 {
     int result;

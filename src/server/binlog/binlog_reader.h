@@ -43,9 +43,6 @@ int binlog_reader_read(ServerBinlogReader *reader);
 int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
         const int size, int *read_bytes, SFVersionRange *data_version);
 
-int binlog_reader_next_record(ServerBinlogReader *reader,
-        FDIRBinlogRecord *record);
-
 int binlog_get_first_record_version(const int file_index,
         int64_t *data_version);
 

@@ -35,8 +35,8 @@
 #include "binlog_producer.h"
 #include "binlog_pack.h"
 
-#define BINLOG_RECORD_SIZE_MIN_STRLEN  4
-#define BINLOG_RECORD_SIZE_PRINTF_FMT  "%04d"
+#define BINLOG_RECORD_SIZE_MIN_STRLEN     4
+#define BINLOG_RECORD_SIZE_MIN_START   1000
 
 #define BINLOG_RECORD_START_TAG_CHAR '<'
 #define BINLOG_RECORD_START_TAG_STR  "<rec"
@@ -246,13 +246,15 @@ static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
 #define BINLOG_PACK_STRING(buffer, name, value) \
     binlog_pack_stringl(buffer, name, value.str, value.len, true)
 
-
-int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
+int binlog_pack_record_ex(BinlogPackContext *context,
+        const FDIRBinlogRecord *record, FastBuffer *buffer)
 {
     string_t op_caption;
+    const BufferInfo *xattrs_buffer;
     int old_len;
     int expect_len;
     int record_len;
+    int width;
     int result;
 
     expect_len = 512;
@@ -264,13 +266,49 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
         expect_len += record->link.len;
     }
     expect_len *= 2;
-    if ((result=fast_buffer_check_capacity(buffer, expect_len)) != 0) {
+    if (record->operation == BINLOG_OP_DUMP_DENTRY_INT &&
+            record->xattr_kvarray.count > 0)
+    {
+        if (context != NULL) {
+            xattrs_buffer = fc_encode_json_map(&context->json_ctx,
+                    record->xattr_kvarray.elts, record->xattr_kvarray.count);
+            if (xattrs_buffer == NULL) {
+                result = fc_json_parser_get_error_no(&context->json_ctx);
+                logError("file: "__FILE__", line: %d, "
+                        "json encode fail, errno: %d, error info: %s",
+                        __LINE__, result, fc_json_parser_get_error_info(
+                            &context->json_ctx)->str);
+                return result;
+            }
+
+            expect_len += xattrs_buffer->length;
+        } else {
+            xattrs_buffer = NULL;
+        }
+    } else {
+        xattrs_buffer = NULL;
+    }
+
+    if ((result=fast_buffer_check_inc_size(buffer, expect_len)) != 0) {
         return result;
+    }
+
+    if (expect_len < 10 * BINLOG_RECORD_SIZE_MIN_START) {
+        width = BINLOG_RECORD_SIZE_MIN_STRLEN;
+    } else if (expect_len < 100 * BINLOG_RECORD_SIZE_MIN_START) {
+        width = BINLOG_RECORD_SIZE_MIN_STRLEN + 1;
+    } else if (expect_len < 1000 * BINLOG_RECORD_SIZE_MIN_START) {
+        width = BINLOG_RECORD_SIZE_MIN_STRLEN + 2;
+    } else {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", x-attributes are too long",
+                __LINE__, record->inode);
+        return EOVERFLOW;
     }
 
     //reserve record size spaces
     old_len = buffer->length;
-    buffer->length += BINLOG_RECORD_SIZE_MIN_STRLEN;
+    buffer->length += width;
 
     fast_buffer_append_buff(buffer, BINLOG_RECORD_START_TAG_STR,
             BINLOG_RECORD_START_TAG_LEN);
@@ -402,6 +440,12 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
             BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
                     record->xattr.key);
             break;
+        case BINLOG_OP_DUMP_DENTRY_INT:
+            if (xattrs_buffer != NULL) {
+                binlog_pack_stringl(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_LIST,
+                        xattrs_buffer->buff, xattrs_buffer->length, false);
+            }
+            break;
         default:
             break;
     }
@@ -409,17 +453,10 @@ int binlog_pack_record(const FDIRBinlogRecord *record, FastBuffer *buffer)
     fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
             BINLOG_RECORD_END_TAG_LEN);
 
-    record_len = buffer->length - old_len - BINLOG_RECORD_SIZE_MIN_STRLEN;
-    if (record_len > BINLOG_RECORD_MAX_SIZE) {
-        logError("file: "__FILE__", line: %d, "
-                "record length: %d is too large, exceeds %d",
-                __LINE__, record_len, BINLOG_RECORD_MAX_SIZE);
-        return EOVERFLOW;
-    }
-
-    sprintf(buffer->data + old_len, BINLOG_RECORD_SIZE_PRINTF_FMT, record_len);
-    *(buffer->data + old_len + BINLOG_RECORD_SIZE_MIN_STRLEN) =
-        BINLOG_RECORD_START_TAG_CHAR;  //restore the start char
+    record_len = buffer->length - old_len - width;
+    sprintf(buffer->data + old_len, "%0*d", width, record_len);
+    /* restore the start char */
+    *(buffer->data + old_len + width) = BINLOG_RECORD_START_TAG_CHAR;
     return 0;
 }
 
@@ -871,6 +908,7 @@ static int binlog_check_record(const char *str, const int len,
 {
     int result;
     int record_len;
+    int width;
     char *rec_start;
 
     if ((result=binlog_check_rec_length(len, pcontext)) != 0) {
@@ -897,19 +935,20 @@ static int binlog_check_record(const char *str, const int len,
         return EINVAL;
     }
 
-    if (record_len < BINLOG_RECORD_MIN_SIZE - BINLOG_RECORD_SIZE_MIN_STRLEN)
+    width = rec_start - str;
+    if (record_len < BINLOG_RECORD_MIN_SIZE - width)
     {
         sprintf(pcontext->error_info, "record length: %d is too short",
                 record_len);
         return EINVAL;
     }
-    if (record_len > len - BINLOG_RECORD_SIZE_MIN_STRLEN) {
+    if (record_len > len - width) {
         sprintf(pcontext->error_info, "record length: %d out of bound",
                 record_len);
         return EOVERFLOW;
     }
 
-    pcontext->rec_end = str + BINLOG_RECORD_SIZE_MIN_STRLEN + record_len;
+    pcontext->rec_end = rec_start + record_len;
     if (memcmp(pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
                 BINLOG_RECORD_END_TAG_STR,
                 BINLOG_RECORD_END_TAG_LEN) != 0)
@@ -987,6 +1026,7 @@ static bool binlog_is_record_start(const char *str, const int len,
         FieldParserContext *pcontext)
 {
     int record_len;
+    int width;
     const char *rec_start;
 
     if (len < BINLOG_RECORD_MIN_SIZE) {
@@ -997,11 +1037,9 @@ static bool binlog_is_record_start(const char *str, const int len,
     if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
        return false;
     }
-    if (rec_start - str != BINLOG_RECORD_SIZE_MIN_STRLEN) {
-        return false;
-    }
 
-    if (record_len > len - BINLOG_RECORD_SIZE_MIN_STRLEN) {
+    width = rec_start - str;
+    if (record_len > len - width) {
         return false;
     }
 
@@ -1011,7 +1049,7 @@ static bool binlog_is_record_start(const char *str, const int len,
         return false;
     }
 
-    pcontext->rec_end = str + BINLOG_RECORD_SIZE_MIN_STRLEN + record_len;
+    pcontext->rec_end = rec_start + record_len;
     if (memcmp(pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
                 BINLOG_RECORD_END_TAG_STR,
                 BINLOG_RECORD_END_TAG_LEN) == 0)
@@ -1043,6 +1081,9 @@ int binlog_detect_record_forward(const char *str, const int len,
     {
         const char *start;
         start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
+        while ((start >= str) && (*start >= '0' && *start <= '9')) {
+            --start;
+        }
         if ((start >= str) && binlog_is_record_start(
                     start, end - start, &pcontext))
         {
@@ -1073,7 +1114,6 @@ int binlog_detect_record_reverse(const char *str, const int len,
 {
     FDIRBinlogRecord record;
     FieldParserContext pcontext;
-    const char *start;
     const char *rec_start;
     int offset;
     int l;
@@ -1089,7 +1129,11 @@ int binlog_detect_record_reverse(const char *str, const int len,
     while (l > 0 && (rec_start=fc_memrchr(str,
                     BINLOG_RECORD_START_TAG_CHAR, l)) != NULL)
     {
+        const char *start;
         start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
+        while ((start >= str) && (*start >= '0' && *start <= '9')) {
+            --start;
+        }
         if ((start >= str) && binlog_is_record_start(
                     start, len - (start - str), &pcontext))
         {
