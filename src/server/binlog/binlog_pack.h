@@ -35,6 +35,10 @@ extern "C" {
 
 int binlog_pack_init();
 
+int binlog_pack_context_init(BinlogPackContext *context);
+
+void binlog_pack_context_destroy(BinlogPackContext *context);
+
 int binlog_pack_record_ex(BinlogPackContext *context,
         const FDIRBinlogRecord *record, FastBuffer *buffer);
 

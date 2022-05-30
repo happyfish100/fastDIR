@@ -148,6 +148,16 @@ int binlog_pack_init()
             ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
 }
 
+int binlog_pack_context_init(BinlogPackContext *context)
+{
+    return fc_init_json_context(&context->json_ctx);
+}
+
+void binlog_pack_context_destroy(BinlogPackContext *context)
+{
+    fc_destroy_json_context(&context->json_ctx);
+}
+
 static inline const char *get_operation_label(const int operation)
 {
     switch (operation) {
@@ -362,7 +372,7 @@ int binlog_pack_record_ex(BinlogPackContext *context,
 
     if (record->options.btime) {
         fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_BTIME, record->stat.atime);
+                BINLOG_RECORD_FIELD_NAME_BTIME, record->stat.btime);
     }
 
     if (record->options.atime) {

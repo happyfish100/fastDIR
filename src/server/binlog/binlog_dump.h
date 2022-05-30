@@ -25,6 +25,7 @@
 
 typedef struct fdir_binlog_dump_context {
     volatile int64_t current_version;
+    SFSynchronizeContext sctx;
     SFBinlogWriterContext bwctx;
 } FDIRBinlogDumpContext;
 

@@ -37,6 +37,7 @@
 #define BINLOG_OP_NO_OP_INT         10
 #define BINLOG_OP_DUMP_DENTRY_INT   11
 
+#define SERVER_OP_DUMP_DATA_INT         100
 #define SERVICE_OP_SET_DSIZE_INT        101
 #define SERVICE_OP_BATCH_SET_DSIZE_INT  102
 
@@ -213,6 +214,12 @@ static inline const char *get_operation_caption(const int operation)
             return "SET_XATTR";
         case BINLOG_OP_REMOVE_XATTR_INT:
             return "REMOVE_XATTR";
+        case BINLOG_OP_NO_OP_INT:
+            return "NO_OP";
+        case BINLOG_OP_DUMP_DENTRY_INT:
+            return "DUMP_DENTRY";
+        case SERVER_OP_DUMP_DATA_INT:
+            return "DUMP_DATA";
         case SERVICE_OP_SET_DSIZE_INT:
             return "SET_DENTRY_SIZE";
         case SERVICE_OP_BATCH_SET_DSIZE_INT:
