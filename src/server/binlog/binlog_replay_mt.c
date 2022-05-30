@@ -246,7 +246,7 @@ static int init_thread_ctx_array(BinlogReplayMTContext *ctx,
     BinlogBatchContext *end;
 
     elements_limit = (int)(((int64_t)parse_threads *
-                BINLOG_BUFFER_SIZE) / BINLOG_RECORD_MIN_SIZE);
+                BINLOG_BUFFER_SIZE) / FDIR_BINLOG_RECORD_MIN_SIZE);
     end = ctx->record_allocator.bcontexts + BINLOG_REPLAY_DOUBLE_BUFFER_COUNT;
     for (bctx=ctx->record_allocator.bcontexts; bctx<end; bctx++) {
         bytes = sizeof(FDIRBinlogRecord) * elements_limit;

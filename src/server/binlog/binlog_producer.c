@@ -176,7 +176,6 @@ void binlog_producer_destroy()
 ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
 {
     ServerBinlogRecordBuffer *rbuffer;
-    int old_value;
 
     rbuffer = (ServerBinlogRecordBuffer *)fast_mblock_alloc_object(
             &proceduer_ctx.rb_allocator);
@@ -184,8 +183,7 @@ ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
         return NULL;
     }
 
-    old_value = 0;  //for hint
-    FC_ATOMIC_CAS(rbuffer->reffer_count, old_value, 1);
+    __sync_add_and_fetch(&rbuffer->reffer_count, 1);
     rbuffer->buffer.length = 0;
     return rbuffer;
 }

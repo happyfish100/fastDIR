@@ -297,8 +297,6 @@ int binlog_pack_record_ex(BinlogPackContext *context,
         width = BINLOG_RECORD_SIZE_MIN_STRLEN;
     } else if (expect_len < 100 * BINLOG_RECORD_SIZE_MIN_START) {
         width = BINLOG_RECORD_SIZE_MIN_STRLEN + 1;
-    } else if (expect_len < 1000 * BINLOG_RECORD_SIZE_MIN_START) {
-        width = BINLOG_RECORD_SIZE_MIN_STRLEN + 2;
     } else {
         logError("file: "__FILE__", line: %d, "
                 "inode: %"PRId64", x-attributes are too long",
@@ -454,6 +452,13 @@ int binlog_pack_record_ex(BinlogPackContext *context,
             BINLOG_RECORD_END_TAG_LEN);
 
     record_len = buffer->length - old_len - width;
+    if (record_len > FDIR_BINLOG_RECORD_MAX_SIZE - 1) {
+        logError("file: "__FILE__", line: %d, "
+                "record length: %d is too large, exceeds %d",
+                __LINE__, record_len, FDIR_BINLOG_RECORD_MAX_SIZE - 1);
+        return EOVERFLOW;
+    }
+
     sprintf(buffer->data + old_len, "%0*d", width, record_len);
     /* restore the start char */
     *(buffer->data + old_len + width) = BINLOG_RECORD_START_TAG_CHAR;
@@ -895,7 +900,7 @@ static int binlog_parse_fields(FieldParserContext *pcontext,
 static inline int binlog_check_rec_length(const int len,
         FieldParserContext *pcontext)
 {
-    if (len < BINLOG_RECORD_MIN_SIZE) {
+    if (len < FDIR_BINLOG_RECORD_MIN_SIZE) {
         sprintf(pcontext->error_info, "string length: %d is too short", len);
         return EAGAIN;
     }
@@ -936,7 +941,7 @@ static int binlog_check_record(const char *str, const int len,
     }
 
     width = rec_start - str;
-    if (record_len < BINLOG_RECORD_MIN_SIZE - width)
+    if (record_len < FDIR_BINLOG_RECORD_MIN_SIZE - width)
     {
         sprintf(pcontext->error_info, "record length: %d is too short",
                 record_len);
@@ -1029,7 +1034,7 @@ static bool binlog_is_record_start(const char *str, const int len,
     int width;
     const char *rec_start;
 
-    if (len < BINLOG_RECORD_MIN_SIZE) {
+    if (len < FDIR_BINLOG_RECORD_MIN_SIZE) {
         return false;
     }
 
@@ -1075,7 +1080,7 @@ int binlog_detect_record_forward(const char *str, const int len,
     *rstart_offset = -1;
     p = str;
     end = str + len;
-    while ((end - p >= BINLOG_RECORD_MIN_SIZE) && (rec_start=
+    while ((end - p >= FDIR_BINLOG_RECORD_MIN_SIZE) && (rec_start=
                 (const char *)memchr(p, BINLOG_RECORD_START_TAG_CHAR,
                     end - p)) != NULL)
     {

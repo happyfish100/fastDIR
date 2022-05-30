@@ -22,8 +22,8 @@
 #include "fastcommon/json_parser.h"
 #include "binlog_types.h"
 
-#define BINLOG_RECORD_MIN_SIZE            64
-#define BINLOG_RECORD_MAX_SIZE          9999
+#define FDIR_BINLOG_RECORD_MIN_SIZE           64
+#define FDIR_BINLOG_RECORD_MAX_SIZE          (64 * 1024)
 
 typedef struct {
     fc_json_context_t json_ctx;

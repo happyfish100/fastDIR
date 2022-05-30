@@ -417,7 +417,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
     int rstart_offset;
     int rend_offset;
     int64_t data_version;
-    char buff[BINLOG_RECORD_MAX_SIZE + 1];
+    char buff[FDIR_BINLOG_RECORD_MAX_SIZE];
     char error_info[SF_ERROR_INFO_SIZE];
     char *p;
 
@@ -447,7 +447,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 
     p = buff;
     remain = bytes;
-    while (remain >= BINLOG_RECORD_MIN_SIZE) {
+    while (remain >= FDIR_BINLOG_RECORD_MIN_SIZE) {
         result = binlog_detect_record_forward(p, remain, &data_version,
                 &rstart_offset, &rend_offset, error_info, sizeof(error_info));
         if (result == 0) {
@@ -500,10 +500,10 @@ int binlog_reader_init(ServerBinlogReader *reader,
     }
 
     reader->position = *hint_pos;
-    if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 4) {
-        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 4;
-    } else if (reader->position.offset > BINLOG_RECORD_MAX_SIZE / 8) {
-        reader->position.offset -= BINLOG_RECORD_MAX_SIZE / 8;
+    if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 4) {
+        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 4;
+    } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 8) {
+        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 8;
     }
     return binlog_reader_detect_open(reader, last_data_version);
 }
@@ -524,7 +524,7 @@ int binlog_get_first_record_version(const int file_index,
 #define BINLOG_DETECT_READ_ONCE  2048
 
     char filename[PATH_MAX];
-    char buff[BINLOG_RECORD_MAX_SIZE + 1];
+    char buff[FDIR_BINLOG_RECORD_MAX_SIZE];
     char error_info[SF_ERROR_INFO_SIZE];
     char *p;
     char *rec_end;
@@ -556,7 +556,7 @@ int binlog_get_first_record_version(const int file_index,
         }
 
         p += bytes;
-        bytes = BINLOG_RECORD_MAX_SIZE - offset;
+        bytes = FDIR_BINLOG_RECORD_MAX_SIZE - offset;
         if (bytes > BINLOG_DETECT_READ_ONCE) {
             bytes = BINLOG_DETECT_READ_ONCE;
         }
@@ -583,7 +583,7 @@ int binlog_get_last_record_version(const int file_index,
         int64_t *data_version)
 {
     char filename[PATH_MAX];
-    char buff[BINLOG_RECORD_MAX_SIZE + 1];
+    char buff[FDIR_BINLOG_RECORD_MAX_SIZE];
     char error_info[SF_ERROR_INFO_SIZE];
     int result;
     int offset;

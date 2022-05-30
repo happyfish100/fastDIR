@@ -143,7 +143,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
         return ENOMEM;
     }
 
-    alloc_size = 4 * task->size / BINLOG_RECORD_MIN_SIZE;
+    alloc_size = 4 * task->size / FDIR_BINLOG_RECORD_MIN_SIZE;
     if ((result=push_result_ring_check_init(&replication->
                     context.push_result_ctx, alloc_size)) != 0)
     {

@@ -362,7 +362,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 
     if ((result=server_check_min_body_length(sizeof(
                         FDIRProtoPushBinlogReqBodyHeader) +
-                    BINLOG_RECORD_MIN_SIZE)) != 0)
+                    FDIR_BINLOG_RECORD_MIN_SIZE)) != 0)
     {
         return result;
     }
