@@ -337,7 +337,8 @@ int binlog_pack_record_ex(BinlogPackContext *context,
 
     if (record->options.path_info.flags != 0) {
         if (record->me.pname.parent_inode == 0 &&
-                record->me.pname.name.len > 0)
+                record->me.pname.name.len > 0 &&
+                record->operation != BINLOG_OP_DUMP_DENTRY_INT)
         {
             logError("file: "__FILE__", line: %d, "
                     "subname: %.*s, expect parent inode", __LINE__,
