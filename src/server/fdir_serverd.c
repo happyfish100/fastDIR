@@ -302,6 +302,10 @@ int main(int argc, char *argv[])
         if ((result=cluster_relationship_init()) != 0) {
             break;
         }
+
+        if ((result=binlog_dedup_add_schedule()) != 0) {
+            break;
+        }
     } while (0);
 
     if (result != 0) {

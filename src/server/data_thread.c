@@ -24,6 +24,7 @@
 #include "inode_index.h"
 #include "service_handler.h"
 #include "data_dumper.h"
+#include "server_binlog.h"
 #include "db/change_notify.h"
 #include "db/dentry_serializer.h"
 #include "db/dentry_loader.h"
@@ -1251,6 +1252,9 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             break;
         case SERVICE_OP_SYS_LOCK_APPLY_INT:
             result = deal_sys_lock_apply(thread_ctx, record);
+            break;
+        case SERVER_OP_DUMP_DATA_INT:
+            result = binlog_dump_data(thread_ctx, record->notify.args);
             break;
         default:
             result = EPROTONOSUPPORT;

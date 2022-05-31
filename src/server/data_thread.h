@@ -175,6 +175,13 @@ extern "C" {
 
     void data_thread_sum_counters(FDIRDentryCounters *counters);
 
+    static inline int64_t data_thread_get_total_dentry_count()
+    {
+        FDIRDentryCounters counters;
+        data_thread_sum_counters(&counters);
+        return counters.dir + counters.file;
+    }
+
     static inline void server_delay_free_dentry(FDIRDataThreadContext
             *thread_ctx, struct fdir_server_dentry *dentry)
     {

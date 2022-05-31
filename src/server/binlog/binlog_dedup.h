@@ -13,31 +13,28 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//server_binlog.h
 
-#ifndef _SERVER_BINLOG_H_
-#define _SERVER_BINLOG_H_
+#ifndef _BINLOG_DEDUP_H
+#define _BINLOG_DEDUP_H
 
-#include "binlog/binlog_types.h"
-#include "binlog/binlog_producer.h"
-#include "binlog/binlog_local_consumer.h"
-#include "binlog/binlog_write.h"
-#include "binlog/binlog_read_thread.h"
-#include "binlog/replica_consumer_thread.h"
-#include "binlog/binlog_pack.h"
-#include "binlog/binlog_replay.h"
-#include "binlog/binlog_replay_mt.h"
-#include "binlog/push_result_ring.h"
-#include "binlog/binlog_dump.h"
-#include "binlog/binlog_dedup.h"
+#include "fastcommon/sched_thread.h"
+#include "../server_global.h"
+#include "binlog_types.h"
+
+#define FDIR_DEDUP_SUBDIR_NAME    "binlog/dump"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int server_binlog_init();
-void server_binlog_destroy();
-void server_binlog_terminate();
+    static inline const char *binlog_dedup_get_filename(
+            char *filename, const int size)
+    {
+        return sf_binlog_writer_get_filename(DATA_PATH_STR,
+                FDIR_DEDUP_SUBDIR_NAME, 0, filename, size);
+    }
+
+    int binlog_dedup_add_schedule();
 
 #ifdef __cplusplus
 }

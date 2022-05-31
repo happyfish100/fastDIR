@@ -23,9 +23,12 @@
 #include "../server_global.h"
 #include "binlog_types.h"
 
+struct fdir_data_thread_context;
+
 typedef struct fdir_binlog_dump_context {
     volatile int64_t current_version;
     int64_t last_data_version;   //for padding
+    char subdir_name[32];
     int result;
     SFSynchronizeContext sctx;
     SFBinlogWriterContext bwctx;
@@ -35,7 +38,7 @@ typedef struct fdir_binlog_dump_context {
 extern "C" {
 #endif
 
-int binlog_dump_all(const char *filename);
+int binlog_dump_all(const char *subdir_name, char *out_filename);
 
 /* this function is called by data thread only */
 int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,

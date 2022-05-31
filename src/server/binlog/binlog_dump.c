@@ -20,17 +20,30 @@
 #include "../data_thread.h"
 #include "binlog_dump.h"
 
-#define BINLOG_DUMP_SUBDIR_NAME  "binlog/dump"
+#define DUMP_FILE_PREFIX_NAME  "dump"
 
 typedef struct {
-    int64_t last_data_version;  //for waiting binlog write done
-    FDIRBinlogRecord record;
     FastBuffer buffer;
+    int64_t version;  //for waiting binlog write done
+} VersionedFastBuffer;
+
+typedef struct {
+    VersionedFastBuffer *buffers;
+    int count;
+    uint64_t index;
+} VersionedBufferArray;
+
+typedef struct {
+    int64_t last_data_version;   //for waiting binlog write done
+    int64_t write_done_version;  //the data version of binlog write done
+    FDIRBinlogRecord record;
+    VersionedBufferArray buffer_array;
     BinlogPackContext pack_ctx;
     FDIRBinlogDumpContext *dump_ctx;
 } DataDumperContext;
 
-static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx)
+static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
+        const char *subdir_name)
 {
     const uint64_t next_version = 1;
     const int buffer_size = 4 * 1024 * 1024;
@@ -39,7 +52,6 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx)
     const int max_record_size = 0;  //use the binlog buffer of the caller
     const int writer_count = 1;
     const bool use_fixed_buffer_size = true;
-    const char *subdir_name = BINLOG_DUMP_SUBDIR_NAME;
     char filepath[PATH_MAX];
     int result;
 
@@ -56,8 +68,9 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx)
     dump_ctx->result = 0;
     dump_ctx->current_version = 0;
     if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->bwctx.writer,
-                    DATA_PATH_STR, subdir_name, next_version, buffer_size,
-                    ring_size, SF_BINLOG_NEVER_ROTATE_FILE)) != 0)
+                    DATA_PATH_STR, subdir_name, DUMP_FILE_PREFIX_NAME,
+                    next_version, buffer_size, ring_size,
+                    SF_BINLOG_NEVER_ROTATE_FILE)) != 0)
     {
         return result;
     }
@@ -139,20 +152,20 @@ static int binlog_padding(FDIRBinlogDumpContext *dump_ctx)
 }
 
 static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
-        const char *dump_filename)
+        const char *subdir_name, char *out_filename)
 {
     int result;
     char tmp_filename[PATH_MAX];
 
-    sf_binlog_writer_get_filename(DATA_PATH_STR,
-            BINLOG_DUMP_SUBDIR_NAME, 0,
+    sf_binlog_writer_get_filename_ex(DATA_PATH_STR,
+            subdir_name, DUMP_FILE_PREFIX_NAME, 0,
             tmp_filename, sizeof(tmp_filename));
-    if (rename(tmp_filename, dump_filename) != 0) {
+    if (rename(tmp_filename, out_filename) != 0) {
         result = errno != 0 ? errno : EPERM;
         logError("file: "__FILE__", line: %d, "
                 "rename file %s to %s fail, "
                 "errno: %d, error info: %s",
-                __LINE__, tmp_filename, dump_filename,
+                __LINE__, tmp_filename, out_filename,
                 result, STRERROR(result));
         return result;
     }
@@ -160,7 +173,7 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
     return 0;
 }
 
-int binlog_dump_all(const char *filename)
+int binlog_dump_all(const char *subdir_name, char *out_filename)
 {
 #define RECORD_FIXED_COUNT  64
     int result;
@@ -175,13 +188,17 @@ int binlog_dump_all(const char *filename)
     int64_t time_used_ms;
     char buff[16];
 
+    logInfo("current data version: %"PRId64, FC_ATOMIC_GET(DATA_CURRENT_VERSION));
+
     if (FC_ATOMIC_GET(DATA_CURRENT_VERSION) == 0) {
         return ENOENT;
     }
 
-    if ((result=init_dump_ctx(&dump_ctx)) != 0) {
+    if ((result=init_dump_ctx(&dump_ctx, subdir_name)) != 0) {
         return result;
     }
+
+    logInfo("file: "__FILE__", line: %d", __LINE__);
 
     if (g_data_thread_vars.thread_array.count <= RECORD_FIXED_COUNT) {
         records.elts = records.holder;
@@ -199,6 +216,9 @@ int binlog_dump_all(const char *filename)
 
     memset(records.elts, 0, sizeof(FDIRBinlogRecord) *
             g_data_thread_vars.thread_array.count);
+
+    logInfo("file: "__FILE__", line: %d, thread count: %d",
+            __LINE__, g_data_thread_vars.thread_array.count);
 
     sf_synchronize_counter_add(&dump_ctx.sctx,
             g_data_thread_vars.thread_array.count);
@@ -225,11 +245,13 @@ int binlog_dump_all(const char *filename)
     destroy_dump_ctx(&dump_ctx);
 
     if (result == 0) {
-        if ((result=dump_finish(&dump_ctx, filename)) == 0) {
+        if ((result=dump_finish(&dump_ctx, subdir_name,
+                        out_filename)) == 0)
+        {
             time_used_ms = get_current_time_ms() - start_time_ms;
             logInfo("file: "__FILE__", line: %d, "
-                    "dump data done, time used: %s ms", __LINE__,
-                    long_to_comma_str(time_used_ms, buff));
+                    "dump data to %s done, time used: %s ms", __LINE__,
+                    out_filename, long_to_comma_str(time_used_ms, buff));
         }
     }
 
@@ -240,6 +262,7 @@ static int output_dentry(DataDumperContext *dd_ctx,
         FDIRServerDentry *dentry)
 {
     SFBinlogWriterBuffer *wbuffer;
+    VersionedFastBuffer *vb;
     int result;
 
     if ((wbuffer=sf_binlog_writer_alloc_buffer(&dd_ctx->
@@ -284,15 +307,24 @@ static int output_dentry(DataDumperContext *dd_ctx,
         dd_ctx->record.xattr_kvarray.count = 0;
     }
 
-    dd_ctx->buffer.length = 0;
+    vb = dd_ctx->buffer_array.buffers + dd_ctx->buffer_array.
+        index++ % dd_ctx->buffer_array.count;
+    while (vb->version > dd_ctx->write_done_version) {
+        fc_sleep_ms(1);
+        dd_ctx->write_done_version = sf_binlog_writer_get_last_version(
+                &dd_ctx->dump_ctx->bwctx.writer);
+    }
+
+    vb->version = dd_ctx->record.data_version;
+    vb->buffer.length = 0;
     if ((result=binlog_pack_record_ex(&dd_ctx->pack_ctx,
-                    &dd_ctx->record, &dd_ctx->buffer)) != 0)
+                    &dd_ctx->record, &vb->buffer)) != 0)
     {
         return result;
     }
 
-    wbuffer->bf.buff = dd_ctx->buffer.data;
-    wbuffer->bf.length = dd_ctx->buffer.length;
+    wbuffer->bf.buff = vb->buffer.data;
+    wbuffer->bf.length = vb->buffer.length;
     wbuffer->version.first = wbuffer->version.last =
         dd_ctx->record.data_version;
     sf_push_to_binlog_write_queue(&dd_ctx->dump_ctx->bwctx.writer, wbuffer);
@@ -365,6 +397,42 @@ static void init_record_common_fields(FDIRBinlogRecord *record)
     record->operation = BINLOG_OP_DUMP_DENTRY_INT;
 }
 
+static int init_versioned_buffer_array(VersionedBufferArray *array)
+{
+    VersionedFastBuffer *vb;
+    VersionedFastBuffer *end;
+    int result;
+
+    array->index = 0;
+    array->count = 256;
+    array->buffers = fc_malloc(sizeof(VersionedFastBuffer) * array->count);
+    if (array->buffers == NULL) {
+        return ENOMEM;
+    }
+
+    end = array->buffers + array->count;
+    for (vb=array->buffers; vb<end; vb++) {
+        vb->version = 0;
+        if ((result=fast_buffer_init_ex(&vb->buffer, 4 * 1024)) != 0) {
+            return result;
+        }
+    }
+
+    return 0;
+}
+
+static void destroy_versioned_buffer_array(VersionedBufferArray *array)
+{
+    VersionedFastBuffer *vb;
+    VersionedFastBuffer *end;
+
+    end = array->buffers + array->count;
+    for (vb=array->buffers; vb<end; vb++) {
+        fast_buffer_destroy(&vb->buffer);
+    }
+    free(array->buffers);
+}
+
 int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
         FDIRBinlogDumpContext *dump_ctx)
 {
@@ -380,7 +448,7 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
         return result;
     }
 
-    if ((result=fast_buffer_init_ex(&dd_ctx.buffer, 8 * 1024)) != 0) {
+    if ((result=init_versioned_buffer_array(&dd_ctx.buffer_array)) != 0) {
         return result;
     }
     init_record_common_fields(&dd_ctx.record);
@@ -417,6 +485,6 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     }
 
     binlog_pack_context_destroy(&dd_ctx.pack_ctx);
-    fast_buffer_destroy(&dd_ctx.buffer);
+    destroy_versioned_buffer_array(&dd_ctx.buffer_array);
     return result;
 }
