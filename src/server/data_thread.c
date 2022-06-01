@@ -399,13 +399,15 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
         {
             return result;
         }
-
         record->hdlink.src.inode = record->hdlink.src.dentry->inode;
     }
 
-    if (S_ISDIR(record->hdlink.src.dentry->stat.mode) ||
-            FDIR_IS_DENTRY_HARD_LINK(record->hdlink.src.dentry->stat.mode))
-    {
+    if (FDIR_IS_DENTRY_HARD_LINK(record->hdlink.src.dentry->stat.mode)) {
+        record->hdlink.src.dentry = record->hdlink.src.dentry->src_dentry;
+        record->hdlink.src.inode = record->hdlink.src.dentry->inode;
+    }
+
+    if (S_ISDIR(record->hdlink.src.dentry->stat.mode)) {
         return EPERM;
     }
 
@@ -636,19 +638,6 @@ static int check_load_children(FDIRServerDentry *parent)
     if (parent != NULL) parent->db_args->add_to_clist = ((parent->db_args-> \
                 loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0)
 
-static inline void set_affected_clist_flags(FDIRBinlogRecord *record)
-{
-    FDIRAffectedDentry *current;
-    FDIRAffectedDentry *end;
-
-    end = record->affected.entries + record->affected.count;
-    for (current=record->affected.entries; current<end; current++) {
-        if (current->op_type == da_binlog_op_type_remove) {
-            SET_ADD_TO_CLIST_FLAG(current->dentry->parent);
-        }
-    }
-}
-
 static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
@@ -659,11 +648,18 @@ static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
     end = record->affected.entries + record->affected.count;
     for (current=record->affected.entries; current<end; current++) {
         if (current->op_type == da_binlog_op_type_remove) {
+            SET_ADD_TO_CLIST_FLAG(current->dentry->parent);
             GENERATE_REOMVE_DENTRY_MESSAGES(*msg, current->dentry);
         } else {  //update
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg,
                     current->dentry, da_binlog_op_type_update,
                     FDIR_PIECE_FIELD_INDEX_BASIC, 0);
+            if (current->remove_from_parent) {
+                SET_ADD_TO_CLIST_FLAG(current->dentry->parent);
+                GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
+                        dentry->parent, record->me.dentry->inode);
+                record->me.dentry->parent = NULL;   //orphan inode
+            }
         }
     }
 
@@ -683,41 +679,6 @@ static inline int generate_create_messages(FDIRChangeNotifyMessage **msg,
     }
     GENERATE_DENTRY_MESSAGES(*msg, record->me.dentry,
             da_binlog_op_type_create);
-    return 0;
-}
-
-static int generate_remove_messages(FDIRChangeNotifyMessage **msg,
-        FDIRBinlogRecord *record)
-{
-    FDIRAffectedDentry *current;
-    FDIRAffectedDentry *end;
-    bool removed;
-    int result;
-
-    SET_ADD_TO_CLIST_FLAG(record->me.dentry->parent);
-    set_affected_clist_flags(record);
-
-    removed = false;
-    end = record->affected.entries + record->affected.count;
-    for (current=record->affected.entries; current<end; current++) {
-        if (current->op_type == da_binlog_op_type_remove) {
-            if (current->dentry == record->me.dentry) {
-                removed = true;
-            }
-            GENERATE_REOMVE_DENTRY_MESSAGES(*msg, current->dentry);
-        } else {  //update
-            FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg,
-                    current->dentry, da_binlog_op_type_update,
-                    FDIR_PIECE_FIELD_INDEX_BASIC, 0);
-        }
-    }
-
-    if (!removed) {
-        GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
-                dentry->parent, record->me.dentry->inode);
-        record->me.dentry->parent = NULL;   //orphan inode
-    }
-
     return 0;
 }
 
@@ -753,9 +714,7 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
         return 0;
     }
 
-
     if (record->affected.count > 0) {
-        set_affected_clist_flags(record);
         if ((result=generate_affected_messages(msg, record)) != 0) {
             return result;
         }
@@ -840,7 +799,7 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
                     FDIR_PIECE_FIELD_INDEX_XATTR, 0);
             break;
         case BINLOG_OP_REMOVE_DENTRY_INT:
-            if ((result=generate_remove_messages(&msg, record)) != 0) {
+            if ((result=generate_affected_messages(&msg, record)) != 0) {
                 return result;
             }
             break;
@@ -946,6 +905,21 @@ static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
 
     update_dentry_stat(record->me.dentry, record);
     return 0;
+}
+
+static inline void deal_affected_dentries(FDIRBinlogRecord *record)
+{
+    FDIRAffectedDentry *current;
+    FDIRAffectedDentry *end;
+
+    end = record->affected.entries + record->affected.count;
+    for (current=record->affected.entries; current<end; current++) {
+        if (current->op_type == da_binlog_op_type_update &&
+                current->remove_from_parent)
+        {
+            record->me.dentry->parent = NULL;   //orphan inode
+        }
+    }
 }
 
 static int deal_update_record(FDIRDataThreadContext *thread_ctx,
@@ -1092,6 +1066,10 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
                     old_version, record->data_version);
         }
+    }
+
+    if (result == 0 && record->affected.count > 0 && !STORAGE_ENABLED) {
+        deal_affected_dentries(record);
     }
 
     if (result == 0 && STORAGE_ENABLED && record->data_version > 0) {

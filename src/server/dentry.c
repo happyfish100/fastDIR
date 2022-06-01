@@ -718,12 +718,12 @@ static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
             &rec_entry->pname.name, &rec_entry->dentry);
 }
 
-#define AFFECTED_DENTRIES_ADD(record, _dentry, _op_type) \
-    do { \
-        record->affected.entries[record->affected.count].dentry = _dentry;   \
-        record->affected.entries[record->affected.count].op_type = _op_type; \
-        record->affected.count++;  \
-    } while (0)
+#define AFFECTED_DENTRIES_ADD(record, _dentry, _op_type, _remove_from_parent) \
+    record->affected.entries[record->affected.count].dentry = _dentry;   \
+    record->affected.entries[record->affected.count].op_type = _op_type; \
+    record->affected.entries[record->affected.count].  \
+        remove_from_parent = _remove_from_parent; \
+    record->affected.count++
 
 int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
@@ -822,7 +822,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
         current->src_dentry->stat.nlink++;
         AFFECTED_DENTRIES_ADD(record, current->src_dentry,
-                da_binlog_op_type_update);
+                da_binlog_op_type_update, false);
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
             dentry_delay_free(current);
@@ -907,8 +907,8 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
             op_type = da_binlog_op_type_update;
         }
 
-        AFFECTED_DENTRIES_ADD(record, dentry->src_dentry, op_type);
-        AFFECTED_DENTRIES_ADD(record, dentry, da_binlog_op_type_remove);
+        AFFECTED_DENTRIES_ADD(record, dentry->src_dentry, op_type, false);
+        AFFECTED_DENTRIES_ADD(record, dentry, da_binlog_op_type_remove, true);
         *free_dentry = true;
     } else {
         if (--(dentry->stat.nlink) == 0) {
@@ -928,7 +928,7 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
             op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }
-        AFFECTED_DENTRIES_ADD(record, dentry, op_type);
+        AFFECTED_DENTRIES_ADD(record, dentry, op_type, true);
     }
 
     if (*free_dentry) {

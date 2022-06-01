@@ -107,6 +107,7 @@ typedef enum {
 typedef struct {
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
+    bool remove_from_parent;
 } FDIRAffectedDentry;
 
 typedef struct fdir_binlog_record {
