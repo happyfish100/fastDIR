@@ -57,7 +57,7 @@ static int binlog_dedup_func(void *args)
         if (dedup_ratio >= BINLOG_DEDUP_RATIO) {
             start_time_ms = get_current_time_ms();
             logInfo("file: "__FILE__", line: %d, "
-                    "slice count: %"PRId64", dentry_count: %"PRId64", "
+                    "dentry count: %"PRId64", dentry_count: %"PRId64", "
                     "dedup_ratio: %.2f%%, dedup binlog ...", __LINE__,
                     dentry_count, BINLOG_RECORD_COUNT, dedup_ratio * 100.00);
 

@@ -22,6 +22,24 @@
 
 #define DUMP_FILE_PREFIX_NAME  "dump"
 
+typedef struct dentry_chain_node {
+    FDIRServerDentry *dentry;
+    struct {
+        struct dentry_chain_node *chain;
+        struct dentry_chain_node *htable;
+    } nexts;
+} DEntryChainNode;
+
+typedef struct {
+    DEntryChainNode **buckets;
+    int capacity;
+} DEntryNodeHashtable;
+
+typedef struct {
+    DEntryChainNode *head;
+    DEntryChainNode *tail;
+} DEntryNodeList;
+
 typedef struct {
     FastBuffer buffer;
     int64_t version;  //for waiting binlog write done
@@ -39,8 +57,16 @@ typedef struct {
     FDIRBinlogRecord record;
     VersionedBufferArray buffer_array;
     BinlogPackContext pack_ctx;
+    struct {
+        struct fast_mblock_man allocator;  //element: DEntryChainNode
+        struct {
+            DEntryNodeHashtable htable;
+            DEntryNodeList list;
+        } orphan;  //hardlink source
+        DEntryNodeList list;
+    } hardlink;
     FDIRBinlogDumpContext *dump_ctx;
-} DataDumperContext;
+} DataDumperContext;  //for data thread
 
 static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
         const char *subdir_name)
@@ -67,10 +93,10 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
 
     dump_ctx->result = 0;
     dump_ctx->current_version = 0;
-    if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->bwctx.writer,
-                    DATA_PATH_STR, subdir_name, DUMP_FILE_PREFIX_NAME,
-                    next_version, buffer_size, ring_size,
-                    SF_BINLOG_NEVER_ROTATE_FILE)) != 0)
+    if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->
+                    bwctx.writer, DATA_PATH_STR, subdir_name,
+                    DUMP_FILE_PREFIX_NAME, next_version, buffer_size,
+                    ring_size, SF_BINLOG_NEVER_ROTATE_FILE)) != 0)
     {
         return result;
     }
@@ -332,6 +358,103 @@ static int output_dentry(DataDumperContext *dd_ctx,
     return 0;
 }
 
+static inline DEntryChainNode *add_to_list(DataDumperContext *dd_ctx,
+        DEntryNodeList *list, FDIRServerDentry *dentry)
+{
+    DEntryChainNode *node;
+
+    node = fast_mblock_alloc_object(&dd_ctx->hardlink.allocator);
+    if (node == NULL) {
+        return NULL;
+    }
+
+    node->dentry = dentry;
+    node->nexts.chain = NULL;
+    if (list->head == NULL) {
+        list->head = node;
+    } else {
+        list->tail->nexts.chain = node;
+    }
+    list->tail = node;
+
+    return node;
+}
+
+static int deal_orphan_dentry(DataDumperContext *dd_ctx,
+        FDIRServerDentry *dentry)
+{
+    DEntryChainNode **bucket;
+    DEntryChainNode *previous;
+    DEntryChainNode *node;
+
+    bucket = dd_ctx->hardlink.orphan.htable.buckets + dentry->
+        inode % dd_ctx->hardlink.orphan.htable.capacity;
+    previous = NULL;
+    node = *bucket;
+    while (node != NULL) {
+        if (node->dentry->inode == dentry->inode) {
+            return 0;  //already exist
+        } else if (node->dentry->inode > dentry->inode) {
+            break;
+        }
+
+        previous = node;
+        node = node->nexts.htable;
+    }
+
+    if ((node=add_to_list(dd_ctx, &dd_ctx->hardlink.
+                    orphan.list, dentry)) == NULL)
+    {
+        return ENOMEM;
+    }
+
+    if (previous == NULL) {
+        node->nexts.htable = *bucket;
+        *bucket = node;
+    } else {
+        node->nexts.htable = previous->nexts.htable;
+        previous->nexts.htable = node;
+    }
+
+    return 0;
+}
+
+static inline int deal_hardlink_dentry(DataDumperContext *dd_ctx,
+        FDIRServerDentry *dentry)
+{
+    if (add_to_list(dd_ctx, &dd_ctx->hardlink.list, dentry) == NULL) {
+        return ENOMEM;
+    }
+
+    if (dentry->src_dentry->parent == NULL) { //orphan inode
+        return deal_orphan_dentry(dd_ctx, dentry->src_dentry);
+    } else {
+        return 0;
+    }
+}
+
+static inline int output_dentry_list(DataDumperContext *dd_ctx,
+        DEntryNodeList *list)
+{
+    int result;
+    uint32_t count;
+    DEntryChainNode *node;
+
+    count = 0;
+    node = list->head;
+    while (node != NULL) {
+        if ((result=output_dentry(dd_ctx, node->dentry)) != 0) {
+            return result;
+        }
+        node = node->nexts.chain;
+        ++count;
+    }
+
+    logInfo("======dentry list count======: %d", count);
+
+    return 0;
+}
+
 static int dentry_dump(DataDumperContext *dd_ctx, FDIRServerDentry *dentry)
 {
     int result;
@@ -350,6 +473,10 @@ static int dentry_dump(DataDumperContext *dd_ctx, FDIRServerDentry *dentry)
         {
             return result;
         }
+    }
+
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
+        return deal_hardlink_dentry(dd_ctx, dentry);
     }
 
     if ((result=output_dentry(dd_ctx, dentry)) != 0) {
@@ -433,6 +560,51 @@ static void destroy_versioned_buffer_array(VersionedBufferArray *array)
     free(array->buffers);
 }
 
+
+static int init_dd_ctx(DataDumperContext *dd_ctx,
+        FDIRBinlogDumpContext *dump_ctx)
+{
+    int result;
+    int bytes;
+
+    memset(dd_ctx, 0, sizeof(*dd_ctx));
+    dd_ctx->dump_ctx = dump_ctx;
+    if ((result=binlog_pack_context_init(&dd_ctx->pack_ctx)) != 0) {
+        return result;
+    }
+
+    if ((result=init_versioned_buffer_array(&dd_ctx->buffer_array)) != 0) {
+        return result;
+    }
+
+    if ((result=fast_mblock_init_ex1(&dd_ctx->hardlink.allocator,
+                    "dentry_chain_node", sizeof(DEntryChainNode),
+                    8 * 1024, 0, NULL, NULL, false)) != 0)
+    {
+        return result;
+    }
+
+    dd_ctx->hardlink.orphan.htable.capacity = 175447;
+    bytes = sizeof(DEntryChainNode *) * dd_ctx->
+        hardlink.orphan.htable.capacity;
+    dd_ctx->hardlink.orphan.htable.buckets = fc_malloc(bytes);
+    if (dd_ctx->hardlink.orphan.htable.buckets == NULL) {
+        return ENOMEM;
+    }
+    memset(dd_ctx->hardlink.orphan.htable.buckets, 0, bytes);
+
+    init_record_common_fields(&dd_ctx->record);
+    return 0;
+}
+
+static void destroy_dd_ctx(DataDumperContext *dd_ctx)
+{
+    binlog_pack_context_destroy(&dd_ctx->pack_ctx);
+    destroy_versioned_buffer_array(&dd_ctx->buffer_array);
+    fast_mblock_destroy(&dd_ctx->hardlink.allocator);
+    free(dd_ctx->hardlink.orphan.htable.buckets);
+}
+
 int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
         FDIRBinlogDumpContext *dump_ctx)
 {
@@ -442,18 +614,10 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     FDIRNamespaceEntry **ns_end;
     int result;
 
-    memset(&dd_ctx, 0, sizeof(dd_ctx));
-    dd_ctx.dump_ctx = dump_ctx;
-    if ((result=binlog_pack_context_init(&dd_ctx.pack_ctx)) != 0) {
+    if ((result=init_dd_ctx(&dd_ctx, dump_ctx)) != 0) {
         return result;
     }
 
-    if ((result=init_versioned_buffer_array(&dd_ctx.buffer_array)) != 0) {
-        return result;
-    }
-    init_record_common_fields(&dd_ctx.record);
-
-    result = 0;
     ns_parray = fdir_namespace_get_all();
     ns_end = ns_parray->namespaces + ns_parray->count;
     for (ns_entry=ns_parray->namespaces; ns_entry<ns_end; ns_entry++) {
@@ -470,6 +634,12 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
         }
     }
 
+    if ((result=output_dentry_list(&dd_ctx, &dd_ctx.
+                    hardlink.orphan.list)) == 0)
+    {
+        result = output_dentry_list(&dd_ctx, &dd_ctx.hardlink.list);
+    }
+
     logInfo("data thread #%d, last_data_version: %"PRId64", "
             "current write done version: %"PRId64,
             (int)(thread_ctx - g_data_thread_vars.thread_array.contexts),
@@ -484,7 +654,6 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
         }
     }
 
-    binlog_pack_context_destroy(&dd_ctx.pack_ctx);
-    destroy_versioned_buffer_array(&dd_ctx.buffer_array);
+    destroy_dd_ctx(&dd_ctx);
     return result;
 }
