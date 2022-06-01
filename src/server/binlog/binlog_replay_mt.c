@@ -36,6 +36,7 @@
 #include "../shared_thread_pool.h"
 #include "../service_handler.h"
 #include "../data_thread.h"
+#include "binlog_func.h"
 #include "binlog_pack.h"
 #include "binlog_reader.h"
 #include "binlog_replay_mt.h"
@@ -206,7 +207,7 @@ static int init_parse_thread_ctx_array(BinlogReplayMTContext *replay_ctx,
 
 static inline int init_records(BinlogReplayMTContext *ctx,
         BinlogBatchContext *bctx, const int arr_index,
-        const int parse_threads, const int elements_limit)
+        const int parse_threads)
 {
     int bytes;
     FDIRBinlogRecord *record;
@@ -226,7 +227,7 @@ static inline int init_records(BinlogReplayMTContext *ctx,
     }
     memset(bctx->results, 0, bytes);
 
-    end = bctx->records + elements_limit;
+    end = bctx->records + bctx->elements_limit;
     for (record=bctx->records; record<end; record++) {
         record->notify.func = data_thread_deal_done_callback;
         record->notify.args = ctx;
@@ -240,7 +241,7 @@ static int init_thread_ctx_array(BinlogReplayMTContext *ctx,
         const int parse_threads)
 {
     int elements_limit;
-    int bytes;
+    int index;
     int result;
     BinlogBatchContext *bctx;
     BinlogBatchContext *end;
@@ -249,16 +250,15 @@ static int init_thread_ctx_array(BinlogReplayMTContext *ctx,
                 BINLOG_BUFFER_SIZE) / FDIR_BINLOG_RECORD_MIN_SIZE);
     end = ctx->record_allocator.bcontexts + BINLOG_REPLAY_DOUBLE_BUFFER_COUNT;
     for (bctx=ctx->record_allocator.bcontexts; bctx<end; bctx++) {
-        bytes = sizeof(FDIRBinlogRecord) * elements_limit;
-        bctx->records = (FDIRBinlogRecord *)fc_malloc(bytes);
-        if (bctx->records == NULL) {
-            return ENOMEM;
-        }
-        memset(bctx->records, 0, bytes);
-
-        if ((result=init_records(ctx, bctx, bctx - ctx->record_allocator.
-                        bcontexts, parse_threads, elements_limit)) != 0)
+        bctx->elements_limit = elements_limit;
+        if ((result=binlog_alloc_records(&bctx->records,
+                        elements_limit)) != 0)
         {
+            return result;
+        }
+
+        index = bctx - ctx->record_allocator.bcontexts;
+        if ((result=init_records(ctx, bctx, index, parse_threads)) != 0) {
             return result;
         }
     }
@@ -290,7 +290,7 @@ void binlog_replay_mt_destroy(BinlogReplayMTContext *ctx)
     destroy_parse_thread_ctx_array(&ctx->parse_thread_array);
     end = ctx->record_allocator.bcontexts + BINLOG_REPLAY_DOUBLE_BUFFER_COUNT;
     for (bctx=ctx->record_allocator.bcontexts; bctx<end; bctx++) {
-        free(bctx->records);
+        binlog_free_records(bctx->records, bctx->elements_limit);
         free(bctx->counters);
     }
 }

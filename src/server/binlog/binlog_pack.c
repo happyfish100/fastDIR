@@ -120,6 +120,7 @@ typedef struct {
 } BinlogFieldValue;
 
 typedef struct {
+    BinlogPackContext *pctx;
     struct fast_mpool_man *mpool;
     const char *p;
     const char *rec_end;
@@ -580,11 +581,103 @@ static inline const char *get_field_type_caption(const int type)
     }
 }
 
+static int realloc_xattr_kvarray(SFKeyValueArray *kvarray,
+        const int target_count)
+{
+    key_value_pair_t *new_elts;
+    int new_alloc;
+
+    if (kvarray->alloc == 0) {
+        new_alloc = 64;
+    } else {
+        new_alloc = 2 * kvarray->alloc;
+    }
+    while (new_alloc < target_count) {
+        new_alloc *= 2;
+    }
+
+    new_elts = fc_malloc(sizeof(key_value_pair_t) * new_alloc);
+    if (new_elts == NULL) {
+        return ENOMEM;
+    }
+
+    if (kvarray->elts != NULL) {
+        free(kvarray->elts);
+    }
+    kvarray->elts = new_elts;
+    kvarray->alloc = new_alloc;
+    return 0;
+}
+
+static int parse_xattr_list(FieldParserContext *pcontext,
+        FDIRBinlogRecord *record)
+{
+    const fc_json_map_t *jmap;
+    const string_t *error_info;
+    key_value_pair_t *src;
+    key_value_pair_t *dest;
+    key_value_pair_t *end;
+    int result;
+
+    jmap = fc_decode_json_map(&pcontext->pctx->json_ctx,
+            &pcontext->fv.value.s);
+    if (jmap == NULL) {
+        error_info = fc_json_parser_get_error_info(
+                &pcontext->pctx->json_ctx);
+        snprintf(pcontext->error_info, pcontext->error_size,
+                "inode: %"PRId64", json decode error: %.*s",
+                record->inode, error_info->len, error_info->str);
+        return fc_json_parser_get_error_no(&pcontext->pctx->json_ctx);
+    }
+
+    if (jmap->count == 0) {
+        record->xattr_kvarray.count = 0;
+        return 0;
+    }
+
+    if (record->xattr_kvarray.alloc < jmap->count) {
+        if ((result=realloc_xattr_kvarray(&record->
+                        xattr_kvarray, jmap->count)) != 0)
+        {
+            return result;
+        }
+    }
+
+    if (pcontext->mpool == NULL) {
+        memcpy(record->xattr_kvarray.elts, jmap->elements,
+                sizeof(key_value_pair_t) * jmap->count);
+        record->xattr_kvarray.count = jmap->count;
+        return 0;
+    }
+
+    result = 0;
+    end = jmap->elements + jmap->count;
+    for (src=jmap->elements, dest=record->xattr_kvarray.elts;
+            src<end; src++, dest++)
+    {
+        if ((result=fast_mpool_alloc_string_ex2(pcontext->mpool,
+                        &dest->key, &src->key)) != 0)
+        {
+            break;
+        }
+
+        if ((result=fast_mpool_alloc_string_ex2(pcontext->mpool,
+                        &dest->value, &src->value)) != 0)
+        {
+            break;
+        }
+    }
+
+    record->xattr_kvarray.count = dest - record->xattr_kvarray.elts;
+    return result;
+}
+
 static int binlog_set_field_value(FieldParserContext *pcontext,
         FDIRBinlogRecord *record)
 {
     int index;
     int expect_type;
+    int result;
 
     index = pcontext->fv.name[0] * 256 + pcontext->fv.name[1];
     switch (index) {
@@ -760,6 +853,23 @@ static int binlog_set_field_value(FieldParserContext *pcontext,
             expect_type = BINLOG_FIELD_TYPE_STRING;
             if (pcontext->fv.type == expect_type) {
                 record->xattr.value = pcontext->fv.value.s;
+            }
+            break;
+        case BINLOG_RECORD_FIELD_INDEX_XATTR_LIST:
+            if (record->operation != BINLOG_OP_DUMP_DENTRY_INT) {
+                sprintf(pcontext->error_info, "operation: %s, "
+                        "unexpected field name: %.*s (xattr list)",
+                        get_operation_label(record->operation),
+                        BINLOG_RECORD_FIELD_NAME_LENGTH, pcontext->fv.name);
+                return EINVAL;
+            }
+            expect_type = BINLOG_FIELD_TYPE_STRING;
+            if (pcontext->fv.type == expect_type) {
+                if (pcontext->pctx != NULL) {
+                    if ((result=parse_xattr_list(pcontext, record)) != 0) {
+                        return result;
+                    }
+                }
             }
             break;
         default:
@@ -993,15 +1103,16 @@ static int binlog_check_record(const char *str, const int len,
         pcontext.error_size = errsize;  \
     } while (0)
 
-int binlog_unpack_record_ex(const char *str, const int len,
-        FDIRBinlogRecord *record, const char **record_end,
-        char *error_info, const int error_size,
-        struct fast_mpool_man *mpool)
+
+int binlog_unpack_record_ex(BinlogPackContext *context, const char *str,
+        const int len, FDIRBinlogRecord *record, const char **record_end,
+        char *error_info, const int error_size, struct fast_mpool_man *mpool)
 {
     FieldParserContext pcontext;
     int result;
 
     memset(record, 0, (long)(&((FDIRBinlogRecord*)0)->notify));
+    pcontext.pctx = context;
     pcontext.mpool = mpool;
     BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     if ((result=binlog_check_record(str, len, &pcontext)) != 0) {

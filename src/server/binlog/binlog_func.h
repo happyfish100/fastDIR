@@ -33,6 +33,36 @@ static inline int binlog_buffer_init(SFBinlogBuffer *buffer)
     return sf_binlog_buffer_init(buffer, size);
 }
 
+static inline int binlog_alloc_records(FDIRBinlogRecord
+        **records, const int alloc_size)
+{
+    int bytes;
+
+    bytes = sizeof(FDIRBinlogRecord) * alloc_size;
+    *records = (FDIRBinlogRecord *)fc_malloc(bytes);
+    if (*records == NULL) {
+        return ENOMEM;
+    }
+    memset(*records, 0, bytes);
+    return 0;
+}
+
+static inline void binlog_free_records(FDIRBinlogRecord
+        *records, const int alloc_size)
+{
+    FDIRBinlogRecord *record;
+    FDIRBinlogRecord *end;
+
+    end = records + alloc_size;
+    for (record=records; record<end; record++) {
+        if (record->xattr_kvarray.elts != NULL) {
+            free(record->xattr_kvarray.elts);
+        }
+    }
+
+    free(records);
+}
+
 #ifdef __cplusplus
 }
 #endif

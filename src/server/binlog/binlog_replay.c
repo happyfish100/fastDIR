@@ -32,7 +32,7 @@
 #include "sf/sf_global.h"
 #include "../server_global.h"
 #include "../data_thread.h"
-#include "binlog_pack.h"
+#include "binlog_func.h"
 #include "binlog_reader.h"
 #include "binlog_replay.h"
 
@@ -85,7 +85,6 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     FDIRBinlogRecord *record;
     FDIRBinlogRecord *rend;
     int result;
-    int bytes;
 
     replay_ctx->record_count = 0;
     replay_ctx->skip_count = 0;
@@ -98,14 +97,18 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
     replay_ctx->data_current_version = __sync_add_and_fetch(
             &DATA_CURRENT_VERSION, 0);
     replay_ctx->record_array.size = batch_size * DATA_THREAD_COUNT;
-    bytes = sizeof(FDIRBinlogRecord) * replay_ctx->record_array.size;
-    replay_ctx->record_array.records = (FDIRBinlogRecord *)fc_malloc(bytes);
-    if (replay_ctx->record_array.records == NULL) {
-        return ENOMEM;
+
+    if ((result=binlog_alloc_records(&replay_ctx->record_array.records,
+                    replay_ctx->record_array.size)) != 0)
+    {
+        return result;
     }
-    memset(replay_ctx->record_array.records, 0, bytes);
 
     if ((result=init_pthread_lock_cond_pair(&replay_ctx->lcp)) != 0) {
+        return result;
+    }
+
+    if ((result=binlog_pack_context_init(&replay_ctx->pack_ctx)) != 0) {
         return result;
     }
 
@@ -127,11 +130,13 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
 void binlog_replay_destroy(BinlogReplayContext *replay_ctx)
 {
     if (replay_ctx->record_array.records != NULL) {
-        free(replay_ctx->record_array.records);
+        binlog_free_records(replay_ctx->record_array.records,
+                replay_ctx->record_array.size);
         replay_ctx->record_array.records = NULL;
     }
 
     destroy_pthread_lock_cond_pair(&replay_ctx->lcp);
+    binlog_pack_context_destroy(&replay_ctx->pack_ctx);
     fast_mpool_destroy(&replay_ctx->mpool);
 }
 
@@ -156,9 +161,9 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         fast_mpool_reset(&replay_ctx->mpool);
         record = replay_ctx->record_array.records;
         while (p < end) {
-            if ((result=binlog_unpack_record_ex(p, end - p, record,
-                            &rend, error_info, sizeof(error_info),
-                            &replay_ctx->mpool)) != 0)
+            if ((result=binlog_unpack_record_ex(&replay_ctx->pack_ctx, p,
+                            end - p, record, &rend, error_info, sizeof(
+                                error_info), &replay_ctx->mpool)) != 0)
             {
                 if (binlog_position != NULL) {
                     char filename[PATH_MAX];

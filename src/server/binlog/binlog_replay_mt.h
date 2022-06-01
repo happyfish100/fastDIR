@@ -30,6 +30,7 @@ typedef struct data_thread_counter {
 } DataThreadCounter;
 
 typedef struct binlog_batch_context {
+    int elements_limit;
     FDIRBinlogRecord *records;
     BinlogReadThreadResult **results;
     DataThreadCounter *counters;

@@ -42,18 +42,17 @@ void binlog_pack_context_destroy(BinlogPackContext *context);
 int binlog_pack_record_ex(BinlogPackContext *context,
         const FDIRBinlogRecord *record, FastBuffer *buffer);
 
-int binlog_unpack_record_ex(const char *str, const int len,
-        FDIRBinlogRecord *record, const char **record_end,
-        char *error_info, const int error_size,
-        struct fast_mpool_man *mpool);
+int binlog_unpack_record_ex(BinlogPackContext *context, const char *str,
+        const int len, FDIRBinlogRecord *record, const char **record_end,
+        char *error_info, const int error_size, struct fast_mpool_man *mpool);
 
 #define binlog_pack_record(record, buffer) \
     binlog_pack_record_ex(NULL, record, buffer)
 
 #define binlog_unpack_record(str, len, record, record_end, \
         error_info, error_size) \
-    binlog_unpack_record_ex(str, len, record, record_end, \
-            error_info, error_size, NULL)
+    binlog_unpack_record_ex(NULL, str, len, record, \
+            record_end, error_info, error_size, NULL)
 
 int binlog_detect_record(const char *str, const int len,
         int64_t *data_version, const char **rec_end,
