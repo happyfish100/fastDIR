@@ -265,7 +265,7 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
+int dentry_check_load_xattr(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
@@ -311,7 +311,19 @@ int dentry_load_xattr(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-int dentry_check_load(FDIRDataThreadContext *thread_ctx,
+int dentry_check_load_children(FDIRDataThreadContext *thread_ctx,
+        FDIRServerDentry *dentry)
+{
+    if (S_ISDIR(dentry->stat.mode) && (dentry->db_args->loaded_flags &
+                FDIR_DENTRY_LOADED_FLAGS_CHILDREN) == 0)
+    {
+        return dentry_load_children(dentry);
+    } else {
+        return 0;
+    }
+}
+
+int dentry_check_load_basic_children(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
@@ -327,12 +339,10 @@ int dentry_check_load(FDIRDataThreadContext *thread_ctx,
     if (S_ISDIR(dentry->stat.mode) && (dentry->db_args->loaded_flags &
                 FDIR_DENTRY_LOADED_FLAGS_CHILDREN) == 0)
     {
-        if ((result=dentry_load_children(dentry)) != 0) {
-            return result;
-        }
+        return dentry_load_children(dentry);
+    } else {
+        return 0;
     }
-
-    return 0;
 }
 
 int dentry_load_root(FDIRNamespaceEntry *ns_entry,

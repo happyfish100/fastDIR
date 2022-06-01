@@ -36,7 +36,7 @@ static int output_xattr(DataDumperContext *dump_ctx,
     key_value_pair_t *end;
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_load_xattr(dentry->context->
+        if ((result=dentry_check_load_xattr(dentry->context->
                         thread_ctx, dentry)) != 0)
         {
             return result;
@@ -110,8 +110,8 @@ static int dentry_dump(DataDumperContext *dump_ctx, FDIRServerDentry *dentry)
     UniqSkiplistIterator iterator;
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_check_load(dentry->context->
-                        thread_ctx, dentry)) != 0)
+        if ((result=dentry_check_load_basic_children(dentry->
+                        context->thread_ctx, dentry)) != 0)
         {
             return result;
         }

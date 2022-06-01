@@ -452,7 +452,9 @@ static inline int find_child(FDIRDataThreadContext *thread_ctx,
     FDIRServerDentry target;
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_check_load(thread_ctx, parent)) != 0) {
+        if ((result=dentry_check_load_basic_children(
+                        thread_ctx, parent)) != 0)
+        {
             *child = NULL;
             return result;
         }
@@ -471,7 +473,9 @@ static inline int find_child(FDIRDataThreadContext *thread_ctx,
     }
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_check_load(thread_ctx, *child)) != 0) {
+        if ((result=dentry_check_load_basic_children(
+                        thread_ctx, *child)) != 0)
+        {
             *child = NULL;
             return result;
         }

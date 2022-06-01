@@ -254,17 +254,28 @@ FDIRServerDentry *inode_index_find_dentry(const int64_t inode)
     return dentry;
 }
 
-int inode_index_get_dentry(FDIRDataThreadContext *thread_ctx,
-        const int64_t inode, FDIRServerDentry **dentry)
+int inode_index_get_dentry_ex(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, FDIRServerDentry **dentry,
+        const bool load_children)
 {
-    if ((*dentry=inode_index_find_dentry(inode)) != NULL) {
-        return 0;
+    int result;
+
+    if ((*dentry=inode_index_find_dentry(inode)) == NULL) {
+        if (STORAGE_ENABLED) {
+            if ((result=dentry_load_inode(thread_ctx, NULL,
+                            inode, dentry)) != 0)
+            {
+                return result;
+            }
+        } else {
+            return ENOENT;
+        }
     }
 
-    if (STORAGE_ENABLED) {
-        return dentry_load_inode(thread_ctx, NULL, inode, dentry);
+    if (STORAGE_ENABLED && load_children) {
+        return dentry_check_load_children(thread_ctx, *dentry);
     } else {
-        return ENOENT;
+        return 0;
     }
 }
 
@@ -352,7 +363,7 @@ static int get_xattr(FDIRServerDentry *dentry, const string_t *name,
     key_value_pair_t *end;
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_load_xattr(dentry->context->
+        if ((result=dentry_check_load_xattr(dentry->context->
                         thread_ctx, dentry)) != 0)
         {
             *kv = NULL;

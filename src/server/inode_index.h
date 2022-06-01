@@ -36,8 +36,12 @@ extern "C" {
 
     FDIRServerDentry *inode_index_find_dentry(const int64_t inode);
 
-    int inode_index_get_dentry(FDIRDataThreadContext *thread_ctx,
-            const int64_t inode, FDIRServerDentry **dentry);
+    int inode_index_get_dentry_ex(FDIRDataThreadContext *thread_ctx,
+            const int64_t inode, FDIRServerDentry **dentry,
+            const bool load_children);
+
+#define inode_index_get_dentry(thread_ctx, inode, dentry) \
+    inode_index_get_dentry_ex(thread_ctx, inode, dentry, false)
 
     int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
             const int64_t parent_inode, const string_t *name,

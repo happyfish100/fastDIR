@@ -26,8 +26,10 @@
 struct fdir_data_thread_context;
 
 typedef struct fdir_binlog_dump_context {
-    volatile int64_t current_version;
     int64_t last_data_version;   //for padding
+    volatile int64_t current_version;
+    volatile int64_t orphan_count;
+    volatile int64_t hardlink_count;
     char subdir_name[32];
     int result;
     SFSynchronizeContext sctx;

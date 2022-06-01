@@ -38,6 +38,7 @@ typedef struct {
 typedef struct {
     DEntryChainNode *head;
     DEntryChainNode *tail;
+    int64_t count;
 } DEntryNodeList;
 
 typedef struct {
@@ -54,6 +55,7 @@ typedef struct {
 typedef struct {
     int64_t last_data_version;   //for waiting binlog write done
     int64_t write_done_version;  //the data version of binlog write done
+    uint32_t hardlink_count;
     FDIRBinlogRecord record;
     VersionedBufferArray buffer_array;
     BinlogPackContext pack_ctx;
@@ -93,6 +95,8 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
 
     dump_ctx->result = 0;
     dump_ctx->current_version = 0;
+    dump_ctx->orphan_count = 0;
+    dump_ctx->hardlink_count = 0;
     if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->
                     bwctx.writer, DATA_PATH_STR, subdir_name,
                     DUMP_FILE_PREFIX_NAME, next_version, buffer_size,
@@ -224,8 +228,6 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
         return result;
     }
 
-    logInfo("file: "__FILE__", line: %d", __LINE__);
-
     if (g_data_thread_vars.thread_array.count <= RECORD_FIXED_COUNT) {
         records.elts = records.holder;
     } else {
@@ -242,9 +244,6 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
 
     memset(records.elts, 0, sizeof(FDIRBinlogRecord) *
             g_data_thread_vars.thread_array.count);
-
-    logInfo("file: "__FILE__", line: %d, thread count: %d",
-            __LINE__, g_data_thread_vars.thread_array.count);
 
     sf_synchronize_counter_add(&dump_ctx.sctx,
             g_data_thread_vars.thread_array.count);
@@ -275,9 +274,13 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
                         out_filename)) == 0)
         {
             time_used_ms = get_current_time_ms() - start_time_ms;
+            long_to_comma_str(time_used_ms, buff);
             logInfo("file: "__FILE__", line: %d, "
-                    "dump data to %s done, time used: %s ms", __LINE__,
-                    out_filename, long_to_comma_str(time_used_ms, buff));
+                    "dump data to %s done, dentry count: %"PRId64", "
+                    "hardlink count: %"PRId64", orphan inode count: "
+                    "%"PRId64", time used: %s ms", __LINE__, out_filename,
+                    dump_ctx.current_version, dump_ctx.hardlink_count,
+                    dump_ctx.orphan_count, buff);
         }
     }
 
@@ -376,6 +379,7 @@ static inline DEntryChainNode *add_to_list(DataDumperContext *dd_ctx,
         list->tail->nexts.chain = node;
     }
     list->tail = node;
+    list->count++;
 
     return node;
 }
@@ -437,20 +441,15 @@ static inline int output_dentry_list(DataDumperContext *dd_ctx,
         DEntryNodeList *list)
 {
     int result;
-    uint32_t count;
     DEntryChainNode *node;
 
-    count = 0;
     node = list->head;
     while (node != NULL) {
         if ((result=output_dentry(dd_ctx, node->dentry)) != 0) {
             return result;
         }
         node = node->nexts.chain;
-        ++count;
     }
-
-    logInfo("======dentry list count======: %d", count);
 
     return 0;
 }
@@ -462,13 +461,13 @@ static int dentry_dump(DataDumperContext *dd_ctx, FDIRServerDentry *dentry)
     UniqSkiplistIterator iterator;
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_check_load(dentry->context->
-                        thread_ctx, dentry)) != 0)
+        if ((result=dentry_check_load_basic_children(dentry->
+                        context->thread_ctx, dentry)) != 0)
         {
             return result;
         }
 
-        if ((result=dentry_load_xattr(dentry->context->
+        if ((result=dentry_check_load_xattr(dentry->context->
                         thread_ctx, dentry)) != 0)
         {
             return result;
@@ -639,6 +638,11 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     {
         result = output_dentry_list(&dd_ctx, &dd_ctx.hardlink.list);
     }
+
+    FC_ATOMIC_INC_EX(dump_ctx->orphan_count, dd_ctx.
+                    hardlink.orphan.list.count);
+    FC_ATOMIC_INC_EX(dump_ctx->hardlink_count,
+            dd_ctx.hardlink.list.count);
 
     logInfo("data thread #%d, last_data_version: %"PRId64", "
             "current write done version: %"PRId64,
