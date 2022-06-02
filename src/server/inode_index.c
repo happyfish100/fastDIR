@@ -693,16 +693,16 @@ void inode_index_free_flock_entry(FDIRServerDentry *dentry)
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
-int inode_index_xattrs_copy(const key_value_array_t *kv_array,
-        FDIRServerDentry *dentry)
+int inode_index_xattrs_copy(const key_value_pair_t *xattrs,
+        const int count, FDIRServerDentry *dentry)
 {
     int result;
     const key_value_pair_t *src;
     const key_value_pair_t *end;
     key_value_pair_t *dest;
 
-    end = kv_array->kv_pairs + kv_array->count;
-    for (src=kv_array->kv_pairs; src<end; src++) {
+    end = xattrs + count;
+    for (src=xattrs; src<end; src++) {
         if ((dest=check_alloc_kvpair(dentry->context,
                         dentry, &result)) == NULL)
         {

@@ -20,6 +20,7 @@
 
 #include <pthread.h>
 #include "binlog_types.h"
+#include "binlog_pack.h"
 #include "binlog_read_thread.h"
 
 #define BINLOG_REPLAY_DOUBLE_BUFFER_COUNT   2
@@ -50,6 +51,7 @@ typedef struct binlog_parse_thread_context {
         pthread_lock_cond_pair_t lcp;
     } notify;
 
+    BinlogPackContext pack_ctx;
     BinlogRecordChain records;  //for output
     BinlogReadThreadResult *r;
     struct binlog_replay_mt_context *replay_ctx;

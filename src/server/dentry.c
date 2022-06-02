@@ -733,6 +733,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
     FDIRServerDentry *current;
+    bool is_root;
     bool is_dir;
     int result;
 
@@ -745,10 +746,16 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
         return EINVAL;
     }
 
-    if ((result=dentry_find_me(thread_ctx, &record->ns,
-                    &record->me, &ns_entry, true)) != ENOENT)
-    {
-        return (result == 0 ? EEXIST : result);
+    if (record->me.parent == NULL && record->me.pname.name.len > 0) {
+        /* orphan inode */
+        is_root = false;
+    } else {
+        if ((result=dentry_find_me(thread_ctx, &record->ns,
+                        &record->me, &ns_entry, true)) != ENOENT)
+        {
+            return (result == 0 ? EEXIST : result);
+        }
+        is_root = (record->me.parent == NULL);
     }
 
     if ((current=dentry_alloc_object(thread_ctx)) == NULL) {
@@ -835,7 +842,9 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     }
 
     if (current->parent == NULL) {
-        ns_entry->current.root.ptr = current;
+        if (is_root) {
+            ns_entry->current.root.ptr = current;
+        }
     } else if ((result=uniq_skiplist_insert(current->
                     parent->children, current)) == 0)
     {

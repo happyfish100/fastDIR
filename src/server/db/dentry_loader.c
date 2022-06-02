@@ -302,7 +302,9 @@ int dentry_check_load_xattr(FDIRDataThreadContext *thread_ctx,
             return result;
         }
 
-        if ((result=inode_index_xattrs_copy(kv_array, dentry)) != 0) {
+        if ((result=inode_index_xattrs_copy(kv_array->kv_pairs,
+                        kv_array->count, dentry)) != 0)
+        {
             return result;
         }
     }

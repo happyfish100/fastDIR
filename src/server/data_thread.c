@@ -924,6 +924,29 @@ static inline void deal_affected_dentries(FDIRBinlogRecord *record)
     }
 }
 
+static int deal_dump_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+
+    if ((result=check_parent(thread_ctx, record)) != 0) {
+        return result;
+    }
+
+    if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+        if ((result=set_hdlink_src_dentry(thread_ctx, record)) != 0) {
+            return result;
+        }
+    }
+
+    if ((result=dentry_create(thread_ctx, record)) != 0) {
+        return result;
+    }
+
+    return inode_index_xattrs_copy(record->xattr_kvarray.elts,
+            record->xattr_kvarray.count, record->me.dentry);
+}
+
 static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
@@ -992,20 +1015,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
             ignore_errno = ENODATA;
             break;
         case BINLOG_OP_DUMP_DENTRY_INT:
-            if ((result=check_parent(thread_ctx, record)) != 0) {
-                break;
-            }
-
-            if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
-                if ((result=set_hdlink_src_dentry(thread_ctx,
-                                record)) != 0)
-                {
-                    ignore_errno = 0;
-                    break;
-                }
-            }
-            result = dentry_create(thread_ctx, record);
-            //TODO
+            result = deal_dump_dentry(thread_ctx, record);
             ignore_errno = EEXIST;
             break;
         case SERVICE_OP_SYS_LOCK_RELEASE_INT:

@@ -93,8 +93,9 @@ static int parse_buffer(BinlogParseThreadContext *thread_ctx)
     while (p < buff_end) {
         record = bctx->records + __sync_fetch_and_add(&thread_ctx->
                 replay_ctx->record_allocator.elt_index, 1);
-        if ((result=binlog_unpack_record(p, buff_end - p, record,
-                        &rend, error_info, sizeof(error_info))) != 0)
+        if ((result=binlog_unpack_record_ex(&thread_ctx->pack_ctx, p,
+                        buff_end - p, record, &rend, error_info,
+                        sizeof(error_info), NULL)) != 0)
         {
             char filename[PATH_MAX];
             int64_t line_count;
@@ -161,6 +162,10 @@ static int init_parse_thread_context(BinlogParseThreadContext *thread_ctx)
     int result;
 
     if ((result=init_pthread_lock_cond_pair(&thread_ctx->notify.lcp)) != 0) {
+        return result;
+    }
+
+    if ((result=binlog_pack_context_init(&thread_ctx->pack_ctx)) != 0) {
         return result;
     }
 
@@ -277,6 +282,7 @@ static void destroy_parse_thread_ctx_array(BinlogParseThreadCtxArray *ctx_array)
     end = ctx_array->contexts + ctx_array->count;
     for (ctx=ctx_array->contexts; ctx<end; ctx++) {
         destroy_pthread_lock_cond_pair(&ctx->notify.lcp);
+        binlog_pack_context_destroy(&ctx->pack_ctx);
     }
 
     free(ctx_array->contexts);
