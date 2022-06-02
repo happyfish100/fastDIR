@@ -24,6 +24,7 @@
 typedef struct {
     char filename[PATH_MAX];
     int fd;
+    int start_index;  //binlog start index
     SFBinlogFilePosition position;
     SFBinlogBuffer binlog_buffer;
 } ServerBinlogReader;

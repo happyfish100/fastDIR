@@ -358,14 +358,14 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
     dirction = 0;
 
     do {
-        if ((result=binlog_get_first_record_version(reader->position.index,
-                        &min_data_version)) != 0)
+        if ((result=binlog_get_first_record_version(reader->
+                        position.index, &min_data_version)) != 0)
         {
             return result;
         }
 
-        if ((result=binlog_get_last_record_version(reader->position.index,
-                        &max_data_version)) != 0)
+        if ((result=binlog_get_last_record_version(reader->
+                        position.index, &max_data_version)) != 0)
         {
             return result;
         }
@@ -383,7 +383,7 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
                 return EBUSY;
             }
 
-            if (reader->position.index > 0) {
+            if (reader->position.index > reader->start_index) {
                 reader->position.index--;
             } else {
                 return EFAULT;
@@ -423,8 +423,8 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 
     if ((result=open_readable_binlog(reader)) != 0) {
         if (result == ENOENT) {
-            if (reader->position.index > 0) {
-                reader->position.index -= 1;
+            if (reader->position.index > reader->start_index) {
+                reader->position.index--;
                 reader->position.offset = 0;
                 result = open_readable_binlog(reader);
             }
@@ -487,6 +487,11 @@ int binlog_reader_init(ServerBinlogReader *reader,
         const int64_t last_data_version)
 {
     int result;
+    int last_index;
+
+    if ((result=binlog_get_indexes(&reader->start_index, &last_index)) != 0) {
+        return result;
+    }
 
     if ((result=binlog_buffer_init(&reader->binlog_buffer)) != 0) {
         return result;
@@ -494,19 +499,32 @@ int binlog_reader_init(ServerBinlogReader *reader,
 
     reader->fd = -1;
     if (last_data_version == 0) {
-        reader->position.index = 0;
-        reader->position.offset = 0;
-        return open_readable_binlog(reader);
+        if (reader->start_index == 0) {
+            reader->position.index = 0;
+            reader->position.offset = 0;
+            return open_readable_binlog(reader);
+        } else {
+            return SF_CLUSTER_ERROR_BINLOG_MISSED;
+        }
     }
 
-    reader->position = *hint_pos;
-    if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 4) {
-        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 4;
-    } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 8) {
-        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 8;
-    } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 16) {
-        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 16;
+    if (hint_pos->index < reader->start_index) {
+        reader->position.index = reader->start_index;
+        reader->position.offset = 0;
+    } else if (hint_pos->index > last_index) {
+        reader->position.index = last_index;
+        reader->position.offset = 0;
+    } else {
+        reader->position = *hint_pos;
+        if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 4) {
+            reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 4;
+        } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 8) {
+            reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 8;
+        } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 16) {
+            reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 16;
+        }
     }
+
     return binlog_reader_detect_open(reader, last_data_version);
 }
 

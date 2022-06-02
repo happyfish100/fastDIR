@@ -52,6 +52,11 @@ static inline void binlog_write_finish()
     sf_binlog_writer_finish(&g_binlog_writer_ctx.writer);
 }
 
+static inline int binlog_get_start_index()
+{
+    return sf_binlog_get_start_index(&g_binlog_writer_ctx.writer);
+}
+
 static inline int binlog_get_current_write_index()
 {
     return sf_binlog_get_current_write_index(&g_binlog_writer_ctx.writer);
@@ -62,6 +67,12 @@ static inline void binlog_get_current_write_position(
 {
     sf_binlog_get_current_write_position(
             &g_binlog_writer_ctx.writer, position);
+}
+
+static inline int binlog_get_indexes(int *start_index, int *last_index)
+{
+    return sf_binlog_get_indexes(&g_binlog_writer_ctx.
+            writer, start_index, last_index);
 }
 
 static inline int push_to_binlog_write_queue(
