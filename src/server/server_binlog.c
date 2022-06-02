@@ -42,6 +42,11 @@ int server_binlog_init()
     if ((result=binlog_pack_init()) != 0) {
         return result;
     }
+
+    if ((result=binlog_dump_load_from_mark_file()) != 0) {
+        return result;
+    }
+
     if ((result=binlog_local_consumer_init()) != 0) {
         return result;
     }

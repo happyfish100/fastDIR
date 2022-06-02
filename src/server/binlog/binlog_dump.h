@@ -27,6 +27,7 @@ struct fdir_data_thread_context;
 
 typedef struct fdir_binlog_dump_context {
     int64_t last_data_version;   //for padding
+    SFBinlogFilePosition hint_pos;
     volatile int64_t current_version;
     volatile int64_t orphan_count;
     volatile int64_t hardlink_count;
@@ -40,11 +41,32 @@ typedef struct fdir_binlog_dump_context {
 extern "C" {
 #endif
 
-int binlog_dump_all(const char *subdir_name, char *out_filename);
+    static inline const char *fdir_get_dump_data_filename(
+            char *filename, const int size)
+    {
+        return sf_binlog_writer_get_filename(DATA_PATH_STR,
+                FDIR_DATA_DUMP_SUBDIR_NAME, 0, filename, size);
+    }
 
-/* this function is called by data thread only */
-int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
-        FDIRBinlogDumpContext *dump_ctx);
+    static inline const char *fdir_get_dump_mark_filename(
+            char *filename, const int size)
+    {
+        char filepath[PATH_MAX];
+        sf_binlog_writer_get_filepath(DATA_PATH_STR,
+                FDIR_DATA_DUMP_SUBDIR_NAME,
+                filepath, sizeof(filepath));
+        snprintf(filename, size, "%s/%s.mark",
+                filepath, SF_BINLOG_FILE_PREFIX);
+        return filename;
+    }
+
+    int binlog_dump_load_from_mark_file();
+
+    int binlog_dump_all();
+
+    /* this function is called by data thread only */
+    int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
+            FDIRBinlogDumpContext *dump_ctx);
 
 #ifdef __cplusplus
 }

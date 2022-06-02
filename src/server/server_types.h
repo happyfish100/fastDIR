@@ -68,6 +68,7 @@
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
 #define FDIR_BINLOG_SUBDIR_NAME      "binlog"
+#define FDIR_DATA_DUMP_SUBDIR_NAME   "binlog/dump"
 
 #define FDIR_FORCE_ELECTION_LONG_OPTION_STR  "force-master-election"
 #define FDIR_FORCE_ELECTION_LONG_OPTION_LEN  (sizeof(  \

@@ -95,6 +95,12 @@ typedef struct server_global_vars {
     } binlog;
 
     struct {
+        volatile char dumping;  //if dump data in progress
+        int64_t last_data_version;
+        SFBinlogFilePosition next_position; //for normal binlog
+    } full_dump;
+
+    struct {
         bool enabled;
         bool read_by_direct_io;
         int batch_store_on_modifies;
@@ -188,6 +194,10 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
 #define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
+
+#define FULL_DUMPING           g_server_global_vars.full_dump.dumping
+#define DUMP_LAST_DATA_VERSION g_server_global_vars.full_dump.last_data_version
+#define DUMP_NEXT_POSITION     g_server_global_vars.full_dump.next_position
 
 #define BINLOG_RECORD_COUNT  g_server_global_vars.binlog.record_count
 #define BINLOG_DEDUP_ENABLED g_server_global_vars.binlog.dedup_enabled

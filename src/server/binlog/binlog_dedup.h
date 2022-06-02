@@ -21,18 +21,9 @@
 #include "../server_global.h"
 #include "binlog_types.h"
 
-#define FDIR_DEDUP_SUBDIR_NAME    "binlog/dump"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-    static inline const char *binlog_dedup_get_filename(
-            char *filename, const int size)
-    {
-        return sf_binlog_writer_get_filename(DATA_PATH_STR,
-                FDIR_DEDUP_SUBDIR_NAME, 0, filename, size);
-    }
 
     int binlog_dedup_add_schedule();
 

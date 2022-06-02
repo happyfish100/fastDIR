@@ -26,7 +26,7 @@ static inline int check_make_subdir()
     char path[PATH_MAX];
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
-            FDIR_DEDUP_SUBDIR_NAME, path, sizeof(path));
+            FDIR_DATA_DUMP_SUBDIR_NAME, path, sizeof(path));
     return fc_check_mkdir(path, 0755);
 }
 
@@ -62,8 +62,7 @@ static int binlog_dedup_func(void *args)
                     dentry_count, BINLOG_RECORD_COUNT, dedup_ratio * 100.00);
 
             old_binlog_count = FC_ATOMIC_GET(BINLOG_RECORD_COUNT);
-            binlog_dedup_get_filename(filename, sizeof(filename));
-            result = binlog_dump_all(FDIR_DEDUP_SUBDIR_NAME, filename);
+            result = binlog_dump_all();
             new_binlog_count = FC_ATOMIC_GET(BINLOG_RECORD_COUNT);
             if (result == 0) {
                 int64_t inc_count;
@@ -71,6 +70,7 @@ static int binlog_dedup_func(void *args)
                 new_binlog_count = dentry_count + inc_count;
                 FC_ATOMIC_SET(BINLOG_RECORD_COUNT, new_binlog_count);
             }
+            fdir_get_dump_data_filename(filename, sizeof(filename));
             time_used = get_current_time_ms() - start_time_ms;
             long_to_comma_str(time_used, time_buff);
             logInfo("file: "__FILE__", line: %d, "

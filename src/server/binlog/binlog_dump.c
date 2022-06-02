@@ -18,9 +18,16 @@
 #include "../db/dentry_loader.h"
 #include "../dentry.h"
 #include "../data_thread.h"
+#include "binlog_reader.h"
+#include "binlog_write.h"
 #include "binlog_dump.h"
 
 #define DUMP_FILE_PREFIX_NAME  "dump"
+
+#define DUMP_MARK_ITEM_LAST_DATA_VERSION   "last_data_version"
+#define DUMP_MARK_ITEM_NEXT_BINLOG_INDEX   "next_binlog_index"
+#define DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET  "next_binlog_offset"
+
 
 typedef struct dentry_chain_node {
     FDIRServerDentry *dentry;
@@ -69,6 +76,63 @@ typedef struct {
     } hardlink;
     FDIRBinlogDumpContext *dump_ctx;
 } DataDumperContext;  //for data thread
+
+
+static int binlog_dump_write_to_mark_file()
+{
+    char filename[PATH_MAX];
+    char buff[256];
+    int result;
+    int len;
+
+    fdir_get_dump_mark_filename(filename, sizeof(filename));
+    len = sprintf(buff, "%s=%"PRId64"\n"
+            "%s=%d\n"
+            "%s=%"PRId64"\n",
+            DUMP_MARK_ITEM_LAST_DATA_VERSION, DUMP_LAST_DATA_VERSION,
+            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX, DUMP_NEXT_POSITION.index,
+            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET, DUMP_NEXT_POSITION.offset);
+    if ((result=safeWriteToFile(filename, buff, len)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "write to file \"%s\" fail, errno: %d, error info: %s",
+                __LINE__, filename, result, STRERROR(result));
+    }
+
+    return result;
+}
+
+int binlog_dump_load_from_mark_file()
+{
+    char filename[PATH_MAX];
+    IniContext ini_context;
+    int result;
+
+    fdir_get_dump_mark_filename(filename, sizeof(filename));
+    if (access(filename, F_OK) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        return result == ENOENT ? 0 : result;
+    }
+
+    if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "load from file \"%s\" fail, error code: %d",
+                __LINE__, filename, result);
+        return result;
+    }
+
+    DUMP_LAST_DATA_VERSION = iniGetInt64Value(NULL,
+            DUMP_MARK_ITEM_LAST_DATA_VERSION,
+            &ini_context, 0);
+    DUMP_NEXT_POSITION.index = iniGetIntValue(NULL,
+            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX,
+            &ini_context, 0);
+    DUMP_NEXT_POSITION.offset = iniGetInt64Value(NULL,
+            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET,
+            &ini_context, 0);
+
+    iniFreeContext(&ini_context);
+    return 0;
+}
 
 static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
         const char *subdir_name)
@@ -186,6 +250,7 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
 {
     int result;
     char tmp_filename[PATH_MAX];
+    ServerBinlogReader reader;
 
     sf_binlog_writer_get_filename_ex(DATA_PATH_STR,
             subdir_name, DUMP_FILE_PREFIX_NAME, 0,
@@ -200,14 +265,24 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
         return result;
     }
 
-    return 0;
+    if ((result=binlog_reader_init(&reader, &dump_ctx->hint_pos,
+                    dump_ctx->last_data_version)) != 0)
+    {
+        return result;
+    }
+
+    DUMP_LAST_DATA_VERSION = dump_ctx->last_data_version;
+    DUMP_NEXT_POSITION = reader.position;
+    binlog_reader_destroy(&reader);
+    return binlog_dump_write_to_mark_file();
 }
 
-int binlog_dump_all(const char *subdir_name, char *out_filename)
+static int dump_all()
 {
 #define RECORD_FIXED_COUNT  64
     int result;
     FDIRBinlogDumpContext dump_ctx;
+    char out_filename[PATH_MAX];
     struct {
         FDIRBinlogRecord holder[RECORD_FIXED_COUNT];
         FDIRBinlogRecord *elts;
@@ -224,7 +299,7 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
         return ENOENT;
     }
 
-    if ((result=init_dump_ctx(&dump_ctx, subdir_name)) != 0) {
+    if ((result=init_dump_ctx(&dump_ctx, FDIR_DATA_DUMP_SUBDIR_NAME)) != 0) {
         return result;
     }
 
@@ -248,6 +323,8 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
     sf_synchronize_counter_add(&dump_ctx.sctx,
             g_data_thread_vars.thread_array.count);
     dump_ctx.last_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+    binlog_get_current_write_position(&dump_ctx.hint_pos);
+
     end = records.elts + g_data_thread_vars.thread_array.count;
     for (record=records.elts; record<end; record++) {
         record->record_type = fdir_record_type_query;
@@ -270,7 +347,8 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
     destroy_dump_ctx(&dump_ctx);
 
     if (result == 0) {
-        if ((result=dump_finish(&dump_ctx, subdir_name,
+        fdir_get_dump_data_filename(out_filename, sizeof(out_filename));
+        if ((result=dump_finish(&dump_ctx, FDIR_DATA_DUMP_SUBDIR_NAME,
                         out_filename)) == 0)
         {
             time_used_ms = get_current_time_ms() - start_time_ms;
@@ -285,6 +363,19 @@ int binlog_dump_all(const char *subdir_name, char *out_filename)
     }
 
     return result;
+}
+
+int binlog_dump_all()
+{
+    int result;
+
+    if (__sync_bool_compare_and_swap(&FULL_DUMPING, 0, 1)) {
+        result = dump_all();
+        __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
+        return result;
+    } else {
+        return EINPROGRESS;
+    }
 }
 
 static int output_dentry(DataDumperContext *dd_ctx,

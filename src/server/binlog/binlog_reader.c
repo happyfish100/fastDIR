@@ -504,6 +504,8 @@ int binlog_reader_init(ServerBinlogReader *reader,
         reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 4;
     } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 8) {
         reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 8;
+    } else if (reader->position.offset > FDIR_BINLOG_RECORD_MAX_SIZE / 16) {
+        reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 16;
     }
     return binlog_reader_detect_open(reader, last_data_version);
 }
