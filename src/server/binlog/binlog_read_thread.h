@@ -32,9 +32,11 @@ typedef struct binlog_read_thread_result {
 
 typedef struct binlog_read_thread_context {
     ServerBinlogReader reader;
-    int buffer_count;
+    BinlogReaderParams next_reader_params;
+    unsigned char reader_index;
     volatile char continue_flag;
     volatile char running;
+    int buffer_count;
     pthread_t tid;
     BinlogReadThreadResult *results;
     struct {
@@ -44,16 +46,22 @@ typedef struct binlog_read_thread_context {
 } BinlogReadThreadContext;
 
 #define binlog_read_thread_init(ctx, hint_pos, last_data_version, buffer_size) \
-    binlog_read_thread_init_ex(ctx, hint_pos, last_data_version, buffer_size,  \
-            BINLOG_READ_THREAD_BUFFER_COUNT)
+    binlog_read_thread_init_ex(ctx, FDIR_BINLOG_SUBDIR_NAME, hint_pos, \
+            last_data_version, buffer_size, BINLOG_READ_THREAD_BUFFER_COUNT)
+
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+int binlog_read_thread_init1(BinlogReadThreadContext *ctx,
+        BinlogReaderParams params[2], const int buffer_size,
+        const int buffer_count);
+
 int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,
-        const SFBinlogFilePosition *hint_pos, const int64_t
-        last_data_version, const int buffer_size, const int buffer_count);
+        const char *subdir_name, const SFBinlogFilePosition *hint_pos,
+        const int64_t last_data_version, const int buffer_size,
+        const int buffer_count);
 
 static inline int binlog_read_thread_return_result_buffer(
         BinlogReadThreadContext *ctx, BinlogReadThreadResult *r)

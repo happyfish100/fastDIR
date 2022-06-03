@@ -899,25 +899,29 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
     }
 
     if (record->data_version <= 0) {
-        sprintf(pcontext->error_info, "expect data version field: %s",
+        sprintf(pcontext->error_info, "inode: %"PRId64", "
+                "expect data version field: %s", record->inode,
                 BINLOG_RECORD_FIELD_NAME_DATA_VERSION);
         return ENOENT;
     }
 
     if (record->options.hash_code == 0) {
-        sprintf(pcontext->error_info, "expect hash code field: %s",
+        sprintf(pcontext->error_info, "inode: %"PRId64", "
+                "expect hash code field: %s", record->inode,
                 BINLOG_RECORD_FIELD_NAME_HASH_CODE);
         return ENOENT;
     }
 
     if (record->operation == BINLOG_OP_NONE_INT) {
-        sprintf(pcontext->error_info, "expect operation field: %s",
+        sprintf(pcontext->error_info, "inode: %"PRId64", "
+                "expect operation field: %s", record->inode,
                 BINLOG_RECORD_FIELD_NAME_OPERATION);
         return ENOENT;
     }
 
     if (record->timestamp <= 0) {
-        sprintf(pcontext->error_info, "expect timestamp field: %s",
+        sprintf(pcontext->error_info, "inode: %"PRId64", "
+                "expect timestamp field: %s", record->inode,
                 BINLOG_RECORD_FIELD_NAME_TIMESTAMP);
         return ENOENT;
     }
@@ -926,19 +930,23 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
             record->me.pname.parent_inode != 0)
     {
         if (record->options.path_info.ns == 0) {
-            sprintf(pcontext->error_info, "expect namespace field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", "
+                    "expect namespace field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_NAMESPACE);
             return ENOENT;
         }
         if (record->options.path_info.subname == 0) {
-            sprintf(pcontext->error_info, "expect subname field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", "
+                    "expect subname field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_SUBNAME);
             return ENOENT;
         }
         if (record->me.pname.parent_inode == 0 &&
-                record->me.pname.name.len > 0)
+                record->me.pname.name.len > 0 &&
+                record->operation != BINLOG_OP_DUMP_DENTRY_INT)
         {
-            sprintf(pcontext->error_info, "expect parent inode field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", "
+                    "expect parent inode field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_PARENT);
             return ENOENT;
         }
@@ -946,23 +954,27 @@ static int binlog_check_required_fields(FieldParserContext *pcontext,
 
     if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
         if (record->rename.dest.pname.parent_inode == 0) {
-            sprintf(pcontext->error_info, "expect dest parent inode field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", expect dest "
+                    "parent inode field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_DEST_PARENT);
             return ENOENT;
         }
         if (record->rename.dest.pname.name.len == 0) {
-            sprintf(pcontext->error_info, "expect dest subname field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", expect dest "
+                    "subname field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_DEST_SUBNAME);
             return ENOENT;
         }
 
         if (record->rename.src.pname.parent_inode == 0) {
-            sprintf(pcontext->error_info, "expect src parent inode field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", expect src "
+                    "parent inode field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_SRC_PARENT);
             return ENOENT;
         }
         if (record->rename.src.pname.name.len == 0) {
-            sprintf(pcontext->error_info, "expect src subname field: %s",
+            sprintf(pcontext->error_info, "inode: %"PRId64", expect src "
+                    "subname field: %s", record->inode,
                     BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME);
             return ENOENT;
         }

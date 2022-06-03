@@ -430,6 +430,7 @@ static int output_dentry(DataDumperContext *dd_ctx,
     vb = dd_ctx->buffer_array.buffers + dd_ctx->buffer_array.
         index++ % dd_ctx->buffer_array.count;
     while (vb->version > dd_ctx->write_done_version) {
+        /* wait write done to reuse buffer */
         fc_sleep_ms(1);
         dd_ctx->write_done_version = sf_binlog_writer_get_last_version(
                 &dd_ctx->dump_ctx->bwctx.writer);
@@ -536,6 +537,8 @@ static inline int output_dentry_list(DataDumperContext *dd_ctx,
 
     node = list->head;
     while (node != NULL) {
+        dd_ctx->record.ns = node->dentry->ns_entry->name;
+        dd_ctx->record.hash_code = node->dentry->ns_entry->hash_code;
         if ((result=output_dentry(dd_ctx, node->dentry)) != 0) {
             return result;
         }

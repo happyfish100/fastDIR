@@ -39,10 +39,8 @@
 int server_load_data()
 {
     BinlogReplayMTContext replay_ctx;
-    SFBinlogFilePosition pos;
-    int64_t last_data_version;
-    SFBinlogFilePosition *hint_pos;
     BinlogReadThreadContext reader_ctx;
+    BinlogReaderParams params[2];
     BinlogReadThreadResult *r;
     int64_t start_time;
     int64_t end_time;
@@ -61,22 +59,33 @@ int server_load_data()
     }
 
     if (STORAGE_ENABLED) {
-        last_data_version = event_dealer_get_last_data_version();
-        if (last_data_version > 0) {
-            hint_pos = &pos;
-            binlog_get_current_write_position(hint_pos);
-            FC_ATOMIC_SET(DATA_CURRENT_VERSION, last_data_version);
+        params[0].last_data_version = event_dealer_get_last_data_version();
+        if (params[0].last_data_version > 0) {
+            binlog_get_current_write_position(&params[0].hint_pos);
+            FC_ATOMIC_SET(DATA_CURRENT_VERSION, params[0].last_data_version);
         } else {
-            hint_pos = NULL;
+            params[0].hint_pos.index = 0;
+            params[0].hint_pos.offset = 0;
         }
+
+        params[0].subdir_name = FDIR_BINLOG_SUBDIR_NAME;
+        params[1].subdir_name = NULL;
     } else {
-        hint_pos = NULL;
-        last_data_version = 0;
+        if (DUMP_LAST_DATA_VERSION > 0) {
+            BINLOG_READER_INIT_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME);
+            BINLOG_READER_SET_PARAMS(params[1], FDIR_BINLOG_SUBDIR_NAME,
+                    DUMP_NEXT_POSITION, DUMP_LAST_DATA_VERSION);
+        } else {
+            BINLOG_READER_INIT_PARAMS(params[0], FDIR_BINLOG_SUBDIR_NAME);
+            params[1].subdir_name = NULL;
+        }
     }
 
-    if ((result=binlog_read_thread_init_ex(&reader_ctx, hint_pos,
-                    last_data_version, BINLOG_BUFFER_SIZE,
-                    parse_threads * 2)) != 0)
+    logInfo("dump_last_data_version: %"PRId64", reader[0]: %s, reader[1]: %s",
+            DUMP_LAST_DATA_VERSION, params[0].subdir_name, params[1].subdir_name);
+
+    if ((result=binlog_read_thread_init1(&reader_ctx, params,
+                    BINLOG_BUFFER_SIZE, parse_threads * 2)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "binlog_read_thread_init fail, "

@@ -46,7 +46,7 @@ static int open_readable_binlog(ServerBinlogReader *reader)
     }
 
     sf_binlog_writer_get_filename(DATA_PATH_STR,
-            FDIR_BINLOG_SUBDIR_NAME, reader->position.index,
+            reader->subdir_name, reader->position.index,
             reader->filename, sizeof(reader->filename));
     reader->fd = open(reader->filename, O_RDONLY);
     if (reader->fd < 0) {
@@ -156,7 +156,7 @@ int binlog_reader_read(ServerBinlogReader *reader)
         return result;
     }
 
-    if (reader->position.index < binlog_get_current_write_index()) {
+    if (reader->position.index < reader->last_index) {
         reader->position.offset = 0;
         reader->position.index++;
         if ((result=open_readable_binlog(reader)) != 0) {
@@ -178,7 +178,7 @@ int binlog_read_to_buffer(ServerBinlogReader *reader,
         return result;
     }
 
-    if (reader->position.index < binlog_get_current_write_index()) {
+    if (reader->position.index < reader->last_index) {
         reader->position.offset = 0;
         reader->position.index++;
         if ((result=open_readable_binlog(reader)) != 0) {
@@ -354,18 +354,18 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
     int binlog_write_index;
     int result;
 
-    binlog_write_index = binlog_get_current_write_index();
+    binlog_write_index = reader->last_index;
     dirction = 0;
 
     do {
-        if ((result=binlog_get_first_record_version(reader->
-                        position.index, &min_data_version)) != 0)
+        if ((result=binlog_get_first_record_version(reader->subdir_name,
+                        reader->position.index, &min_data_version)) != 0)
         {
             return result;
         }
 
-        if ((result=binlog_get_last_record_version(reader->
-                        position.index, &max_data_version)) != 0)
+        if ((result=binlog_get_last_record_version(reader->subdir_name,
+                        reader->position.index, &max_data_version)) != 0)
         {
             return result;
         }
@@ -454,11 +454,9 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
             if (last_data_version == data_version) {
                 reader->position.offset += (p - buff) + rend_offset;
 
-                /*
                 logInfo("file: "__FILE__", line: %d, "
                         "found position, index: %d, offset: %"PRId64, __LINE__,
                         reader->position.index, reader->position.offset);
-                 */
                 return open_readable_binlog(reader);
             }
 
@@ -474,22 +472,21 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         }
     }
 
-    /*
     logInfo("binlog index: %d, reader->position.offset: %"PRId64", "
             "last_data_version: %"PRId64, reader->position.index,
-            reader->position.offset,  last_data_version);
-     */
+            reader->position.offset, last_data_version);
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 
-int binlog_reader_init(ServerBinlogReader *reader,
-        const SFBinlogFilePosition *hint_pos,
-        const int64_t last_data_version)
+int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
+        const SFBinlogFilePosition *hint_pos, const int64_t last_data_version)
 {
     int result;
-    int last_index;
 
-    if ((result=binlog_get_indexes(&reader->start_index, &last_index)) != 0) {
+    if ((result=sf_binlog_writer_get_binlog_indexes(DATA_PATH_STR,
+                    subdir_name, &reader->start_index,
+                    &reader->last_index)) != 0)
+    {
         return result;
     }
 
@@ -497,6 +494,8 @@ int binlog_reader_init(ServerBinlogReader *reader,
         return result;
     }
 
+    snprintf(reader->subdir_name, sizeof(reader->subdir_name),
+            "%s", subdir_name);
     reader->fd = -1;
     if (last_data_version == 0) {
         if (reader->start_index == 0) {
@@ -511,8 +510,8 @@ int binlog_reader_init(ServerBinlogReader *reader,
     if (hint_pos->index < reader->start_index) {
         reader->position.index = reader->start_index;
         reader->position.offset = 0;
-    } else if (hint_pos->index > last_index) {
-        reader->position.index = last_index;
+    } else if (hint_pos->index > reader->last_index) {
+        reader->position.index = reader->last_index;
         reader->position.offset = 0;
     } else {
         reader->position = *hint_pos;
@@ -524,6 +523,9 @@ int binlog_reader_init(ServerBinlogReader *reader,
             reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 16;
         }
     }
+
+    logInfo("subdir_name: %s, hint pos {index: %d, offset: %"PRId64"}",
+            reader->subdir_name, reader->position.index, reader->position.offset);
 
     return binlog_reader_detect_open(reader, last_data_version);
 }
@@ -538,8 +540,8 @@ void binlog_reader_destroy(ServerBinlogReader *reader)
     sf_binlog_buffer_destroy(&reader->binlog_buffer);
 }
 
-int binlog_get_first_record_version(const int file_index,
-        int64_t *data_version)
+int binlog_get_first_record_version(const char *subdir_name,
+        const int file_index, int64_t *data_version)
 {
 #define BINLOG_DETECT_READ_ONCE  2048
 
@@ -552,7 +554,7 @@ int binlog_get_first_record_version(const int file_index,
     int64_t bytes;
     int offset;
 
-    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, subdir_name,
             file_index, filename, sizeof(filename));
 
     *error_info = '\0';
@@ -599,8 +601,8 @@ int binlog_get_first_record_version(const int file_index,
     return result;
 }
 
-int binlog_get_last_record_version(const int file_index,
-        int64_t *data_version)
+int binlog_get_last_record_version(const char *subdir_name,
+        const int file_index, int64_t *data_version)
 {
     char filename[PATH_MAX];
     char buff[FDIR_BINLOG_RECORD_MAX_SIZE];
@@ -610,7 +612,7 @@ int binlog_get_last_record_version(const int file_index,
     int64_t file_size = 0;
     int64_t bytes;
 
-    sf_binlog_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
+    sf_binlog_writer_get_filename(DATA_PATH_STR, subdir_name,
             file_index, filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         result = getFileSize(filename, &file_size);
@@ -662,16 +664,16 @@ int binlog_get_max_record_version(int64_t *data_version)
     int result;
 
     file_index = binlog_get_current_write_index();
-    if ((result=binlog_get_last_record_version(file_index,
-                    data_version)) == ENOENT)
+    if ((result=binlog_get_last_record_version(FDIR_BINLOG_SUBDIR_NAME,
+                    file_index, data_version)) == ENOENT)
     {
         if (file_index == 0) {
             *data_version = 0;
             return 0;
         }
 
-        result = binlog_get_last_record_version(file_index - 1,
-                data_version);
+        result = binlog_get_last_record_version(FDIR_BINLOG_SUBDIR_NAME,
+                file_index - 1, data_version);
     }
 
     return result;

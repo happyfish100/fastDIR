@@ -97,21 +97,23 @@ static int parse_buffer(BinlogParseThreadContext *thread_ctx)
                         buff_end - p, record, &rend, error_info,
                         sizeof(error_info), NULL)) != 0)
         {
-            char filename[PATH_MAX];
+            ServerBinlogReader *reader;
+            int64_t offset;
             int64_t line_count;
 
-            sf_binlog_writer_get_filename(DATA_PATH_STR,
-                    FDIR_BINLOG_SUBDIR_NAME, thread_ctx->r->
-                    binlog_position.index, filename, sizeof(filename));
-            if (fc_get_file_line_count_ex(filename, thread_ctx->r->
-                        binlog_position.offset + (p - thread_ctx->r->
-                            buffer.buff), &line_count) == 0)
+            reader = &thread_ctx->replay_ctx->read_thread_ctx->reader;
+            offset = thread_ctx->r->binlog_position.offset +
+                (p - thread_ctx->r->buffer.buff);
+            if (fc_get_file_line_count_ex(reader->filename,
+                        offset, &line_count) == 0)
             {
                 ++line_count;
             }
+
             logError("file: "__FILE__", line: %d, "
-                    "binlog file: %s, line no: %"PRId64", %s",
-                    __LINE__, filename, line_count, error_info);
+                    "binlog file: %s, offset: %"PRId64", line no: "
+                    "%"PRId64", %s", __LINE__, reader->filename,
+                    offset, line_count, error_info);
             return result;
         }
 

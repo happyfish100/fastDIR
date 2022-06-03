@@ -39,9 +39,9 @@
 
 static void *binlog_read_thread_func(void *arg);
 
-int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,
-        const SFBinlogFilePosition *hint_pos, const int64_t
-        last_data_version, const int buffer_size, const int buffer_count)
+int binlog_read_thread_init1(BinlogReadThreadContext *ctx,
+        BinlogReaderParams params[2], const int buffer_size,
+        const int buffer_count)
 {
     int result;
     int i;
@@ -52,13 +52,15 @@ int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,
         return ENOMEM;
     }
 
-    if ((result=binlog_reader_init(&ctx->reader, hint_pos,
-                    last_data_version)) != 0)
+    if ((result=binlog_reader_init_ex(&ctx->reader, params[0].subdir_name,
+                    &params[0].hint_pos, params[0].last_data_version)) != 0)
     {
         return result;
     }
 
     ctx->buffer_count = buffer_count;
+    ctx->next_reader_params = params[1];
+    ctx->reader_index = 0;
     ctx->running = 0;
     ctx->continue_flag = 1;
     if ((result=common_blocked_queue_init_ex(&ctx->queues.waiting,
@@ -84,6 +86,19 @@ int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,
 
     return fc_create_thread(&ctx->tid, binlog_read_thread_func,
         ctx, SF_G_THREAD_STACK_SIZE);
+}
+
+int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,
+        const char *subdir_name, const SFBinlogFilePosition *hint_pos,
+        const int64_t last_data_version, const int buffer_size,
+        const int buffer_count)
+{
+    BinlogReaderParams params[2];
+
+    BINLOG_READER_SET_PARAMS(params[0], subdir_name,
+            *hint_pos, last_data_version);
+    params[1].subdir_name = NULL;
+    return binlog_read_thread_init1(ctx, params, buffer_size, buffer_count);
 }
 
 void binlog_read_thread_terminate(BinlogReadThreadContext *ctx)
@@ -122,6 +137,7 @@ static void *binlog_read_thread_func(void *arg)
 {
     BinlogReadThreadContext *ctx;
     BinlogReadThreadResult *r;
+    BinlogReaderParams *params;
 
 #ifdef OS_LINUX
     prctl(PR_SET_NAME, "binlog-reader");
@@ -136,10 +152,29 @@ static void *binlog_read_thread_func(void *arg)
             continue;
         }
 
-        r->binlog_position = ctx->reader.position;
-        r->err_no = binlog_reader_integral_read(&ctx->reader,
-                r->buffer.buff, r->buffer.alloc_size,
-                &r->buffer.length, &r->data_version);
+        while (1) {
+            r->binlog_position = ctx->reader.position;
+            r->err_no = binlog_reader_integral_read(&ctx->reader,
+                    r->buffer.buff, r->buffer.alloc_size,
+                    &r->buffer.length, &r->data_version);
+
+            if (r->err_no != ENOENT) {
+                break;
+            }
+
+            params = &ctx->next_reader_params;
+            if (!(++ctx->reader_index < 2 && params->subdir_name != NULL)) {
+                break;
+            }
+
+            binlog_reader_destroy(&ctx->reader);
+            if (binlog_reader_init_ex(&ctx->reader, params->subdir_name,
+                        &params->hint_pos, params->last_data_version) != 0)
+            {
+                break;
+            }
+        }
+
         common_blocked_queue_push(&ctx->queues.done, r);
     }
 
