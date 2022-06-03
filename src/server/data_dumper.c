@@ -84,6 +84,12 @@ static int output_dentry(DataDumperContext *dump_ctx,
         return result;
     }
 
+    if (FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode) &&
+            dentry->src_dentry->parent == NULL)  //orphan inode
+    {
+        return output_dentry(dump_ctx, dentry->src_dentry);
+    }
+
     return 0;
 }
 

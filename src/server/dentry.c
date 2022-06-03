@@ -812,7 +812,6 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     }
 
     current->ns_entry = ns_entry;
-    current->stat.mode = record->stat.mode;
     current->stat.atime = record->stat.atime;
     current->stat.btime = record->stat.btime;
     current->stat.ctime = record->stat.ctime;
@@ -821,9 +820,26 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     current->stat.gid = record->stat.gid;
     current->stat.rdev = record->stat.rdev;
     current->stat.size = record->stat.size;
-    current->stat.nlink = 1;
-    current->stat.alloc = 0;
-    current->stat.space_end = 0;
+
+    if (FDIR_IS_DENTRY_ORPHAN_INODE(record->stat.mode)) {
+        current->stat.mode = FDIR_UNSET_DENTRY_ORPHAN_INODE(
+                record->stat.mode);
+        current->stat.nlink = 0;
+    } else {
+        current->stat.mode = record->stat.mode;
+        current->stat.nlink = 1;
+    }
+    if (record->options.inc_alloc) {
+        current->stat.alloc = record->stat.alloc;
+    } else {
+        current->stat.alloc = 0;
+    }
+
+    if (record->options.space_end) {
+        current->stat.space_end = record->stat.space_end;
+    } else {
+        current->stat.space_end = 0;
+    }
 
     if (STORAGE_ENABLED) {
         current->db_args->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;

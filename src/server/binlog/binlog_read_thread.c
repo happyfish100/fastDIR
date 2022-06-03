@@ -167,6 +167,7 @@ static void *binlog_read_thread_func(void *arg)
                 break;
             }
 
+            fc_sleep_ms(10);
             binlog_reader_destroy(&ctx->reader);
             if (binlog_reader_init_ex(&ctx->reader, params->subdir_name,
                         &params->hint_pos, params->last_data_version) != 0)

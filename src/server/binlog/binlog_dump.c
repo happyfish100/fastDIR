@@ -250,7 +250,22 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
 {
     int result;
     char tmp_filename[PATH_MAX];
+    char mark_filename[PATH_MAX];
     ServerBinlogReader reader;
+    SFBinlogFilePosition position;
+
+    if ((result=binlog_reader_init(&reader, &dump_ctx->hint_pos,
+                    dump_ctx->last_data_version)) != 0)
+    {
+        return result;
+    }
+    position = reader.position;
+    binlog_reader_destroy(&reader);
+
+    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    if ((result=fc_delete_file_ex(mark_filename, "mark")) != 0) {
+        return result;
+    }
 
     sf_binlog_writer_get_filename_ex(DATA_PATH_STR,
             subdir_name, DUMP_FILE_PREFIX_NAME, 0,
@@ -265,15 +280,8 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
         return result;
     }
 
-    if ((result=binlog_reader_init(&reader, &dump_ctx->hint_pos,
-                    dump_ctx->last_data_version)) != 0)
-    {
-        return result;
-    }
-
     DUMP_LAST_DATA_VERSION = dump_ctx->last_data_version;
-    DUMP_NEXT_POSITION = reader.position;
-    binlog_reader_destroy(&reader);
+    DUMP_NEXT_POSITION = position;
     return binlog_dump_write_to_mark_file();
 }
 
@@ -379,7 +387,7 @@ int binlog_dump_all()
 }
 
 static int output_dentry(DataDumperContext *dd_ctx,
-        FDIRServerDentry *dentry)
+        FDIRServerDentry *dentry, const bool orphan_inode)
 {
     SFBinlogWriterBuffer *wbuffer;
     VersionedFastBuffer *vb;
@@ -400,6 +408,10 @@ static int output_dentry(DataDumperContext *dd_ctx,
     dd_ctx->record.me.pname.name = dentry->name;
 
     dd_ctx->record.stat = dentry->stat;
+    if (orphan_inode) {
+        dd_ctx->record.stat.mode = FDIR_SET_DENTRY_ORPHAN_INODE(
+                dd_ctx->record.stat.mode);
+    }
     dd_ctx->record.options.rdev = (dentry->stat.rdev != 0 ? 1 : 0);
     dd_ctx->record.options.gid = (dentry->stat.gid != 0 ? 1 : 0);
     dd_ctx->record.options.uid = (dentry->stat.uid != 0 ? 1 : 0);
@@ -530,7 +542,7 @@ static inline int deal_hardlink_dentry(DataDumperContext *dd_ctx,
 }
 
 static inline int output_dentry_list(DataDumperContext *dd_ctx,
-        DEntryNodeList *list)
+        DEntryNodeList *list, const bool orphan_inode)
 {
     int result;
     DEntryChainNode *node;
@@ -539,7 +551,7 @@ static inline int output_dentry_list(DataDumperContext *dd_ctx,
     while (node != NULL) {
         dd_ctx->record.ns = node->dentry->ns_entry->name;
         dd_ctx->record.hash_code = node->dentry->ns_entry->hash_code;
-        if ((result=output_dentry(dd_ctx, node->dentry)) != 0) {
+        if ((result=output_dentry(dd_ctx, node->dentry, orphan_inode)) != 0) {
             return result;
         }
         node = node->nexts.chain;
@@ -550,6 +562,7 @@ static inline int output_dentry_list(DataDumperContext *dd_ctx,
 
 static int dentry_dump(DataDumperContext *dd_ctx, FDIRServerDentry *dentry)
 {
+    const bool orphan_inode = false;
     int result;
     FDIRServerDentry *current;
     UniqSkiplistIterator iterator;
@@ -572,7 +585,7 @@ static int dentry_dump(DataDumperContext *dd_ctx, FDIRServerDentry *dentry)
         return deal_hardlink_dentry(dd_ctx, dentry);
     }
 
-    if ((result=output_dentry(dd_ctx, dentry)) != 0) {
+    if ((result=output_dentry(dd_ctx, dentry, orphan_inode)) != 0) {
         return result;
     }
 
@@ -728,9 +741,9 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     }
 
     if ((result=output_dentry_list(&dd_ctx, &dd_ctx.
-                    hardlink.orphan.list)) == 0)
+                    hardlink.orphan.list, true)) == 0)
     {
-        result = output_dentry_list(&dd_ctx, &dd_ctx.hardlink.list);
+        result = output_dentry_list(&dd_ctx, &dd_ctx.hardlink.list, false);
     }
 
     FC_ATOMIC_INC_EX(dump_ctx->orphan_count, dd_ctx.

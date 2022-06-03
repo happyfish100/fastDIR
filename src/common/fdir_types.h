@@ -49,6 +49,7 @@
 #define FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE      16  //force update
 
 #define FDIR_DENTRY_MODE_FLAGS_HARD_LINK    (1 << 22)  //hard link flags in 32 bits mode
+#define FDIR_DENTRY_MODE_FLAGS_ORPHAN_INODE (1 << 24)  //for server side dump dentry
 
 #define FDIR_SET_DENTRY_HARD_LINK(mode) \
     ((mode) | FDIR_DENTRY_MODE_FLAGS_HARD_LINK)
@@ -58,6 +59,17 @@
 
 #define FDIR_IS_DENTRY_HARD_LINK(mode)  \
     (((mode) & FDIR_DENTRY_MODE_FLAGS_HARD_LINK) != 0)
+
+
+#define FDIR_SET_DENTRY_ORPHAN_INODE(mode) \
+    ((mode) | FDIR_DENTRY_MODE_FLAGS_ORPHAN_INODE)
+
+#define FDIR_UNSET_DENTRY_ORPHAN_INODE(mode) \
+    ((mode) & (~FDIR_DENTRY_MODE_FLAGS_ORPHAN_INODE))
+
+#define FDIR_IS_DENTRY_ORPHAN_INODE(mode)  \
+    (((mode) & FDIR_DENTRY_MODE_FLAGS_ORPHAN_INODE) != 0)
+
 
 #ifndef RENAME_NOREPLACE
 #define RENAME_NOREPLACE	(1 << 0)
