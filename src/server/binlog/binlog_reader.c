@@ -453,10 +453,11 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         if (result == 0) {
             if (last_data_version == data_version) {
                 reader->position.offset += (p - buff) + rend_offset;
-
+                /*
                 logInfo("file: "__FILE__", line: %d, "
                         "found position, index: %d, offset: %"PRId64, __LINE__,
                         reader->position.index, reader->position.offset);
+                        */
                 return open_readable_binlog(reader);
             }
 
@@ -472,9 +473,6 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
         }
     }
 
-    logInfo("binlog index: %d, reader->position.offset: %"PRId64", "
-            "last_data_version: %"PRId64, reader->position.index,
-            reader->position.offset, last_data_version);
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 
@@ -523,9 +521,6 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
             reader->position.offset -= FDIR_BINLOG_RECORD_MAX_SIZE / 16;
         }
     }
-
-    logInfo("subdir_name: %s, hint pos {index: %d, offset: %"PRId64"}",
-            reader->subdir_name, reader->position.index, reader->position.offset);
 
     return binlog_reader_detect_open(reader, last_data_version);
 }

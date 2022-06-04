@@ -301,8 +301,6 @@ static int dump_all()
     int64_t time_used_ms;
     char buff[16];
 
-    logInfo("current data version: %"PRId64, FC_ATOMIC_GET(DATA_CURRENT_VERSION));
-
     if (FC_ATOMIC_GET(DATA_CURRENT_VERSION) == 0) {
         return ENOENT;
     }
@@ -751,11 +749,13 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     FC_ATOMIC_INC_EX(dump_ctx->hardlink_count,
             dd_ctx.hardlink.list.count);
 
+    /*
     logInfo("data thread #%d, last_data_version: %"PRId64", "
             "current write done version: %"PRId64,
             (int)(thread_ctx - g_data_thread_vars.thread_array.contexts),
             dd_ctx.last_data_version, sf_binlog_writer_get_last_version(
                 &dump_ctx->bwctx.writer));
+                */
 
     if (result == 0 && dd_ctx.last_data_version > 0) {
         while (sf_binlog_writer_get_last_version(&dump_ctx->

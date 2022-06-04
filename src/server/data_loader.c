@@ -81,9 +81,6 @@ int server_load_data()
         }
     }
 
-    logInfo("dump_last_data_version: %"PRId64", reader[0]: %s, reader[1]: %s",
-            DUMP_LAST_DATA_VERSION, params[0].subdir_name, params[1].subdir_name);
-
     if ((result=binlog_read_thread_init1(&reader_ctx, params,
                     BINLOG_BUFFER_SIZE, parse_threads * 2)) != 0)
     {

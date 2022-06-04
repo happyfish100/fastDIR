@@ -1074,9 +1074,13 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     if (set_data_verson && !is_error) {
         int64_t old_version;
         old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
-        if (record->data_version > old_version) {
-            __sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
-                    old_version, record->data_version);
+        while (record->data_version > old_version) {
+            if (__sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
+                        old_version, record->data_version))
+            {
+                break;
+            }
+            old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
         }
     }
 
