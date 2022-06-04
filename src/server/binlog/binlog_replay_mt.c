@@ -143,6 +143,11 @@ static void binlog_parse_thread_run(BinlogParseThreadContext *thread_ctx,
         PTHREAD_MUTEX_UNLOCK(&thread_ctx->notify.lcp.lock);
 
         if (thread_ctx->r != NULL) {
+            if (__sync_bool_compare_and_swap(&thread_ctx->reset_mpool, 1, 0)) {
+                /* reset mpool for recycle use */
+                binlog_pack_context_reset(&thread_ctx->pack_ctx);
+            }
+
             if (parse_buffer(thread_ctx) != 0) {
                 sf_terminate_myself();
                 break;
@@ -161,13 +166,18 @@ static void binlog_parse_thread_run(BinlogParseThreadContext *thread_ctx,
 
 static int init_parse_thread_context(BinlogParseThreadContext *thread_ctx)
 {
+    const bool decode_use_mpool = true;
+    const int alloc_size_once = 256 * 1024;
+    const int init_buff_size = 8 * 1024;
     int result;
 
     if ((result=init_pthread_lock_cond_pair(&thread_ctx->notify.lcp)) != 0) {
         return result;
     }
 
-    if ((result=binlog_pack_context_init(&thread_ctx->pack_ctx)) != 0) {
+    if ((result=binlog_pack_context_init_ex(&thread_ctx->pack_ctx,
+                    decode_use_mpool, alloc_size_once, init_buff_size)) != 0)
+    {
         return result;
     }
 
@@ -200,6 +210,7 @@ static int init_parse_thread_ctx_array(BinlogReplayMTContext *replay_ctx,
         }
 
         ctx->thread_index = ctx - ctx_array->contexts;
+        ctx->reset_mpool = 0;
         ctx->replay_ctx = replay_ctx;
         if ((result=shared_thread_pool_run((fc_thread_pool_callback)
                         binlog_parse_thread_run, ctx)) != 0)
@@ -393,6 +404,7 @@ static void waiting_data_thread_done(BinlogReplayMTContext *replay_ctx,
     BinlogBatchContext *bctx;
     DataThreadCounter *counter;
     DataThreadCounter *end;
+    BinlogParseThreadContext *thread_ctx;
     int i;
 
     bctx = replay_ctx->record_allocator.bcontexts + arr_index;
@@ -409,6 +421,10 @@ static void waiting_data_thread_done(BinlogReplayMTContext *replay_ctx,
 
     for (i=0; i<replay_ctx->parse_thread_array.count; i++) {
         if (bctx->results[i] != NULL) {
+            /* notify parse thread to reset mpool for recycle use */
+            thread_ctx = replay_ctx->parse_thread_array.contexts + i;
+            __sync_bool_compare_and_swap(&thread_ctx->reset_mpool, 0, 1);
+
             binlog_read_thread_return_result_buffer(replay_ctx->
                     read_thread_ctx, bctx->results[i]);
             bctx->results[i] = NULL;

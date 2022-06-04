@@ -149,9 +149,14 @@ int binlog_pack_init()
             ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
 }
 
-int binlog_pack_context_init(BinlogPackContext *context)
+int binlog_pack_context_init_ex(BinlogPackContext *context,
+        const bool decode_use_mpool, const int alloc_size_once,
+        const int init_buff_size)
 {
-    return fc_init_json_context(&context->json_ctx);
+    const char *error_info = NULL;
+    const int error_size = 0;
+    return fc_init_json_context_ex(&context->json_ctx, decode_use_mpool,
+            alloc_size_once, init_buff_size, (char *)error_info, error_size);
 }
 
 void binlog_pack_context_destroy(BinlogPackContext *context)

@@ -35,7 +35,23 @@ extern "C" {
 
 int binlog_pack_init();
 
-int binlog_pack_context_init(BinlogPackContext *context);
+int binlog_pack_context_init_ex(BinlogPackContext *context,
+        const bool decode_use_mpool, const int alloc_size_once,
+        const int init_buff_size);
+
+static inline int binlog_pack_context_init(BinlogPackContext *context)
+{
+    const bool decode_use_mpool = false;
+    const int alloc_size_once = 0;
+    const int init_buff_size = 0;
+    return binlog_pack_context_init_ex(context, decode_use_mpool,
+            alloc_size_once, init_buff_size);
+}
+
+static inline void binlog_pack_context_reset(BinlogPackContext *context)
+{
+    fc_reset_json_context(&context->json_ctx);
+}
 
 void binlog_pack_context_destroy(BinlogPackContext *context);
 
