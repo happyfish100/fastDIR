@@ -52,6 +52,19 @@ static inline void binlog_write_finish()
     sf_binlog_writer_finish(&g_binlog_writer_ctx.writer);
 }
 
+static inline const char *binlog_get_filename(const int index,
+        char *filename, const int size)
+{
+    return sf_binlog_writer_get_filename(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, index, filename, size);
+}
+
+static inline int binlog_set_start_index(const int start_index)
+{
+    return sf_binlog_writer_set_binlog_start_index(
+            &g_binlog_writer_ctx.writer, start_index);
+}
+
 static inline int binlog_get_start_index()
 {
     return sf_binlog_get_start_index(&g_binlog_writer_ctx.writer);

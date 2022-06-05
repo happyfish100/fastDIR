@@ -1252,8 +1252,8 @@ int binlog_detect_record_forward(const char *str, const int len,
     return 0;
 }
 
-int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, const char **rec_end,
+int binlog_detect_record_reverse_ex(const char *str, const int len,
+        int64_t *data_version, time_t *timestamp, const char **rec_end,
         char *error_info, const int error_size)
 {
     FDIRBinlogRecord record;
@@ -1289,7 +1289,7 @@ int binlog_detect_record_reverse(const char *str, const int len,
     }
 
     if (offset < 0) {
-        sprintf(error_info, "can't found record start");
+        sprintf(error_info, "can't find record start");
         return ENOENT;
     }
 
@@ -1300,8 +1300,29 @@ int binlog_detect_record_reverse(const char *str, const int len,
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }
-
     *data_version = record.data_version;
+
+    if (timestamp != NULL) {
+        record.timestamp = 0;
+        while ((result=binlog_get_next_field_value(&pcontext)) == 0) {
+            if ((result=binlog_set_field_value(&pcontext, &record)) != 0) {
+                return result;
+            }
+
+            if (memcmp(pcontext.fv.name, BINLOG_RECORD_FIELD_NAME_TIMESTAMP,
+                        BINLOG_RECORD_FIELD_NAME_LENGTH) == 0)
+            {
+                *timestamp = record.timestamp;
+                break;
+            }
+        }
+
+        if (record.timestamp == 0) {
+            sprintf(error_info, "can't find field: timestamp");
+            return ENOENT;
+        }
+    }
+
     return 0;
 }
 

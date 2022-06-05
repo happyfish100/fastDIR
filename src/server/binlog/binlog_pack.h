@@ -78,9 +78,14 @@ int binlog_detect_record_forward(const char *str, const int len,
         int64_t *data_version, int *rstart_offset, int *rend_offset,
         char *error_info, const int error_size);
 
-int binlog_detect_record_reverse(const char *str, const int len,
-        int64_t *data_version, const char **rec_end,
+int binlog_detect_record_reverse_ex(const char *str, const int len,
+        int64_t *data_version, time_t *timestamp, const char **rec_end,
         char *error_info, const int error_size);
+
+#define binlog_detect_record_reverse(str, len, data_version, \
+        rec_end, error_info, error_size)  \
+    binlog_detect_record_reverse_ex(str, len, data_version,  \
+            NULL, rec_end, error_info, error_size)
 
 int binlog_detect_last_record_end(const char *str, const int len,
         const char **rec_end);

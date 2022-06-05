@@ -73,13 +73,53 @@ int binlog_reader_read(ServerBinlogReader *reader);
 int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
         const int size, int *read_bytes, SFVersionRange *data_version);
 
-int binlog_get_first_record_version(const char *subdir_name,
+int binlog_get_first_data_version(const char *subdir_name,
         const int file_index, int64_t *data_version);
 
-int binlog_get_last_record_version(const char *subdir_name,
-        const int file_index, int64_t *data_version);
+int binlog_get_last_dv_timestamp(const char *subdir_name,
+        const int file_index, int64_t *data_version,
+        time_t *timestamp);
+
+static inline int binlog_get_last_data_version(const char *subdir_name,
+        const int file_index, int64_t *data_version)
+{
+    time_t *timestamp = NULL;
+    return binlog_get_last_dv_timestamp(subdir_name,
+            file_index, data_version, timestamp);
+}
+
+static inline int binlog_get_last_timestamp(const char *subdir_name,
+        const int file_index, time_t *timestamp)
+{
+    int64_t data_version;
+    return binlog_get_last_dv_timestamp(subdir_name,
+            file_index, &data_version, timestamp);
+}
 
 int binlog_get_max_record_version(int64_t *data_version);
+
+static inline int binlog_find_position_ex(const char *subdir_name,
+        const SFBinlogFilePosition *hint_pos,
+        const int64_t last_data_version,
+        SFBinlogFilePosition *position)
+{
+    int result;
+    ServerBinlogReader reader;
+
+    if ((result=binlog_reader_init_ex(&reader, subdir_name,
+                    hint_pos, last_data_version)) != 0)
+    {
+        return result;
+    }
+
+    *position = reader.position;
+    binlog_reader_destroy(&reader);
+    return 0;
+}
+
+#define binlog_find_position(hint_pos, last_data_version, position) \
+    binlog_find_position_ex(FDIR_BINLOG_SUBDIR_NAME, hint_pos, \
+            last_data_version, position)
 
 int binlog_check_consistency(const string_t *sbinlog,
         const SFBinlogFilePosition *hint_pos,

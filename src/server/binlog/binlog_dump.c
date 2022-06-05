@@ -251,16 +251,13 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
     int result;
     char tmp_filename[PATH_MAX];
     char mark_filename[PATH_MAX];
-    ServerBinlogReader reader;
     SFBinlogFilePosition position;
 
-    if ((result=binlog_reader_init(&reader, &dump_ctx->hint_pos,
-                    dump_ctx->last_data_version)) != 0)
+    if ((result=binlog_find_position(&dump_ctx->hint_pos, dump_ctx->
+                    last_data_version, &position)) != 0)
     {
         return result;
     }
-    position = reader.position;
-    binlog_reader_destroy(&reader);
 
     fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
     if ((result=fc_delete_file_ex(mark_filename, "mark")) != 0) {

@@ -358,13 +358,13 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
     dirction = 0;
 
     do {
-        if ((result=binlog_get_first_record_version(reader->subdir_name,
+        if ((result=binlog_get_first_data_version(reader->subdir_name,
                         reader->position.index, &min_data_version)) != 0)
         {
             return result;
         }
 
-        if ((result=binlog_get_last_record_version(reader->subdir_name,
+        if ((result=binlog_get_last_data_version(reader->subdir_name,
                         reader->position.index, &max_data_version)) != 0)
         {
             return result;
@@ -535,7 +535,7 @@ void binlog_reader_destroy(ServerBinlogReader *reader)
     sf_binlog_buffer_destroy(&reader->binlog_buffer);
 }
 
-int binlog_get_first_record_version(const char *subdir_name,
+int binlog_get_first_data_version(const char *subdir_name,
         const int file_index, int64_t *data_version)
 {
 #define BINLOG_DETECT_READ_ONCE  2048
@@ -596,8 +596,9 @@ int binlog_get_first_record_version(const char *subdir_name,
     return result;
 }
 
-int binlog_get_last_record_version(const char *subdir_name,
-        const int file_index, int64_t *data_version)
+int binlog_get_last_dv_timestamp(const char *subdir_name,
+        const int file_index, int64_t *data_version,
+        time_t *timestamp)
 {
     char filename[PATH_MAX];
     char buff[FDIR_BINLOG_RECORD_MAX_SIZE];
@@ -633,18 +634,18 @@ int binlog_get_last_record_version(const char *subdir_name,
     }
 
     *error_info = '\0';
-    if ((result=binlog_detect_record_reverse(buff, bytes,
-                    data_version, NULL, error_info,
+    if ((result=binlog_detect_record_reverse_ex(buff, bytes,
+                    data_version, timestamp, NULL, error_info,
                     sizeof(error_info))) != 0)
     {
         if (*error_info != '\0') {
             logError("file: "__FILE__", line: %d, "
-                    "get_last_record_version fail, "
+                    "binlog_get_last_dv_timestamp fail, "
                     "binlog file: %s, error info: %s",
                     __LINE__, filename, error_info);
         } else {
             logError("file: "__FILE__", line: %d, "
-                    "get_last_record_version fail, "
+                    "binlog_get_last_dv_timestamp fail, "
                     "binlog file: %s, errno: %d, error info: %s",
                     __LINE__, filename, result, STRERROR(result));
         }
@@ -659,7 +660,7 @@ int binlog_get_max_record_version(int64_t *data_version)
     int result;
 
     file_index = binlog_get_current_write_index();
-    if ((result=binlog_get_last_record_version(FDIR_BINLOG_SUBDIR_NAME,
+    if ((result=binlog_get_last_data_version(FDIR_BINLOG_SUBDIR_NAME,
                     file_index, data_version)) == ENOENT)
     {
         if (file_index == 0) {
@@ -667,7 +668,7 @@ int binlog_get_max_record_version(int64_t *data_version)
             return 0;
         }
 
-        result = binlog_get_last_record_version(FDIR_BINLOG_SUBDIR_NAME,
+        result = binlog_get_last_data_version(FDIR_BINLOG_SUBDIR_NAME,
                 file_index - 1, data_version);
     }
 
