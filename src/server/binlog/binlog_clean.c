@@ -39,7 +39,7 @@ static int remove_old_binlogs(const time_t before_time, int *remove_count)
         return result;
     }
 
-    if (BINLOG_DEDUP_ENABLED) {
+    if (STORAGE_ENABLED) {
         last_data_version = event_dealer_get_last_data_version();
         binlog_get_current_write_position(&hint_pos);
         if ((result=binlog_find_position(&hint_pos,
@@ -56,9 +56,6 @@ static int remove_old_binlogs(const time_t before_time, int *remove_count)
         }
     }
 
-    logInfo("binlog start_index: %d, last_index: %d",
-            start_index, last_index);
-
     for (binlog_index=start_index; binlog_index<last_index; binlog_index++) {
         if ((result=binlog_get_last_timestamp(FDIR_BINLOG_SUBDIR_NAME,
                         binlog_index, &last_timestamp)) != 0)
@@ -74,7 +71,7 @@ static int remove_old_binlogs(const time_t before_time, int *remove_count)
             logInfo("binlog_index: %d, last time: %s, timestamp: %ld",
                     binlog_index, buff, last_timestamp);
         }
-            */
+        */
 
         if (last_timestamp >= before_time) {
             break;

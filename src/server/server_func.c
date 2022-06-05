@@ -507,7 +507,7 @@ static int load_binlog_shrink_config(IniContext *ini_context,
     }
 
     BINLOG_KEEP_DAYS = iniGetIntValue(section_name,
-            "keep_days", ini_context, 30);
+            "keep_days", ini_context, 180);
     if ((result=get_time_item_from_conf_ex(&ini_ctx, "delete_time",
                     &BINLOG_DELETE_TIME, 5, 0, false)) != 0)
     {

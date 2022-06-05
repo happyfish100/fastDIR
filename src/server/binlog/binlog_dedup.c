@@ -92,7 +92,7 @@ int binlog_dedup_add_schedule()
     ScheduleArray scheduleArray;
     ScheduleEntry scheduleEntry;
 
-    if (!BINLOG_DEDUP_ENABLED) {
+    if (!BINLOG_DEDUP_ENABLED || STORAGE_ENABLED) {
         return 0;
     }
 
