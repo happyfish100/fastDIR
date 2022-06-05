@@ -45,7 +45,6 @@ typedef struct binlog_record_chain {
 typedef struct binlog_parse_thread_context {
     int64_t total_count;
     short thread_index;
-    volatile char reset_mpool;
 
     struct {
         bool parse_done;

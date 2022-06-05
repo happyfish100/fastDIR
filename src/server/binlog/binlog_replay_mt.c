@@ -130,8 +130,10 @@ static int parse_buffer(BinlogParseThreadContext *thread_ctx)
 static void binlog_parse_thread_run(BinlogParseThreadContext *thread_ctx,
         void *thread_data)
 {
-    __sync_add_and_fetch(&thread_ctx->replay_ctx->parse_thread_count, 1);
+    uint32_t count;
 
+    __sync_add_and_fetch(&thread_ctx->replay_ctx->parse_thread_count, 1);
+    count = 0;
     while (SF_G_CONTINUE_FLAG && thread_ctx->
             replay_ctx->parse_continue_flag)
     {
@@ -143,7 +145,7 @@ static void binlog_parse_thread_run(BinlogParseThreadContext *thread_ctx,
         PTHREAD_MUTEX_UNLOCK(&thread_ctx->notify.lcp.lock);
 
         if (thread_ctx->r != NULL) {
-            if (__sync_bool_compare_and_swap(&thread_ctx->reset_mpool, 1, 0)) {
+            if (++count > BINLOG_REPLAY_DOUBLE_BUFFER_COUNT) {
                 /* reset mpool for recycle use */
                 binlog_pack_context_reset(&thread_ctx->pack_ctx);
             }
@@ -210,7 +212,6 @@ static int init_parse_thread_ctx_array(BinlogReplayMTContext *replay_ctx,
         }
 
         ctx->thread_index = ctx - ctx_array->contexts;
-        ctx->reset_mpool = 0;
         ctx->replay_ctx = replay_ctx;
         if ((result=shared_thread_pool_run((fc_thread_pool_callback)
                         binlog_parse_thread_run, ctx)) != 0)
@@ -404,7 +405,6 @@ static void waiting_data_thread_done(BinlogReplayMTContext *replay_ctx,
     BinlogBatchContext *bctx;
     DataThreadCounter *counter;
     DataThreadCounter *end;
-    BinlogParseThreadContext *thread_ctx;
     int i;
 
     bctx = replay_ctx->record_allocator.bcontexts + arr_index;
@@ -421,10 +421,6 @@ static void waiting_data_thread_done(BinlogReplayMTContext *replay_ctx,
 
     for (i=0; i<replay_ctx->parse_thread_array.count; i++) {
         if (bctx->results[i] != NULL) {
-            /* notify parse thread to reset mpool for recycle use */
-            thread_ctx = replay_ctx->parse_thread_array.contexts + i;
-            __sync_bool_compare_and_swap(&thread_ctx->reset_mpool, 0, 1);
-
             binlog_read_thread_return_result_buffer(replay_ctx->
                     read_thread_ctx, bctx->results[i]);
             bctx->results[i] = NULL;
