@@ -147,6 +147,18 @@
 #define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         214
 #define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        215  //when slave binlog not consistent
 
+//replication commands, slave -> master
+#define FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ    221
+#define FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_RESP   222
+#define FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ    223
+#define FDIR_REPLICA_PROTO_SYNC_BINLOG_NEXT_REQ     225
+#define FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP         226
+#define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ       227
+#define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP      228
+
+#define FDIR_PROTO_FILE_TYPE_DUMP      'd'
+#define FDIR_PROTO_FILE_TYPE_BINLOG    'b'
+
 typedef SFCommonProtoHeader  FDIRProtoHeader;
 
 typedef struct fdir_proto_client_join_req {
@@ -686,6 +698,27 @@ typedef struct fdir_proto_push_binlog_resp_body_part {
     char data_version[8];
     char err_no[2];
 } FDIRProtoPushBinlogRespBodyPart;
+
+typedef struct fdir_proto_replia_query_binlog_info_req {
+    char server_id[4];
+} FDIRProtoReplicaQueryBinlogInfoReq;
+
+typedef struct fdir_proto_replia_query_binlog_info_resp {
+    struct {
+        char start_index[4];
+        char last_index[4];
+    } dump_data;
+    struct {
+        char start_index[4];
+        char last_index[4];
+    } binlog;
+} FDIRProtoReplicaQueryBinlogInfoResp;
+
+typedef struct fdir_proto_replia_sync_binlog_first_req {
+    char file_type;  //dump data or normal binlog
+    char padding[3];
+    char binlog_index[4];
+} FDIRProtoReplicaSyncBinlogFirstReq;
 
 typedef struct fdir_proto_nss_fetch_resp_body_header {
     char count[4];

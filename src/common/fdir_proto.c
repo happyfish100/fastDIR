@@ -250,6 +250,20 @@ const char *fdir_get_cmd_caption(const int cmd)
         case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
             return "COMMIT_NEXT_MASTER";
 
+        case FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ:
+            return "QUERY_BINLOG_INFO_REQ";
+        case FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_RESP:
+            return "QUERY_BINLOG_INFO_RESP";
+        case FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ:
+            return "SYNC_BINLOG_FIRST_REQ";
+        case FDIR_REPLICA_PROTO_SYNC_BINLOG_NEXT_REQ:
+            return "SYNC_BINLOG_NEXT_REQ";
+        case FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP:
+            return "SYNC_BINLOG_RESP";
+        case FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ:
+            return "SYNC_DUMP_MARK_REQ";
+        case FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP:
+            return "SYNC_DUMP_MARK_RESP";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
             return "JOIN_SLAVE_REQ";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:

@@ -282,7 +282,7 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
     return binlog_dump_write_to_mark_file();
 }
 
-static int dump_all()
+static int do_dump()
 {
 #define RECORD_FIXED_COUNT  64
     int result;
@@ -368,14 +368,37 @@ static int dump_all()
     return result;
 }
 
-int binlog_dump_all()
+static inline int dump_all()
+{
+    int result;
+
+    result = do_dump();
+    __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
+    return result;
+}
+
+static void *dump_thread_func(void *arg)
+{
+    dump_all();
+    return NULL;
+}
+
+int binlog_dump_all_ex(const bool create_thread)
 {
     int result;
 
     if (__sync_bool_compare_and_swap(&FULL_DUMPING, 0, 1)) {
-        result = dump_all();
-        __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
-        return result;
+        if (create_thread) {
+            pthread_t tid;
+            if ((result=fc_create_thread(&tid, dump_thread_func,
+                            NULL, SF_G_THREAD_STACK_SIZE)) != 0)
+            {
+                __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
+            }
+            return result;
+        } else {
+            return dump_all();
+        }
     } else {
         return EINPROGRESS;
     }

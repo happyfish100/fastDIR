@@ -56,7 +56,8 @@
 #define FDIR_SERVER_TASK_TYPE_RELATIONSHIP       1   //slave  -> master
 #define FDIR_SERVER_TASK_TYPE_REPLICA_MASTER     2   //[Master] -> slave
 #define FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE      3   //master -> [Slave]
-#define FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE      4   //auth server -> master
+#define FDIR_SERVER_TASK_TYPE_SYNC_BINLOG        4   //slave  -> master
+#define FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE      5   //auth server -> master
 
 #define FDIR_REPLICATION_STAGE_NONE               0
 #define FDIR_REPLICATION_STAGE_CONNECTING         1
@@ -96,6 +97,7 @@
 #define CLUSTER_PEER         TASK_CTX.shared.cluster.peer
 #define CLUSTER_REPLICA      TASK_CTX.shared.cluster.replica
 #define CLUSTER_CONSUMER_CTX TASK_CTX.shared.cluster.consumer_ctx
+#define REPLICA_READER       TASK_CTX.shared.cluster.reader
 #define IDEMPOTENCY_CHANNEL  TASK_CTX.shared.service.idempotency_channel
 #define NS_SUBSCRIBER        TASK_CTX.shared.service.subscriber
 #define IDEMPOTENCY_REQUEST  TASK_CTX.service.idempotency_request
@@ -319,6 +321,7 @@ typedef struct {
             FDIRClusterServerInfo *peer;   //the peer server in the cluster
             FDIRSlaveReplication *replica; //master side
             struct replica_consumer_thread_context *consumer_ctx;//slave side
+            struct server_binlog_reader *reader; //for fetch/sync binlog
         } cluster;
     } shared;
 

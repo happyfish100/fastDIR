@@ -27,7 +27,7 @@ typedef struct {
     int64_t last_data_version;
 } BinlogReaderParams;
 
-typedef struct {
+typedef struct server_binlog_reader {
     char subdir_name[64];
     char filename[PATH_MAX];
     int fd;
@@ -66,9 +66,15 @@ static inline int binlog_reader_init1(ServerBinlogReader *reader,
             &params->hint_pos, params->last_data_version);
 }
 
+int binlog_reader_single_init(ServerBinlogReader *reader,
+        const char *subdir_name, const int binlog_index);
+
 void binlog_reader_destroy(ServerBinlogReader *reader);
 
 int binlog_reader_read(ServerBinlogReader *reader);
+
+int binlog_reader_read_to_buffer(ServerBinlogReader *reader,
+        char *buff, const int size, int *read_bytes);
 
 int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
         const int size, int *read_bytes, SFVersionRange *data_version);

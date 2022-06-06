@@ -62,7 +62,13 @@ extern "C" {
 
     int binlog_dump_load_from_mark_file();
 
-    int binlog_dump_all();
+    int binlog_dump_all_ex(const bool create_thread);
+
+    static inline int binlog_dump_all()
+    {
+        const bool create_thread = false;
+        return binlog_dump_all_ex(create_thread);
+    }
 
     /* this function is called by data thread only */
     int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,

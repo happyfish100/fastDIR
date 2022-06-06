@@ -168,7 +168,7 @@ int binlog_reader_read(ServerBinlogReader *reader)
     return result;
 }
 
-int binlog_read_to_buffer(ServerBinlogReader *reader,
+int binlog_reader_read_to_buffer(ServerBinlogReader *reader,
         char *buff, const int size, int *read_bytes)
 {
     int result;
@@ -199,8 +199,8 @@ int binlog_reader_integral_read(ServerBinlogReader *reader, char *buff,
     char *rec_end;
     char error_info[SF_ERROR_INFO_SIZE];
 
-    if ((result=binlog_read_to_buffer(reader, buff, size,
-                    read_bytes)) != 0)
+    if ((result=binlog_reader_read_to_buffer(reader,
+                    buff, size, read_bytes)) != 0)
     {
         data_version->first = data_version->last = 0;
         return result;
@@ -476,6 +476,15 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
     return binlog_reader_search_data_version(reader, last_data_version);
 }
 
+static inline int init_reader(ServerBinlogReader *reader,
+        const char *subdir_name)
+{
+    snprintf(reader->subdir_name, sizeof(reader->subdir_name),
+            "%s", subdir_name);
+    reader->fd = -1;
+    return binlog_buffer_init(&reader->binlog_buffer);
+}
+
 int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
         const SFBinlogFilePosition *hint_pos, const int64_t last_data_version)
 {
@@ -488,13 +497,10 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
         return result;
     }
 
-    if ((result=binlog_buffer_init(&reader->binlog_buffer)) != 0) {
+    if ((result=init_reader(reader, subdir_name)) != 0) {
         return result;
     }
 
-    snprintf(reader->subdir_name, sizeof(reader->subdir_name),
-            "%s", subdir_name);
-    reader->fd = -1;
     if (last_data_version == 0) {
         if (reader->start_index == 0) {
             reader->position.index = 0;
@@ -523,6 +529,21 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
     }
 
     return binlog_reader_detect_open(reader, last_data_version);
+}
+
+int binlog_reader_single_init(ServerBinlogReader *reader,
+        const char *subdir_name, const int binlog_index)
+{
+    int result;
+
+    if ((result=init_reader(reader, subdir_name)) != 0) {
+        return result;
+    }
+
+    reader->start_index = reader->last_index = binlog_index;
+    reader->position.index = binlog_index;
+    reader->position.offset = 0;
+    return open_readable_binlog(reader);
 }
 
 void binlog_reader_destroy(ServerBinlogReader *reader)

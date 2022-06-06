@@ -58,6 +58,30 @@ int cluster_handler_destroy()
     return 0;
 }
 
+static inline int replica_alloc_reader(struct fast_task_info *task,
+        const int server_type)
+{
+    REPLICA_READER = fc_malloc(sizeof(ServerBinlogReader));
+    if (REPLICA_READER == NULL) {
+        return ENOMEM;
+    }
+    SERVER_TASK_TYPE = server_type;
+    return 0;
+}
+
+static inline void replica_release_reader(struct fast_task_info *task,
+        const bool reader_inited)
+{
+    if (REPLICA_READER != NULL) {
+        if (reader_inited) {
+            binlog_reader_destroy(REPLICA_READER);
+        }
+        free(REPLICA_READER);
+        REPLICA_READER = NULL;
+    }
+    SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
+}
+
 int cluster_recv_timeout_callback(struct fast_task_info *task)
 {
     if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_RELATIONSHIP &&
@@ -757,6 +781,162 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
     return result;
 }
 
+static int replica_deal_query_binlog_info(struct fast_task_info *task)
+{
+    const bool create_thread = true;
+    FDIRProtoReplicaQueryBinlogInfoReq *req;
+    FDIRProtoReplicaQueryBinlogInfoResp *resp;
+    int server_id;
+    int dump_start_index;
+    int dump_last_index;
+    int binlog_start_index;
+    int binlog_last_index;
+    int result;
+
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_RESP;
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoReplicaQueryBinlogInfoReq *)REQUEST.body;
+    server_id = buff2int(req->server_id);
+
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    if ((result=binlog_get_indexes(&binlog_start_index,
+                    &binlog_last_index)) != 0)
+    {
+        return result;
+    }
+    
+    if (binlog_start_index > 0) {
+        if (DUMP_LAST_DATA_VERSION == 0) {
+            result = binlog_dump_all_ex(create_thread);
+            if (!(result == 0 || result == EINPROGRESS)) {
+                return result;
+            }
+        }
+        dump_start_index = 0;
+        dump_last_index = 0;
+    } else {
+        dump_start_index = 0;
+        dump_last_index = -1;
+    }
+
+    resp = (FDIRProtoReplicaQueryBinlogInfoResp *)REQUEST.body;
+    int2buff(dump_start_index, resp->dump_data.start_index);
+    int2buff(dump_last_index, resp->dump_data.last_index);
+    int2buff(binlog_start_index, resp->binlog.start_index);
+    int2buff(binlog_last_index, resp->binlog.last_index);
+    RESPONSE.header.body_len = sizeof(*resp);
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static inline int sync_binlog_output(struct fast_task_info *task)
+{
+    int result;
+    int size;
+    int read_bytes;
+
+    size = task->size - sizeof(FDIRProtoHeader);
+    result = binlog_reader_read_to_buffer(REPLICA_READER,
+            task->data + sizeof(FDIRProtoHeader), size, &read_bytes);
+    if (!(result == 0 || result == ENOENT)) {
+        return result;
+    }
+
+    RESPONSE.header.body_len = read_bytes;
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static int replica_deal_sync_binlog_first(struct fast_task_info *task)
+{
+    FDIRProtoReplicaSyncBinlogFirstReq *req;
+    char *subdir_name;
+    int binlog_index;
+    int result;
+
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoReplicaSyncBinlogFirstReq *)REQUEST.body;
+    binlog_index = buff2int(req->binlog_index);
+    
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    if (SERVER_TASK_TYPE != SF_SERVER_TASK_TYPE_NONE) {
+        if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_SYNC_BINLOG &&
+                REPLICA_READER != NULL)
+        {
+            binlog_reader_destroy(REPLICA_READER);
+        } else {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "already in progress. task type: %d, have reader: %d",
+                    SERVER_TASK_TYPE, REPLICA_READER != NULL ? 1 : 0);
+            return EALREADY;
+        }
+    } else {
+        result = replica_alloc_reader(task, FDIR_SERVER_TASK_TYPE_SYNC_BINLOG);
+        if (result != 0) {
+            return result;
+        }
+    }
+
+    if (req->file_type == FDIR_PROTO_FILE_TYPE_DUMP) {
+        subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
+    } else if (req->file_type == FDIR_PROTO_FILE_TYPE_BINLOG) {
+        subdir_name = FDIR_BINLOG_SUBDIR_NAME;
+    } else {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "unkown file type: %d", req->file_type);
+        return EINVAL;
+    }
+
+    if ((result=binlog_reader_single_init(REPLICA_READER,
+                    subdir_name, binlog_index)) != 0)
+    {
+        replica_release_reader(task, false);
+        return result;
+    }
+
+    return sync_binlog_output(task);
+}
+
+static int replica_deal_sync_binlog_next(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_expect_body_length(0)) != 0) {
+        return result;
+    }
+
+    if (!(SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_SYNC_BINLOG &&
+                REPLICA_READER != NULL))
+    {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "please send cmd %d (%s) first",
+                FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ,
+                fdir_get_cmd_caption(FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ));
+        return EINVAL;
+    }
+
+    return sync_binlog_output(task);
+}
+
 int cluster_deal_task(struct fast_task_info *task, const int stage)
 {
     int result;
@@ -819,6 +999,16 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
                 result = cluster_deal_notify_slave_quit(task);
                 TASK_CTX.common.need_response = false;
+                break;
+
+            case FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ:
+                result = replica_deal_query_binlog_info(task);
+                break;
+            case FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ:
+                result = replica_deal_sync_binlog_first(task);
+                break;
+            case FDIR_REPLICA_PROTO_SYNC_BINLOG_NEXT_REQ:
+                result = replica_deal_sync_binlog_next(task);
                 break;
             case SF_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
