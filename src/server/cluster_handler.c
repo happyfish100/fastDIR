@@ -139,6 +139,9 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
+        case FDIR_SERVER_TASK_TYPE_SYNC_BINLOG:
+            replica_release_reader(task, true);
+            break;
         default:
             break;
     }
@@ -786,6 +789,8 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
     const bool create_thread = true;
     FDIRProtoReplicaQueryBinlogInfoReq *req;
     FDIRProtoReplicaQueryBinlogInfoResp *resp;
+    char dump_filename[PATH_MAX];
+    char mark_filename[PATH_MAX];
     int server_id;
     int dump_start_index;
     int dump_last_index;
@@ -815,11 +820,21 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
     }
     
     if (binlog_start_index > 0) {
-        if (DUMP_LAST_DATA_VERSION == 0) {
+        fdir_get_dump_data_filename(dump_filename, sizeof(dump_filename));
+        fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+        if ((access(dump_filename, F_OK) != 0 && errno == ENOENT) ||
+                (access(mark_filename, F_OK) != 0 && errno == ENOENT))
+        {
             result = binlog_dump_all_ex(create_thread);
             if (!(result == 0 || result == EINPROGRESS)) {
                 return result;
             }
+        } else if (!(errno == 0 || errno == ENOENT)) {
+            result = errno;
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "access file %s or %s fail, error info: %s",
+                    dump_filename, mark_filename, STRERROR(result));
+            return result;
         }
         dump_start_index = 0;
         dump_last_index = 0;
@@ -897,6 +912,20 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
     }
 
     if (req->file_type == FDIR_PROTO_FILE_TYPE_DUMP) {
+        char dump_filename[PATH_MAX];
+        fdir_get_dump_data_filename(dump_filename, sizeof(dump_filename));
+        if (access(dump_filename, F_OK) != 0) {
+            if (errno == ENOENT) {
+                return EAGAIN;
+            } else {
+                result = (errno != 0 ? errno : EPERM);
+                RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                        "access file %s fail, error info: %s",
+                        dump_filename, STRERROR(result));
+                return result;
+            }
+        }
+
         subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
     } else if (req->file_type == FDIR_PROTO_FILE_TYPE_BINLOG) {
         subdir_name = FDIR_BINLOG_SUBDIR_NAME;
@@ -935,6 +964,37 @@ static int replica_deal_sync_binlog_next(struct fast_task_info *task)
     }
 
     return sync_binlog_output(task);
+}
+
+static int replica_deal_sync_dump_mark(struct fast_task_info *task)
+{
+    int result;
+    int64_t read_bytes;
+    char mark_filename[PATH_MAX];
+
+    if ((result=server_expect_body_length(0)) != 0) {
+        return result;
+    }
+
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    read_bytes = (task->size - sizeof(FDIRProtoHeader)) - 1;
+    result = getFileContentEx(mark_filename, task->data +
+            sizeof(FDIRProtoHeader), 0, &read_bytes);
+    if (result != 0) {
+        return result;
+    }
+
+    RESPONSE.header.body_len = read_bytes;
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
 }
 
 int cluster_deal_task(struct fast_task_info *task, const int stage)
@@ -1009,6 +1069,9 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 break;
             case FDIR_REPLICA_PROTO_SYNC_BINLOG_NEXT_REQ:
                 result = replica_deal_sync_binlog_next(task);
+                break;
+            case FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ:
+                result = replica_deal_sync_dump_mark(task);
                 break;
             case SF_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);
