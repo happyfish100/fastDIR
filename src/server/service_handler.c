@@ -592,7 +592,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
         int2buff(cs->server->id, body_part->server_id);
-        body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR);
+        body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
         body_part->is_active = (FC_ATOMIC_GET(cs->status) ==
                 FDIR_SERVER_STATUS_ACTIVE) ? 1 : 0;
     }

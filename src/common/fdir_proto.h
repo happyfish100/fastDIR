@@ -633,8 +633,9 @@ typedef struct fdir_proto_get_server_status_req {
 
 typedef struct fdir_proto_get_server_status_resp {
     char is_master;
+    char master_hint;
     char status;
-    char padding[2];
+    char force_election;
     char server_id[4];
     char data_version[8];
 } FDIRProtoGetServerStatusResp;

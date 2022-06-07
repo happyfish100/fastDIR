@@ -202,8 +202,11 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
 
     resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
 
-    resp->is_master = MYSELF_IS_MASTER;
+    resp->is_master = (CLUSTER_MYSELF_PTR ==
+            CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
+    resp->master_hint = MYSELF_IS_MASTER;
     resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
+    resp->force_election = (FORCE_MASTER_ELECTION ? 1 : 0);
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
     long2buff(DATA_CURRENT_VERSION, resp->data_version);
 

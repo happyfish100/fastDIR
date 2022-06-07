@@ -39,8 +39,10 @@
 
 typedef struct fdir_cluster_server_status {
     FDIRClusterServerInfo *cs;
-    bool is_master;
+    char is_master;
+    char master_hint;
     char status;
+    char force_election;
     int server_id;
     int64_t data_version;
 } FDIRClusterServerStatus;
@@ -64,7 +66,9 @@ static inline void proto_unpack_server_status(
         FDIRClusterServerStatus *server_status)
 {
     server_status->is_master = resp->is_master;
+    server_status->master_hint = resp->master_hint;
     server_status->status = resp->status;
+    server_status->force_election = resp->force_election;
     server_status->server_id = buff2int(resp->server_id);
     server_status->data_version = buff2long(resp->data_version);
 }
@@ -247,21 +251,33 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 
     status1 = (FDIRClusterServerStatus *)p1;
     status2 = (FDIRClusterServerStatus *)p2;
-    if (status1->data_version < status2->data_version) {
-        return -1;
-    } else if (status1->data_version > status2->data_version) {
-        return 1;
-    }
 
     sub = (int)status1->is_master - (int)status2->is_master;
     if (sub != 0) {
         return sub;
     }
 
+    if (status1->data_version < status2->data_version) {
+        return -1;
+    } else if (status1->data_version > status2->data_version) {
+        return 1;
+    }
+
     sub = (int)status1->status - (int)status2->status;
     if (sub != 0) {
         return sub;
     }
+
+    sub = (int)status1->master_hint - (int)status2->master_hint;
+    if (sub != 0) {
+        return sub;
+    }
+
+    sub = (int)status1->force_election - (int)status2->force_election;
+    if (sub != 0) {
+        return sub;
+    }
+
     return (int)status1->server_id - (int)status2->server_id;
 }
 
@@ -274,9 +290,13 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
     int result;
 
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
-        server_status->is_master = MYSELF_IS_MASTER;
+        server_status->is_master = (CLUSTER_MYSELF_PTR ==
+                CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
+        server_status->master_hint = MYSELF_IS_MASTER;
         server_status->status = __sync_fetch_and_add(
                 &CLUSTER_MYSELF_PTR->status, 0);
+        server_status->force_election =
+            (FORCE_MASTER_ELECTION ? 1 : 0);
         server_status->server_id = CLUSTER_MY_SERVER_ID;
         server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
