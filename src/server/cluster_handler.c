@@ -544,6 +544,10 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return result;
     }
 
+    if (!DATA_LOAD_DONE) {
+        return EPROTONOSUPPORT;
+    }
+
     req = (FDIRProtoJoinSlaveReq *)REQUEST.body;
     cluster_id = buff2int(req->cluster_id);
     server_id = buff2int(req->server_id);

@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
     pthread_t schedule_tid;
     int wait_count;
     int result;
+    int64_t max_data_version;
 
     result = process_cmdline(argc, argv, (bool *)&SF_G_CONTINUE_FLAG);
     if (!SF_G_CONTINUE_FLAG) {
@@ -251,28 +252,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        if ((result=server_load_data()) != 0) {
-            break;
-        }
-
-        if (STORAGE_ENABLED) {
-            change_notify_load_done_signal();
-        }
-
-#ifdef FDIR_DUMP_DATA_FOR_DEBUG
-        if ((result=server_dump_init()) != 0) {
-            break;
-        }
-        data_thread_set_dump_flag();
-#endif
-
-        if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
-            break;
-        }
-
         common_handler_init();
-        //sched_print_all_entries();
-
         result = sf_service_init_ex2(&CLUSTER_SF_CTX, "cluster",
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
@@ -285,6 +265,39 @@ int main(int argc, char *argv[])
         }
         sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
         sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
+
+        if ((result=binlog_get_max_record_version(&max_data_version)) != 0) {
+            break;
+        }
+
+        if (max_data_version == 0) {
+            sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
+            if ((result=data_recovery_sync_binlog()) != 0) {
+                break;
+            }
+        }
+
+        if ((result=server_load_data()) != 0) {
+            break;
+        }
+
+        if (STORAGE_ENABLED) {
+            change_notify_load_done_signal();
+        }
+        DATA_LOAD_DONE = true;
+
+#ifdef FDIR_DUMP_DATA_FOR_DEBUG
+        if ((result=server_dump_init()) != 0) {
+            break;
+        }
+        data_thread_set_dump_flag();
+#endif
+
+        if ((result=fcfs_auth_for_server_start(&AUTH_CTX)) != 0) {
+            break;
+        }
+
+        //sched_print_all_entries();
 
         result = sf_service_init_ex2(&g_sf_context, "service",
                 service_alloc_thread_extra_data,
@@ -323,7 +336,9 @@ int main(int argc, char *argv[])
 #endif
     //sched_print_all_entries();
 
-    sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
+    if (max_data_version != 0) {
+        sf_accept_loop_ex(&CLUSTER_SF_CTX, false);
+    }
     sf_accept_loop();
 
     if (g_schedule_flag) {

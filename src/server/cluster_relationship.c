@@ -37,16 +37,6 @@
     SF_QUORUM_NEED_CHECK_VOTE_NODE(MASTER_ELECTION_QUORUM, \
             VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count)
 
-typedef struct fdir_cluster_server_status {
-    FDIRClusterServerInfo *cs;
-    char is_master;
-    char master_hint;
-    char status;
-    char force_election;
-    int server_id;
-    int64_t data_version;
-} FDIRClusterServerStatus;
-
 typedef struct fdir_cluster_relationship_context {
     ConnectionInfo vote_connection;
     time_t master_elected_time;
@@ -73,7 +63,7 @@ static inline void proto_unpack_server_status(
     server_status->data_version = buff2long(resp->data_version);
 }
 
-static int proto_get_server_status(ConnectionInfo *conn,
+int cluster_proto_get_server_status(ConnectionInfo *conn,
         const int network_timeout,
         FDIRClusterServerStatus *server_status)
 {
@@ -308,7 +298,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
             return result;
         }
 
-        result = proto_get_server_status(&conn,
+        result = cluster_proto_get_server_status(&conn,
                 network_timeout, server_status);
         conn_pool_disconnect_server(&conn);
         return result;

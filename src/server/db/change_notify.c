@@ -189,5 +189,4 @@ void change_notify_load_done_signal()
         pthread_cond_signal(&change_notify_ctx.queue.queue.lc_pair.cond);
         fc_sleep_ms(1);
     }
-    DATA_LOAD_DONE = true;
 }

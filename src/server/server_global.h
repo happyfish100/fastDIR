@@ -82,7 +82,7 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
-        bool load_done;
+        volatile bool load_done;
     } data;  //for binlog
 
     struct {

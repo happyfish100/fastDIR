@@ -32,6 +32,7 @@
 #include "sf/sf_func.h"
 #include "../../common/fdir_proto.h"
 #include "../server_global.h"
+#include "../cluster_relationship.h"
 #include "binlog_dump.h"
 #include "binlog_sync.h"
 
@@ -228,13 +229,52 @@ static int proto_sync_binlog(ConnectionInfo *conn,
     return result;
 }
 
-static int get_master_connection(ConnectionInfo *conn)
+static int cmp_server_status(const void *p1, const void *p2)
 {
+    FDIRClusterServerStatus *status1;
+    FDIRClusterServerStatus *status2;
+    int sub;
+
+    status1 = (FDIRClusterServerStatus *)p1;
+    status2 = (FDIRClusterServerStatus *)p2;
+
+    sub = (int)status1->is_master - (int)status2->is_master;
+    if (sub != 0) {
+        return sub;
+    }
+
+    if (status1->data_version < status2->data_version) {
+        return -1;
+    } else if (status1->data_version > status2->data_version) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
+{
+#define FIXED_SERVER_COUNT  8
     int result;
-    FDIRClientServerEntry master;
+    int count;
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *send;
+    FDIRClusterServerStatus fixed[FIXED_SERVER_COUNT];
+    FDIRClusterServerStatus *server_status;
+    FDIRClusterServerStatus *ps;
+    FDIRClusterServerStatus *last;
 
+    if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
+        server_status = fixed;
+    } else {
+        server_status = fc_malloc(sizeof(FDIRClusterServerStatus) *
+                CLUSTER_SERVER_ARRAY.count);
+        if (server_status == NULL) {
+            return ENOMEM;
+        }
+    }
+
+    ps = server_status;
     result = ENOENT;
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
@@ -243,55 +283,89 @@ static int get_master_connection(ConnectionInfo *conn)
         }
 
         if ((result=fc_server_make_connection_ex(
-                        &SERVICE_GROUP_ADDRESS_ARRAY(cs->server), conn,
+                        &CLUSTER_GROUP_ADDRESS_ARRAY(cs->server), conn,
                         "fdir", SF_G_CONNECT_TIMEOUT, NULL, true)) != 0)
         {
             continue;
         }
 
-        result = fdir_proto_get_master(conn, SF_G_NETWORK_TIMEOUT, &master);
+        ps->cs = cs;
+        if ((result=cluster_proto_get_server_status(conn,
+                        SF_G_NETWORK_TIMEOUT, ps)) == 0)
+        {
+            ps++;
+        }
         conn_pool_disconnect_server(conn);
+    }
 
-        if (result == 0) {
-            for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
-                if (cs->server->id == master.server_id) {
-                    break;
-                }
-            }
-            if (cs < send) {
+    count = ps - server_status;
+    do {
+        if (count == 0) {
+            result = ENOENT;
+            break;
+        }
+
+        if (count > 1) {
+            qsort(server_status, count,
+                    sizeof(FDIRClusterServerStatus),
+                    cmp_server_status);
+        }
+
+        last = ps - 1;
+        if (last->data_version > 0) {
+            if (last->is_master) {
+                *need_rebuild = true;
                 result = fc_server_make_connection_ex(
-                        &CLUSTER_GROUP_ADDRESS_ARRAY(cs->server), conn,
-                        "fdir", SF_G_CONNECT_TIMEOUT, NULL, true);
+                        &CLUSTER_GROUP_ADDRESS_ARRAY(last->cs->server),
+                        conn, "fdir", SF_G_CONNECT_TIMEOUT, NULL, true);
             } else {
-                result = EBUSY;
+                result = EAGAIN;
             }
             break;
         }
-    }
 
+        if (count == CLUSTER_SERVER_ARRAY.count - 1) {
+            *need_rebuild = false;
+            result = 0;
+        } else {
+            result = EAGAIN;
+        }
+    } while (0);
+
+    if (server_status != fixed) {
+        free(server_status);
+    }
     return result;
 }
 
 static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
 {
     int result;
-    int i;
+    int sleep_seconds;
+    bool need_rebuild;
     char file_type;
     int binlog_index;
     ConnectionInfo conn;
 
-    for (i=0; i<60; i++) {
-        if ((result=get_master_connection(&conn)) == 0) {
+    conn.sock = -1;
+    sleep_seconds = 1;
+    while (SF_G_CONTINUE_FLAG) {
+        if ((result=get_master_connection(&conn, &need_rebuild)) == 0) {
             break;
         }
-        sleep(1);
+
+        sleep(sleep_seconds);
+        if (sleep_seconds < 30) {
+            sleep_seconds *= 2;
+        }
     }
 
-    if (result != 0) {
-        logError("file: "__FILE__", line: %d, "
-                "get master connection fail, "
-                "errno: %d, error info: %s",
-                __LINE__, result, STRERROR(result));
+    if (!SF_G_CONTINUE_FLAG) {
+        return EINTR;
+    }
+
+    if (!need_rebuild) {
+        return 0;
     }
 
     if ((result=query_binlog_info(&conn, sync_ctx)) != 0) {

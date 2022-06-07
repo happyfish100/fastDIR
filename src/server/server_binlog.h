@@ -31,6 +31,7 @@
 #include "binlog/binlog_dump.h"
 #include "binlog/binlog_dedup.h"
 #include "binlog/binlog_clean.h"
+#include "binlog/binlog_sync.h"
 
 #ifdef __cplusplus
 extern "C" {

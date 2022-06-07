@@ -23,6 +23,16 @@
 #include "server_types.h"
 #include "cluster_info.h"
 
+typedef struct fdir_cluster_server_status {
+    FDIRClusterServerInfo *cs;
+    char is_master;
+    char master_hint;
+    char status;
+    char force_election;
+    int server_id;
+    int64_t data_version;
+} FDIRClusterServerStatus;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -37,6 +47,10 @@ int cluster_relationship_commit_master(FDIRClusterServerInfo *master);
 void cluster_relationship_trigger_reselect_master();
 
 int cluster_relationship_master_quorum_check();
+
+int cluster_proto_get_server_status(ConnectionInfo *conn,
+        const int network_timeout,
+        FDIRClusterServerStatus *server_status);
 
 #ifdef __cplusplus
 }
