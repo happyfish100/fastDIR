@@ -22,7 +22,8 @@ ALL_OBJS = ../common/fdir_proto.o ../common/fdir_global.o \
            binlog/binlog_func.o binlog/binlog_reader.o binlog/binlog_pack.o \
            binlog/binlog_replay.o binlog/binlog_replay_mt.o \
            binlog/push_result_ring.o binlog/binlog_dump.o \
-           binlog/binlog_dedup.o binlog/binlog_clean.o
+           binlog/binlog_dedup.o binlog/binlog_clean.o  \
+           binlog/binlog_sync.o
 
 ALL_PRGS = fdir_serverd
 

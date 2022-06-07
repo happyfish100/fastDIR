@@ -28,12 +28,6 @@
 
 struct fdir_client_context;
 
-typedef struct fdir_client_server_entry {
-    int server_id;
-    ConnectionInfo conn;
-    char status;
-} FDIRClientServerEntry;
-
 typedef struct fdir_server_group {
     int alloc_size;
     int count;

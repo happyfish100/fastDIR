@@ -775,8 +775,9 @@ static inline void fdir_proto_pack_dentry_stat_ex(const FDIRDEntryStat *stat,
 #define fdir_proto_pack_dentry_stat(stat, proto) \
     fdir_proto_pack_dentry_stat_ex(stat, proto, false)
 
-static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
-        proto, FDIRDEntryStat *stat)
+static inline void fdir_proto_unpack_dentry_stat(
+        const FDIRProtoDEntryStat *proto,
+        FDIRDEntryStat *stat)
 {
     stat->mode = buff2int(proto->mode);
     stat->uid = buff2int(proto->uid);
@@ -791,6 +792,10 @@ static inline void fdir_proto_unpack_dentry_stat(const FDIRProtoDEntryStat *
     stat->alloc = buff2long(proto->alloc);
     stat->space_end = buff2long(proto->space_end);
 }
+
+int fdir_proto_get_master(ConnectionInfo *conn,
+        const int network_timeout,
+        FDIRClientServerEntry *master);
 
 const char *fdir_get_server_status_caption(const int status);
 

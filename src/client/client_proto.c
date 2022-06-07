@@ -2490,33 +2490,14 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
 {
     int result;
     ConnectionInfo *conn;
-    FDIRProtoHeader *header;
-    SFResponseInfo response;
-    FDIRProtoGetServerResp server_resp;
-    char out_buff[sizeof(FDIRProtoHeader)];
 
     conn = client_ctx->cm.ops.get_connection(&client_ctx->cm, 0, &result);
     if (conn == NULL) {
         return result;
     }
 
-    header = (FDIRProtoHeader *)out_buff;
-    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_MASTER_REQ,
-            sizeof(out_buff) - sizeof(FDIRProtoHeader));
-    response.error.length = 0;
-    if ((result=sf_send_and_recv_response(conn, out_buff, sizeof(out_buff),
-                    &response, client_ctx->common_cfg.network_timeout,
-                    FDIR_SERVICE_PROTO_GET_MASTER_RESP,
-                    (char *)&server_resp, sizeof(FDIRProtoGetServerResp))) != 0)
-    {
-        fdir_log_network_error(&response, conn, result);
-    } else {
-        master->server_id = buff2int(server_resp.server_id);
-        memcpy(master->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
-        *(master->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
-        master->conn.port = buff2short(server_resp.port);
-    }
-
+    result = fdir_proto_get_master(conn, client_ctx->
+            common_cfg.network_timeout, master);
     SF_CLIENT_RELEASE_CONNECTION(&client_ctx->cm, conn, result);
     return result;
 }

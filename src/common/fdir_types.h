@@ -179,4 +179,10 @@ typedef struct fdir_flock_owner {
     int64_t  id;   //owner id
 } FDIRFlockOwner;
 
+typedef struct fdir_client_server_entry {
+    int server_id;
+    ConnectionInfo conn;
+    char status;
+} FDIRClientServerEntry;
+
 #endif

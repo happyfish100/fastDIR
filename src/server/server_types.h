@@ -68,8 +68,10 @@
 #define TASK_STATUS_CONTINUE           12345
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
-#define FDIR_BINLOG_SUBDIR_NAME      "binlog"
-#define FDIR_DATA_DUMP_SUBDIR_NAME   "binlog/dump"
+#define FDIR_BINLOG_SUBDIR_NAME         "binlog"
+#define FDIR_DATA_DUMP_SUBDIR_NAME      "binlog/dump"
+#define FDIR_RECOVERY_SUBDIR_NAME       "recovery"
+#define FDIR_RECOVERY_DUMP_SUBDIR_NAME  "recovery/dump"
 
 #define FDIR_FORCE_ELECTION_LONG_OPTION_STR  "force-master-election"
 #define FDIR_FORCE_ELECTION_LONG_OPTION_LEN  (sizeof(  \

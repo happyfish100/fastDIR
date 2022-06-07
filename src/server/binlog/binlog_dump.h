@@ -41,24 +41,29 @@ typedef struct fdir_binlog_dump_context {
 extern "C" {
 #endif
 
-    static inline const char *fdir_get_dump_data_filename(
-            char *filename, const int size)
+    static inline const char *fdir_get_dump_data_filename_ex(
+            const char *subdir_name, char *filename, const int size)
     {
         return sf_binlog_writer_get_filename(DATA_PATH_STR,
-                FDIR_DATA_DUMP_SUBDIR_NAME, 0, filename, size);
+                subdir_name, 0, filename, size);
     }
 
-    static inline const char *fdir_get_dump_mark_filename(
-            char *filename, const int size)
+    static inline const char *fdir_get_dump_mark_filename_ex(
+            const char *subdir_name, char *filename, const int size)
     {
         char filepath[PATH_MAX];
         sf_binlog_writer_get_filepath(DATA_PATH_STR,
-                FDIR_DATA_DUMP_SUBDIR_NAME,
-                filepath, sizeof(filepath));
+                subdir_name, filepath, sizeof(filepath));
         snprintf(filename, size, "%s/%s.mark",
                 filepath, SF_BINLOG_FILE_PREFIX);
         return filename;
     }
+
+#define fdir_get_dump_data_filename(filename, size) \
+    fdir_get_dump_data_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
+
+#define fdir_get_dump_mark_filename(filename, size) \
+    fdir_get_dump_mark_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
 
     int binlog_dump_load_from_mark_file();
 
