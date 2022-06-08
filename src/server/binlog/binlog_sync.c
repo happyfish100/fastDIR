@@ -34,11 +34,14 @@
 #include "../server_global.h"
 #include "../cluster_relationship.h"
 #include "binlog_dump.h"
+#include "binlog_write.h"
 #include "binlog_sync.h"
 
 typedef struct {
+    char file_type;
+    int binlog_index;
     int fd;
-    int wait_count;
+    ConnectionInfo conn;
 
     struct {
         int start_index;
@@ -53,8 +56,7 @@ typedef struct {
     BufferInfo buffer;  //for network
 } BinlogSyncContext;
 
-static int query_binlog_info(ConnectionInfo *conn,
-        BinlogSyncContext *sync_ctx)
+static int query_binlog_info(BinlogSyncContext *sync_ctx)
 {
     int result;
     FDIRProtoHeader *header;
@@ -71,12 +73,13 @@ static int query_binlog_info(ConnectionInfo *conn,
     SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     response.error.length = 0;
-    if ((result=sf_send_and_recv_response(conn, out_buff,
+    if ((result=sf_send_and_recv_response(&sync_ctx->conn, out_buff,
             sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
             FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_RESP,
             (char *)&resp, sizeof(resp))) != 0)
     {
-        fdir_log_network_error_ex(&response, conn, result, LOG_ERR);
+        fdir_log_network_error_ex(&response,
+                &sync_ctx->conn, result, LOG_ERR);
         return result;
     }
 
@@ -87,23 +90,62 @@ static int query_binlog_info(ConnectionInfo *conn,
     return 0;
 }
 
-static int sync_binlog_to_local(ConnectionInfo *conn,
-        BinlogSyncContext *sync_ctx, const unsigned char req_cmd,
-        char *out_buff, const int out_bytes, bool *is_last)
+static int sync_binlog_to_local(BinlogSyncContext *sync_ctx,
+        const unsigned char req_cmd, char *out_buff,
+        const int out_bytes, bool *is_last)
 {
     int result;
+    int count;
+    int sleep_seconds;
+    int64_t start_time_ms;
+    char time_buff[32];
     FDIRProtoHeader *header;
     SFResponseInfo response;
 
     header = (FDIRProtoHeader *)out_buff;
     SF_PROTO_SET_HEADER(header, req_cmd, out_bytes - sizeof(FDIRProtoHeader));
-    response.error.length = 0;
-    if ((result=sf_send_and_check_response_header(conn, out_buff,
-            out_bytes, &response, SF_G_NETWORK_TIMEOUT,
-            FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP)) != 0)
-    {
-        fdir_log_network_error_ex(&response, conn, result, LOG_ERR);
-        return result;
+    count = 0;
+    start_time_ms = get_current_time_ms();
+    sleep_seconds = 1;
+    while (SF_G_CONTINUE_FLAG) {
+        response.error.length = 0;
+        result = sf_send_and_check_response_header(&sync_ctx->conn,
+                out_buff, out_bytes, &response, SF_G_NETWORK_TIMEOUT,
+                FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP);
+        if (result != 0) {
+            if (req_cmd == FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ
+                    && sync_ctx->file_type == FDIR_PROTO_FILE_TYPE_DUMP
+                    && result == EAGAIN)
+            {
+                if (++count == 1) {
+                    logInfo("file: "__FILE__", line: %d, "
+                            "waiting for full dump data done ...",
+                            __LINE__);
+                }
+                sleep(sleep_seconds);
+                if (sleep_seconds < 60) {
+                    sleep_seconds *= 2;
+                }
+                continue;
+            }
+
+            fdir_log_network_error_ex(&response,
+                    &sync_ctx->conn, result, LOG_ERR);
+            return result;
+        }
+
+        break;
+    }
+
+    if (!SF_G_CONTINUE_FLAG) {
+        return EINTR;
+    }
+
+    if (count > 0) {
+        long_to_comma_str(get_current_time_ms() - start_time_ms, time_buff);
+        logInfo("file: "__FILE__", line: %d, "
+                "wait full dump data done, time used: %s ms.",
+                __LINE__, time_buff);
     }
 
     if (response.header.body_len == 0) {
@@ -112,22 +154,21 @@ static int sync_binlog_to_local(ConnectionInfo *conn,
     }
 
     if (response.header.body_len > sync_ctx->buffer.alloc_size) {
-        logError("file: "__FILE__", line: %d, "
-                "server %s:%u, response body length: %d is too large, "
-                "the max body length is %d", __LINE__, conn->ip_addr,
-                conn->port, response.header.body_len,
-                sync_ctx->buffer.alloc_size);
-        return EOVERFLOW;
+        if ((result=fc_realloc_buffer(&sync_ctx->buffer, 1024,
+                        response.header.body_len)) != 0)
+        {
+            return result;
+        }
     }
 
-    if ((result=tcprecvdata_nb(conn->sock, sync_ctx->buffer.buff,
+    if ((result=tcprecvdata_nb(sync_ctx->conn.sock, sync_ctx->buffer.buff,
                     response.header.body_len, SF_G_NETWORK_TIMEOUT)) != 0)
     {
         response.error.length = snprintf(response.error.message,
                 sizeof(response.error.message),
                 "recv data fail, errno: %d, error info: %s",
                 result, STRERROR(result));
-        fdir_log_network_error(&response, conn, result);
+        fdir_log_network_error(&response, &sync_ctx->conn, result);
         return result;
     }
 
@@ -144,9 +185,8 @@ static int sync_binlog_to_local(ConnectionInfo *conn,
     return 0;
 }
 
-static inline int sync_binlog_first_to_local(ConnectionInfo *conn,
-        BinlogSyncContext *sync_ctx, const char file_type,
-        const int binlog_index, bool *is_last)
+static inline int sync_binlog_first_to_local(
+        BinlogSyncContext *sync_ctx, bool *is_last)
 {
     FDIRProtoReplicaSyncBinlogFirstReq *req;
     char out_buff[sizeof(FDIRProtoHeader) + sizeof(
@@ -154,79 +194,119 @@ static inline int sync_binlog_first_to_local(ConnectionInfo *conn,
 
     req = (FDIRProtoReplicaSyncBinlogFirstReq *)
         (out_buff + sizeof(FDIRProtoHeader));
-    req->file_type = file_type;
-    int2buff(binlog_index, req->binlog_index);
-    return sync_binlog_to_local(conn, sync_ctx,
+    req->file_type = sync_ctx->file_type;
+    int2buff(sync_ctx->binlog_index, req->binlog_index);
+    return sync_binlog_to_local(sync_ctx,
             FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ,
             out_buff, sizeof(out_buff), is_last);
 }
 
-static inline int sync_binlog_next_to_local(ConnectionInfo *conn,
+static inline int sync_binlog_next_to_local(
         BinlogSyncContext *sync_ctx, bool *is_last)
 {
     char out_buff[sizeof(FDIRProtoHeader)];
-    return sync_binlog_to_local(conn, sync_ctx,
+    return sync_binlog_to_local(sync_ctx,
             FDIR_REPLICA_PROTO_SYNC_BINLOG_NEXT_REQ,
             out_buff, sizeof(out_buff), is_last);
 }
 
-static int proto_sync_binlog(ConnectionInfo *conn,
-        BinlogSyncContext *sync_ctx, const char file_type,
-        const int binlog_index)
+static int proto_sync_binlog(BinlogSyncContext *sync_ctx)
 {
     int result;
     bool is_last;
-    char tmp_filename[PATH_MAX];
     char full_filename[PATH_MAX];
 
-    if (file_type == FDIR_PROTO_FILE_TYPE_DUMP) {
+    if (sync_ctx->file_type == FDIR_PROTO_FILE_TYPE_DUMP) {
         fdir_get_dump_data_filename_ex(FDIR_RECOVERY_DUMP_SUBDIR_NAME,
                 full_filename, sizeof(full_filename));
     } else {
         sf_binlog_writer_get_filename(DATA_PATH_STR,
-                FDIR_RECOVERY_SUBDIR_NAME, binlog_index,
+                FDIR_RECOVERY_SUBDIR_NAME, sync_ctx->binlog_index,
                 full_filename, sizeof(full_filename));
     }
 
-    snprintf(tmp_filename, sizeof(tmp_filename), "%s.tmp", full_filename);
-    if ((sync_ctx->fd=open(tmp_filename, O_WRONLY |
+    if ((sync_ctx->fd=open(full_filename, O_WRONLY |
                     O_CREAT | O_TRUNC, 0644)) < 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "open binlog file %s fail, errno: %d, error info: %s",
-                __LINE__, tmp_filename, errno, STRERROR(errno));
+                __LINE__, full_filename, errno, STRERROR(errno));
         return errno != 0 ? errno : EACCES;
     }
 
     is_last = false;
-    if ((result=sync_binlog_first_to_local(conn, sync_ctx,
-                    file_type, binlog_index, &is_last)) != 0)
-    {
+    if ((result=sync_binlog_first_to_local(sync_ctx, &is_last)) != 0) {
         close(sync_ctx->fd);
         return result;
     }
 
-    while (!is_last) {
-        if ((result=sync_binlog_next_to_local(conn,
-                        sync_ctx, &is_last)) != 0)
-        {
+    while (!is_last && SF_G_CONTINUE_FLAG) {
+        if ((result=sync_binlog_next_to_local(sync_ctx, &is_last)) != 0) {
             break;
         }
     }
 
+    if (!SF_G_CONTINUE_FLAG) {
+        result = EINTR;
+    }
+
     close(sync_ctx->fd);
+    return result;
+}
+
+static int proto_sync_mark_file(BinlogSyncContext *sync_ctx)
+{
+    int result;
+    char out_buff[sizeof(FDIRProtoHeader)];
+    char mark_filename[PATH_MAX];
+    FDIRProtoHeader *header;
+    SFResponseInfo response;
+
+    header = (FDIRProtoHeader *)out_buff;
+    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    response.error.length = 0;
+    result = sf_send_and_check_response_header(&sync_ctx->conn, out_buff,
+            sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+            FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP);
     if (result != 0) {
+        fdir_log_network_error_ex(&response,
+                &sync_ctx->conn, result, LOG_ERR);
         return result;
     }
 
-    if (rename(tmp_filename, full_filename) != 0) {
-        result = (errno != 0 ? errno : EPERM);
-        logError("file: "__FILE__", line: %d, rename file "
-                "%s to %s fail, errno: %d, error info: %s",
-                __LINE__, tmp_filename, full_filename,
-                result, STRERROR(result));
+    if (response.header.body_len > sync_ctx->buffer.alloc_size) {
+        if ((result=fc_realloc_buffer(&sync_ctx->buffer, 1024,
+                        response.header.body_len)) != 0)
+        {
+            return result;
+        }
     }
-    return result;
+
+    if ((result=tcprecvdata_nb(sync_ctx->conn.sock, sync_ctx->buffer.buff,
+                    response.header.body_len, SF_G_NETWORK_TIMEOUT)) != 0)
+    {
+        response.error.length = snprintf(response.error.message,
+                sizeof(response.error.message),
+                "recv data fail, errno: %d, error info: %s",
+                result, STRERROR(result));
+        fdir_log_network_error(&response, &sync_ctx->conn, result);
+        return result;
+    }
+
+    fdir_get_dump_mark_filename_ex(FDIR_RECOVERY_DUMP_SUBDIR_NAME,
+            mark_filename, sizeof(mark_filename));
+    if ((result=safeWriteToFile(mark_filename, sync_ctx->buffer.buff,
+                    response.header.body_len)) != 0)
+    {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "write to file %s fail, errno: %d, error info: %s",
+                __LINE__, mark_filename, result, STRERROR(result));
+        return result;
+    }
+
+    return 0;
 }
 
 static int cmp_server_status(const void *p1, const void *p2)
@@ -252,7 +332,7 @@ static int cmp_server_status(const void *p1, const void *p2)
     return 0;
 }
 
-static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
+static int get_master_connection(ConnectionInfo *conn, int *master_id)
 {
 #define FIXED_SERVER_COUNT  8
     int result;
@@ -264,6 +344,7 @@ static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
     FDIRClusterServerStatus *ps;
     FDIRClusterServerStatus *last;
 
+    *master_id = 0;
     if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
         server_status = fixed;
     } else {
@@ -274,8 +355,8 @@ static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
         }
     }
 
-    ps = server_status;
     result = ENOENT;
+    ps = server_status;
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
         if (cs == CLUSTER_MYSELF_PTR) {
@@ -314,7 +395,7 @@ static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
         last = ps - 1;
         if (last->data_version > 0) {
             if (last->is_master) {
-                *need_rebuild = true;
+                *master_id = last->cs->server->id;
                 result = fc_server_make_connection_ex(
                         &CLUSTER_GROUP_ADDRESS_ARRAY(last->cs->server),
                         conn, "fdir", SF_G_CONNECT_TIMEOUT, NULL, true);
@@ -322,10 +403,7 @@ static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
                 result = EAGAIN;
             }
             break;
-        }
-
-        if (count == CLUSTER_SERVER_ARRAY.count - 1) {
-            *need_rebuild = false;
+        } else if (count == CLUSTER_SERVER_ARRAY.count - 1) {
             result = 0;
         } else {
             result = EAGAIN;
@@ -338,19 +416,108 @@ static int get_master_connection(ConnectionInfo *conn, bool *need_rebuild)
     return result;
 }
 
+static int check_mkdirs()
+{
+    int result;
+    char filepath[PATH_MAX];
+
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_RECOVERY_SUBDIR_NAME,
+            filepath, sizeof(filepath));
+    if ((result=fc_check_mkdir(filepath, 0775)) != 0) {
+        return result;
+    }
+
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_RECOVERY_DUMP_SUBDIR_NAME,
+            filepath, sizeof(filepath));
+    return fc_check_mkdir(filepath, 0775);
+}
+
+static int clean_binlog_path()
+{
+    const int binlog_index = 0;
+    int result;
+    char filename[PATH_MAX];
+    char filepath[PATH_MAX];
+
+    sf_file_writer_get_filename(DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
+            binlog_index, filename, sizeof(filename));
+    if ((result=fc_delete_file_ex(filename, "binlog")) != 0) {
+        return result;
+    }
+
+    sf_file_writer_get_index_filename(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, filename, sizeof(filename));
+    if ((result=fc_delete_file_ex(filename, "index")) != 0) {
+        return result;
+    }
+
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME,
+            filepath, sizeof(filepath));
+    if (fc_get_path_child_count(filepath) == 0) {
+        return 0;
+    } else {
+        logError("file: "__FILE__", line: %d, "
+                "binlog path %s not emtpy!",
+                __LINE__, filepath);
+        return ENOTEMPTY;
+    }
+}
+
+static int sync_finish(BinlogSyncContext *sync_ctx)
+{
+    int result;
+    SFFileWriterInfo writer;
+    char recovery_path[PATH_MAX];
+    char binlog_path[PATH_MAX];
+
+    if ((result=sf_file_writer_init(&writer, DATA_PATH_STR,
+                    FDIR_RECOVERY_SUBDIR_NAME, SF_BINLOG_FILE_PREFIX,
+                    4 * 1024, SF_BINLOG_DEFAULT_ROTATE_SIZE)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=sf_file_writer_set_indexes(&writer, sync_ctx->binlog.
+                    start_index, sync_ctx->binlog.last_index)) != 0)
+    {
+        return result;
+    }
+    sf_file_writer_destroy(&writer);
+
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME,
+            binlog_path, sizeof(binlog_path));
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_RECOVERY_SUBDIR_NAME,
+            recovery_path, sizeof(recovery_path));
+    if (rename(recovery_path, binlog_path) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "rename path %s to %s fail, errno: %d, error info: %s",
+                __LINE__, recovery_path, binlog_path,
+                result, STRERROR(result));
+        return result;
+    }
+
+    return binlog_writer_change_write_index(sync_ctx->binlog.last_index);
+}
+
 static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
 {
     int result;
     int sleep_seconds;
-    bool need_rebuild;
-    char file_type;
-    int binlog_index;
-    ConnectionInfo conn;
+    int master_id;
 
-    conn.sock = -1;
+    sync_ctx->conn.sock = -1;
     sleep_seconds = 1;
+    logInfo("file: "__FILE__", line: %d, "
+            "try to get master connection to "
+            "fetch binlog ...", __LINE__);
     while (SF_G_CONTINUE_FLAG) {
-        if ((result=get_master_connection(&conn, &need_rebuild)) == 0) {
+        if ((result=get_master_connection(&sync_ctx->conn, &master_id)) == 0) {
             break;
         }
 
@@ -364,36 +531,57 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return EINTR;
     }
 
-    if (!need_rebuild) {
+    if (master_id == 0) {
+        logInfo("file: "__FILE__", line: %d, "
+                "do NOT need fetch binlog from "
+                "other fdir server.", __LINE__);
         return 0;
     }
 
-    if ((result=query_binlog_info(&conn, sync_ctx)) != 0) {
-        conn_pool_disconnect_server(&conn);
+    if ((result=clean_binlog_path()) != 0) {
+        return result;
+    }
+    if ((result=check_mkdirs()) != 0) {
         return result;
     }
 
-    /*
-    for (binlog_index=start_index; binlog_index<=last_index; binlog_index++) {
-        if ((result=proto_sync_binlog(&conn, sync_ctx, binlog_index)) != 0)
-        {
+    logInfo("file: "__FILE__", line: %d, "
+            "fetch binlog from master server id: %d, %s:%u ...",
+            __LINE__, master_id, sync_ctx->conn.ip_addr,
+            sync_ctx->conn.port);
+
+    if ((result=query_binlog_info(sync_ctx)) != 0) {
+        conn_pool_disconnect_server(&sync_ctx->conn);
+        return result;
+    }
+
+    if (sync_ctx->dump_data.start_index <= sync_ctx->dump_data.last_index) {
+        sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_DUMP;
+        sync_ctx->binlog_index = 0;
+        if ((result=proto_sync_binlog(sync_ctx)) != 0) {
+            return result;
+        }
+
+        if ((result=proto_sync_mark_file(sync_ctx)) != 0) {
+            return result;
+        }
+    }
+
+    for (sync_ctx->binlog_index=sync_ctx->binlog.start_index;
+            sync_ctx->binlog_index<= sync_ctx->binlog.last_index;
+            sync_ctx->binlog_index++)
+    {
+        sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_BINLOG;
+        if ((result=proto_sync_binlog(sync_ctx)) != 0) {
             break;
         }
     }
-    */
+    conn_pool_disconnect_server(&sync_ctx->conn);
 
     if (result == 0) {
-        /*
-        if ((result=replica_binlog_set_binlog_start_index(
-                        ctx->ds->dg->id, start_index)) == 0)
-        {
-            result = replica_binlog_writer_change_write_index(
-                    ctx->ds->dg->id, last_index);
-        }
-        */
+        result = sync_finish(sync_ctx);
     }
 
-    conn_pool_disconnect_server(&conn);
     return result;
 }
 

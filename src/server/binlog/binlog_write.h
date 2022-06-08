@@ -42,6 +42,12 @@ static inline int binlog_write_set_next_version()
             writer, FC_ATOMIC_GET(DATA_CURRENT_VERSION) + 1);
 }
 
+static inline int binlog_writer_change_write_index(const int write_index)
+{
+    return sf_binlog_writer_change_write_index(&g_binlog_writer_ctx.
+            writer, write_index);
+}
+
 static inline int64_t binlog_writer_get_last_version()
 {
     return sf_binlog_writer_get_last_version(&g_binlog_writer_ctx.writer);
