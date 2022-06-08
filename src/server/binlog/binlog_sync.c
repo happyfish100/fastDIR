@@ -488,11 +488,11 @@ static int sync_finish(BinlogSyncContext *sync_ctx)
     sf_file_writer_destroy(&writer);
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
-            FDIR_BINLOG_SUBDIR_NAME,
-            binlog_path, sizeof(binlog_path));
-    sf_binlog_writer_get_filepath(DATA_PATH_STR,
             FDIR_RECOVERY_SUBDIR_NAME,
             recovery_path, sizeof(recovery_path));
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME,
+            binlog_path, sizeof(binlog_path));
     if (rename(recovery_path, binlog_path) != 0) {
         result = errno != 0 ? errno : EPERM;
         logError("file: "__FILE__", line: %d, "
@@ -517,7 +517,9 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
             "try to get master connection to "
             "fetch binlog ...", __LINE__);
     while (SF_G_CONTINUE_FLAG) {
-        if ((result=get_master_connection(&sync_ctx->conn, &master_id)) == 0) {
+        if ((result=get_master_connection(&sync_ctx->
+                        conn, &master_id)) == 0)
+        {
             break;
         }
 
@@ -573,16 +575,12 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
     {
         sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_BINLOG;
         if ((result=proto_sync_binlog(sync_ctx)) != 0) {
-            break;
+            return result;
         }
     }
     conn_pool_disconnect_server(&sync_ctx->conn);
 
-    if (result == 0) {
-        result = sync_finish(sync_ctx);
-    }
-
-    return result;
+    return sync_finish(sync_ctx);
 }
 
 int data_recovery_sync_binlog()

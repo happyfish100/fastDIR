@@ -748,6 +748,11 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 
     if (record->me.parent == NULL && record->me.pname.name.len > 0) {
         /* orphan inode */
+        if ((ns_entry=fdir_namespace_get(thread_ctx, &record->
+                        ns, true, &result)) == NULL)
+        {
+            return result;
+        }
         is_root = false;
     } else {
         if ((result=dentry_find_me(thread_ctx, &record->ns,
