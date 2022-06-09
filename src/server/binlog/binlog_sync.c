@@ -469,23 +469,31 @@ static int clean_binlog_path()
 static int sync_finish(BinlogSyncContext *sync_ctx)
 {
     int result;
-    SFFileWriterInfo writer;
+    char index_filename[PATH_MAX];
+    char recovery_filename[PATH_MAX];
     char recovery_path[PATH_MAX];
     char binlog_path[PATH_MAX];
 
-    if ((result=sf_file_writer_init(&writer, DATA_PATH_STR,
-                    FDIR_RECOVERY_SUBDIR_NAME, SF_BINLOG_FILE_PREFIX,
-                    4 * 1024, SF_BINLOG_DEFAULT_ROTATE_SIZE)) != 0)
+    if ((result=binlog_writer_set_indexes(sync_ctx->binlog.start_index,
+                    sync_ctx->binlog.last_index)) != 0)
     {
         return result;
     }
 
-    if ((result=sf_file_writer_set_indexes(&writer, sync_ctx->binlog.
-                    start_index, sync_ctx->binlog.last_index)) != 0)
-    {
+    sf_binlog_writer_get_index_filename(DATA_PATH_STR,
+            FDIR_BINLOG_SUBDIR_NAME, index_filename,
+            sizeof(index_filename));
+    sf_binlog_writer_get_index_filename(DATA_PATH_STR,
+            FDIR_RECOVERY_SUBDIR_NAME, recovery_filename,
+            sizeof(recovery_filename));
+    if (rename(index_filename, recovery_filename) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "rename file %s to %s fail, errno: %d, error info: %s",
+                __LINE__, index_filename, recovery_filename,
+                result, STRERROR(result));
         return result;
     }
-    sf_file_writer_destroy(&writer);
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
             FDIR_RECOVERY_SUBDIR_NAME,
@@ -510,9 +518,12 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
     int result;
     int sleep_seconds;
     int master_id;
+    int64_t start_time_ms;
+    char time_buff[32];
 
     sync_ctx->conn.sock = -1;
     sleep_seconds = 1;
+    start_time_ms = get_current_time_ms();
     logInfo("file: "__FILE__", line: %d, "
             "try to get master connection to "
             "fetch binlog ...", __LINE__);
@@ -540,6 +551,8 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return 0;
     }
 
+    sleep(10);
+
     if ((result=clean_binlog_path()) != 0) {
         return result;
     }
@@ -548,7 +561,7 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
     }
 
     logInfo("file: "__FILE__", line: %d, "
-            "fetch binlog from master server id: %d, %s:%u ...",
+            "fetch binlogs from master server id: %d, %s:%u ...",
             __LINE__, master_id, sync_ctx->conn.ip_addr,
             sync_ctx->conn.port);
 
@@ -557,6 +570,7 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return result;
     }
 
+    sleep(10);
     if (sync_ctx->dump_data.start_index <= sync_ctx->dump_data.last_index) {
         sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_DUMP;
         sync_ctx->binlog_index = 0;
@@ -569,6 +583,7 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         }
     }
 
+    sleep(10);
     for (sync_ctx->binlog_index=sync_ctx->binlog.start_index;
             sync_ctx->binlog_index<= sync_ctx->binlog.last_index;
             sync_ctx->binlog_index++)
@@ -579,6 +594,11 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         }
     }
     conn_pool_disconnect_server(&sync_ctx->conn);
+
+    long_to_comma_str(get_current_time_ms() - start_time_ms, time_buff);
+    logInfo("file: "__FILE__", line: %d, "
+            "fetch binlogs from master server id: %d done, "
+            "time used: %s ms.", __LINE__, master_id, time_buff);
 
     return sync_finish(sync_ctx);
 }

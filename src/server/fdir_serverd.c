@@ -277,6 +277,10 @@ int main(int argc, char *argv[])
             }
         }
 
+        if ((result=binlog_dump_load_from_mark_file()) != 0) {
+            return result;
+        }
+
         if ((result=server_load_data()) != 0) {
             break;
         }

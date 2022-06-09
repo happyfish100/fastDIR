@@ -75,8 +75,8 @@ static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
     }
 
     if (array->messages != NULL) {
-        memcpy(messages, array->messages, sizeof(
-                    FDIRChangeNotifyMessage *) * array->count);
+        memcpy(messages, array->messages,
+                sizeof(FDIRChangeNotifyMessage *) * array->count);
         free(array->messages);
     }
 

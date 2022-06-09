@@ -13,23 +13,12 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_global.h"
+#include "sf/sf_util.h"
 #include "db/event_dealer.h"
 #include "server_global.h"
 #include "server_binlog.h"
@@ -45,6 +34,7 @@ int server_load_data()
     int64_t start_time;
     int64_t end_time;
     char time_buff[32];
+    bool inited;
     int parse_threads;
     int result;
 
@@ -63,14 +53,17 @@ int server_load_data()
         if (params[0].last_data_version > 0) {
             binlog_get_current_write_position(&params[0].hint_pos);
             FC_ATOMIC_SET(DATA_CURRENT_VERSION, params[0].last_data_version);
+            params[0].subdir_name = FDIR_BINLOG_SUBDIR_NAME;
+            params[1].subdir_name = NULL;
+            inited = true;
         } else {
-            params[0].hint_pos.index = 0;
-            params[0].hint_pos.offset = 0;
+            inited = false;
         }
-
-        params[0].subdir_name = FDIR_BINLOG_SUBDIR_NAME;
-        params[1].subdir_name = NULL;
     } else {
+        inited = false;
+    }
+
+    if (!inited) {
         if (DUMP_LAST_DATA_VERSION > 0) {
             BINLOG_READER_INIT_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME);
             BINLOG_READER_SET_PARAMS(params[1], FDIR_BINLOG_SUBDIR_NAME,
@@ -87,7 +80,7 @@ int server_load_data()
         logError("file: "__FILE__", line: %d, "
                 "binlog_read_thread_init fail, "
                 "errno: %d, error info: %s",
-                __LINE__, result, STRERROR(result));
+                __LINE__, result, sf_strerror(result));
         return result;
     }
 

@@ -785,8 +785,16 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
 
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
+        case BINLOG_OP_DUMP_DENTRY_INT:
             if ((result=generate_create_messages(&msg, record)) != 0) {
                 return result;
+            }
+            if (record->operation == BINLOG_OP_DUMP_DENTRY_INT &&
+                    record->me.dentry->kv_array != NULL)
+            {
+                FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, record->
+                        me.dentry, da_binlog_op_type_create,
+                        FDIR_PIECE_FIELD_INDEX_XATTR, 0);
             }
             break;
         case BINLOG_OP_UPDATE_DENTRY_INT:

@@ -545,6 +545,10 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     }
 
     if (!DATA_LOAD_DONE) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not ready");
+        TASK_CTX.common.log_level = LOG_NOTHING;
         return EPROTONOSUPPORT;
     }
 
@@ -791,6 +795,25 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
     return result;
 }
 
+static int replica_access_file(struct fast_task_info *task,
+        const char *filename)
+{
+    int result;
+
+    if (access(filename, F_OK) == 0) {
+        result = 0;
+    } else {
+        result = errno != 0 ? errno : EPERM;
+        if (result != ENOENT) {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "access file %s fail, error info: %s",
+                    filename, STRERROR(result));
+        }
+    }
+
+    return result;
+}
+
 static int replica_deal_query_binlog_info(struct fast_task_info *task)
 {
     const bool create_thread = true;
@@ -825,23 +848,29 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
     {
         return result;
     }
-    
+
     if (binlog_start_index > 0) {
+        int result1;
+        int result2;
+
         fdir_get_dump_data_filename(dump_filename, sizeof(dump_filename));
+        if ((result1=replica_access_file(task, dump_filename)) != 0) {
+            if (result1 != ENOENT) {
+                return result1;
+            }
+        }
+
         fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
-        if ((access(dump_filename, F_OK) != 0 && errno == ENOENT) ||
-                (access(mark_filename, F_OK) != 0 && errno == ENOENT))
-        {
+        if ((result2=replica_access_file(task, mark_filename)) != 0) {
+            if (result2 != ENOENT) {
+                return result2;
+            }
+        }
+        if (result1 == ENOENT || result2 == ENOENT) {
             result = binlog_dump_all_ex(create_thread);
             if (!(result == 0 || result == EINPROGRESS)) {
                 return result;
             }
-        } else if (!(errno == 0 || errno == ENOENT)) {
-            result = errno;
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "access file %s or %s fail, error info: %s",
-                    dump_filename, mark_filename, STRERROR(result));
-            return result;
         }
         dump_start_index = 0;
         dump_last_index = 0;
