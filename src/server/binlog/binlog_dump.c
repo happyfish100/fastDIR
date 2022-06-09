@@ -236,7 +236,7 @@ static int binlog_padding(FDIRBinlogDumpContext *dump_ctx)
     record.operation = BINLOG_OP_NO_OP_INT;
     record.timestamp = g_current_time;
     record.data_version = dump_ctx->last_data_version;
-    record.inode = 9007199936325732LL;  //dummy
+    record.inode = FDIR_DATA_DUMP_DUMMY_INODE;
     record.options.hash_code = 1;
 
     buffer.length = 0;

@@ -1204,18 +1204,13 @@ static bool binlog_is_record_start(const char *str, const int len,
     return false;
 }
 
-int binlog_detect_record_forward(const char *str, const int len,
-        int64_t *data_version, int *rstart_offset, int *rend_offset,
-        char *error_info, const int error_size)
+static int detect_record_start(FieldParserContext *pcontext,
+        const char *str, const int len, int *rstart_offset)
 {
-    FDIRBinlogRecord record;
-    FieldParserContext pcontext;
     const char *rec_start;
     const char *p;
     const char *end;
-    int result;
 
-    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
     *rstart_offset = -1;
     p = str;
     end = str + len;
@@ -1225,11 +1220,12 @@ int binlog_detect_record_forward(const char *str, const int len,
     {
         const char *start;
         start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
-        while ((start >= str) && (*start >= '0' && *start <= '9')) {
+        while ((start > str) && (*(start-1) >= '0' && *(start-1) <= '9')) {
             --start;
         }
+
         if ((start >= str) && binlog_is_record_start(
-                    start, end - start, &pcontext))
+                    start, end - start, pcontext))
         {
             *rstart_offset = start - str;
             break;
@@ -1239,8 +1235,58 @@ int binlog_detect_record_forward(const char *str, const int len,
     }
 
     if (*rstart_offset < 0) {
-        sprintf(error_info, "can't found record start");
+        sprintf(pcontext->error_info, "can't found record start, "
+                "input length: %d", len);
         return ENOENT;
+    }
+
+    return 0;
+}
+
+int binlog_unpack_inode(const char *str, const int len,
+        int64_t *inode, const char **record_end,
+        char *error_info, const int error_size)
+{
+    FieldParserContext pcontext;
+    int result;
+    int rstart_offset;
+
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
+
+    if ((result=detect_record_start(&pcontext,
+                    str, len, &rstart_offset)) != 0)
+    {
+    //if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
+        return result;
+    }
+
+    while ((result=binlog_get_next_field_value(&pcontext)) == 0) {
+        if (memcmp(pcontext.fv.name, BINLOG_RECORD_FIELD_NAME_INODE,
+                    BINLOG_RECORD_FIELD_NAME_LENGTH) == 0)
+        {
+            *inode = pcontext.fv.value.n;
+            *record_end = pcontext.rec_end;
+            return 0;
+        }
+    }
+
+    sprintf(error_info, "can't find field: inode");
+    return ENOENT;
+}
+
+int binlog_detect_record_forward(const char *str, const int len,
+        int64_t *data_version, int *rstart_offset, int *rend_offset,
+        char *error_info, const int error_size)
+{
+    FDIRBinlogRecord record;
+    FieldParserContext pcontext;
+    int result;
+
+    BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
+    if ((result=detect_record_start(&pcontext,
+                    str, len, rstart_offset)) != 0)
+    {
+        return result;
     }
 
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
@@ -1275,7 +1321,7 @@ int binlog_detect_record_reverse_ex(const char *str, const int len,
     {
         const char *start;
         start = rec_start - BINLOG_RECORD_SIZE_MIN_STRLEN;
-        while ((start >= str) && (*start >= '0' && *start <= '9')) {
+        while ((start > str) && (*(start-1) >= '0' && *(start-1) <= '9')) {
             --start;
         }
         if ((start >= str) && binlog_is_record_start(
@@ -1305,13 +1351,13 @@ int binlog_detect_record_reverse_ex(const char *str, const int len,
     if (timestamp != NULL) {
         record.timestamp = 0;
         while ((result=binlog_get_next_field_value(&pcontext)) == 0) {
-            if ((result=binlog_set_field_value(&pcontext, &record)) != 0) {
-                return result;
-            }
-
             if (memcmp(pcontext.fv.name, BINLOG_RECORD_FIELD_NAME_TIMESTAMP,
                         BINLOG_RECORD_FIELD_NAME_LENGTH) == 0)
             {
+                if ((result=binlog_set_field_value(&pcontext, &record)) != 0) {
+                    return result;
+                }
+
                 *timestamp = record.timestamp;
                 break;
             }

@@ -70,6 +70,10 @@ int binlog_unpack_record_ex(BinlogPackContext *context, const char *str,
     binlog_unpack_record_ex(NULL, str, len, record, \
             record_end, error_info, error_size, NULL)
 
+int binlog_unpack_inode(const char *str, const int len,
+        int64_t *inode, const char **record_end,
+        char *error_info, const int error_size);
+
 int binlog_detect_record(const char *str, const int len,
         int64_t *data_version, const char **rec_end,
         char *error_info, const int error_size);

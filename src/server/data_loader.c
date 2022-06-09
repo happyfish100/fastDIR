@@ -30,7 +30,9 @@ int server_load_data()
     BinlogReplayMTContext replay_ctx;
     BinlogReadThreadContext reader_ctx;
     BinlogReaderParams params[2];
+    SFBinlogFilePosition hint_pos;
     BinlogReadThreadResult *r;
+    bool check_exist;
     int64_t start_time;
     int64_t end_time;
     char time_buff[32];
@@ -48,24 +50,47 @@ int server_load_data()
         parse_threads = FC_MIN(DATA_THREAD_COUNT, SYSTEM_CPU_COUNT);
     }
 
+    hint_pos.index = 0;
+    hint_pos.offset = 0;
     if (STORAGE_ENABLED) {
         params[0].last_data_version = event_dealer_get_last_data_version();
         if (params[0].last_data_version > 0) {
-            binlog_get_current_write_position(&params[0].hint_pos);
             FC_ATOMIC_SET(DATA_CURRENT_VERSION, params[0].last_data_version);
+        }
+
+        if (params[0].last_data_version >= DUMP_LAST_DATA_VERSION) {
+            binlog_get_current_write_position(&params[0].hint_pos);
             params[0].subdir_name = FDIR_BINLOG_SUBDIR_NAME;
             params[1].subdir_name = NULL;
             inited = true;
         } else {
+            if (params[0].last_data_version > 0) {
+                if ((result=binlog_find_position_ex(FDIR_DATA_DUMP_SUBDIR_NAME,
+                                &hint_pos, params[0].last_data_version,
+                                &hint_pos)) != 0)
+                {
+                    return result;
+                }
+                check_exist = true;
+            } else {
+                check_exist = false;
+            }
+
+            if ((result=binlog_sort_by_inode(check_exist)) != 0) {
+                return result;
+            }
+
             inited = false;
         }
     } else {
+        params[0].last_data_version = 0;
         inited = false;
     }
 
     if (!inited) {
         if (DUMP_LAST_DATA_VERSION > 0) {
-            BINLOG_READER_INIT_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME);
+            BINLOG_READER_SET_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME,
+                    hint_pos, params[0].last_data_version);
             BINLOG_READER_SET_PARAMS(params[1], FDIR_BINLOG_SUBDIR_NAME,
                     DUMP_NEXT_POSITION, DUMP_LAST_DATA_VERSION);
         } else {

@@ -68,6 +68,8 @@
 #define TASK_STATUS_CONTINUE           12345
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
 
+#define FDIR_DATA_DUMP_DUMMY_INODE      1000001234367890LL
+
 #define FDIR_BINLOG_SUBDIR_NAME         "binlog"
 #define FDIR_DATA_DUMP_SUBDIR_NAME      "binlog/dump"
 #define FDIR_RECOVERY_SUBDIR_NAME       "recovery"

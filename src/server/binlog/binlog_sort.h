@@ -13,34 +13,20 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-//server_binlog.h
+//binlog_sort.h
 
-#ifndef _SERVER_BINLOG_H_
-#define _SERVER_BINLOG_H_
+#ifndef _BINLOG_SORT_H_
+#define _BINLOG_SORT_H_
 
-#include "binlog/binlog_types.h"
-#include "binlog/binlog_producer.h"
-#include "binlog/binlog_local_consumer.h"
-#include "binlog/binlog_write.h"
-#include "binlog/binlog_read_thread.h"
-#include "binlog/replica_consumer_thread.h"
-#include "binlog/binlog_pack.h"
-#include "binlog/binlog_replay.h"
-#include "binlog/binlog_replay_mt.h"
-#include "binlog/push_result_ring.h"
-#include "binlog/binlog_dump.h"
-#include "binlog/binlog_sort.h"
-#include "binlog/binlog_dedup.h"
-#include "binlog/binlog_clean.h"
-#include "binlog/binlog_sync.h"
+#include "sf/sf_func.h"
+#include "../server_global.h"
+#include "binlog_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int server_binlog_init();
-void server_binlog_destroy();
-void server_binlog_terminate();
+    int binlog_sort_by_inode(const bool check_exist);
 
 #ifdef __cplusplus
 }
