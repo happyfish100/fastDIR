@@ -96,6 +96,8 @@ typedef struct server_global_vars {
 
     struct {
         volatile char dumping;  //if dump data in progress
+        char order_by;
+        int64_t dentry_count;
         int64_t last_data_version;
         SFBinlogFilePosition next_position; //for normal binlog
     } full_dump;
@@ -196,6 +198,8 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
 
 #define FULL_DUMPING           g_server_global_vars.full_dump.dumping
+#define DUMP_ORDER_BY          g_server_global_vars.full_dump.order_by
+#define DUMP_DENTRY_COUNT      g_server_global_vars.full_dump.dentry_count
 #define DUMP_LAST_DATA_VERSION g_server_global_vars.full_dump.last_data_version
 #define DUMP_NEXT_POSITION     g_server_global_vars.full_dump.next_position
 

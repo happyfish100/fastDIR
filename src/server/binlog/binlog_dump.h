@@ -23,6 +23,9 @@
 #include "../server_global.h"
 #include "binlog_types.h"
 
+#define FDIR_DUMP_ORDER_BY_NONE   'n'
+#define FDIR_DUMP_ORDER_BY_INODE  'i'
+
 struct fdir_data_thread_context;
 
 typedef struct fdir_binlog_dump_context {
@@ -64,6 +67,8 @@ extern "C" {
 
 #define fdir_get_dump_mark_filename(filename, size) \
     fdir_get_dump_mark_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
+
+    int binlog_dump_write_to_mark_file();
 
     int binlog_dump_load_from_mark_file();
 
