@@ -23,8 +23,11 @@
 #include "binlog_sort.h"
 
 typedef struct {
-    char inodes_filename[PATH_MAX];
-} BinlogSortContext;
+    FilenameFDPair inode; //sorted inodes
+    FilenameFDPair data;  //full dump data
+    string_t inode_content;
+    SFBufferedWriter data_writer;
+} DumpDataSortContext;
 
 static int deal_data_buffer(BinlogReadThreadContext *reader_ctx,
         BinlogReadThreadResult *r, SFBufferedWriter *writer)
@@ -67,15 +70,11 @@ static int deal_data_buffer(BinlogReadThreadContext *reader_ctx,
                     return result;
                 }
             }
-            writer->buffer.current += sprintf(writer->buffer.current,
-                    "%"PRId64"\n", inode);
 
-                    /*
             writer->buffer.current += sprintf(writer->buffer.current,
                     "%"PRId64" %"PRId64" %d\n", inode,
                     r->binlog_position.offset + (p - r->buffer.buff),
                     (int)(rec_end - p));
-                    */
         }
 
         p = rec_end;
@@ -84,7 +83,8 @@ static int deal_data_buffer(BinlogReadThreadContext *reader_ctx,
     return 0;
 }
 
-static int sort_inodes(BinlogSortContext *context, const char *tmp_filename)
+static int sort_inode_file(DumpDataSortContext *context,
+        const char *tmp_filename)
 {
     int result;
     int64_t mem_size;
@@ -108,9 +108,9 @@ static int sort_inodes(BinlogSortContext *context, const char *tmp_filename)
         sprintf(buffer_size_str, "%"PRId64"G", buffer_size_mb / 1024);
     }
 
-    snprintf(cmd_line, sizeof(cmd_line), "/usr/bin/sort -n -S %s "
+    snprintf(cmd_line, sizeof(cmd_line), "/usr/bin/sort -n -k1,1 -S %s "
             "-T %s -o %s %s", buffer_size_str, tmp_path, context->
-            inodes_filename, tmp_filename);
+            inode.filename, tmp_filename);
     if ((result=system(cmd_line)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "execute command %s fail, return status: %d",
@@ -121,7 +121,7 @@ static int sort_inodes(BinlogSortContext *context, const char *tmp_filename)
     return 0;
 }
 
-static int generate_sorted_inode_file(BinlogSortContext *context)
+static int generate_sorted_inode_file(DumpDataSortContext *context)
 {
     const int64_t last_data_version = 0;
     const int buffer_size = 4 * 1024 * 1024;
@@ -144,7 +144,7 @@ static int generate_sorted_inode_file(BinlogSortContext *context)
     }
 
     snprintf(tmp_filename, sizeof(tmp_filename),
-            "%s.tmp", context->inodes_filename);
+            "%s.tmp", context->inode.filename);
     if ((result=sf_buffered_writer_init_ex(&inode_writer,
                     tmp_filename, buffer_size)) != 0)
     {
@@ -187,7 +187,7 @@ static int generate_sorted_inode_file(BinlogSortContext *context)
         return result;
     }
 
-    if ((result=sort_inodes(context, tmp_filename)) != 0) {
+    if ((result=sort_inode_file(context, tmp_filename)) != 0) {
         return result;
     }
 
@@ -198,10 +198,110 @@ static int generate_sorted_inode_file(BinlogSortContext *context)
     return result;
 }
 
+static int do_sort_data(DumpDataSortContext *ctx)
+{
+    return 0;
+}
+
+static inline int open_file_for_read(FilenameFDPair *pair)
+{
+    int result;
+
+    if ((pair->fd=open(pair->filename, O_RDONLY)) < 0) {
+        result = (errno != 0 ? errno : ENOENT);
+        logError("file: "__FILE__", line: %d, "
+                "open file %s fail, errno: %d, error info: %s",
+                __LINE__, pair->filename,
+                result, STRERROR(result));
+        return result;
+    }
+
+    return 0;
+}
+
+static int sort_dump_data(DumpDataSortContext *ctx)
+{
+    const int buffer_size = 256 * 1024;
+    int result;
+    int bytes;
+    string_t remain;
+    char *buff;
+    char *last_newline;
+    char tmp_filename[PATH_MAX];
+
+    fdir_get_dump_data_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME,
+            ctx->data.filename, sizeof(ctx->data.filename));
+    snprintf(tmp_filename, sizeof(tmp_filename),
+            "%s.tmp", ctx->data.filename);
+    if ((result=sf_buffered_writer_init_ex(&ctx->data_writer,
+                    tmp_filename, 4 * 1024 * 1024)) != 0)
+    {
+        return result;
+    }
+
+    if ((buff=fc_malloc(buffer_size)) != 0) {
+        return ENOMEM;
+    }
+
+    if ((result=open_file_for_read(&ctx->inode)) != 0) {
+        return result;
+    }
+
+    if ((result=open_file_for_read(&ctx->data)) != 0) {
+        return result;
+    }
+
+    ctx->inode_content.str = buff;
+    remain.len = 0;
+    while ((bytes=read(ctx->inode.fd, buff + remain.len,
+                    buffer_size - remain.len)) > 0)
+    {
+        ctx->inode_content.len = remain.len + bytes;
+        if ((last_newline=(char *)fc_memrchr(buff, '\n',
+                        ctx->inode_content.len)) == NULL)
+        {
+            logError("file: "__FILE__", line: %d, "
+                    "sorted inode file: %s, expect new line!",
+                    __LINE__, ctx->inode.filename);
+            return EINVAL;
+        }
+
+        remain.str =  last_newline + 1;
+        remain.len = (buff + ctx->inode_content.len) - remain.str;
+        if ((result=do_sort_data(ctx)) != 0) {
+            return result;
+        }
+
+        if (remain.len > 0) {
+            memcpy(buff, remain.str, remain.len);
+        }
+    }
+
+    close(ctx->inode.fd);
+    close(ctx->data.fd);
+    free(buff);
+
+    if ((result=sf_buffered_writer_save(&ctx->data_writer)) != 0) {
+        return result;
+    }
+    sf_buffered_writer_destroy(&ctx->data_writer);
+
+    if (rename(tmp_filename, ctx->data.filename) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        logError("file: "__FILE__", line: %d, "
+                "rename file %s to %s fail, errno: %d, error info: %s",
+                __LINE__, tmp_filename, ctx->data.filename, result,
+                STRERROR(result));
+        return result;
+    } else {
+        return 0;
+    }
+}
+
 int binlog_sort_by_inode(const bool check_exist)
 {
     int result;
-    BinlogSortContext context;
+    DumpDataSortContext context;
     int64_t start_time_ms;
     int64_t time_used_ms;
     char buff[16];
@@ -215,8 +315,7 @@ int binlog_sort_by_inode(const bool check_exist)
     start_time_ms = get_current_time_ms();
     logInfo("file: "__FILE__", line: %d, "
             "begin extract and sort inodes ...", __LINE__);
-
-    snprintf(context.inodes_filename, sizeof(context.inodes_filename),
+    snprintf(context.inode.filename, sizeof(context.inode.filename),
             "%s/%s/inodes.dat", DATA_PATH_STR, FDIR_DATA_DUMP_SUBDIR_NAME);
     if ((result=generate_sorted_inode_file(&context)) != 0) {
         return result;
@@ -224,14 +323,24 @@ int binlog_sort_by_inode(const bool check_exist)
 
     time_used_ms = get_current_time_ms() - start_time_ms;
     long_to_comma_str(time_used_ms, buff);
-
     logInfo("file: "__FILE__", line: %d, "
             "extract and sort inodes done, "
             "time used: %s ms.", __LINE__, buff);
+
+    start_time_ms = get_current_time_ms();
+    logInfo("file: "__FILE__", line: %d, "
+            "begin sort dump data ...", __LINE__);
+    if ((result=sort_dump_data(&context)) != 0) {
+        return result;
+    }
+
+    time_used_ms = get_current_time_ms() - start_time_ms;
+    long_to_comma_str(time_used_ms, buff);
+    logInfo("file: "__FILE__", line: %d, "
+            "sort dump data done, "
+            "time used: %s ms.", __LINE__, buff);
     return EBUSY;
     return result;
-    /*
     DUMP_ORDER_BY = FDIR_DUMP_ORDER_BY_INODE;
     return binlog_dump_write_to_mark_file();
-    */
 }
