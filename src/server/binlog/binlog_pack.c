@@ -1249,14 +1249,9 @@ int binlog_unpack_inode(const char *str, const int len,
 {
     FieldParserContext pcontext;
     int result;
-    int rstart_offset;
 
     BINLOG_PACK_SET_ERROR_INFO(pcontext, error_info, error_size);
-
-    if ((result=detect_record_start(&pcontext,
-                    str, len, &rstart_offset)) != 0)
-    {
-    //if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
+    if ((result=binlog_check_record(str, len, &pcontext)) != 0) {
         return result;
     }
 

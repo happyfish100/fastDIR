@@ -14,6 +14,7 @@
  */
 
 #include "fastcommon/logger.h"
+#include "fastcommon/system_info.h"
 #include "sf/sf_buffered_writer.h"
 #include "binlog_pack.h"
 #include "binlog_reader.h"
@@ -67,9 +68,14 @@ static int deal_data_buffer(BinlogReadThreadContext *reader_ctx,
                 }
             }
             writer->buffer.current += sprintf(writer->buffer.current,
+                    "%"PRId64"\n", inode);
+
+                    /*
+            writer->buffer.current += sprintf(writer->buffer.current,
                     "%"PRId64" %"PRId64" %d\n", inode,
                     r->binlog_position.offset + (p - r->buffer.buff),
                     (int)(rec_end - p));
+                    */
         }
 
         p = rec_end;
@@ -78,7 +84,44 @@ static int deal_data_buffer(BinlogReadThreadContext *reader_ctx,
     return 0;
 }
 
-static int sort_inodes(BinlogSortContext *context)
+static int sort_inodes(BinlogSortContext *context, const char *tmp_filename)
+{
+    int result;
+    int64_t mem_size;
+    int64_t buffer_size_mb;
+    char buffer_size_str[32];
+    char tmp_path[PATH_MAX];
+    char cmd_line[2 * PATH_MAX];
+
+    snprintf(tmp_path, sizeof(tmp_path), "%s/tmp", DATA_PATH_STR);
+    if ((result=fc_check_mkdir(tmp_path, 0755)) != 0) {
+        return result;
+    }
+
+    if ((result=get_sys_total_mem_size(&mem_size)) != 0) {
+        return result;
+    }
+    buffer_size_mb = (mem_size * 0.25) / (1024 * 1024);
+    if (buffer_size_mb < 1024) {
+        sprintf(buffer_size_str, "%"PRId64"M", buffer_size_mb);
+    } else {
+        sprintf(buffer_size_str, "%"PRId64"G", buffer_size_mb / 1024);
+    }
+
+    snprintf(cmd_line, sizeof(cmd_line), "/usr/bin/sort -n -S %s "
+            "-T %s -o %s %s", buffer_size_str, tmp_path, context->
+            inodes_filename, tmp_filename);
+    if ((result=system(cmd_line)) != 0) {
+        logError("file: "__FILE__", line: %d, "
+                "execute command %s fail, return status: %d",
+                __LINE__, cmd_line, result);
+        return result;
+    }
+
+    return 0;
+}
+
+static int generate_sorted_inode_file(BinlogSortContext *context)
 {
     const int64_t last_data_version = 0;
     const int buffer_size = 4 * 1024 * 1024;
@@ -139,6 +182,19 @@ static int sort_inodes(BinlogSortContext *context)
 
     binlog_read_thread_terminate(&reader_ctx);
     sf_buffered_writer_destroy(&inode_writer);
+
+    if (result != 0) {
+        return result;
+    }
+
+    if ((result=sort_inodes(context, tmp_filename)) != 0) {
+        return result;
+    }
+
+    if ((result=fc_delete_file_ex(tmp_filename, "tmp")) != 0) {
+        return result;
+    }
+
     return result;
 }
 
@@ -146,6 +202,9 @@ int binlog_sort_by_inode(const bool check_exist)
 {
     int result;
     BinlogSortContext context;
+    int64_t start_time_ms;
+    int64_t time_used_ms;
+    char buff[16];
 
     /*
     if (DUMP_ORDER_BY == FDIR_DUMP_ORDER_BY_INODE) {
@@ -153,12 +212,23 @@ int binlog_sort_by_inode(const bool check_exist)
     }
     */
 
+    start_time_ms = get_current_time_ms();
+    logInfo("file: "__FILE__", line: %d, "
+            "begin extract and sort inodes ...", __LINE__);
+
     snprintf(context.inodes_filename, sizeof(context.inodes_filename),
             "%s/%s/inodes.dat", DATA_PATH_STR, FDIR_DATA_DUMP_SUBDIR_NAME);
-    if ((result=sort_inodes(&context)) != 0) {
+    if ((result=generate_sorted_inode_file(&context)) != 0) {
         return result;
     }
 
+    time_used_ms = get_current_time_ms() - start_time_ms;
+    long_to_comma_str(time_used_ms, buff);
+
+    logInfo("file: "__FILE__", line: %d, "
+            "extract and sort inodes done, "
+            "time used: %s ms.", __LINE__, buff);
+    return EBUSY;
     return result;
     /*
     DUMP_ORDER_BY = FDIR_DUMP_ORDER_BY_INODE;
