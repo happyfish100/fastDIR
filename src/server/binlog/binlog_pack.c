@@ -46,14 +46,15 @@
 #define BINLOG_RECORD_END_TAG_STR   "/rec>\n"
 #define BINLOG_RECORD_END_TAG_LEN   (sizeof(BINLOG_RECORD_END_TAG_STR) - 1)
 
+
 #define BINLOG_RECORD_FIELD_NAME_LENGTH         2
 
+#define BINLOG_RECORD_FIELD_NAME_DATA_VERSION  "dv"
 #define BINLOG_RECORD_FIELD_NAME_INODE         "id"
 #define BINLOG_RECORD_FIELD_NAME_PARENT        "pt"  //parent inode
 #define BINLOG_RECORD_FIELD_NAME_SRC_PARENT    "sp"  //src parent inode
 #define BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME   "sn"
 #define BINLOG_RECORD_FIELD_NAME_FLAGS         "fl"  //flags for rename
-#define BINLOG_RECORD_FIELD_NAME_DATA_VERSION  "dv"
 #define BINLOG_RECORD_FIELD_NAME_OPERATION     "op"
 #define BINLOG_RECORD_FIELD_NAME_TIMESTAMP     "ts"
 #define BINLOG_RECORD_FIELD_NAME_NAMESPACE     "ns"
@@ -107,6 +108,11 @@
 #define BINLOG_RECORD_FIELD_INDEX_XATTR_VALUE   ('x' * 256 + 'v')
 #define BINLOG_RECORD_FIELD_INDEX_XATTR_LIST    ('x' * 256 + 'l')
 
+#define BINLOG_RECORD_FIELD_TAG_DATA_VERSION_STR \
+    BINLOG_RECORD_FIELD_NAME_DATA_VERSION"="
+#define BINLOG_RECORD_FIELD_TAG_DATA_VERSION_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_DATA_VERSION_STR) - 1)
+
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
 
@@ -129,7 +135,20 @@ typedef struct {
     int error_size;
 } FieldParserContext;
 
-static FastCharConverter char_converter;
+typedef struct {
+    string_t data_version_tag;
+    FastCharConverter char_converter;
+} BinlogPackGlobalVars;
+
+static BinlogPackGlobalVars pack_global_vars = {
+    {
+        BINLOG_RECORD_FIELD_TAG_DATA_VERSION_STR,
+        BINLOG_RECORD_FIELD_TAG_DATA_VERSION_LEN
+    }
+};
+
+#define DATA_VERSION_TAG  pack_global_vars.data_version_tag
+#define CHAR_CONVERTER    pack_global_vars.char_converter
 
 int binlog_pack_init()
 {
@@ -145,7 +164,7 @@ int binlog_pack_init()
     FAST_CHAR_MAKE_PAIR(pairs[6], '<',  'l');
     FAST_CHAR_MAKE_PAIR(pairs[7], '>',  'g');
 
-    return char_converter_init_ex(&char_converter, pairs,
+    return char_converter_init_ex(&CHAR_CONVERTER, pairs,
             ESCAPE_CHAR_PAIR_COUNT, FAST_CHAR_OP_ADD_BACKSLASH);
 }
 
@@ -236,7 +255,7 @@ static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
 
     fast_buffer_append(buffer, " %s=%d,", name, len);
     if (need_escape) {
-        fast_char_escape(&char_converter, val, len,
+        fast_char_escape(&CHAR_CONVERTER, val, len,
                 buffer->data + buffer->length, &escape_len,
                 buffer->alloc_size - buffer->length);
         if (escape_len != len) {
@@ -248,7 +267,7 @@ static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
             } else {
                 buffer->length -= len1 + 1;
                 fast_buffer_append(buffer, "%d,", len2);
-                fast_char_escape(&char_converter, val, len,
+                fast_char_escape(&CHAR_CONVERTER, val, len,
                         buffer->data + buffer->length, &escape_len,
                         buffer->alloc_size - buffer->length);
             }
@@ -482,6 +501,87 @@ int binlog_pack_record_ex(BinlogPackContext *context,
     return 0;
 }
 
+int binlog_repack_buffer(const char *input, const int in_len,
+        const int64_t new_data_version, char *output, int *out_len)
+{
+    int64_t old_data_version;
+    int old_record_len;
+    int new_record_len;
+    int old_dv_len;
+    int new_dv_len;
+    int dv_len_sub;
+    int front_len;
+    int tail_len;
+    string_t sin;
+    char *rec_start;
+    char *dv_tag;
+    char *dv_val;
+    char *dv_end;
+    char *p;
+    char new_dv_buff[32];
+
+    old_record_len  = strtol(input, &rec_start, 10);
+    if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
+        logError("file: "__FILE__", line: %d, "
+                "unexpect char: %c(0x%02X), expect start tag char: %c",
+                __LINE__, *rec_start, (unsigned char)*rec_start,
+                BINLOG_RECORD_START_TAG_CHAR);
+        return EINVAL;
+    }
+
+    sin.str = rec_start + BINLOG_RECORD_START_TAG_LEN;
+    sin.len = in_len - (sin.str - input);
+    if ((dv_tag=(char *)fc_memmem(&sin, &DATA_VERSION_TAG)) == NULL) {
+        logError("file: "__FILE__", line: %d, "
+                "expect data version tag: %s",
+                __LINE__, DATA_VERSION_TAG.str);
+        return EINVAL;
+    }
+
+    dv_val = dv_tag + DATA_VERSION_TAG.len;
+    old_data_version = strtoll(dv_val, &dv_end, 10);
+    if (*dv_end != ' ') {
+        logError("file: "__FILE__", line: %d, "
+                "unexpect char: %c(0x%02X), expect space char",
+                __LINE__, *dv_end, (unsigned char)*dv_end);
+        return EINVAL;
+    }
+
+    if (new_data_version == old_data_version) {
+        memcpy(output, input, in_len);
+        *out_len = in_len;
+        return 0;
+    }
+
+    old_dv_len = dv_end - dv_val;
+    new_dv_len = sprintf(new_dv_buff, "%"PRId64, new_data_version);
+    dv_len_sub = new_dv_len - old_dv_len;
+    if (dv_len_sub == 0) {
+        front_len = dv_val - input;
+        memcpy(output, input, front_len);
+        p = output + front_len;
+    } else {
+        new_record_len = old_record_len + dv_len_sub;
+        p = output + sprintf(output, "%0*d",
+                BINLOG_RECORD_SIZE_MIN_STRLEN,
+                new_record_len);
+
+        front_len = dv_val - rec_start;
+        memcpy(p, rec_start, front_len);
+        p += front_len;
+    }
+
+    memcpy(p, new_dv_buff, new_dv_len);
+    p += new_dv_len;
+
+    tail_len = (input + in_len) - dv_end;
+    memcpy(p, dv_end, tail_len);
+    p += tail_len;
+
+    *out_len = p - output;
+    return 0;
+}
+
 static int binlog_get_next_field_value(FieldParserContext *pcontext)
 {
     int remain;
@@ -554,7 +654,7 @@ static int binlog_get_next_field_value(FieldParserContext *pcontext)
                 }
                 pcontext->fv.value.s.str = unescaped;
             }
-            fast_char_unescape(&char_converter, pcontext->fv.value.s.str,
+            fast_char_unescape(&CHAR_CONVERTER, pcontext->fv.value.s.str,
                     &pcontext->fv.value.s.len);
         }
     } else if ((*endptr == ' ') || (*endptr == '/' && pcontext->rec_end -
@@ -1058,7 +1158,6 @@ static int binlog_check_record(const char *str, const int len,
         return result;
     }
 
-    rec_start = NULL;
     record_len  = strtol(str, &rec_start, 10);
     if (*rec_start != BINLOG_RECORD_START_TAG_CHAR) {
         sprintf(pcontext->error_info, "unexpect char: %c(0x%02X), "
@@ -1099,9 +1198,9 @@ static int binlog_check_record(const char *str, const int len,
         char output[32];
         int out_len;
 
-        fast_char_convert(&char_converter,
-                pcontext->rec_end - BINLOG_RECORD_END_TAG_LEN,
-                BINLOG_RECORD_END_TAG_LEN, output, &out_len, sizeof(output));
+        fast_char_convert(&CHAR_CONVERTER, pcontext->rec_end -
+                BINLOG_RECORD_END_TAG_LEN, BINLOG_RECORD_END_TAG_LEN,
+                output, &out_len, sizeof(output));
 
         sprintf(pcontext->error_info, "expect record end tag: %s, "
                 "but the string is: %.*s",

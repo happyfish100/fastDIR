@@ -58,6 +58,9 @@ void binlog_pack_context_destroy(BinlogPackContext *context);
 int binlog_pack_record_ex(BinlogPackContext *context,
         const FDIRBinlogRecord *record, FastBuffer *buffer);
 
+int binlog_repack_buffer(const char *input, const int in_len,
+        const int64_t new_data_version, char *output, int *out_len);
+
 int binlog_unpack_record_ex(BinlogPackContext *context, const char *str,
         const int len, FDIRBinlogRecord *record, const char **record_end,
         char *error_info, const int error_size, struct fast_mpool_man *mpool);
