@@ -896,8 +896,8 @@ static inline int sync_binlog_output(struct fast_task_info *task)
     int read_bytes;
 
     size = task->size - sizeof(FDIRProtoHeader);
-    result = binlog_reader_read_to_buffer(REPLICA_READER,
-            task->data + sizeof(FDIRProtoHeader), size, &read_bytes);
+    result = binlog_reader_read_to_buffer(REPLICA_READER, task->data +
+            sizeof(FDIRProtoHeader), size, &read_bytes);
     if (!(result == 0 || result == ENOENT)) {
         return result;
     }
@@ -941,7 +941,8 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
             return EALREADY;
         }
     } else {
-        result = replica_alloc_reader(task, FDIR_SERVER_TASK_TYPE_SYNC_BINLOG);
+        result = replica_alloc_reader(task,
+                FDIR_SERVER_TASK_TYPE_SYNC_BINLOG);
         if (result != 0) {
             return result;
         }
@@ -1130,18 +1131,18 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
     }
 }
 
-
 void *cluster_alloc_thread_extra_data(const int thread_index)
 {
-    FDIRServerContext *server_context;
+    FDIRServerContext *server_ctx;
 
-    server_context = (FDIRServerContext *)fc_malloc(sizeof(FDIRServerContext));
-    if (server_context == NULL) {
+    server_ctx = fc_malloc(sizeof(FDIRServerContext));
+    if (server_ctx == NULL) {
         return NULL;
     }
 
-    memset(server_context, 0, sizeof(FDIRServerContext));
-    return server_context;
+    memset(server_ctx, 0, sizeof(FDIRServerContext));
+    server_ctx->thread_index = thread_index;
+    return server_ctx;
 }
 
 int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
@@ -1160,23 +1161,24 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
                 */
     }
 
+    if (server_ctx->cluster.clean_connected_replicas) {
+        logWarning("file: "__FILE__", line: %d, "
+                "cluster thread #%d, will clean %d connected "
+                "replications because i am no longer master",
+                __LINE__, server_ctx->thread_index,
+                server_ctx->cluster.connected.count);
+
+        server_ctx->cluster.clean_connected_replicas = false;
+        clean_connected_replications(server_ctx);
+    }
+
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {
             result = deal_replica_push_task(server_ctx->cluster.consumer_ctx);
             return result == EAGAIN ? 0 : result;
-        } else if (server_ctx->cluster.clean_connected_replicas) {
-            logWarning("file: "__FILE__", line: %d, "
-                    "cluster thread #%d, will clean %d connected "
-                    "replications because i am no longer master",
-                    __LINE__, SF_THREAD_INDEX(CLUSTER_SF_CTX, thread_data),
-                    server_ctx->cluster.connected.count);
-
-            server_ctx->cluster.clean_connected_replicas = false;
-            clean_connected_replications(server_ctx);
         }
-
         return 0;
     }
 }

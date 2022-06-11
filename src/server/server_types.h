@@ -359,6 +359,7 @@ typedef struct server_task_arg {
 } FDIRServerTaskArg;
 
 typedef struct fdir_server_context {
+    int thread_index;
     union {
         struct {
             struct fast_mblock_man record_allocator;
@@ -369,7 +370,7 @@ typedef struct fdir_server_context {
         } service;
 
         struct {
-            bool clean_connected_replicas;   //for cleanup connected array
+            volatile char clean_connected_replicas;   //for cleanup connected array
             FDIRSlaveReplicationPtrArray connectings;  //master side
             FDIRSlaveReplicationPtrArray connected;    //master side
 

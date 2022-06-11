@@ -551,8 +551,6 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return 0;
     }
 
-    sleep(10);
-
     if ((result=clean_binlog_path()) != 0) {
         return result;
     }
@@ -570,7 +568,6 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return result;
     }
 
-    sleep(10);
     if (sync_ctx->dump_data.start_index <= sync_ctx->dump_data.last_index) {
         sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_DUMP;
         sync_ctx->binlog_index = 0;
@@ -583,7 +580,6 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         }
     }
 
-    sleep(10);
     for (sync_ctx->binlog_index=sync_ctx->binlog.start_index;
             sync_ctx->binlog_index<= sync_ctx->binlog.last_index;
             sync_ctx->binlog_index++)
