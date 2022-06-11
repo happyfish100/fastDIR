@@ -669,6 +669,7 @@ typedef struct fdir_proto_join_slave_resp {
 
 typedef struct fdir_proto_notify_slave_quit {
     char server_id[4];      //the master server id
+    char error_code[4];
     char binlog_count[4];
     char first_unmatched_dv[8];   //the slave's first unmatched data version
 } FDIRProtoNotifySlaveQuit;

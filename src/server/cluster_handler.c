@@ -651,7 +651,8 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
 }
 
 static void cluster_notify_slave_quit(struct fast_task_info *task,
-        const int binlog_count, const uint64_t first_unmatched_dv)
+        const int result, const int binlog_count,
+        const uint64_t first_unmatched_dv)
 {
     FDIRProtoNotifySlaveQuit *req;
 
@@ -659,6 +660,7 @@ static void cluster_notify_slave_quit(struct fast_task_info *task,
     RESPONSE.header.body_len = sizeof(FDIRProtoNotifySlaveQuit);
 
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    int2buff(result, req->error_code);
     int2buff(binlog_count, req->binlog_count);
     long2buff(first_unmatched_dv, req->first_unmatched_dv);
     RESPONSE.header.cmd = FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT;
@@ -681,9 +683,13 @@ static int cluster_check_binlog_consistency(
         if (result == SF_CLUSTER_ERROR_BINLOG_INCONSISTENT) {
             sprintf(prompt, "first unmatched data "
                     "version: %"PRId64, first_unmatched_dv);
-
-            cluster_notify_slave_quit(task, new_binlog_count,
-                    first_unmatched_dv);
+            cluster_notify_slave_quit(task, result,
+                    new_binlog_count, first_unmatched_dv);
+            TASK_CTX.common.need_response = true;
+        } else if (result == SF_CLUSTER_ERROR_BINLOG_MISSED) {
+            sprintf(prompt, "binlog missed");
+            cluster_notify_slave_quit(task, result,
+                    new_binlog_count, first_unmatched_dv);
             TASK_CTX.common.need_response = true;
         } else {
             sprintf(prompt, "some mistake happen, "
@@ -749,8 +755,10 @@ static int cluster_deal_notify_slave_quit(struct fast_task_info *task)
     FDIRProtoNotifySlaveQuit *req;
     int result;
     int server_id;
+    int error_code;
     int binlog_count;
     int64_t first_unmatched_dv;
+    char prompt[256];
 
     if ((result=server_expect_body_length(sizeof(
                         FDIRProtoNotifySlaveQuit))) != 0)
@@ -764,12 +772,21 @@ static int cluster_deal_notify_slave_quit(struct fast_task_info *task)
 
     req = (FDIRProtoNotifySlaveQuit *)REQUEST.body;
     server_id = buff2int(req->server_id);
+    error_code = buff2int(req->error_code);
     binlog_count = buff2int(req->binlog_count);
     first_unmatched_dv = buff2long(req->first_unmatched_dv);
+
+    if (error_code == SF_CLUSTER_ERROR_BINLOG_MISSED) {
+        sprintf(prompt, "binlog missed on the master server: %d, "
+                "you should remove the data then try again", server_id);
+    } else {
+        sprintf(prompt, "my last %d binlogs NOT consistent with "
+                "the master server: %d, the first unmatched data "
+                "version: %"PRId64, binlog_count, server_id,
+                first_unmatched_dv);
+    }
     logCrit("file: "__FILE__", line: %d, "
-            "my last %d binlogs NOT consistent with master server: %d, "
-            "the first unmatched data version: %"PRId64", program exit!",
-            __LINE__, binlog_count, server_id, first_unmatched_dv);
+            "%s, program exit!", __LINE__, prompt);
     sf_terminate_myself();
     return -EBUSY;
 }
@@ -1078,7 +1095,9 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
                 TASK_CTX.common.need_response = false;
                 if ((result=cluster_deal_join_slave_resp(task)) > 0) {
-                    result *= -1;  //force close connection
+                    if (!TASK_CTX.common.need_response) {
+                        result *= -1;  //force close connection
+                    }
                 }
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:

@@ -386,7 +386,7 @@ static int binlog_reader_search_data_version(ServerBinlogReader *reader,
             if (reader->position.index > reader->start_index) {
                 reader->position.index--;
             } else {
-                return EFAULT;
+                return SF_CLUSTER_ERROR_BINLOG_MISSED;
             }
         } else if (last_data_version > max_data_version) {
             if (dirction == 0) {
@@ -919,6 +919,7 @@ int binlog_check_consistency(const string_t *sbinlog,
     if ((result=binlog_reader_init(&reader, hint_pos,
                     slave_records[0].data_version - 1)) != 0)
     {
+        *first_unmatched_dv = slave_records[0].data_version;
         return result;
     }
 
