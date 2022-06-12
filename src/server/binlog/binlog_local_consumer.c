@@ -64,8 +64,8 @@ static int init_binlog_local_consumer_array()
 
     server = CLUSTER_SERVER_ARRAY.servers;
     end = slave_replication_array.replications + count;
-    for (replication=slave_replication_array.replications; replication<end;
-            replication++)
+    for (replication=slave_replication_array.replications;
+            replication<end; replication++)
     {
         if (server == CLUSTER_MYSELF_PTR) {
             ++server;   //skip myself
@@ -102,12 +102,19 @@ int binlog_local_consumer_replication_start()
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
 
-    end = slave_replication_array.replications + slave_replication_array.count;
-    for (replication=slave_replication_array.replications; replication<end;
-            replication++)
+    end = slave_replication_array.replications +
+        slave_replication_array.count;
+    for (replication=slave_replication_array.replications;
+            replication<end; replication++)
     {
-        if ((result=binlog_replication_bind_thread(replication)) != 0) {
-            return result;
+        if (FC_ATOMIC_GET(replication->stage) ==
+                FDIR_REPLICATION_STAGE_NONE)
+        {
+            if ((result=binlog_replication_bind_thread(
+                            replication)) != 0)
+            {
+                return result;
+            }
         }
     }
 

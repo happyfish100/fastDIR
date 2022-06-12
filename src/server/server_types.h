@@ -60,10 +60,12 @@
 #define FDIR_SERVER_TASK_TYPE_NSS_SUBSCRIBE      5   //auth server -> master
 
 #define FDIR_REPLICATION_STAGE_NONE               0
-#define FDIR_REPLICATION_STAGE_CONNECTING         1
-#define FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP  2
-#define FDIR_REPLICATION_STAGE_SYNC_FROM_DISK     3
-#define FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE    4
+#define FDIR_REPLICATION_STAGE_IN_QUEUE           1  //for adding to conecting array
+#define FDIR_REPLICATION_STAGE_BEFORE_CONNECT     2
+#define FDIR_REPLICATION_STAGE_CONNECTING         3
+#define FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP  4
+#define FDIR_REPLICATION_STAGE_SYNC_FROM_DISK     5
+#define FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE    6
 
 #define TASK_STATUS_CONTINUE           12345
 #define TASK_UPDATE_FLAG_OUTPUT_DENTRY     1
@@ -235,7 +237,7 @@ typedef struct fdir_replication_context {
 typedef struct fdir_slave_replication {
     struct fast_task_info *task;
     FDIRClusterServerInfo *slave;
-    int stage;
+    volatile int stage;
     int index;  //for next links
     struct {
         int start_time;
@@ -246,6 +248,7 @@ typedef struct fdir_slave_replication {
     } connection_info;
 
     FDIRReplicationContext context;
+    struct fdir_slave_replication *next;
 } FDIRSlaveReplication;
 
 typedef struct fdir_slave_replication_array {
@@ -370,7 +373,11 @@ typedef struct fdir_server_context {
         } service;
 
         struct {
-            volatile char clean_connected_replicas;   //for cleanup connected array
+            volatile char clean_replications; //for cleanup connecting & connected array
+            struct {
+                FDIRSlaveReplication *head;
+                pthread_mutex_t lock;
+            } queue;  //waiting to add to connecting array
             FDIRSlaveReplicationPtrArray connectings;  //master side
             FDIRSlaveReplicationPtrArray connected;    //master side
 

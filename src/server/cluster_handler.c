@@ -1150,6 +1150,19 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
     }
 }
 
+static int alloc_replication_ptr_array(FDIRSlaveReplicationPtrArray *array)
+{
+    int bytes;
+
+    bytes = sizeof(FDIRSlaveReplication *) * CLUSTER_SERVER_ARRAY.count;
+    array->replications = (FDIRSlaveReplication **)fc_malloc(bytes);
+    if (array->replications == NULL) {
+        return ENOMEM;
+    }
+    memset(array->replications, 0, bytes);
+    return 0;
+}
+
 void *cluster_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_ctx;
@@ -1158,8 +1171,18 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
     if (server_ctx == NULL) {
         return NULL;
     }
-
     memset(server_ctx, 0, sizeof(FDIRServerContext));
+
+    if (alloc_replication_ptr_array(&server_ctx->cluster.connectings) != 0) {
+        return NULL;
+    }
+    if (alloc_replication_ptr_array(&server_ctx->cluster.connected) != 0) {
+        return NULL;
+    }
+
+    if (init_pthread_lock(&server_ctx->cluster.queue.lock) != 0) {
+        return NULL;
+    }
     server_ctx->thread_index = thread_index;
     return server_ctx;
 }
@@ -1180,24 +1203,24 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
                 */
     }
 
-    if (server_ctx->cluster.clean_connected_replicas) {
-        logWarning("file: "__FILE__", line: %d, "
-                "cluster thread #%d, will clean %d connected "
-                "replications because i am no longer master",
-                __LINE__, server_ctx->thread_index,
-                server_ctx->cluster.connected.count);
-
-        server_ctx->cluster.clean_connected_replicas = false;
-        clean_connected_replications(server_ctx);
-    }
-
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         return binlog_replication_process(server_ctx);
     } else {
         if (server_ctx->cluster.consumer_ctx != NULL) {
             result = deal_replica_push_task(server_ctx->cluster.consumer_ctx);
             return result == EAGAIN ? 0 : result;
+        } else if (FC_ATOMIC_GET(server_ctx->cluster.clean_replications)) {
+            logWarning("file: "__FILE__", line: %d, "
+                    "cluster thread #%d, will clean %d connected "
+                    "replications because i am no longer master",
+                    __LINE__, server_ctx->thread_index,
+                    server_ctx->cluster.connected.count);
+
+            __sync_bool_compare_and_swap(&server_ctx->cluster.
+                    clean_replications, 1, 0);
+            clean_master_replications(server_ctx);
         }
+
         return 0;
     }
 }

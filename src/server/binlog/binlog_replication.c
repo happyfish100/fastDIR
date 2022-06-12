@@ -46,24 +46,7 @@
 
 static void replication_queue_discard_all(FDIRSlaveReplication *replication);
 
-static int check_alloc_ptr_array(FDIRSlaveReplicationPtrArray *array)
-{
-    int bytes;
-
-    if (array->replications != NULL) {
-        return 0;
-    }
-
-    bytes = sizeof(FDIRSlaveReplication *) * CLUSTER_SERVER_ARRAY.count;
-    array->replications = (FDIRSlaveReplication **)fc_malloc(bytes);
-    if (array->replications == NULL) {
-        return ENOMEM;
-    }
-    memset(array->replications, 0, bytes);
-    return 0;
-}
-
-static void add_to_replication_ptr_array(FDIRSlaveReplicationPtrArray *
+static inline void add_to_replication_ptr_array(FDIRSlaveReplicationPtrArray *
         array, FDIRSlaveReplication *replication)
 {
     array->replications[array->count++] = replication;
@@ -100,7 +83,8 @@ static inline void set_replication_stage(FDIRSlaveReplication *
     int status;
     switch (stage) {
         case FDIR_REPLICATION_STAGE_NONE:
-            status = __sync_add_and_fetch(&replication->slave->status, 0);
+        case FDIR_REPLICATION_STAGE_IN_QUEUE:
+            status = FC_ATOMIC_GET(replication->slave->status);
             if (status == FDIR_SERVER_STATUS_SYNCING ||
                     status == FDIR_SERVER_STATUS_ACTIVE)
             {
@@ -110,7 +94,7 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             break;
 
         case FDIR_REPLICATION_STAGE_SYNC_FROM_DISK:
-            status = __sync_add_and_fetch(&replication->slave->status, 0);
+            status = FC_ATOMIC_GET(replication->slave->status);
             if (status == FDIR_SERVER_STATUS_INIT) {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_BUILDING);
@@ -129,7 +113,8 @@ static inline void set_replication_stage(FDIRSlaveReplication *
         default:
             break;
     }
-    replication->stage = stage;
+
+    FC_ATOMIC_SET(replication->stage, stage);
 }
 
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
@@ -153,8 +138,9 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
+    server_ctx = (FDIRServerContext *)task->thread_data->arg;
 
-    set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
+    set_replication_stage(replication, FDIR_REPLICATION_STAGE_IN_QUEUE);
     replication->context.last_data_versions.by_disk.previous = 0;
     replication->context.last_data_versions.by_disk.current = 0;
     replication->context.last_data_versions.by_queue = 0;
@@ -169,20 +155,11 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     replication->connection_info.conn.sock = -1;
     replication->task = task;
 
-    server_ctx = (FDIRServerContext *)task->thread_data->arg;
-    if ((result=check_alloc_ptr_array(&server_ctx->
-                    cluster.connectings)) != 0)
-    {
-        return result;
-    }
-    if ((result=check_alloc_ptr_array(&server_ctx->
-                    cluster.connected)) != 0)
-    {
-        return result;
-    }
+    PTHREAD_MUTEX_LOCK(&server_ctx->cluster.queue.lock);
+    replication->next = server_ctx->cluster.queue.head;
+    server_ctx->cluster.queue.head = replication;
+    PTHREAD_MUTEX_UNLOCK(&server_ctx->cluster.queue.lock);
 
-    add_to_replication_ptr_array(&server_ctx->
-            cluster.connectings, replication);
     return 0;
 }
 
@@ -199,6 +176,8 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
         push_result_ring_clear_all(&replication->context.push_result_ctx);
         if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
             result = binlog_replication_bind_thread(replication);
+        } else {
+            FC_ATOMIC_SET(replication->stage, FDIR_REPLICATION_STAGE_NONE);
         }
     }
 
@@ -505,7 +484,35 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
     return 0;
 }
 
-void clean_connected_replications(FDIRServerContext *server_ctx)
+static void release_replication_task(FDIRSlaveReplication *replication)
+{
+    struct fast_task_info *task;
+
+    task = replication->task;
+    SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
+    CLUSTER_REPLICA = NULL;
+    FC_ATOMIC_SET(replication->stage, FDIR_REPLICATION_STAGE_NONE);
+    sf_release_task(task);
+}
+
+static void clean_connecting_replications(FDIRServerContext *server_ctx)
+{
+    FDIRSlaveReplication *replication;
+    int i;
+
+    for (i=0; i<server_ctx->cluster.connectings.count; i++) {
+        replication = server_ctx->cluster.connectings.replications[i];
+        if (replication->connection_info.conn.sock >= 0) {
+            close(replication->connection_info.conn.sock);
+            replication->connection_info.conn.sock = -1;
+        }
+
+        release_replication_task(replication);
+    }
+    server_ctx->cluster.connectings.count = 0;
+}
+
+static void clean_connected_replications(FDIRServerContext *server_ctx)
 {
     FDIRSlaveReplication *replication;
     int i;
@@ -514,6 +521,31 @@ void clean_connected_replications(FDIRServerContext *server_ctx)
         replication = server_ctx->cluster.connected.replications[i];
         ioevent_add_to_deleted_list(replication->task);
     }
+}
+
+void clean_master_replications(FDIRServerContext *server_ctx)
+{
+    FDIRSlaveReplication *replication;
+    int count;
+
+    count = 0;
+    PTHREAD_MUTEX_LOCK(&server_ctx->cluster.queue.lock);
+    if (server_ctx->cluster.queue.head != NULL) {
+        replication = server_ctx->cluster.queue.head;
+        do {
+            ++count;
+            release_replication_task(replication);
+        } while ((replication=replication->next) != NULL);
+
+        server_ctx->cluster.queue.head = NULL;
+    }
+    PTHREAD_MUTEX_UNLOCK(&server_ctx->cluster.queue.lock);
+
+    count += server_ctx->cluster.connectings.count;
+    count += server_ctx->cluster.connected.count;
+
+    clean_connecting_replications(server_ctx);
+    clean_connected_replications(server_ctx);
 }
 
 static void repush_to_replication_queue(FDIRSlaveReplication *replication,
@@ -816,6 +848,7 @@ static int deal_replication_connected(FDIRServerContext *server_ctx)
 int binlog_replication_process(FDIRServerContext *server_ctx)
 {
     int result;
+    FDIRSlaveReplication *replication;
 
     /*
     static int count = 0;
@@ -825,6 +858,20 @@ int binlog_replication_process(FDIRServerContext *server_ctx)
                 __LINE__, count, (int)g_current_time);
     }
     */
+
+    PTHREAD_MUTEX_LOCK(&server_ctx->cluster.queue.lock);
+    if (server_ctx->cluster.queue.head != NULL) {
+        replication = server_ctx->cluster.queue.head;
+        do {
+            FC_ATOMIC_SET(replication->stage,
+                    FDIR_REPLICATION_STAGE_BEFORE_CONNECT);
+            add_to_replication_ptr_array(&server_ctx->
+                    cluster.connectings, replication);
+        } while ((replication=replication->next) != NULL);
+
+        server_ctx->cluster.queue.head = NULL;
+    }
+    PTHREAD_MUTEX_UNLOCK(&server_ctx->cluster.queue.lock);
 
     if ((result=deal_replication_connectings(server_ctx)) != 0) {
         return result;

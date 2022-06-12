@@ -29,7 +29,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication);
 
 int binlog_replication_process(FDIRServerContext *server_ctx);
 
-void clean_connected_replications(FDIRServerContext *server_ctx);
+void clean_master_replications(FDIRServerContext *server_ctx);
 
 int binlog_replications_check_response_data_version(
         FDIRSlaveReplication *replication,
