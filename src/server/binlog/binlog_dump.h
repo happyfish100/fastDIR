@@ -74,6 +74,8 @@ extern "C" {
 
     int binlog_dump_all_ex(const bool create_thread);
 
+    int binlog_dump_clear_files();
+
     static inline int binlog_dump_all()
     {
         const bool create_thread = false;

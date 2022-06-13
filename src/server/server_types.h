@@ -169,6 +169,7 @@ typedef struct fdir_cluster_server_info {
     char key[FDIR_REPLICA_KEY_SIZE];  //for slave server
     volatile char status;          //the slave status
     volatile char is_master;       //if I am master
+    volatile bool recovering;      //if data recovering
     SFBinlogFilePosition binlog_pos_hint;  //for replication
     volatile int64_t last_data_version;  //for replication
     volatile int last_change_version;    //for push server status to the slave

@@ -23,6 +23,7 @@
 #include "common/fdir_proto.h"
 #include "server_global.h"
 #include "server_binlog.h"
+#include "server_func.h"
 #include "data_thread.h"
 #include "inode_generator.h"
 #include "cluster_relationship.h"
@@ -142,11 +143,8 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
-    int2buff(CLUSTER_ID, req->cluster_id);
-    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    SERVER_PROTO_PACK_IDENTITY(req->si);
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
-    memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF,
-            SF_CLUSTER_CONFIG_SIGN_LEN);
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, network_timeout,

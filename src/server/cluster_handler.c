@@ -216,10 +216,41 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     return 0;
 }
 
-static int cluster_deal_join_master(struct fast_task_info *task)
+static int cluster_check_server_identity(struct fast_task_info *task,
+        FDIRProtoClusterServerIdentity *si, int *server_id,
+        FDIRClusterServerInfo **peer)
 {
     int result;
     int cluster_id;
+
+    cluster_id = buff2int(si->cluster_id);
+    *server_id = buff2int(si->server_id);
+    if (cluster_id != CLUSTER_ID) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer cluster id: %d != mine: %d",
+                cluster_id, CLUSTER_ID);
+        return EINVAL;
+    }
+
+    *peer = fdir_get_server_by_id(*server_id);
+    if (*peer == NULL) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d not exist", *server_id);
+        return ENOENT;
+    }
+
+    if ((result=cluster_check_config_sign(task, *server_id,
+                    si->config_sign)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
+
+static int cluster_deal_join_master(struct fast_task_info *task)
+{
+    int result;
     int server_id;
     FDIRProtoJoinMasterReq *req;
     FDIRClusterServerInfo *peer;
@@ -231,26 +262,8 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     }
 
     req = (FDIRProtoJoinMasterReq *)REQUEST.body;
-    cluster_id = buff2int(req->cluster_id);
-    server_id = buff2int(req->server_id);
-    if (cluster_id != CLUSTER_ID) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "peer cluster id: %d != mine: %d",
-                cluster_id, CLUSTER_ID);
-        return EINVAL;
-    }
-
-    peer = fdir_get_server_by_id(server_id);
-    if (peer == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "peer server id: %d not exist", server_id);
-        return ENOENT;
-    }
-
-    if ((result=cluster_check_config_sign(task, server_id,
-                    req->config_sign)) != 0)
+    if ((result=cluster_check_server_identity(task, &req->si,
+                    &server_id, &peer)) != 0)
     {
         return result;
     }
@@ -263,8 +276,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     }
 
     if (CLUSTER_PEER != NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "peer server id: %d already joined", server_id);
         return EEXIST;
     }
@@ -866,6 +878,7 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
         return result;
     }
 
+    resp = (FDIRProtoReplicaQueryBinlogInfoResp *)REQUEST.body;
     if (binlog_start_index > 0) {
         int result1;
         int result2;
@@ -891,12 +904,13 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
         }
         dump_start_index = 0;
         dump_last_index = 0;
+        resp->remove_dump_data = (STORAGE_ENABLED ? 1 : 0);
     } else {
         dump_start_index = 0;
         dump_last_index = -1;
+        resp->remove_dump_data = 0;
     }
 
-    resp = (FDIRProtoReplicaQueryBinlogInfoResp *)REQUEST.body;
     int2buff(dump_start_index, resp->dump_data.start_index);
     int2buff(dump_last_index, resp->dump_data.last_index);
     int2buff(binlog_start_index, resp->binlog.start_index);
@@ -950,18 +964,12 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
         if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_SYNC_BINLOG &&
                 REPLICA_READER != NULL)
         {
-            binlog_reader_destroy(REPLICA_READER);
+            replica_release_reader(task, true);
         } else {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
                     "already in progress. task type: %d, have reader: %d",
                     SERVER_TASK_TYPE, REPLICA_READER != NULL ? 1 : 0);
             return EALREADY;
-        }
-    } else {
-        result = replica_alloc_reader(task,
-                FDIR_SERVER_TASK_TYPE_SYNC_BINLOG);
-        if (result != 0) {
-            return result;
         }
     }
 
@@ -989,6 +997,11 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
         return EINVAL;
     }
 
+    result = replica_alloc_reader(task,
+            FDIR_SERVER_TASK_TYPE_SYNC_BINLOG);
+    if (result != 0) {
+        return result;
+    }
     if ((result=binlog_reader_single_init(REPLICA_READER,
                     subdir_name, binlog_index)) != 0)
     {
@@ -1049,6 +1062,58 @@ static int replica_deal_sync_dump_mark(struct fast_task_info *task)
     RESPONSE.header.cmd = FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
+}
+
+static int replica_deal_sync_binlog_report(struct fast_task_info *task)
+{
+    int result;
+    int server_id;
+    FDIRProtoReplicaSyncBinlogReportReq *req;
+    FDIRClusterServerInfo *peer;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *end;
+
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
+        return result;
+    }
+
+    req = (FDIRProtoReplicaSyncBinlogReportReq *)REQUEST.body;
+    if ((result=cluster_check_server_identity(task, &req->si,
+                    &server_id, &peer)) != 0)
+    {
+        return result;
+    }
+
+    if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am not master");
+        return EINVAL;
+    }
+
+    if (req->stage == FDIR_PROTO_SYNC_BINLOG_STAGE_START) {
+        peer->recovering = true;
+    } else if (req->stage == FDIR_PROTO_SYNC_BINLOG_STAGE_END) {
+        peer->recovering = false;
+        if (STORAGE_ENABLED && req->remove_dump_data) {
+            end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+            for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
+                if (cs->recovering) {
+                    break;
+                }
+            }
+
+            if (cs == end) {  //no recovering slaves
+                result = binlog_dump_clear_files();
+            }
+        }
+    } else {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "unkown stage: 0x%02X", req->stage);
+        return EINVAL;
+    }
+
+    return result;
 }
 
 int cluster_deal_task(struct fast_task_info *task, const int stage)
@@ -1128,6 +1193,9 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 break;
             case FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ:
                 result = replica_deal_sync_dump_mark(task);
+                break;
+            case FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT:
+                result = replica_deal_sync_binlog_report(task);
                 break;
             case SF_PROTO_ACK:
                 result = cluster_deal_slave_ack(task);

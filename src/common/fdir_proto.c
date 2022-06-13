@@ -264,6 +264,8 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "SYNC_DUMP_MARK_REQ";
         case FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP:
             return "SYNC_DUMP_MARK_RESP";
+        case FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT:
+            return "SYNC_BINLOG_REPORT";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
             return "JOIN_SLAVE_REQ";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:

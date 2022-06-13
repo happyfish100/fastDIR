@@ -45,7 +45,7 @@ static void output_dentry_array(FDIRClientDentryArray *array)
 
 int main(int argc, char *argv[])
 {
-    const bool publish = true;  //TODO
+    const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *ns;

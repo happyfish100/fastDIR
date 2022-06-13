@@ -804,3 +804,22 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     destroy_dd_ctx(&dd_ctx);
     return result;
 }
+
+int binlog_dump_clear_files()
+{
+    int result;
+    char mark_filename[PATH_MAX];
+    char data_filename[PATH_MAX];
+
+    if (!STORAGE_ENABLED) {
+        return EINVAL;
+    }
+
+    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    if ((result=fc_delete_file_ex(mark_filename, "mark")) != 0) {
+        return result;
+    }
+
+    fdir_get_dump_data_filename(data_filename, sizeof(data_filename));
+    return fc_delete_file_ex(data_filename, "dump");
+}

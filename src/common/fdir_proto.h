@@ -155,9 +155,13 @@
 #define FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP         226
 #define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ       227
 #define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP      228
+#define FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT       229
 
 #define FDIR_PROTO_FILE_TYPE_DUMP      'd'
 #define FDIR_PROTO_FILE_TYPE_BINLOG    'b'
+
+#define FDIR_PROTO_SYNC_BINLOG_STAGE_START 's'
+#define FDIR_PROTO_SYNC_BINLOG_STAGE_END   'e'
 
 typedef SFCommonProtoHeader  FDIRProtoHeader;
 
@@ -640,10 +644,14 @@ typedef struct fdir_proto_get_server_status_resp {
     char data_version[8];
 } FDIRProtoGetServerStatusResp;
 
-typedef struct fdir_proto_join_master_req {
+typedef struct fdir_proto_cluster_server_identity {
     char cluster_id[4];    //the cluster id
     char server_id[4];     //the slave server id
     char config_sign[SF_CLUSTER_CONFIG_SIGN_LEN];
+} FDIRProtoClusterServerIdentity;
+
+typedef struct fdir_proto_join_master_req {
+    FDIRProtoClusterServerIdentity si;
     char key[FDIR_REPLICA_KEY_SIZE];   //the slave key used on JOIN_SLAVE
 } FDIRProtoJoinMasterReq;
 
@@ -703,6 +711,7 @@ typedef struct fdir_proto_push_binlog_resp_body_part {
 
 typedef struct fdir_proto_replia_query_binlog_info_req {
     char server_id[4];
+    char padding[4];
 } FDIRProtoReplicaQueryBinlogInfoReq;
 
 typedef struct fdir_proto_replia_query_binlog_info_resp {
@@ -714,7 +723,16 @@ typedef struct fdir_proto_replia_query_binlog_info_resp {
         char start_index[4];
         char last_index[4];
     } binlog;
+    char remove_dump_data;
+    char padding[7];
 } FDIRProtoReplicaQueryBinlogInfoResp;
+
+typedef struct fdir_proto_replia_sync_binlog_report_req {
+    FDIRProtoClusterServerIdentity si;
+    char stage;
+    char remove_dump_data;
+    char padding[2];
+} FDIRProtoReplicaSyncBinlogReportReq;
 
 typedef struct fdir_proto_replia_sync_binlog_first_req {
     char file_type;  //dump data or normal binlog

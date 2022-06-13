@@ -32,12 +32,14 @@
 #include "sf/sf_func.h"
 #include "../../common/fdir_proto.h"
 #include "../server_global.h"
+#include "../server_func.h"
 #include "../cluster_relationship.h"
 #include "binlog_dump.h"
 #include "binlog_write.h"
 #include "binlog_sync.h"
 
 typedef struct {
+    bool remove_dump_data;
     char file_type;
     int binlog_index;
     int fd;
@@ -87,7 +89,37 @@ static int query_binlog_info(BinlogSyncContext *sync_ctx)
     sync_ctx->dump_data.last_index = buff2int(resp.dump_data.last_index);
     sync_ctx->binlog.start_index = buff2int(resp.binlog.start_index);
     sync_ctx->binlog.last_index = buff2int(resp.binlog.last_index);
+    sync_ctx->remove_dump_data = resp.remove_dump_data;
     return 0;
+}
+
+static int sync_binlog_report(BinlogSyncContext *sync_ctx, const char stage)
+{
+    int result;
+    FDIRProtoHeader *header;
+    FDIRProtoReplicaSyncBinlogReportReq *req;
+    SFResponseInfo response;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(
+            FDIRProtoReplicaSyncBinlogReportReq)];
+
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoReplicaSyncBinlogReportReq *)
+        (out_buff + sizeof(FDIRProtoHeader));
+    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    SERVER_PROTO_PACK_IDENTITY(req->si);
+    req->remove_dump_data = sync_ctx->remove_dump_data;
+    req->stage = stage;
+    response.error.length = 0;
+    if ((result=sf_send_and_recv_none_body_response(&sync_ctx->conn,
+                    out_buff, sizeof(out_buff), &response,
+                    SF_G_NETWORK_TIMEOUT, SF_PROTO_ACK)) != 0)
+    {
+        fdir_log_network_error_ex(&response,
+                &sync_ctx->conn, result, LOG_ERR);
+    }
+
+    return result;
 }
 
 static int sync_binlog_to_local(BinlogSyncContext *sync_ctx,
@@ -568,6 +600,12 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return result;
     }
 
+    result = sync_binlog_report(sync_ctx, FDIR_PROTO_SYNC_BINLOG_STAGE_START);
+    if (result != 0) {
+        conn_pool_disconnect_server(&sync_ctx->conn);
+        return result;
+    }
+
     if (sync_ctx->dump_data.start_index <= sync_ctx->dump_data.last_index) {
         sync_ctx->file_type = FDIR_PROTO_FILE_TYPE_DUMP;
         sync_ctx->binlog_index = 0;
@@ -589,7 +627,12 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
             return result;
         }
     }
+
+    result = sync_binlog_report(sync_ctx, FDIR_PROTO_SYNC_BINLOG_STAGE_END);
     conn_pool_disconnect_server(&sync_ctx->conn);
+    if (result != 0) {
+        return result;
+    }
 
     long_to_comma_str(get_current_time_ms() - start_time_ms, time_buff);
     logInfo("file: "__FILE__", line: %d, "

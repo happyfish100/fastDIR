@@ -25,6 +25,12 @@ extern "C" {
 
 int server_load_config(const char *filename);
 
+#define SERVER_PROTO_PACK_IDENTITY(si)     \
+    int2buff(CLUSTER_ID, (si).cluster_id); \
+    int2buff(CLUSTER_MY_SERVER_ID, (si).server_id);   \
+    memcpy((si).config_sign, CLUSTER_CONFIG_SIGN_BUF, \
+            SF_CLUSTER_CONFIG_SIGN_LEN)
+
 #ifdef __cplusplus
 }
 #endif
