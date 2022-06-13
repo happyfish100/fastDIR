@@ -1242,6 +1242,12 @@ int binlog_unpack_record_ex(BinlogPackContext *context, const char *str,
     return binlog_parse_fields(&pcontext, record);
 }
 
+#define INIT_RECORD_FOR_DETECT(record) \
+    record.inode = 0; \
+    record.operation = BINLOG_OP_NONE_INT; \
+    record.xattr_kvarray.alloc = record.xattr_kvarray.count = 0; \
+    record.xattr_kvarray.elts = NULL
+
 int binlog_detect_record(const char *str, const int len,
         int64_t *data_version, const char **rec_end,
         char *error_info, const int error_size)
@@ -1255,6 +1261,7 @@ int binlog_detect_record(const char *str, const int len,
         return result;
     }
 
+    INIT_RECORD_FOR_DETECT(record);
     record.data_version = 0;
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
@@ -1383,6 +1390,7 @@ int binlog_detect_record_forward(const char *str, const int len,
         return result;
     }
 
+    INIT_RECORD_FOR_DETECT(record);
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }
@@ -1437,6 +1445,7 @@ int binlog_detect_record_reverse_ex(const char *str, const int len,
         *rec_end = pcontext.rec_end;
     }
 
+    INIT_RECORD_FOR_DETECT(record);
     if ((result=binlog_parse_first_field(&pcontext, &record)) != 0) {
         return result;
     }

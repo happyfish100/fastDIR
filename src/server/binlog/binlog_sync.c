@@ -553,6 +553,7 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
     int64_t start_time_ms;
     char time_buff[32];
 
+    master_id = -1;
     sync_ctx->conn.sock = -1;
     sleep_seconds = 1;
     start_time_ms = get_current_time_ms();

@@ -882,11 +882,9 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
 
     req = (FDIRProtoReplicaQueryBinlogInfoReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
-
     if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "i am not master");
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d, i am not master", server_id);
         return EINVAL;
     }
 

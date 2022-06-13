@@ -1171,9 +1171,6 @@ static int deal_flock_apply(FDIRDataThreadContext *thread_ctx,
 static int deal_flock_unlock(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
-    struct fast_task_info *task;
-
-    task = (struct fast_task_info *)record->notify.args;
     return inode_index_flock_unlock(thread_ctx, record->inode,
             &record->flock_params);
 }

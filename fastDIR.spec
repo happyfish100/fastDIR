@@ -22,10 +22,6 @@ Requires: %__cp %__mv %__chmod %__grep %__mkdir %__install %__id
 Requires: libfastcommon >= 1.0.58
 Requires: libserverframe >= 1.1.15
 Requires: libfdirstorage >= 1.0.4
-Requires: FastCFS-auth-client >= 3.4.0
-Requires: FastCFS-vote-client >= 3.4.0
-Requires: FastCFS-auth-config >= 2.0.0
-Requires: FastCFS-vote-config >= 3.4.0
 Requires: %{FastDIRServer} = %{version}-%{release}
 Requires: %{FastDIRClient} = %{version}-%{release}
 
