@@ -561,6 +561,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
                 RESPONSE.error.message,
                 "i am not ready");
         TASK_CTX.common.log_level = LOG_NOTHING;
+        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
         return EPROTONOSUPPORT;
     }
 
@@ -726,6 +727,23 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
 
     if ((result=check_replication_master_task(task)) != 0) {
         return result;
+    }
+
+    if (REQUEST.header.status != 0) {
+        int connect_interval;
+
+        CLUSTER_REPLICA->join_fail_count++;
+        if (CLUSTER_REPLICA->join_fail_count < 6) {
+            connect_interval = (1 << CLUSTER_REPLICA->join_fail_count);
+        } else {
+            connect_interval = 60;
+        }
+
+        CLUSTER_REPLICA->connection_info.next_connect_time =
+            g_current_time + connect_interval;
+        return REQUEST.header.status;
+    } else {
+        CLUSTER_REPLICA->join_fail_count = 0;
     }
 
     if ((result=server_check_min_body_length(sizeof(
@@ -1154,7 +1172,9 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
                 if ((result=cluster_deal_join_slave_req(task)) > 0) {
-                    result *= -1;  //force close connection
+                    if (result != EPROTONOSUPPORT) {
+                        result *= -1;  //force close connection
+                    }
                 }
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:

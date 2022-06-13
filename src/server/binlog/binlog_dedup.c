@@ -101,7 +101,7 @@ int binlog_dedup_add_schedule()
     }
 
     INIT_SCHEDULE_ENTRY_EX1(scheduleEntry, sched_generate_next_id(),
-            BINLOG_DEDUP_TIME, /*86400*/300, binlog_dedup_func, NULL, true);
+            BINLOG_DEDUP_TIME, 86400, binlog_dedup_func, NULL, true);
     scheduleArray.entries = &scheduleEntry;
     scheduleArray.count = 1;
     return sched_add_entries(&scheduleArray);

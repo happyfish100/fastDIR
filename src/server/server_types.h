@@ -240,6 +240,7 @@ typedef struct fdir_slave_replication {
     FDIRClusterServerInfo *slave;
     volatile int stage;
     int index;  //for next links
+    int join_fail_count;  //join slave successive fail count
     struct {
         int start_time;
         int next_connect_time;

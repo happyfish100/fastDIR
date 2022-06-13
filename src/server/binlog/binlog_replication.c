@@ -464,13 +464,15 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
                     cluster.connected, replication);
         }
 
-        logInfo("file: "__FILE__", line: %d, "
-                "cluster thread #%d, connect to slave %s:%u "
-                "successfully%s. current connected count: %d",
-                __LINE__, server_ctx->thread_index,
-                replication->connection_info.conn.ip_addr,
-                replication->connection_info.conn.port, prompt,
-                server_ctx->cluster.connected.count);
+        if (replication->join_fail_count == 0) {
+            logInfo("file: "__FILE__", line: %d, "
+                    "cluster thread #%d, connect to slave %s:%u "
+                    "successfully%s. current connected count: %d",
+                    __LINE__, server_ctx->thread_index,
+                    replication->connection_info.conn.ip_addr,
+                    replication->connection_info.conn.port, prompt,
+                    server_ctx->cluster.connected.count);
+        }
 
         replication->connection_info.fail_count = 0;
         replication->task->event.fd = replication->

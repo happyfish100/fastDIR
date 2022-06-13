@@ -821,5 +821,13 @@ int binlog_dump_clear_files()
     }
 
     fdir_get_dump_data_filename(data_filename, sizeof(data_filename));
-    return fc_delete_file_ex(data_filename, "dump");
+    if ((result=fc_delete_file_ex(data_filename, "dump")) != 0) {
+        return result;
+    }
+
+    DUMP_DENTRY_COUNT = 0;
+    DUMP_LAST_DATA_VERSION = 0;
+    DUMP_NEXT_POSITION.index = 0;
+    DUMP_NEXT_POSITION.offset = 0;
+    return 0;
 }
