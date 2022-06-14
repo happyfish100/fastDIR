@@ -519,7 +519,7 @@ static int sort_dump_data(DumpDataSortContext *ctx)
     }
 }
 
-int binlog_sort_by_inode(const bool check_exist)
+int binlog_sort_by_inode()
 {
     int result;
     DumpDataSortContext context;

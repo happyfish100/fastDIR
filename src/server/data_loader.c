@@ -32,7 +32,6 @@ int server_load_data()
     BinlogReaderParams params[2];
     SFBinlogFilePosition hint_pos;
     BinlogReadThreadResult *r;
-    bool check_exist;
     int64_t start_time;
     int64_t end_time;
     char time_buff[32];
@@ -71,12 +70,9 @@ int server_load_data()
                 {
                     return result;
                 }
-                check_exist = true;
-            } else {
-                check_exist = false;
             }
 
-            if ((result=binlog_sort_by_inode(check_exist)) != 0) {
+            if ((result=binlog_sort_by_inode()) != 0) {
                 return result;
             }
 

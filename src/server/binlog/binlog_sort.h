@@ -26,7 +26,7 @@
 extern "C" {
 #endif
 
-    int binlog_sort_by_inode(const bool check_exist);
+    int binlog_sort_by_inode();
 
 #ifdef __cplusplus
 }
