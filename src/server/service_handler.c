@@ -3335,6 +3335,7 @@ static int service_check_priv(struct fast_task_info *task)
         case SF_SERVICE_PROTO_REPORT_REQ_RECEIPT_REQ:
         case SF_SERVICE_PROTO_REBIND_CHANNEL_REQ:
         case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
+        case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ:
             return 0;
 
         case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
@@ -3395,7 +3396,7 @@ static int service_check_priv(struct fast_task_info *task)
             break;
         default:
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "unkown cmd: %d", REQUEST.header.cmd);
+                    "unkown service cmd: %d", REQUEST.header.cmd);
             return -EINVAL;
     }
 
@@ -3632,9 +3633,8 @@ static int service_process(struct fast_task_info *task)
             return sf_server_deal_rebind_channel(task,
                     &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL, &RESPONSE);
         default:
-            RESPONSE.error.length = sprintf(
-                    RESPONSE.error.message,
-                    "unkown cmd: %d", REQUEST.header.cmd);
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "unkown service cmd: %d", REQUEST.header.cmd);
             return -EINVAL;
     }
 }

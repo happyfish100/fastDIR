@@ -1220,9 +1220,8 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 TASK_CTX.common.need_response = false;
                 break;
             default:
-                RESPONSE.error.length = sprintf(
-                        RESPONSE.error.message,
-                        "unkown cmd: %d", REQUEST.header.cmd);
+                RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                        "unkown cluster cmd: %d", REQUEST.header.cmd);
                 result = -EINVAL;
                 break;
         }
