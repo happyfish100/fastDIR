@@ -5,7 +5,8 @@ Maintainer: YuQing <384681@qq.com>
 Build-Depends: debhelper (>=11~),
                libfastcommon-dev (>= 1.0.56),
                libserverframe-dev (>= 1.1.13),
-               fastcfs-auth-dev (>= 3.0.0)
+               fastcfs-auth-dev (>= 3.0.0),
+               fastcfs-vote-dev (>= 3.4.0)
 Standards-Version: 4.1.4
 Homepage: http://github.com/happyfish100/fastDIR/
 
@@ -18,6 +19,8 @@ Depends: libfastcommon (>= ${libfastcommon:Version}),
          libfdirstorage (>= ${libfdirstorage:Version}),
          fastcfs-auth-client (>= ${fastcfs-auth-client:Version}),
          fastcfs-auth-config (>= ${fastcfs-auth-config:Version}),
+         fastcfs-vote-client (>= ${fastcfs-vote-client:Version}),
+         fastcfs-vote-config (>= ${fastcfs-vote-config:Version}),
          fastdir-server (= ${binary:Version}),
          fastdir-client (= ${binary:Version}),
          ${misc:Depends}
@@ -33,6 +36,8 @@ Depends: libfastcommon (>= ${libfastcommon:Version}),
          libfdirstorage (>= ${libfdirstorage:Version}),
          fastcfs-auth-client (>= ${fastcfs-auth-client:Version}),
          fastcfs-auth-config (>= ${fastcfs-auth-config:Version}),
+         fastcfs-vote-client (>= ${fastcfs-vote-client:Version}),
+         fastcfs-vote-config (>= ${fastcfs-vote-config:Version}),
          fastdir-config (>= ${fastdir-config:Version}),
          ${misc:Depends}, ${shlibs:Depends}
 Description: FastDIR server
