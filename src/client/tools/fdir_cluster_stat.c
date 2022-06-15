@@ -60,13 +60,6 @@ int main(int argc, char *argv[])
     FDIRClientClusterStatEntry stats[CLUSTER_MAX_SERVER_COUNT];
 	int result;
 
-    /*
-    if (argc < 2) {
-        usage(argv);
-        return 1;
-    }
-    */
-
     while ((ch=getopt(argc, argv, "hc:")) != -1) {
         switch (ch) {
             case 'h':

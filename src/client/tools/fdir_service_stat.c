@@ -165,7 +165,6 @@ int main(int argc, char *argv[])
         }
     }
 
-
     if (optind >= argc) {
         usage(argv);
         return 1;
