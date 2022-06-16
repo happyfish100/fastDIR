@@ -92,7 +92,25 @@ static int server_load_cluster_id(IniFullContext *ini_ctx)
     return 0;
 }
 
-static int load_master_election_config(const char *cluster_filename)
+static int load_master_election_config(IniFullContext *ini_ctx)
+{
+    int result;
+
+    ELECTION_MASTER_LOST_TIMEOUT = iniGetIntCorrectValue(
+            ini_ctx, "master_lost_timeout", 3, 1, 300);
+    ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
+            ini_ctx, "max_wait_time", 30, 1, 3600);
+    if ((result=sf_load_election_quorum_config(&MASTER_ELECTION_QUORUM,
+                    ini_ctx)) == 0)
+    {
+        result = fcfs_vote_client_init_for_server(
+                ini_ctx, &VOTE_NODE_ENABLED);
+    }
+
+    return result;
+}
+
+static int load_cluster_sub_config(const char *cluster_filename)
 {
     IniContext ini_context;
     IniFullContext ini_ctx;
@@ -107,16 +125,13 @@ static int load_master_election_config(const char *cluster_filename)
 
     FAST_INI_SET_FULL_CTX_EX(ini_ctx, cluster_filename,
             "master-election", &ini_context);
-    ELECTION_MASTER_LOST_TIMEOUT = iniGetIntCorrectValue(
-            &ini_ctx, "master_lost_timeout", 3, 1, 300);
-    ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
-            &ini_ctx, "max_wait_time", 30, 1, 3600);
-    if ((result=sf_load_quorum_config(&MASTER_ELECTION_QUORUM,
-                    &ini_ctx)) == 0)
-    {
-        result = fcfs_vote_client_init_for_server(
-                &ini_ctx, &VOTE_NODE_ENABLED);
+    if ((result=load_master_election_config(&ini_ctx)) != 0) {
+        return result;
     }
+
+    ini_ctx.section_name = "data-replication";
+    result = sf_load_replication_quorum_config(
+            &REPLICATION_QUORUM, &ini_ctx);
 
     iniFreeContext(&ini_context);
     return result;
@@ -138,7 +153,7 @@ static int load_cluster_config(IniFullContext *ini_ctx,
         return result;
     }
 
-    if ((result=load_master_election_config(full_cluster_filename)) != 0) {
+    if ((result=load_cluster_sub_config(full_cluster_filename)) != 0) {
         return result;
     }
 
@@ -412,6 +427,7 @@ static void server_log_configs()
             "cluster server count = %d, "
             "master-election {quorum: %s, vote_node_enabled: %d, "
             "master_lost_timeout: %ds, max_wait_time: %ds}, "
+            "data-replication {quorum: %s}, "
             "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
@@ -423,9 +439,11 @@ static void server_log_configs()
             g_server_global_vars.node_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
-            sf_get_quorum_caption(MASTER_ELECTION_QUORUM),
+            sf_get_election_quorum_caption(MASTER_ELECTION_QUORUM),
             VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
-            ELECTION_MAX_WAIT_TIME, STORAGE_ENABLED);
+            ELECTION_MAX_WAIT_TIME,
+            sf_get_replication_quorum_caption(REPLICATION_QUORUM),
+            STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {
         len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,

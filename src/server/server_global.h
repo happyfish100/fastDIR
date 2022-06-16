@@ -82,6 +82,7 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
+        SFReplicationQuorum quorum;
         volatile bool load_done;
     } data;  //for binlog
 
@@ -158,6 +159,7 @@ typedef struct server_global_vars {
 
 #define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
 
+#define REPLICATION_QUORUM      g_server_global_vars.data.quorum
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
 #define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars.data. \
@@ -173,7 +175,6 @@ typedef struct server_global_vars {
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
-
 
 #define STORAGE_ENABLED         g_server_global_vars.storage.enabled
 #define STORAGE_PATH            g_server_global_vars.storage.cfg.path
