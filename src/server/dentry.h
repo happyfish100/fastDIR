@@ -45,12 +45,25 @@ extern "C" {
 
     int dentry_init_context(FDIRDataThreadContext *thread_ctx);
 
+    int dentry_create_check_ex(FDIRDataThreadContext *thread_ctx,
+            FDIRBinlogRecord *record, FDIRNamespaceEntry **ns,
+            bool *is_root);
     int dentry_create(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
+    int dentry_remove_check_ex(FDIRDataThreadContext *thread_ctx,
+            FDIRBinlogRecord *record, FDIRNamespaceEntry **ns);
     int dentry_remove(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 
+#define dentry_create_check(thread_ctx, record)  \
+    dentry_create_check_ex(thread_ctx, record, NULL, NULL)
+
+#define dentry_remove_check(thread_ctx, record)  \
+    dentry_remove_check_ex(thread_ctx, record, NULL)
+
+    int dentry_rename_check(FDIRDataThreadContext *thread_ctx,
+            FDIRBinlogRecord *record);
     int dentry_rename(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);
 

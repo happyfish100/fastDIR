@@ -47,12 +47,19 @@ extern "C" {
             const int64_t parent_inode, const string_t *name,
             FDIRServerDentry **dentry);
 
-    int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
-            FDIRBinlogRecord *record);
+    int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext
+            *thread_ctx, FDIRBinlogRecord *record, const bool dry_run);
 
+#define inode_index_check_set_dentry_size(thread_ctx, record) \
+    inode_index_check_set_dentry_size_ex(thread_ctx, record, false)
+
+    int inode_index_set_xattr_check(FDIRServerDentry *dentry,
+            const FDIRBinlogRecord *record);
     int inode_index_set_xattr(FDIRServerDentry *dentry,
             const FDIRBinlogRecord *record);
 
+    int inode_index_remove_xattr_check(FDIRServerDentry *dentry,
+            const string_t *name);
     int inode_index_remove_xattr(FDIRServerDentry *dentry,
             const string_t *name);
 

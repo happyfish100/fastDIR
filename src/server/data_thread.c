@@ -415,8 +415,8 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
+static int deal_record_rename_check(FDIRDataThreadContext
+        *thread_ctx, FDIRBinlogRecord *record)
 {
     int result;
     char *src_name;
@@ -458,6 +458,17 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
         record->rename.src.pname.name.str = src_name;
     }
 
+    return dentry_rename_check(thread_ctx, record);
+}
+
+static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+
+    if ((result=deal_record_rename_check(thread_ctx, record)) != 0) {
+        return result;
+    }
     return dentry_rename(thread_ctx, record);
 }
 
@@ -496,8 +507,8 @@ static inline int xattr_update_prepare(FDIRDataThreadContext
     return 0;
 }
 
-static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
+static int batch_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record, const bool dry_run)
 {
     FDIRBinlogRecord **pp;
     FDIRBinlogRecord **recend;
@@ -507,8 +518,8 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
     record->parray->counts.success = record->parray->counts.updated = 0;
     recend = record->parray->records + record->parray->counts.total;
     for (pp=record->parray->records; pp<recend; pp++) {
-        if ((result=inode_index_check_set_dentry_size(
-                        thread_ctx, *pp)) == 0)
+        if ((result=inode_index_check_set_dentry_size_ex(
+                        thread_ctx, *pp, dry_run)) == 0)
         {
             record->parray->counts.success++;
             if ((*pp)->options.flags != 0) {
@@ -526,6 +537,10 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
         return 0;
     }
 
+    if (record->data_version > 0) {
+        return 0;
+    }
+
     record->data_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION,
             record->parray->counts.updated);
     current_version = record->data_version - record->parray->counts.updated;
@@ -537,6 +552,9 @@ static int batch_set_dentry_size(FDIRDataThreadContext *thread_ctx,
 
     return 0;
 }
+
+#define batch_set_dentry_size(thread_ctx, record)  \
+    batch_set_dentry_size_ex(thread_ctx, record, false)
 
 static int check_load_children(FDIRServerDentry *parent)
 {
@@ -884,14 +902,14 @@ static inline void update_dentry_stat(FDIRServerDentry *dentry,
     }
 }
 
-static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
+static int update_dentry_check(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
 
     if (record->dentry_type == fdir_dentry_type_inode) {
-        if ((result=inode_index_get_dentry(thread_ctx, record->inode,
-                        &record->me.dentry)) != 0)
+        if ((result=inode_index_get_dentry(thread_ctx, record->
+                        inode, &record->me.dentry)) != 0)
         {
             return result;
         }
@@ -913,8 +931,18 @@ static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
         record->inode = record->me.dentry->inode;
     }
 
-    update_dentry_stat(record->me.dentry, record);
     return 0;
+}
+
+static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    int result;
+
+    if ((result=update_dentry_check(thread_ctx, record)) != 0) {
+        update_dentry_stat(record->me.dentry, record);
+    }
+    return result;
 }
 
 static inline void deal_affected_dentries(FDIRBinlogRecord *record)
@@ -953,6 +981,21 @@ static int deal_dump_dentry(FDIRDataThreadContext *thread_ctx,
 
     return inode_index_xattrs_copy(record->xattr_kvarray.elts,
             record->xattr_kvarray.count, record->me.dentry);
+}
+
+static inline void set_current_data_version(FDIRBinlogRecord *record)
+{
+    int64_t old_version;
+
+    old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
+    while (record->data_version > old_version) {
+        if (__sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
+                    old_version, record->data_version))
+        {
+            break;
+        }
+        old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
+    }
 }
 
 static int deal_update_record(FDIRDataThreadContext *thread_ctx,
@@ -1034,12 +1077,15 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                 break;
             }
             record->operation = SERVICE_OP_SET_DSIZE_INT;
+            //continue to next case
         case SERVICE_OP_SET_DSIZE_INT:
             ignore_errno = 0;
             if ((result=inode_index_check_set_dentry_size(
                             thread_ctx, record)) == 0)
             {
-                if (record->options.flags != 0) {
+                if (record->options.flags != 0 &&
+                        record->data_version == 0)
+                {
                     record->data_version = __sync_add_and_fetch(
                             &DATA_CURRENT_VERSION, 1);
                 }
@@ -1080,16 +1126,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     }
 
     if (set_data_verson && !is_error) {
-        int64_t old_version;
-        old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
-        while (record->data_version > old_version) {
-            if (__sync_bool_compare_and_swap(&DATA_CURRENT_VERSION,
-                        old_version, record->data_version))
-            {
-                break;
-            }
-            old_version = __sync_add_and_fetch(&DATA_CURRENT_VERSION, 0);
-        }
+        set_current_data_version(record);
     }
 
     if (result == 0 && record->affected.count > 0 && !STORAGE_ENABLED) {
@@ -1115,6 +1152,151 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                 sf_terminate_myself();
             }
         }
+    }
+
+    if (record->notify.func != NULL) {
+        record->notify.func(record, result, is_error);
+    }
+
+    /*
+    logInfo("file: "__FILE__", line: %d, record: %p, "
+            "operation: %d, hash code: %u, inode: %"PRId64
+             ", data_version: %"PRId64", result: %d, is_error: %d",
+             __LINE__, record, record->operation, record->hash_code,
+             record->inode, record->data_version, result, is_error);
+             */
+
+    return result;
+}
+
+static int deal_check_record(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
+{
+    const bool dry_run = true;
+    int result;
+    int ignore_errno;
+    bool set_data_verson;
+    bool is_error;
+
+    switch (record->operation) {
+        case BINLOG_OP_CREATE_DENTRY_INT:
+        case BINLOG_OP_REMOVE_DENTRY_INT:
+            if ((result=find_or_check_parent(thread_ctx, record)) != 0) {
+                logError("file: "__FILE__", line: %d, "
+                        "hash code: %u, inode: %"PRId64", get parent: %"
+                        PRId64", fail", __LINE__, record->hash_code,
+                        record->inode, record->me.pname.parent_inode);
+                ignore_errno = 0;
+                break;
+            }
+            if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
+                if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
+                    if ((result=set_hdlink_src_dentry(thread_ctx,
+                                    record)) != 0)
+                    {
+                        ignore_errno = 0;
+                        break;
+                    }
+                } else if (S_ISLNK(record->stat.mode) && record->dentry_type
+                        == fdir_dentry_type_fullname)
+                {
+                    if ((result=service_set_record_link(record,
+                                    (struct fast_task_info *)
+                                    record->notify.args)) != 0)
+                    {
+                        ignore_errno = 0;
+                        break;
+                    }
+                }
+                result = dentry_create_check(thread_ctx, record);
+                ignore_errno = EEXIST;
+            } else {
+                result = dentry_remove_check(thread_ctx, record);
+                ignore_errno = ENOENT;
+            }
+            break;
+        case BINLOG_OP_RENAME_DENTRY_INT:
+            ignore_errno = 0;
+            result = deal_record_rename_check(thread_ctx, record);
+            break;
+        case BINLOG_OP_UPDATE_DENTRY_INT:
+            result = update_dentry_check(thread_ctx, record);
+            ignore_errno = 0;
+            break;
+        case BINLOG_OP_SET_XATTR_INT:
+            ignore_errno = 0;
+            if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
+                result = inode_index_set_xattr_check(
+                        record->me.dentry, record);
+            }
+            break;
+        case BINLOG_OP_REMOVE_XATTR_INT:
+            if ((result=xattr_update_prepare(thread_ctx, record)) == 0) {
+                result = inode_index_remove_xattr_check(record->
+                        me.dentry, &record->xattr.key);
+            }
+            ignore_errno = ENODATA;
+            break;
+        case SERVICE_OP_SYS_LOCK_RELEASE_INT:
+            ignore_errno = 0;
+            if ((result=service_sys_lock_release((struct fast_task_info *)
+                            record->notify.args, true)) != 0)
+            {
+                break;
+            }
+            record->operation = SERVICE_OP_SET_DSIZE_INT;
+            //continue to next case
+        case SERVICE_OP_SET_DSIZE_INT:
+            ignore_errno = 0;
+            if ((result=inode_index_check_set_dentry_size_ex(
+                            thread_ctx, record, dry_run)) == 0)
+            {
+                if (record->options.flags != 0) {
+                    record->data_version = __sync_add_and_fetch(
+                            &DATA_CURRENT_VERSION, 1);
+                }
+            }
+            break;
+        case SERVICE_OP_BATCH_SET_DSIZE_INT:
+            ignore_errno = ENOENT;
+            result = batch_set_dentry_size_ex(thread_ctx, record, dry_run);
+            break;
+        default:
+            ignore_errno = 0;
+            result = 0;
+            break;
+    }
+
+    if (record->dentry_type == fdir_dentry_type_fullname) {
+        record->dentry_type = fdir_dentry_type_inode;
+    }
+
+    if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT ||
+            record->operation == SERVICE_OP_SET_DSIZE_INT)
+    {
+        if (record->operation == SERVICE_OP_SET_DSIZE_INT) {
+            record->operation = BINLOG_OP_UPDATE_DENTRY_INT;
+        }
+        set_data_verson = false;
+        is_error = (result != 0);
+    } else if (result == 0) {
+        if (record->data_version == 0) {
+            record->data_version = __sync_add_and_fetch(
+                    &DATA_CURRENT_VERSION, 1);
+            set_data_verson = false;
+        } else {
+            set_data_verson = true;
+        }
+        is_error = false;
+    } else {
+        set_data_verson = record->data_version > 0;
+        is_error = !((result == ignore_errno) &&
+                (g_data_thread_vars.error_mode ==
+                 FDIR_DATA_ERROR_MODE_LOOSE));
+    }
+
+    if (set_data_verson && !is_error) {
+        set_current_data_version(record);
     }
 
     if (record->notify.func != NULL) {
@@ -1304,6 +1486,9 @@ static void *data_thread_func(void *arg)
                 current = record;
                 record = record->next;
                 switch (current->record_type) {
+                    case fdir_record_type_check:
+                        deal_check_record(thread_ctx, current);
+                        break;
                     case fdir_record_type_update:
                         ++update_count;
                         deal_update_record(thread_ctx, current);
