@@ -168,6 +168,20 @@ void service_task_finish_cleanup(struct fast_task_info *task)
     sf_task_finish_clean_up(task);
 }
 
+static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
+        const FDIRRecordType record_type, data_thread_notify_func notify_func,
+        TaskContinueCallback continue_callback)
+{
+    sf_hold_task(task);
+
+    RECORD->record_type = record_type;
+    RECORD->notify.func = notify_func;  //call by data thread
+    RECORD->notify.args = task;
+    task->continue_callback = continue_callback;
+    push_to_data_thread_queue(RECORD);
+    return TASK_STATUS_CONTINUE;
+}
+
 static inline int service_check_master(struct fast_task_info *task)
 {
     if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
@@ -957,11 +971,10 @@ static inline int do_binlog_produce(struct fast_task_info *task,
     rbuffer->args = task;
     RBUFFER = rbuffer;
     if (SLAVE_SERVER_COUNT > 0) {
-        task->continue_callback = handle_replica_done;
         binlog_push_to_producer_queue(rbuffer);
         return TASK_STATUS_CONTINUE;
     } else {
-        return handle_replica_done(task);
+        return task->continue_callback(task);
     }
 }
 
@@ -1328,13 +1341,23 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }
 
-static int handle_record_update_done(struct fast_task_info *task)
+static void record_check_done_notify(FDIRBinlogRecord *record,
+        const int result, const bool is_error)
+{
+    struct fast_task_info *task;
+
+    task = (struct fast_task_info *)record->notify.args;
+    if (result != 0) {
+        service_record_deal_error_log_ex(record, result, is_error, task);
+    }
+
+    RESPONSE_STATUS = result;
+    sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+}
+
+static inline int update_cleanup(struct fast_task_info *task)
 {
     int result;
-
-    if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
-        return server_binlog_produce(task);
-    }
 
     result = RESPONSE_STATUS;
     service_idempotency_request_finish(task, result);
@@ -1343,6 +1366,32 @@ static int handle_record_update_done(struct fast_task_info *task)
     free_record_object(task);
     sf_release_task(task);
     return result;
+}
+
+static int handle_record_replica_quorum_done(struct fast_task_info *task)
+{
+    return push_record_to_data_thread_queue(task, fdir_record_type_update,
+            record_deal_done_notify, handle_replica_done);
+}
+
+static int handle_record_update_done(struct fast_task_info *task)
+{
+    if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
+        task->continue_callback = handle_replica_done;
+        return server_binlog_produce(task);
+    } else {
+        return update_cleanup(task);
+    }
+}
+
+static int handle_record_check_done(struct fast_task_info *task)
+{
+    if (RESPONSE_STATUS == 0 && RECORD->data_version > 0) {
+        task->continue_callback = handle_record_replica_quorum_done;
+        return server_binlog_produce(task);
+    } else {
+        return update_cleanup(task);
+    }
 }
 
 static int handle_record_query_done(struct fast_task_info *task)
@@ -1421,7 +1470,7 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
     return result;
 }
 
-static int handle_batch_set_dsize_done(struct fast_task_info *task)
+static int batch_set_dsize_finish(struct fast_task_info *task)
 {
     int result;
     bool need_release;
@@ -1441,6 +1490,25 @@ static int handle_batch_set_dsize_done(struct fast_task_info *task)
     }
 
     return result;
+}
+
+static int handle_batch_set_dsize_replica_quorum_done(
+        struct fast_task_info *task)
+{
+    return push_record_to_data_thread_queue(task, fdir_record_type_update,
+            record_deal_done_notify, handle_replica_done);
+}
+
+static int handle_batch_set_dsize_done(struct fast_task_info *task)
+{
+    task->continue_callback = handle_replica_done;
+    return batch_set_dsize_finish(task);
+}
+
+static int handle_batch_set_check_done(struct fast_task_info *task)
+{
+    task->continue_callback = handle_batch_set_dsize_replica_quorum_done;
+    return batch_set_dsize_finish(task);
 }
 
 static void batch_set_dsize_done_notify(FDIRBinlogRecord *record,
@@ -1536,28 +1604,6 @@ static void flock_done_notify(FDIRBinlogRecord *record,
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }
 
-static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
-        const FDIRRecordType record_type, data_thread_notify_func notify_func,
-        TaskContinueCallback continue_callback)
-{
-    sf_hold_task(task);
-
-    RECORD->record_type = record_type;
-    RECORD->notify.func = notify_func;  //call by data thread
-    RECORD->notify.args = task;
-    task->continue_callback = continue_callback;
-    push_to_data_thread_queue(RECORD);
-    return TASK_STATUS_CONTINUE;
-}
-
-#define push_update_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, fdir_record_type_update, \
-            record_deal_done_notify, handle_record_update_done)
-
-#define push_batch_set_dsize_to_data_thread_queue(task) \
-    push_record_to_data_thread_queue(task, fdir_record_type_update, \
-            batch_set_dsize_done_notify, handle_batch_set_dsize_done)
-
 #define push_query_to_data_thread_queue(task) \
     push_record_to_data_thread_queue(task, fdir_record_type_query, \
             record_deal_done_notify, handle_record_query_done)
@@ -1565,6 +1611,48 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
 #define push_flock_to_data_thread_queue(task) \
     push_record_to_data_thread_queue(task, fdir_record_type_query, \
             flock_done_notify, handle_flock_done)
+
+static inline int push_update_to_data_thread_queue(
+        struct fast_task_info *task)
+{
+    if (SF_REPLICATION_QUORUM_NEED_MAJORITY(REPLICATION_QUORUM,
+                CLUSTER_SERVER_ARRAY.count))
+    {
+        if (FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives) >
+                CLUSTER_SERVER_ARRAY.count / 2)
+        {
+            return push_record_to_data_thread_queue(task,
+                    fdir_record_type_check, record_check_done_notify,
+                    handle_record_check_done);
+        } else {
+            return EAGAIN;
+        }
+    } else {
+        return push_record_to_data_thread_queue(task, fdir_record_type_update,
+                record_deal_done_notify, handle_record_update_done);
+    }
+}
+
+static inline int push_batch_set_dsize_to_data_thread_queue(
+        struct fast_task_info *task)
+{
+    if (SF_REPLICATION_QUORUM_NEED_MAJORITY(REPLICATION_QUORUM,
+                CLUSTER_SERVER_ARRAY.count))
+    {
+        if (FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives) >
+                CLUSTER_SERVER_ARRAY.count / 2)
+        {
+            return push_record_to_data_thread_queue(task,
+                    fdir_record_type_check, batch_set_dsize_done_notify,
+                    handle_batch_set_check_done);
+        } else {
+            return EAGAIN;
+        }
+    } else {
+        return push_record_to_data_thread_queue(task, fdir_record_type_update,
+                batch_set_dsize_done_notify, handle_batch_set_dsize_done);
+    }
+}
 
 int service_set_record_pname_info(FDIRBinlogRecord *record,
         struct fast_task_info *task)
