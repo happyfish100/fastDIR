@@ -312,12 +312,13 @@ int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
     force = ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE) != 0);
     record->options.flags = 0;
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-        if (force || (record->me.dentry->stat.size < record->stat.size)) {
-            if (record->me.dentry->stat.size != record->stat.size) {
-                record->options.size = 1;
-                if (!dry_run) {
-                    record->me.dentry->stat.size = record->stat.size;
-                }
+        if ((force || record->me.dentry->stat.size < record->stat.size)
+                && (dry_run || record->me.dentry->
+                    stat.size != record->stat.size))
+        {
+            record->options.size = 1;
+            if (!dry_run) {
+                record->me.dentry->stat.size = record->stat.size;
             }
         }
 
@@ -335,13 +336,14 @@ int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
     }
 
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-        if (force || (record->me.dentry->stat.space_end < record->stat.size)) {
-            if (record->me.dentry->stat.space_end != record->stat.size) {
-                record->options.space_end = 1;
-                record->stat.space_end = record->stat.size;
-                if (!dry_run) {
-                    record->me.dentry->stat.space_end = record->stat.space_end;
-                }
+        if ((force || record->me.dentry->stat.space_end < record->stat.size)
+                && (dry_run || record->me.dentry->stat.
+                    space_end != record->stat.size))
+        {
+            record->options.space_end = 1;
+            record->stat.space_end = record->stat.size;
+            if (!dry_run) {
+                record->me.dentry->stat.space_end = record->stat.space_end;
             }
         }
     }
