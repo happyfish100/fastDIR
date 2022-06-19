@@ -729,11 +729,12 @@ static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
         remove_from_parent = _remove_from_parent; \
     record->affected.count++
 
-int dentry_create_check_ex(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record, FDIRNamespaceEntry **ns,
-        bool *is_root)
+int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
+    FDIRServerDentry *current;
+    bool is_root;
+    bool is_dir;
     int result;
 
     if ((record->stat.mode & S_IFMT) == 0 &&
@@ -752,42 +753,14 @@ int dentry_create_check_ex(FDIRDataThreadContext *thread_ctx,
         {
             return result;
         }
-        if (is_root != NULL) {
-            *is_root = false;
-        };
+        is_root = false;
     } else {
         if ((result=dentry_find_me(thread_ctx, &record->ns,
                         &record->me, &ns_entry, true)) != ENOENT)
         {
             return (result == 0 ? EEXIST : result);
         }
-        if (is_root != NULL) {
-            *is_root = (record->me.parent == NULL);
-        }
-    }
-
-    if (ns != NULL) {
-        *ns = ns_entry;
-    }
-    if (record->inode == 0) {
-        record->inode = inode_generator_next();
-    }
-    return 0;
-}
-
-int dentry_create(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
-{
-    FDIRNamespaceEntry *ns_entry;
-    FDIRServerDentry *current;
-    bool is_root;
-    bool is_dir;
-    int result;
-
-    if ((result=dentry_create_check_ex(thread_ctx, record,
-                    &ns_entry, &is_root)) != 0)
-    {
-        return result;
+        is_root = (record->me.parent == NULL);
     }
 
     if ((current=dentry_alloc_object(thread_ctx)) == NULL) {
@@ -837,7 +810,12 @@ int dentry_create(FDIRDataThreadContext *thread_ctx,
     }
     */
 
-    current->inode = record->inode;
+    if (record->inode == 0) {
+        current->inode = inode_generator_next();
+    } else {
+        current->inode = record->inode;
+    }
+
     current->ns_entry = ns_entry;
     current->stat.atime = record->stat.atime;
     current->stat.btime = record->stat.btime;
@@ -902,6 +880,10 @@ int dentry_create(FDIRDataThreadContext *thread_ctx,
     }
 
     record->me.dentry = current;
+    if (record->inode == 0) {
+        record->inode = current->inode;
+    }
+
     if (is_dir) {
         thread_ctx->dentry_context.counters.dir++;
         __sync_add_and_fetch(&ns_entry->current.counts.dir, 1);
@@ -996,10 +978,11 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-int dentry_remove_check_ex(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record, FDIRNamespaceEntry **ns)
+int dentry_remove(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
+    bool free_dentry;
     int result;
 
     if ((result=dentry_find_me(thread_ctx, &record->ns,
@@ -1033,25 +1016,6 @@ int dentry_remove_check_ex(FDIRDataThreadContext *thread_ctx,
     }
 
     record->inode = record->me.dentry->inode;
-    if (ns != NULL) {
-        *ns = ns_entry;
-    }
-    return 0;
-}
-
-int dentry_remove(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record)
-{
-    FDIRNamespaceEntry *ns_entry;
-    bool free_dentry;
-    int result;
-
-    if ((result=dentry_remove_check_ex(thread_ctx,
-                    record, &ns_entry)) != 0)
-    {
-        return result;
-    }
-
     if ((result=do_remove_dentry(thread_ctx, record,
                     record->me.dentry, &free_dentry)) != 0)
     {
@@ -1092,7 +1056,7 @@ static bool dentry_is_ancestor(FDIRServerDentry *dentry,
     return false;
 }
 
-int dentry_rename_check(FDIRDataThreadContext *thread_ctx,
+static int rename_check(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
     int result;
@@ -1117,17 +1081,7 @@ int dentry_rename_check(FDIRDataThreadContext *thread_ctx,
         if ((record->flags & RENAME_EXCHANGE) != 0) {
             return result;
         } else {
-            if (result != ENOENT) {
-                return result;
-            }
-        }
-    } else {
-        if ((record->flags & RENAME_NOREPLACE)) {
-            return EEXIST;
-        }
-
-        if (record->rename.dest.dentry == record->rename.src.dentry) {
-            return EEXIST;
+            return (result == ENOENT ? 0 : result);
         }
     }
 
@@ -1137,34 +1091,22 @@ int dentry_rename_check(FDIRDataThreadContext *thread_ctx,
             __LINE__, record->flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
             */
 
-    if (record->rename.dest.parent != record->rename.src.parent) {
-        if (dentry_is_ancestor(record->rename.src.dentry,
-                    record->rename.dest.parent))
-        {
-            return ELOOP;
-        }
-
-        if (dentry_is_ancestor(record->rename.dest.dentry != NULL ?
-                    record->rename.dest.dentry : record->rename.dest.parent,
-                    record->rename.src.parent))
-        {
-            return ELOOP;
-        }
+    if ((record->flags & RENAME_NOREPLACE)) {
+        return EEXIST;
+    }
+    if ((record->flags & RENAME_EXCHANGE)) {
+        return 0;
     }
 
-    if ((record->flags & RENAME_EXCHANGE) == 0 &&
-            record->rename.dest.dentry != NULL)
+    if ((record->rename.dest.dentry->stat.mode & S_IFMT) !=
+            (record->rename.src.dentry->stat.mode & S_IFMT))
     {
-        if ((record->rename.dest.dentry->stat.mode & S_IFMT) !=
-                (record->rename.src.dentry->stat.mode & S_IFMT))
-        {
-            return EINVAL;
-        }
+        return EINVAL;
+    }
 
-        if (S_ISDIR(record->rename.dest.dentry->stat.mode)) {
-            if (!uniq_skiplist_empty(record->rename.dest.dentry->children)) {
-                return ENOTEMPTY;
-            }
+    if (S_ISDIR(record->rename.dest.dentry->stat.mode)) {
+        if (!uniq_skiplist_empty(record->rename.dest.dentry->children)) {
+            return ENOTEMPTY;
         }
     }
 
@@ -1376,7 +1318,12 @@ static int move_dentry(FDIRDataThreadContext *thread_ctx,
 int dentry_rename(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
+    int result;
     bool name_changed;
+
+    if ((result=rename_check(thread_ctx, record)) != 0) {
+        return result;
+    }
 
     /*
     logInfo("file: "__FILE__", line: %d, "
@@ -1384,6 +1331,25 @@ int dentry_rename(FDIRDataThreadContext *thread_ctx,
             __LINE__, record->flags, record->rename.dest.dentry,
             record->rename.src.dentry);
             */
+
+    if (record->rename.dest.dentry == record->rename.src.dentry) {
+        return EEXIST;
+    }
+
+    if (record->rename.dest.parent != record->rename.src.parent) {
+        if (dentry_is_ancestor(record->rename.src.dentry,
+                    record->rename.dest.parent))
+        {
+            return ELOOP;
+        }
+
+        if (dentry_is_ancestor(record->rename.dest.dentry != NULL ?
+                    record->rename.dest.dentry : record->rename.dest.parent,
+                    record->rename.src.parent))
+        {
+            return ELOOP;
+        }
+    }
 
     name_changed = !fc_string_equal(&record->rename.dest.pname.name,
             &record->rename.src.pname.name);

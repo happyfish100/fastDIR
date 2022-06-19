@@ -295,8 +295,8 @@ int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
     return dentry_find_by_pname(parent_dentry, name, dentry);
 }
 
-int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
-        FDIRBinlogRecord *record, const bool dry_run)
+int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
+        FDIRBinlogRecord *record)
 {
     int result;
     int flags;
@@ -312,13 +312,10 @@ int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
     force = ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FORCE) != 0);
     record->options.flags = 0;
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_FILE_SIZE)) {
-        if ((force || record->me.dentry->stat.size < record->stat.size)
-                && (dry_run || record->me.dentry->
-                    stat.size != record->stat.size))
-        {
-            record->options.size = 1;
-            if (!dry_run) {
+        if (force || (record->me.dentry->stat.size < record->stat.size)) {
+            if (record->me.dentry->stat.size != record->stat.size) {
                 record->me.dentry->stat.size = record->stat.size;
+                record->options.size = 1;
             }
         }
 
@@ -327,32 +324,25 @@ int inode_index_check_set_dentry_size_ex(FDIRDataThreadContext *thread_ctx,
 
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_MTIME)) {
         if (record->me.dentry->stat.mtime != g_current_time) {
+            record->me.dentry->stat.mtime = g_current_time;
+            record->stat.mtime = record->me.dentry->stat.mtime;
             record->options.mtime = 1;
-            record->stat.mtime = g_current_time;
-            if (!dry_run) {
-                record->me.dentry->stat.mtime = record->stat.mtime;
-            }
         }
     }
 
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_SPACE_END)) {
-        if ((force || record->me.dentry->stat.space_end < record->stat.size)
-                && (dry_run || record->me.dentry->stat.
-                    space_end != record->stat.size))
-        {
-            record->options.space_end = 1;
-            record->stat.space_end = record->stat.size;
-            if (!dry_run) {
-                record->me.dentry->stat.space_end = record->stat.space_end;
+        if (force || (record->me.dentry->stat.space_end < record->stat.size)) {
+            if (record->me.dentry->stat.space_end != record->stat.size) {
+                record->me.dentry->stat.space_end = record->stat.size;
+                record->stat.space_end = record->me.dentry->stat.space_end;
+                record->options.space_end = 1;
             }
         }
     }
 
     if ((flags & FDIR_DENTRY_FIELD_MODIFIED_FLAG_INC_ALLOC)) {
+        dentry_set_inc_alloc_bytes(record->me.dentry, record->stat.alloc);
         record->options.inc_alloc = 1;
-        if (!dry_run) {
-            dentry_set_inc_alloc_bytes(record->me.dentry, record->stat.alloc);
-        }
     }
 
     /*
@@ -392,13 +382,6 @@ static int get_xattr(FDIRServerDentry *dentry, const string_t *name,
 
     *kv = NULL;
     return ENODATA;
-}
-
-int inode_index_remove_xattr_check(FDIRServerDentry *dentry,
-        const string_t *name)
-{
-    key_value_pair_t *kv;
-    return get_xattr(dentry, name, &kv);
 }
 
 int inode_index_remove_xattr(FDIRServerDentry *dentry, const string_t *name)
@@ -463,27 +446,6 @@ static key_value_pair_t *check_alloc_kvpair(FDIRDentryContext *context,
 
     *err_no = 0;
     return dentry->kv_array->elts + dentry->kv_array->count;
-}
-
-int inode_index_set_xattr_check(FDIRServerDentry *dentry,
-        const FDIRBinlogRecord *record)
-{
-    int result;
-    key_value_pair_t *kv;
-
-    if ((result=get_xattr(dentry, &record->xattr.key, &kv)) == 0) {
-        if ((record->flags & FDIR_FLAGS_XATTR_CREATE)) {
-            return EEXIST;
-        }
-    } else if (result != ENODATA) {
-        return result;
-    } else {
-        if ((record->flags & FDIR_FLAGS_XATTR_REPLACE)) {
-            return result;
-        }
-    }
-
-    return 0;
 }
 
 int inode_index_set_xattr(FDIRServerDentry *dentry,

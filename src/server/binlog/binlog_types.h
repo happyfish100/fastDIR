@@ -100,7 +100,6 @@ typedef enum {
 } FDIRDEntryType;
 
 typedef enum {
-    fdir_record_type_check = 'c',  //for data replication quorum
     fdir_record_type_update = 'u',
     fdir_record_type_query = 'q'
 } FDIRRecordType;
