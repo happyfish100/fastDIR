@@ -157,7 +157,13 @@ static int load_cluster_config(IniFullContext *ini_ctx,
         return result;
     }
 
-    return cluster_info_init(full_cluster_filename);
+    if ((result=cluster_info_init(full_cluster_filename)) != 0) {
+        return result;
+    }
+
+    REPLICA_QUORUM_NEED_MAJORITY = SF_REPLICATION_QUORUM_NEED_MAJORITY(
+            REPLICATION_QUORUM, CLUSTER_SERVER_ARRAY.count);
+    return 0;
 }
 
 static int load_data_path_config(IniFullContext *ini_ctx, string_t *path)
@@ -427,7 +433,7 @@ static void server_log_configs()
             "cluster server count = %d, "
             "master-election {quorum: %s, vote_node_enabled: %d, "
             "master_lost_timeout: %ds, max_wait_time: %ds}, "
-            "data-replication {quorum: %s}, "
+            "data-replication {quorum: %s, quorum_need_majority: %d}, "
             "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
@@ -443,7 +449,7 @@ static void server_log_configs()
             VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
             ELECTION_MAX_WAIT_TIME,
             sf_get_replication_quorum_caption(REPLICATION_QUORUM),
-            STORAGE_ENABLED);
+            REPLICA_QUORUM_NEED_MAJORITY, STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {
         len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,

@@ -83,6 +83,7 @@ typedef struct server_global_vars {
         int slave_binlog_check_last_rows;
         int thread_count;
         SFReplicationQuorum quorum;
+        bool quorum_need_majority; //result of SF_REPLICATION_QUORUM_NEED_MAJORITY
         volatile bool load_done;
     } data;  //for binlog
 
@@ -159,7 +160,8 @@ typedef struct server_global_vars {
 
 #define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
 
-#define REPLICATION_QUORUM      g_server_global_vars.data.quorum
+#define REPLICATION_QUORUM           g_server_global_vars.data.quorum
+#define REPLICA_QUORUM_NEED_MAJORITY g_server_global_vars.data.quorum_need_majority
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
 #define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars.data. \

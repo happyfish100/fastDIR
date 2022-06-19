@@ -857,7 +857,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
                 da_binlog_op_type_update, false);
     } else {
         if ((result=inode_index_add_dentry(current)) != 0) {
-            dentry_delay_free(current);
+            dentry_free(current);
             return result;
         }
     }
