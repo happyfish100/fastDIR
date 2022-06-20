@@ -29,6 +29,9 @@ typedef struct fdir_replication_quorum_context {
 
 static FDIRReplicationQuorumContext fdir_replication_quorum;
 
+#define QUORUM_LIST_HEAD  fdir_replication_quorum.list.head
+#define QUORUM_LIST_TAIL  fdir_replication_quorum.list.tail
+
 int replication_quorum_init()
 {
     int result;
@@ -37,11 +40,28 @@ int replication_quorum_init()
         return result;
     }
 
-    fdir_replication_quorum.list.head = NULL;
-    fdir_replication_quorum.list.tail = NULL;
+    QUORUM_LIST_HEAD = QUORUM_LIST_TAIL = NULL;
     return 0;
 }
 
 void replication_quorum_destroy()
 {
+}
+
+void replication_quorum_add(FDIRReplicationQuorumEntry *entry)
+{
+    PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.lock);
+    if (QUORUM_LIST_HEAD == NULL) {
+        QUORUM_LIST_HEAD = entry;
+    } else {
+        QUORUM_LIST_TAIL->next = entry;
+    }
+    QUORUM_LIST_TAIL = entry;
+    entry->next = NULL;
+    PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
+}
+
+int replication_quorum_remove(const int64_t data_version)
+{
+    return 0;
 }

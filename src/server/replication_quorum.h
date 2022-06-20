@@ -23,7 +23,8 @@
 typedef struct fdir_replication_quorum_entry {
     FDIRBinlogRecord *record;
     ServerBinlogRecordBuffer *rbuffer;
-    struct fast_mblock_man *allocator;
+    FDIRServerContext *server_ctx;
+    time_t expire_time;
     struct fdir_replication_quorum_entry *next;
 } FDIRReplicationQuorumEntry;
 
@@ -34,7 +35,7 @@ extern "C" {
     int replication_quorum_init();
     void replication_quorum_destroy();
 
-    int replication_quorum_add(FDIRReplicationQuorumEntry *entry);
+    void replication_quorum_add(FDIRReplicationQuorumEntry *entry);
 
     int replication_quorum_remove(const int64_t data_version);
 
