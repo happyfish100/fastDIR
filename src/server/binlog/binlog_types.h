@@ -160,6 +160,11 @@ typedef struct fdir_binlog_record {
         key_value_pair_t xattr;
     };
 
+    struct {
+        FDIRDEntryStat stat;
+        string_t xattr_value;
+    } rollback;
+
     SFKeyValueArray xattr_kvarray;  //for BINLOG_OP_DUMP_DENTRY_INT
 
     //must be the last to avoid being overwritten by memset

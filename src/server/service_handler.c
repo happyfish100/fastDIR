@@ -52,6 +52,7 @@
 #include "common_handler.h"
 #include "ns_manager.h"
 #include "node_manager.h"
+#include "replication_quorum.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -3691,6 +3692,14 @@ static int record_parray_alloc_init(void *element, void *args)
     return 0;
 }
 
+static int repl_quorum_alloc_init(void *element, void *args)
+{
+    FDIRReplicationQuorumEntry *entry;
+    entry = (FDIRReplicationQuorumEntry *)element;
+    entry->allocator = args;
+    return 0;
+}
+
 void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_context;
@@ -3733,6 +3742,15 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_context->service.event_allocator,
                 "ftask_event", sizeof(FDIRFTaskChangeEvent),
                 1024, 0, NULL, NULL, true) != 0)
+    {
+        free(server_context);
+        return NULL;
+    }
+
+    if (fast_mblock_init_ex1(&server_context->service.repl_quorum_allocator,
+                "repl_quorum_entry", sizeof(FDIRReplicationQuorumEntry),
+                4096, 0, repl_quorum_alloc_init, &server_context->service.
+                repl_quorum_allocator, true) != 0)
     {
         free(server_context);
         return NULL;
