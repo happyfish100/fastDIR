@@ -454,6 +454,7 @@ static inline int check_replication_master_task(struct fast_task_info *task)
 static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
 {
     int result;
+    int r;
     int count;
     int expect_body_len;
     int64_t data_version;
@@ -493,20 +494,18 @@ static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
         err_no = buff2short(body_part->err_no);
         if (err_no != 0) {
             result = err_no;
-            RESPONSE.error.length = sprintf(
-                    RESPONSE.error.message,
-                    "replica fail, data_version: %"PRId64
-                    ", result: %d", data_version, err_no);
-            break;
+            logError("file: "__FILE__", line: %d, "
+                    "replica fail, data_version: %"PRId64", result: %d",
+                    __LINE__, data_version, err_no);
         }
 
-        if ((result=binlog_replications_check_response_data_version(
-                        CLUSTER_REPLICA, data_version)) != 0)
+        if ((r=binlog_replications_check_response_data_version(
+                        CLUSTER_REPLICA, data_version, err_no)) != 0)
         {
-            RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                    "push_result_ring_remove fail, data_version: "
-                    "%"PRId64", result: %d", data_version, result);
-            break;
+            result = r;
+            logError("file: "__FILE__", line: %d, "
+                    "push_result_ring_remove fail, data_version: %"PRId64
+                    ", result: %d", __LINE__, data_version, result);
         }
     }
 

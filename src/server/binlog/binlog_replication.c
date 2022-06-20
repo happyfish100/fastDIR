@@ -313,7 +313,7 @@ static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
     struct fast_task_info *task;
     task = (struct fast_task_info *)rb->args;
     if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)->
-                context.service.waiting_rpc_count, 1) == 0)
+                context.service.rpc.waiting_count, 1) == 0)
     {
         sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
     }
@@ -663,7 +663,7 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
 
 int binlog_replications_check_response_data_version(
         FDIRSlaveReplication *replication,
-        const int64_t data_version)
+        const int64_t data_version, const int err_no)
 {
     if (data_version > replication->context.last_data_versions.by_resp) {
         replication->context.last_data_versions.by_resp = data_version;
@@ -671,7 +671,7 @@ int binlog_replications_check_response_data_version(
 
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         return push_result_ring_remove(&replication->context.
-                push_result_ctx, data_version);
+                push_result_ctx, data_version, err_no);
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
         replication->context.sync_by_disk_stat.record_count++;
     }

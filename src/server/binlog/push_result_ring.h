@@ -34,7 +34,7 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
         struct fast_task_info *waiting_task);
 
 int push_result_ring_remove(FDIRBinlogPushResultContext *ctx,
-        const uint64_t data_version);
+        const uint64_t data_version, const int err_no);
 
 void push_result_ring_clear_all(FDIRBinlogPushResultContext *ctx);
 

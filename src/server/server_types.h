@@ -95,7 +95,6 @@
 #define SERVICE_FLOCK     TASK_CTX.service.flock
 #define SERVICE_FTASK     SERVICE_FLOCK.ftask
 #define SERVICE_STASK     SERVICE_FLOCK.stask
-#define WAITING_RPC_COUNT TASK_CTX.service.waiting_rpc_count
 #define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
 
 #define SERVER_TASK_TYPE     TASK_CTX.task_type
@@ -316,6 +315,11 @@ typedef struct fdir_ftask_change_event {
 } FDIRFTaskChangeEvent;
 
 typedef struct {
+    FDIRDEntryInfo dentry;
+    int64_t data_version;
+} FDIRIdempotencyResponse;
+
+typedef struct {
     SFCommonTaskContext common;
     int task_type;
     uint32_t task_version;  //for ABA check
@@ -354,7 +358,10 @@ typedef struct {
         struct idempotency_request *idempotency_request;
         struct fdir_binlog_record *record;
         struct server_binlog_record_buffer *rbuffer;
-        volatile int waiting_rpc_count;
+        struct {
+            volatile int waiting_count;
+            volatile int success_count;
+        } rpc;
     } service;
 
 } FSServerTaskContext;

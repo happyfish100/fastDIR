@@ -1063,7 +1063,8 @@ static inline void set_update_result_and_output(
     if (IDEMPOTENCY_REQUEST != NULL) {
         FDIRDEntryInfo *dinfo;
 
-        dinfo = (FDIRDEntryInfo *)IDEMPOTENCY_REQUEST->output.response;
+        dinfo = &((FDIRIdempotencyResponse *)IDEMPOTENCY_REQUEST->
+                output.response)->dentry;
         IDEMPOTENCY_REQUEST->output.flags = TASK_UPDATE_FLAG_OUTPUT_DENTRY;
         dinfo->inode = dentry->inode;
         dinfo->stat = dentry->stat;
@@ -1817,12 +1818,16 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                                 TASK_UPDATE_FLAG_OUTPUT_DENTRY))
                     {
                         FDIRDEntryInfo *dentry;
-                        dentry = (FDIRDEntryInfo *)request->output.response;
+                        dentry = &((FDIRIdempotencyResponse *)request->
+                                output.response)->dentry;
                         dstat_output(task, dentry->inode, &dentry->stat);
                         RESPONSE.header.cmd = resp_cmd;
                     }
                 }
             } else {
+                if (result == EAGAIN) {
+                    //TODO
+                }
                 TASK_CTX.common.log_level = LOG_WARNING;
             }
 
@@ -3771,7 +3776,8 @@ void *service_alloc_thread_extra_data(const int thread_index)
         return NULL;
     }
 
-    element_size = sizeof(IdempotencyRequest) + sizeof(FDIRDEntryInfo);
+    element_size = sizeof(IdempotencyRequest) +
+        sizeof(FDIRIdempotencyResponse);
     if (fast_mblock_init_ex1(&server_ctx->service.request_allocator,
                 "idempotency_request", element_size,
                 1024, 0, idempotency_request_alloc_init,

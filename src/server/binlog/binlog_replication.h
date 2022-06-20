@@ -33,7 +33,7 @@ void clean_master_replications(FDIRServerContext *server_ctx);
 
 int binlog_replications_check_response_data_version(
         FDIRSlaveReplication *replication,
-        const int64_t data_version);
+        const int64_t data_version, const int err_no);
 
 #ifdef __cplusplus
 }

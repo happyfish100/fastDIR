@@ -88,7 +88,8 @@ typedef struct server_global_vars {
     struct {
         SFReplicationQuorum quorum;
         int quorum_timeout;
-        bool quorum_need_majority; //result of SF_REPLICATION_QUORUM_NEED_MAJORITY
+        int rpc_timeout;  //cached timeout
+        bool quorum_need_majority; //cached result of SF_REPLICATION_QUORUM_NEED_MAJORITY
     } replication;
 
     struct {
@@ -166,6 +167,7 @@ typedef struct server_global_vars {
 
 #define REPLICATION_QUORUM           g_server_global_vars.replication.quorum
 #define REPLICA_QUORUM_TIMEOUT       g_server_global_vars.replication.quorum_timeout
+#define REPLICA_RPC_TIMEOUT          g_server_global_vars.replication.rpc_timeout
 #define REPLICA_QUORUM_NEED_MAJORITY g_server_global_vars.replication.quorum_need_majority
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size

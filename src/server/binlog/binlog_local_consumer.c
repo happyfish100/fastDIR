@@ -189,7 +189,11 @@ int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
 
     task = (struct fast_task_info *)rbuffer->args;
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->context.
-            service.waiting_rpc_count, slave_replication_array.count);
+            service.rpc.waiting_count, slave_replication_array.count);
+    if (REPLICA_QUORUM_NEED_MAJORITY) {
+        FC_ATOMIC_SET(((FDIRServerTaskArg *)task->arg)->context.
+                service.rpc.success_count, 0);
+    }
 
     end = slave_replication_array.replications + slave_replication_array.count;
     for (replication=slave_replication_array.replications; replication<end;
