@@ -2367,6 +2367,11 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
             stat_resp.connection.current_count);
     stat->connection.max_count = buff2int(stat_resp.connection.max_count);
 
+    stat->data.current_version = buff2long(
+            stat_resp.data.current_version);
+    stat->data.confirmed_version = buff2long(
+            stat_resp.data.confirmed_version);
+
     stat->binlog.current_version = buff2long(
             stat_resp.binlog.current_version);
     stat->binlog.writer.total_count = buff2long(
@@ -2469,6 +2474,8 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
             stat->is_master = body_part->is_master;
             stat->status = body_part->status;
             stat->server_id = buff2int(body_part->server_id);
+            stat->confirmed_data_version = buff2long(
+                    body_part->confirmed_data_version);
             memcpy(stat->ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
             *(stat->ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
             stat->port = buff2short(body_part->port);

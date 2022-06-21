@@ -39,12 +39,13 @@ static void output(FDIRClientClusterStatEntry *stats, const int count)
     for (stat=stats; stat<end; stat++) {
         printf( "server_id: %d, host: %s:%u, "
                 "status: %d (%s), "
-                "is_master: %d\n",
+                "is_master: %d, "
+                "data_version: %"PRId64"\n",
                 stat->server_id,
                 stat->ip_addr, stat->port,
                 stat->status,
                 fdir_get_server_status_caption(stat->status),
-                stat->is_master
+                stat->is_master, stat->confirmed_data_version
               );
     }
     printf("\nserver count: %d\n\n", count);

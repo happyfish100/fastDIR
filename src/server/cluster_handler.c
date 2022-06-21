@@ -45,6 +45,7 @@
 #include "dentry.h"
 #include "server_binlog.h"
 #include "cluster_relationship.h"
+#include "replication_quorum.h"
 #include "common_handler.h"
 #include "cluster_handler.h"
 
@@ -293,12 +294,14 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
 {
     int result;
     int cluster_change_version;
+    int64_t confirmed_data_version;
+    FDIRProtoPingMasterReq *req;
     FDIRProtoPingMasterRespHeader *resp_header;
     FDIRProtoPingMasterRespBodyPart *body_part;
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *end;
 
-    if ((result=server_expect_body_length(0)) != 0) {
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
         return result;
     }
 
@@ -316,9 +319,20 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         return EINVAL;
     }
 
+    req = (FDIRProtoPingMasterReq *)REQUEST.body;
+    confirmed_data_version = buff2long(req->confirmed_data_version);
+    if (FC_ATOMIC_GET(CLUSTER_PEER->confirmed_data_version) !=
+            confirmed_data_version)
+    {
+        FC_ATOMIC_SET(CLUSTER_PEER->confirmed_data_version,
+                confirmed_data_version);
+        if (REPLICA_QUORUM_NEED_MAJORITY) {
+            replication_quorum_deal_version_change();
+        }
+    }
+
     resp_header = (FDIRProtoPingMasterRespHeader *)REQUEST.body;
-    body_part = (FDIRProtoPingMasterRespBodyPart *)(REQUEST.body +
-            sizeof(FDIRProtoPingMasterRespHeader));
+    body_part = (FDIRProtoPingMasterRespBodyPart *)(resp_header + 1);
     long2buff(CURRENT_INODE_SN, resp_header->inode_sn);
 
     cluster_change_version = __sync_add_and_fetch(
@@ -330,7 +344,8 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
         for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++, body_part++) {
             int2buff(cs->server->id, body_part->server_id);
-            body_part->status = __sync_fetch_and_add(&cs->status, 0);
+            body_part->status = FC_ATOMIC_GET(cs->status);
+            long2buff(cs->confirmed_data_version, body_part->data_version);
         }
     } else {
         int2buff(0, resp_header->server_count);
@@ -1279,12 +1294,10 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
 
-    if (count++ % 100000 == 0) {
-        /*
-        logInfo("is_master: %d, consumer_ctx: %p, connected.count: %d",
-                MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
+    if (count++ % 100 == 0) {
+        logInfo("%d. is_master: %d, consumer_ctx: %p, connected.count: %d",
+                count, MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);
-                */
     }
 
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {

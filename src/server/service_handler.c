@@ -294,13 +294,19 @@ static int service_deal_service_stat(struct fast_task_info *task)
 
     stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
         CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
-    stat_resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
+    stat_resp->status = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status);
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);
 
     long2buff(FC_ATOMIC_GET(DATA_CURRENT_VERSION),
+            stat_resp->data.current_version);
+    long2buff(FC_ATOMIC_GET(MY_CONFIRMED_VERSION),
+            stat_resp->data.confirmed_version);
+
+    long2buff(sf_binlog_writer_get_last_version(
+                &g_binlog_writer_ctx.writer),
             stat_resp->binlog.current_version);
     long2buff(g_binlog_writer_ctx.writer.fw.total_count,
             stat_resp->binlog.writer.total_count);
@@ -344,8 +350,9 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
         int2buff(cs->server->id, body_part->server_id);
         body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
-        body_part->status = __sync_fetch_and_add(&cs->status, 0);
-
+        body_part->status = FC_ATOMIC_GET(cs->status);
+        long2buff(FC_ATOMIC_GET(cs->confirmed_data_version),
+                body_part->confirmed_data_version);
         snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
                 SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
         short2buff(SERVICE_GROUP_ADDRESS_FIRST_PORT(cs->server),
@@ -953,20 +960,23 @@ static int handle_replica_done(struct fast_task_info *task)
 {
     int64_t data_version;
 
-    if (RBUFFER != NULL) {
-        data_version = RBUFFER->data_version.last;
-        RESPONSE_STATUS = push_to_binlog_write_queue(RBUFFER, 1);
-        server_binlog_release_rbuffer(RBUFFER);
-        RBUFFER = NULL;
-    } else {
+    if (RBUFFER == NULL) {
         logError("file: "__FILE__", line: %d, "
                 "rbuffer is NULL, some mistake happen?",
                 __LINE__);
-        data_version = 0;
         RESPONSE_STATUS = EBUSY;
+        return handle_request_finish(task);
     }
 
-    if (REPLICA_QUORUM_NEED_MAJORITY && RESPONSE_STATUS == 0) {
+    data_version = RBUFFER->data_version.last;
+    RESPONSE_STATUS = push_to_binlog_write_queue(RBUFFER, 1);
+    server_binlog_release_rbuffer(RBUFFER);
+    RBUFFER = NULL;
+    if (RESPONSE_STATUS != 0) {
+        return handle_request_finish(task);
+    }
+
+    if (REPLICA_QUORUM_NEED_MAJORITY) {
         int success_count;
         success_count = FC_ATOMIC_GET(TASK_CTX.
                 service.rpc.success_count) + 1;
@@ -980,6 +990,8 @@ static int handle_replica_done(struct fast_task_info *task)
                 return TASK_STATUS_CONTINUE;
             }
         }
+    } else {
+        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version);
     }
 
     return handle_request_finish(task);

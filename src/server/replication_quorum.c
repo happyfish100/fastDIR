@@ -81,7 +81,70 @@ int replication_quorum_add(struct fast_task_info *task,
     return 0;
 }
 
-int replication_quorum_remove(const int64_t data_version)
+static int compare_int64(const int64_t *n1, const int64_t *n2)
 {
-    return 0;
+    return fc_compare_int64(*n1, *n2);
+}
+
+void replication_quorum_deal_version_change()
+{
+#define FIXED_SERVER_COUNT  8
+    FDIRClusterServerInfo *server;
+    FDIRClusterServerInfo *end;
+    int64_t my_current_version;
+    int64_t my_confirmed_version;
+    int64_t confirmed_version;
+    int64_t fixed_data_versions[FIXED_SERVER_COUNT];
+    int64_t *data_versions;
+    int half_server_count;
+    int count;
+    int index;
+
+    if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
+        data_versions = fixed_data_versions;
+    } else {
+        data_versions = fc_malloc(sizeof(int64_t) *
+                CLUSTER_SERVER_ARRAY.count);
+    }
+
+    count = 0;
+    my_current_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+    my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (server=CLUSTER_SERVER_ARRAY.servers; server<end; server++) {
+        if (server == CLUSTER_MYSELF_PTR) {
+            continue;
+        }
+
+        confirmed_version=FC_ATOMIC_GET(server->confirmed_data_version);
+        if (confirmed_version > my_confirmed_version &&
+                confirmed_version <= my_current_version)
+        {
+            data_versions[count++] = confirmed_version;
+        }
+    }
+
+    half_server_count = (CLUSTER_SERVER_ARRAY.count + 1) / 2;
+    if (count + 1 >= half_server_count) {  //quorum majority
+        if (CLUSTER_SERVER_ARRAY.count == 3) {  //fast path
+            if (count == 2) {
+                my_confirmed_version = FC_MAX(data_versions[0],
+                        data_versions[1]);
+            } else {  //count == 1
+                my_confirmed_version = data_versions[0];
+            }
+        } else {
+            qsort(data_versions, count, sizeof(int64_t),
+                    (int (*)(const void *, const void *))
+                    compare_int64);
+            index = (count + 1) - half_server_count;
+            my_confirmed_version = data_versions[index];
+        }
+
+        //TODO
+    }
+
+    if (data_versions != fixed_data_versions) {
+        free(data_versions);
+    }
 }

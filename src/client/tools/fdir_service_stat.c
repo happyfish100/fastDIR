@@ -38,12 +38,17 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
-            "\tbinlog : {current_version: %"PRId64, stat->server_id,
-            conn->ip_addr, conn->port, stat->status,
+            "\tdata : {current_version: %"PRId64", "
+            "confirmed_version: %"PRId64"}\n"
+            "\tbinlog : {current_version: %"PRId64,
+            stat->server_id, conn->ip_addr,
+            conn->port, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->connection.current_count,
             stat->connection.max_count,
+            stat->data.current_version,
+            stat->data.confirmed_version,
             stat->binlog.current_version);
 
     if (stat->is_master) {

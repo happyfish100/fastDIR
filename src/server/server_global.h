@@ -77,7 +77,7 @@ typedef struct server_global_vars {
     } inode;
 
     struct {
-        volatile uint64_t current_version; //binlog data version
+        volatile uint64_t current_version;   //binlog data version
         string_t path;   //data path
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
@@ -160,6 +160,7 @@ typedef struct server_global_vars {
 
 #define CLUSTER_ID              g_server_global_vars.cluster.id
 #define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
+#define MY_CONFIRMED_VERSION    CLUSTER_MYSELF_PTR->confirmed_data_version
 
 #define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
 

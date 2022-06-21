@@ -146,6 +146,9 @@ int server_load_data()
     }
 
     if (result == 0) {
+        int64_t data_version;
+
+        data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
         FC_ATOMIC_SET(BINLOG_RECORD_COUNT, replay_ctx.record_count);
         end_time = get_current_time_ms();
         logInfo("file: "__FILE__", line: %d, "
@@ -154,9 +157,11 @@ int server_load_data()
                 ", fail count: %"PRId64", current data version: %"PRId64
                 ", time used: %s ms", __LINE__, replay_ctx.record_count,
                 replay_ctx.skip_count, replay_ctx.warning_count,
-                replay_ctx.fail_count, __sync_add_and_fetch(
-                    &DATA_CURRENT_VERSION, 0), long_to_comma_str(
-                        end_time - start_time, time_buff));
+                replay_ctx.fail_count, data_version, long_to_comma_str(
+                    end_time - start_time, time_buff));
+
+        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version);
     }
+
     return result;
 }

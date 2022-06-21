@@ -139,10 +139,10 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
 
     generate_replica_key();
     header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoJoinMasterReq *)(header + 1);
     SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
-    req = (FDIRProtoJoinMasterReq *)(out_buff + sizeof(FDIRProtoHeader));
     SERVER_PROTO_PACK_IDENTITY(req->si);
     memcpy(req->key, REPLICA_KEY_BUFF, FDIR_REPLICA_KEY_SIZE);
     response.error.length = 0;
@@ -158,9 +158,11 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
 
 static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
 {
-    FDIRProtoHeader header;
-    SFResponseInfo response;
+    FDIRProtoHeader *header;
+    FDIRProtoPingMasterReq *req;
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoPingMasterReq)];
     char in_buff[8 * 1024];
+    SFResponseInfo response;
     FDIRProtoPingMasterRespHeader *body_header;
     FDIRProtoPingMasterRespBodyPart *body_part;
     FDIRProtoPingMasterRespBodyPart *body_end;
@@ -170,11 +172,16 @@ static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
     int server_id;
     int result;
 
-    SF_PROTO_SET_HEADER(&header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ, 0);
+    header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoPingMasterReq *)(header + 1);
+    SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_PING_MASTER_REQ,
+            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    long2buff(FC_ATOMIC_GET(MY_CONFIRMED_VERSION),
+            req->confirmed_data_version);
 
     response.error.length = 0;
-    if ((result=sf_send_and_check_response_header(conn, (char *)&header,
-                    sizeof(header), &response, network_timeout,
+    if ((result=sf_send_and_check_response_header(conn, out_buff,
+                    sizeof(out_buff), &response, network_timeout,
                     FDIR_CLUSTER_PROTO_PING_MASTER_RESP)) == 0)
     {
         if (response.header.body_len > sizeof(in_buff)) {
@@ -225,6 +232,8 @@ static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
         server_id = buff2int(body_part->server_id);
         if ((cs=fdir_get_server_by_id(server_id)) != NULL) {
             cluster_info_set_status(cs, body_part->status);
+            cs->confirmed_data_version = buff2long(
+                    body_part->data_version);
         }
     }
 

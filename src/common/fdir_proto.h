@@ -545,11 +545,17 @@ typedef struct fdir_proto_service_stat_resp {
     char server_id[4];
     char is_master;
     char status;
+    char padding[1];
 
     struct {
         char current_count[4];
         char max_count[4];
     } connection;
+
+    struct {
+        char current_version[8];
+        char confirmed_version[8];
+    } data;
 
     struct {
         char current_version[8];
@@ -581,6 +587,7 @@ typedef struct fdir_proto_cluster_stat_resp_body_part {
     char is_master;
     char status;
     char port[2];
+    char confirmed_data_version[8];
     char ip_addr[IP_ADDRESS_SIZE];
 } FDIRProtoClusterStatRespBodyPart;
 
@@ -679,17 +686,25 @@ typedef struct fdir_proto_notify_slave_quit {
     char server_id[4];      //the master server id
     char error_code[4];
     char binlog_count[4];
+    char padding[4];
     char first_unmatched_dv[8];   //the slave's first unmatched data version
 } FDIRProtoNotifySlaveQuit;
+
+typedef struct fdir_proto_ping_master_req {
+    char confirmed_data_version[8];
+} FDIRProtoPingMasterReq;
 
 typedef struct fdir_proto_ping_master_resp_header {
     char inode_sn[8];  //current inode sn of master
     char server_count[4];
+    char padding[4];
 } FDIRProtoPingMasterRespHeader;
 
 typedef struct fdir_proto_ping_master_resp_body_part {
     char server_id[4];
     char status;
+    char padding[3];
+    char data_version[8];
 } FDIRProtoPingMasterRespBodyPart;
 
 typedef struct fdir_proto_push_binlog_req_body_header {

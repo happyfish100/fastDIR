@@ -411,6 +411,8 @@ static void *deal_binlog_thread_func(void *arg)
                     sf_terminate_myself();
                     break;
                 }
+
+                FC_ATOMIC_SET(MY_CONFIRMED_VERSION, rb->data_version.last);
             } else {
                 logCrit("file: "__FILE__", line: %d, "
                         "binlog replay deal buffer fail, "

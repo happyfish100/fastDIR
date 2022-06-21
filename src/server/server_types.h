@@ -171,6 +171,7 @@ typedef struct fdir_cluster_server_info {
     volatile bool recovering;      //if data recovering
     SFBinlogFilePosition binlog_pos_hint;  //for replication
     volatile int64_t last_data_version;  //for replication
+    volatile int64_t confirmed_data_version; //for replication quorum majority
     volatile int last_change_version;    //for push server status to the slave
 } FDIRClusterServerInfo;
 

@@ -36,7 +36,7 @@ extern "C" {
     int replication_quorum_add(struct fast_task_info *task,
             const int64_t data_version);
 
-    int replication_quorum_remove(const int64_t data_version);
+    void replication_quorum_deal_version_change();
 
 #ifdef __cplusplus
 }

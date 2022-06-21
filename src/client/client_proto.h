@@ -81,6 +81,11 @@ typedef struct fdir_client_service_stat {
 
     struct {
         int64_t current_version;
+        int64_t confirmed_version;
+    } data;
+
+    struct {
+        int64_t current_version;
         FDIRBinlogWriterStat writer;
     } binlog;
 
@@ -105,8 +110,9 @@ typedef struct fdir_client_cluster_stat_entry {
     int server_id;
     bool is_master;
     char status;
-    char ip_addr[IP_ADDRESS_SIZE];
     uint16_t port;
+    int64_t confirmed_data_version;
+    char ip_addr[IP_ADDRESS_SIZE];
 } FDIRClientClusterStatEntry;
 
 typedef struct fdir_client_namespace_stat_entry {
