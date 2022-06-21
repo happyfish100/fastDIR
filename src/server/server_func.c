@@ -92,7 +92,7 @@ static int server_load_cluster_id(IniFullContext *ini_ctx)
     return 0;
 }
 
-static int load_master_election_config(IniFullContext *ini_ctx)
+static inline int load_master_election_config(IniFullContext *ini_ctx)
 {
     int result;
 
@@ -110,11 +110,9 @@ static int load_master_election_config(IniFullContext *ini_ctx)
     return result;
 }
 
-static int load_replication_quorum_config(IniFullContext *ini_ctx)
+static inline int load_replication_quorum_config(IniFullContext *ini_ctx)
 {
     ini_ctx->section_name = "data-replication";
-    REPLICA_QUORUM_TIMEOUT = iniGetIntCorrectValue(ini_ctx, "timeout",
-            300, SF_G_NETWORK_TIMEOUT, SF_G_NETWORK_TIMEOUT * 100);
     return sf_load_replication_quorum_config(&REPLICATION_QUORUM, ini_ctx);
 }
 
@@ -168,8 +166,6 @@ static int load_cluster_config(IniFullContext *ini_ctx,
 
     REPLICA_QUORUM_NEED_MAJORITY = SF_REPLICATION_QUORUM_NEED_MAJORITY(
             REPLICATION_QUORUM, CLUSTER_SERVER_ARRAY.count);
-    REPLICA_RPC_TIMEOUT = REPLICA_QUORUM_NEED_MAJORITY ?
-        REPLICA_QUORUM_TIMEOUT : SF_G_NETWORK_TIMEOUT;
     return 0;
 }
 
@@ -440,8 +436,8 @@ static void server_log_configs()
             "cluster server count = %d, "
             "master-election {quorum: %s, vote_node_enabled: %d, "
             "master_lost_timeout: %ds, max_wait_time: %ds}, "
-            "data-replication {quorum: %s, quorum_need_majority: %d, "
-            "timeout: %d s}, storage-engine { enabled: %d",
+            "data-replication {quorum: %s, quorum_need_majority: %d}, "
+            "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
@@ -456,7 +452,7 @@ static void server_log_configs()
             VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
             ELECTION_MAX_WAIT_TIME,
             sf_get_replication_quorum_caption(REPLICATION_QUORUM),
-            REPLICA_QUORUM_NEED_MAJORITY, REPLICA_QUORUM_TIMEOUT,
+            REPLICA_QUORUM_NEED_MAJORITY,
             STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {

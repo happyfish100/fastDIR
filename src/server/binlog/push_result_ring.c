@@ -231,7 +231,7 @@ static int add_to_queue(FDIRBinlogPushResultContext *ctx,
 
     entry->data_version = data_version;
     entry->waiting_task = waiting_task;
-    entry->expires = g_current_time + REPLICA_RPC_TIMEOUT;
+    entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
 
     if (ctx->queue.tail == NULL) {  //empty queue
         entry->next = NULL;
@@ -303,13 +303,13 @@ int push_result_ring_add(FDIRBinlogPushResultContext *ctx,
             current_version = data_version->first + i;
             entry = ctx->ring.entries + current_version % ctx->ring.size;
             entry->data_version = current_version;
-            entry->expires = g_current_time + REPLICA_RPC_TIMEOUT;
+            entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         }
 
         entry = ctx->ring.entries + data_version->last % ctx->ring.size;
         entry->data_version = data_version->last;
         entry->waiting_task = waiting_task;
-        entry->expires = g_current_time + REPLICA_RPC_TIMEOUT;
+        entry->expires = g_current_time + SF_G_NETWORK_TIMEOUT;
         return 0;
     }
 
