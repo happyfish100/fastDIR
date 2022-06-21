@@ -22,6 +22,7 @@
 typedef struct fdir_replication_quorum_context {
     struct fast_mblock_man allocator; //element: FDIRReplicationQuorumEntry
     pthread_mutex_t lock;
+    volatile int dealing;
     struct {
         FDIRReplicationQuorumEntry *head;
         FDIRReplicationQuorumEntry *tail;
@@ -48,6 +49,7 @@ int replication_quorum_init()
         return result;
     }
 
+    fdir_replication_quorum.dealing = 0;
     QUORUM_LIST_HEAD = QUORUM_LIST_TAIL = NULL;
     return 0;
 }
@@ -59,6 +61,7 @@ void replication_quorum_destroy()
 int replication_quorum_add(struct fast_task_info *task,
         const int64_t data_version)
 {
+    FDIRReplicationQuorumEntry *previous;
     FDIRReplicationQuorumEntry *entry;
 
     if ((entry=fast_mblock_alloc_object(&fdir_replication_quorum.
@@ -68,15 +71,27 @@ int replication_quorum_add(struct fast_task_info *task,
     }
     entry->task = task;
     entry->data_version = data_version;
-    entry->next = NULL;
 
     PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.lock);
     if (QUORUM_LIST_HEAD == NULL) {
+        entry->next = NULL;
+        QUORUM_LIST_HEAD = entry;
+        QUORUM_LIST_TAIL = entry;
+    } else if (data_version >= QUORUM_LIST_TAIL->data_version) {
+        entry->next = NULL;
+        QUORUM_LIST_TAIL->next = entry;
+        QUORUM_LIST_TAIL = entry;
+    } else if (data_version <= QUORUM_LIST_HEAD->data_version) {
+        entry->next = QUORUM_LIST_HEAD;
         QUORUM_LIST_HEAD = entry;
     } else {
-        QUORUM_LIST_TAIL->next = entry;
+        previous = QUORUM_LIST_HEAD;
+        while (data_version > previous->next->data_version) {
+            previous = previous->next;
+        }
+        entry->next = previous->next;
+        previous->next = entry;
     }
-    QUORUM_LIST_TAIL = entry;
     PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
     return 0;
 }
@@ -99,6 +114,13 @@ void replication_quorum_deal_version_change()
     int half_server_count;
     int count;
     int index;
+
+    if (!__sync_bool_compare_and_swap(
+                &fdir_replication_quorum.
+                dealing, 0, 1))
+    {
+        return;
+    }
 
     if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
         data_versions = fixed_data_versions;
@@ -147,4 +169,8 @@ void replication_quorum_deal_version_change()
     if (data_versions != fixed_data_versions) {
         free(data_versions);
     }
+
+    __sync_bool_compare_and_swap(
+            &fdir_replication_quorum.
+            dealing, 1, 0);
 }

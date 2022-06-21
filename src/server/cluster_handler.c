@@ -1290,15 +1290,17 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
     int result;
-    static int count = 0;
+    //static int count = 0;
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
 
+    /*
     if (count++ % 100 == 0) {
         logInfo("%d. is_master: %d, consumer_ctx: %p, connected.count: %d",
                 count, MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);
     }
+    */
 
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         return binlog_replication_process(server_ctx);
