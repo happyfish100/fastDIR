@@ -14,7 +14,6 @@ ALL_OBJS = ../common/fdir_proto.o ../common/fdir_global.o \
            cluster_relationship.o data_thread.o data_loader.o \
            inode_generator.o shared_thread_pool.o server_binlog.o \
            server_storage.o cluster_info.o data_dumper.o node_manager.o \
-           replication_quorum.o  \
            db/db_updater.o db/event_dealer.o db/change_notify.o \
            db/dentry_serializer.o db/dentry_loader.o db/dentry_lru.o \
            binlog/binlog_producer.o binlog/binlog_local_consumer.o \

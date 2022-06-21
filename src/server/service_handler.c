@@ -52,7 +52,6 @@
 #include "common_handler.h"
 #include "ns_manager.h"
 #include "node_manager.h"
-#include "replication_quorum.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -946,20 +945,14 @@ static int handle_replica_done(struct fast_task_info *task)
     service_idempotency_request_finish(task, 0);
 
     if (RBUFFER != NULL) {
-        if (REPLICA_QUORUM_NEED_MAJORITY) {
-        }
         result = push_to_binlog_write_queue(RBUFFER, 1);
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
     } else {
-        if (REPLICA_QUORUM_NEED_MAJORITY) {
-            result = RESPONSE_STATUS;
-        } else {
-            logError("file: "__FILE__", line: %d, "
-                    "rbuffer is NULL, some mistake happen?",
-                    __LINE__);
-            result = 0;
-        }
+        logError("file: "__FILE__", line: %d, "
+                "rbuffer is NULL, some mistake happen?",
+                __LINE__);
+        result = 0;
     }
 
     sf_release_task(task);
@@ -969,38 +962,13 @@ static int handle_replica_done(struct fast_task_info *task)
 static inline int do_binlog_produce(struct fast_task_info *task,
         ServerBinlogRecordBuffer *rbuffer)
 {
-    FDIRReplicationQuorumEntry *quorum_entry;
-
     rbuffer->args = task;
+    RBUFFER = rbuffer;
     if (SLAVE_SERVER_COUNT > 0) {
-        if (REPLICA_QUORUM_NEED_MAJORITY) {
-            quorum_entry = fast_mblock_alloc_object(&SERVER_CTX->
-                    service.repl_quorum_allocator);
-            if (quorum_entry == NULL) {
-                RESPONSE_STATUS = ENOMEM;
-                if (RECORD->parray != NULL) {
-                    free_record_and_parray(task);
-                } else {
-                    free_record_object(task);
-                }
-                server_binlog_release_rbuffer(rbuffer);
-                return handle_replica_done(task);
-            }
-
-            quorum_entry->record = RECORD;
-            quorum_entry->rbuffer = rbuffer;
-            quorum_entry->expire_time = g_current_time +
-                REPLICA_QUORUM_TIMEOUT;
-            replication_quorum_add(quorum_entry);
-            RECORD = NULL;
-        }
-
-        RBUFFER = rbuffer;
         task->continue_callback = handle_replica_done;
         binlog_push_to_producer_queue(rbuffer);
         return TASK_STATUS_CONTINUE;
     } else {
-        RBUFFER = rbuffer;
         return handle_replica_done(task);
     }
 }
@@ -1021,14 +989,11 @@ static int server_binlog_produce(struct fast_task_info *task)
     rbuffer->data_version.last = RECORD->data_version;
     RECORD->timestamp = g_current_time;
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
+    free_record_object(task);
 
     if (result == 0) {
-        if (!REPLICA_QUORUM_NEED_MAJORITY) {
-            free_record_object(task);
-        }
         return do_binlog_produce(task, rbuffer);
     } else {
-        free_record_object(task);
         server_binlog_free_rbuffer(rbuffer);
         service_idempotency_request_finish(task, result);
         sf_release_task(task);
@@ -1433,12 +1398,11 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
         }
     }
 
-    if (!REPLICA_QUORUM_NEED_MAJORITY) {
-        for (pp=record->parray->records; pp<recend; pp++) {
-            fast_mblock_free_object(&SERVER_CTX->service.
-                    record_allocator, *pp);
-        }
+    for (pp=record->parray->records; pp<recend; pp++) {
+        fast_mblock_free_object(&SERVER_CTX->service.
+                record_allocator, *pp);
     }
+    free_record_and_parray(task);
 
     /*
     logInfo("result: %d, record count: %d, updated count: %d, "
@@ -1449,13 +1413,9 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
             */
 
     if (result == 0) {
-        if (!REPLICA_QUORUM_NEED_MAJORITY) {
-            free_record_and_parray(task);
-        }
         result = do_binlog_produce(task, rbuffer);
         *need_release = false;
     } else {
-        free_record_and_parray(task);
         server_binlog_free_rbuffer(rbuffer);
         *need_release = true;
     }
@@ -3737,14 +3697,6 @@ static int record_parray_alloc_init(void *element, void *args)
     return 0;
 }
 
-static int repl_quorum_alloc_init(void *element, void *args)
-{
-    FDIRReplicationQuorumEntry *entry;
-    entry = (FDIRReplicationQuorumEntry *)element;
-    entry->server_ctx = args;
-    return 0;
-}
-
 void *service_alloc_thread_extra_data(const int thread_index)
 {
     FDIRServerContext *server_ctx;
@@ -3757,8 +3709,8 @@ void *service_alloc_thread_extra_data(const int thread_index)
 
     memset(server_ctx, 0, sizeof(FDIRServerContext));
     if (fast_mblock_init_ex1(&server_ctx->service.record_allocator,
-                "binlog_record1", sizeof(FDIRBinlogRecord), 4 * 1024,
-                0, NULL, NULL, REPLICA_QUORUM_NEED_MAJORITY) != 0)
+                "binlog_record1", sizeof(FDIRBinlogRecord),
+                4 * 1024, 0, NULL, NULL, false) != 0)
     {
         free(server_ctx);
         return NULL;
@@ -3770,7 +3722,7 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_ctx->service.
                 record_parray_allocator, "record_parray",
                 element_size, 512, 0, record_parray_alloc_init,
-                NULL, REPLICA_QUORUM_NEED_MAJORITY) != 0)
+                NULL, false) != 0)
     {
         free(server_ctx);
         return NULL;
@@ -3790,14 +3742,6 @@ void *service_alloc_thread_extra_data(const int thread_index)
     if (fast_mblock_init_ex1(&server_ctx->service.event_allocator,
                 "ftask_event", sizeof(FDIRFTaskChangeEvent),
                 1024, 0, NULL, NULL, true) != 0)
-    {
-        free(server_ctx);
-        return NULL;
-    }
-
-    if (fast_mblock_init_ex1(&server_ctx->service.repl_quorum_allocator,
-                "repl_quorum_entry", sizeof(FDIRReplicationQuorumEntry),
-                4096, 0, repl_quorum_alloc_init, server_ctx, true) != 0)
     {
         free(server_ctx);
         return NULL;
