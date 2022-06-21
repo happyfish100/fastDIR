@@ -52,6 +52,7 @@
 #include "common_handler.h"
 #include "ns_manager.h"
 #include "node_manager.h"
+#include "replication_quorum.h"
 #include "service_handler.h"
 
 static volatile int64_t next_token = 0;   //next token for dentry list
@@ -937,26 +938,51 @@ static inline void service_idempotency_request_finish(
     }
 }
 
-static int handle_replica_done(struct fast_task_info *task)
+static int handle_request_finish(struct fast_task_info *task)
 {
     int result;
 
+    result = RESPONSE_STATUS;
     task->continue_callback = NULL;
-    service_idempotency_request_finish(task, 0);
+    service_idempotency_request_finish(task, result);
+    sf_release_task(task);
+    return result;
+}
+
+static int handle_replica_done(struct fast_task_info *task)
+{
+    int64_t data_version;
 
     if (RBUFFER != NULL) {
-        result = push_to_binlog_write_queue(RBUFFER, 1);
+        data_version = RBUFFER->data_version.last;
+        RESPONSE_STATUS = push_to_binlog_write_queue(RBUFFER, 1);
         server_binlog_release_rbuffer(RBUFFER);
         RBUFFER = NULL;
     } else {
         logError("file: "__FILE__", line: %d, "
                 "rbuffer is NULL, some mistake happen?",
                 __LINE__);
-        result = 0;
+        data_version = 0;
+        RESPONSE_STATUS = EBUSY;
     }
 
-    sf_release_task(task);
-    return result;
+    if (REPLICA_QUORUM_NEED_MAJORITY && RESPONSE_STATUS == 0) {
+        int success_count;
+        success_count = FC_ATOMIC_GET(TASK_CTX.
+                service.rpc.success_count) + 1;
+        if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                    count, success_count))
+        {
+            if ((RESPONSE_STATUS=replication_quorum_add(task,
+                            data_version)) == 0)
+            {
+                task->continue_callback = handle_request_finish;
+                return TASK_STATUS_CONTINUE;
+            }
+        }
+    }
+
+    return handle_request_finish(task);
 }
 
 static inline int do_binlog_produce(struct fast_task_info *task,
@@ -2860,6 +2886,7 @@ static int service_process_update(struct fast_task_info *task,
         deal_task_func real_update_func, const int resp_cmd)
 {
     int result;
+    int alive_count;
     bool deal_done;
 
     if ((result=service_check_master(task)) != 0) {
@@ -2869,6 +2896,17 @@ static int service_process_update(struct fast_task_info *task,
     result = service_update_prepare_and_check(task, resp_cmd, &deal_done);
     if (result != 0 || deal_done) {
         return result;
+    }
+
+    if (REPLICA_QUORUM_NEED_MAJORITY) {
+        alive_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives);
+        if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                    count, alive_count))
+        {
+            result = EAGAIN;
+            service_idempotency_request_finish(task, result);
+            return result;
+        }
     }
 
     if ((result=real_update_func(task)) != TASK_STATUS_CONTINUE) {
