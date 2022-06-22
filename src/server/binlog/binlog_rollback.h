@@ -14,31 +14,15 @@
  */
 
 
-#ifndef _FDIR_REPLICATION_QUORUM_H
-#define _FDIR_REPLICATION_QUORUM_H
+#ifndef _FDIR_BINLOG_ROLLBACK_H
+#define _FDIR_BINLOG_ROLLBACK_H
 
-#include "server_types.h"
-#include "binlog/binlog_types.h"
-
-typedef struct fdir_replication_quorum_entry {
-    int64_t data_version;
-    struct fast_task_info *task;
-    struct fdir_replication_quorum_entry *next;
-} FDIRReplicationQuorumEntry;
+#include "../server_types.h"
+#include "binlog_types.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-    int replication_quorum_init();
-    void replication_quorum_destroy();
-
-    int replication_quorum_add(struct fast_task_info *task,
-            const int64_t data_version);
-
-    void replication_quorum_deal_version_change();
-
-    void replication_quorum_deal_master_change();
 
 #ifdef __cplusplus
 }

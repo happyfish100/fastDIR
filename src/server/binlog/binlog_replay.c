@@ -230,7 +230,7 @@ int binlog_replay_deal_buffer(BinlogReplayContext *replay_ctx,
         }
         PTHREAD_MUTEX_UNLOCK(&replay_ctx->lcp.lock);
 
-        if (replay_ctx->fail_count > 0) {
+        if (FC_ATOMIC_GET(replay_ctx->fail_count) > 0) {
             return (replay_ctx->last_errno != 0 ?
                     replay_ctx->last_errno : EIO);
         }

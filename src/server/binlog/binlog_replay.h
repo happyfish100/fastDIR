@@ -38,7 +38,7 @@ typedef struct binlog_replay_context {
     int last_errno;
     int64_t record_count;
     int64_t skip_count;
-    int64_t warning_count;
+    volatile int64_t warning_count;
     volatile int64_t fail_count;
     pthread_lock_cond_pair_t lcp;
     struct {

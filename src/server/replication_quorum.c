@@ -17,7 +17,6 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
-#include "common/fdir_types.h"
 #include "server_global.h"
 #include "replication_quorum.h"
 
@@ -92,7 +91,7 @@ static int get_confirmed_version_from_file(const int index,
     return (crc32.value == crc32.calc ? 0 : EINVAL);
 }
 
-int replication_quorum_load_confirmed_version(int64_t *confirmed_version)
+static int load_confirmed_version(int64_t *confirmed_version)
 {
     int result;
     int invalid_count;
@@ -140,6 +139,12 @@ int replication_quorum_init()
     }
 
     if ((result=init_pthread_lock(&fdir_replication_quorum.lock)) != 0) {
+        return result;
+    }
+
+    if ((result=load_confirmed_version((int64_t *)
+                    &MY_CONFIRMED_VERSION)) != 0)
+    {
         return result;
     }
 
@@ -299,11 +304,6 @@ static void clear_waiting_tasks()
     }
 }
 
-void replication_quorum_deal_master_change()
-{
-    clear_waiting_tasks();
-}
-
 void replication_quorum_deal_version_change()
 {
 #define FIXED_SERVER_COUNT  8
@@ -384,4 +384,20 @@ void replication_quorum_deal_version_change()
     __sync_bool_compare_and_swap(
             &fdir_replication_quorum.
             dealing, 1, 0);
+}
+
+void replication_quorum_deal_master_change()
+{
+    int64_t my_confirmed_version;
+
+    clear_waiting_tasks();
+    my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+    if (my_confirmed_version >= FC_ATOMIC_GET(DATA_CURRENT_VERSION)) {
+        return;
+    }
+    /*
+    if (rollback_data_and_binlog(my_confirmed_version) != 0) {
+        sf_terminate_myself();
+    }
+    */
 }
