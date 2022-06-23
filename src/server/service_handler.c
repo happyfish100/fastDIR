@@ -983,11 +983,14 @@ static int handle_replica_done(struct fast_task_info *task)
         if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
                     count, success_count))
         {
+            bool finished;
             if ((RESPONSE_STATUS=replication_quorum_add(task,
-                            data_version)) == 0)
+                            data_version, &finished)) == 0)
             {
-                task->continue_callback = handle_request_finish;
-                return TASK_STATUS_CONTINUE;
+                if (!finished) {
+                    task->continue_callback = handle_request_finish;
+                    return TASK_STATUS_CONTINUE;
+                }
             }
         }
     } else {
@@ -1812,6 +1815,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
             if (result == EEXIST) { //found
                 result = request->output.result;
                 if (result == 0) {
+                    RESPONSE.header.cmd = resp_cmd;
                     if ((request->output.flags &
                                 TASK_UPDATE_FLAG_OUTPUT_DENTRY))
                     {
@@ -1819,7 +1823,6 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                         dentry = &((FDIRIdempotencyResponse *)request->
                                 output.response)->dentry;
                         dstat_output(task, dentry->inode, &dentry->stat);
-                        RESPONSE.header.cmd = resp_cmd;
                     }
                 }
             } else {
@@ -2918,9 +2921,16 @@ static int service_process_update(struct fast_task_info *task,
         if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
                     count, alive_count))
         {
-            result = EAGAIN;
-            service_idempotency_request_finish(task, result);
-            return result;
+            if (IDEMPOTENCY_REQUEST != NULL) {
+                idempotency_channel_remove_request(IDEMPOTENCY_CHANNEL,
+                        IDEMPOTENCY_REQUEST->req_id);
+                idempotency_request_release(IDEMPOTENCY_REQUEST);
+
+                /* server task type for channel ONLY,
+                   do NOT set task type to NONE!!! */
+                IDEMPOTENCY_REQUEST = NULL;
+            }
+            return EAGAIN;
         }
     }
 
