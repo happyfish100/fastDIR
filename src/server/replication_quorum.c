@@ -235,7 +235,7 @@ int replication_quorum_init()
 
     if ((result=fast_mblock_init_ex1(&QUORUM_ENTRY_ALLOCATOR,
                     "repl_quorum_entry", sizeof(FDIRReplicationQuorumEntry),
-                    4096, 0, NULL, NULL, true)) != 0)
+                    4096, 0, NULL, NULL, false)) != 0)
     {
         return result;
     }
@@ -283,39 +283,54 @@ void replication_quorum_destroy()
 }
 
 int replication_quorum_add(struct fast_task_info *task,
-        const int64_t data_version)
+        const int64_t data_version, bool *finished)
 {
+    int result;
     FDIRReplicationQuorumEntry *previous;
     FDIRReplicationQuorumEntry *entry;
 
-    if ((entry=fast_mblock_alloc_object(&QUORUM_ENTRY_ALLOCATOR)) == NULL) {
-        return ENOMEM;
-    }
-    entry->task = task;
-    entry->data_version = data_version;
-
     PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.lock);
-    if (QUORUM_LIST_HEAD == NULL) {
-        entry->next = NULL;
-        QUORUM_LIST_HEAD = entry;
-        QUORUM_LIST_TAIL = entry;
-    } else if (data_version >= QUORUM_LIST_TAIL->data_version) {
-        entry->next = NULL;
-        QUORUM_LIST_TAIL->next = entry;
-        QUORUM_LIST_TAIL = entry;
-    } else if (data_version <= QUORUM_LIST_HEAD->data_version) {
-        entry->next = QUORUM_LIST_HEAD;
-        QUORUM_LIST_HEAD = entry;
-    } else {
-        previous = QUORUM_LIST_HEAD;
-        while (data_version > previous->next->data_version) {
-            previous = previous->next;
+    do {
+        if (data_version <= FC_ATOMIC_GET(MY_CONFIRMED_VERSION)) {
+            *finished = true;
+            result = 0;
+            break;
         }
-        entry->next = previous->next;
-        previous->next = entry;
-    }
+
+        *finished = false;
+        entry = fast_mblock_alloc_object(&QUORUM_ENTRY_ALLOCATOR);
+        if (entry == NULL) {
+            result = ENOMEM;
+            break;
+        }
+        entry->task = task;
+        entry->data_version = data_version;
+
+        if (QUORUM_LIST_HEAD == NULL) {
+            entry->next = NULL;
+            QUORUM_LIST_HEAD = entry;
+            QUORUM_LIST_TAIL = entry;
+        } else if (data_version >= QUORUM_LIST_TAIL->data_version) {
+            entry->next = NULL;
+            QUORUM_LIST_TAIL->next = entry;
+            QUORUM_LIST_TAIL = entry;
+        } else if (data_version <= QUORUM_LIST_HEAD->data_version) {
+            entry->next = QUORUM_LIST_HEAD;
+            QUORUM_LIST_HEAD = entry;
+        } else {
+            previous = QUORUM_LIST_HEAD;
+            while (data_version > previous->next->data_version) {
+                previous = previous->next;
+            }
+            entry->next = previous->next;
+            previous->next = entry;
+        }
+
+        result = 0;
+    } while (0);
     PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
-    return 0;
+
+    return result;
 }
 
 static int compare_int64(const int64_t *n1, const int64_t *n2)
@@ -388,11 +403,11 @@ static void notify_waiting_tasks(const int64_t my_confirmed_version)
         }
         chain.tail->next = NULL;
     }
-    PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
 
     if (chain.head != NULL) {
         fast_mblock_batch_free(&QUORUM_ENTRY_ALLOCATOR, &chain);
     }
+    PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
 }
 
 void replication_quorum_deal_version_change(
@@ -419,7 +434,7 @@ static void deal_version_change()
     int64_t confirmed_version;
     int64_t fixed_data_versions[FIXED_SERVER_COUNT];
     int64_t *data_versions;
-    int half_server_count;
+    int more_than_half;
     int count;
     int index;
 
@@ -446,15 +461,15 @@ static void deal_version_change()
             data_versions[count++] = confirmed_version;
         }
     }
-    half_server_count = CLUSTER_SERVER_ARRAY.count / 2 + 1;
+    more_than_half = CLUSTER_SERVER_ARRAY.count / 2 + 1;
 
     logInfo("file: "__FILE__", line: %d, "
             "my_current_version: %"PRId64", "
-            "my_confirmed_version: %"PRId64", count: %d, half_server_count: %d",
+            "my_confirmed_version: %"PRId64", count: %d, more_than_half: %d",
             __LINE__, my_current_version,
-            my_confirmed_version, count, half_server_count);
+            my_confirmed_version, count, more_than_half);
 
-    if (count + 1 >= half_server_count) {  //quorum majority
+    if (count + 1 >= more_than_half) {  //quorum majority
         if (CLUSTER_SERVER_ARRAY.count == 3) {  //fast path
             if (count == 2) {
                 my_confirmed_version = FC_MAX(data_versions[0],
@@ -466,7 +481,7 @@ static void deal_version_change()
             qsort(data_versions, count, sizeof(int64_t),
                     (int (*)(const void *, const void *))
                     compare_int64);
-            index = (count + 1) - half_server_count;
+            index = (count + 1) - more_than_half;
             my_confirmed_version = data_versions[index];
         }
 
