@@ -160,6 +160,7 @@ int server_load_data()
                 replay_ctx.fail_count, data_version, long_to_comma_str(
                     end_time - start_time, time_buff));
 
+        binlog_write_set_next_version();
         FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version);
     }
 

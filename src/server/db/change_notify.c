@@ -92,6 +92,8 @@ static void *change_notify_func(void *arg)
     FDIRChangeNotifyEvent less_equal;
     struct fc_queue_info qinfo;
     time_t last_time;
+    int64_t my_confirmed_version;
+    int64_t binlog_last_version;
     int wait_seconds;
     int waiting_count;
 
@@ -99,6 +101,7 @@ static void *change_notify_func(void *arg)
     prctl(PR_SET_NAME, "chg-notify");
 #endif
 
+    memset(&less_equal, 0, sizeof(less_equal));
     last_time = g_current_time;
     while (SF_G_CONTINUE_FLAG) {
         wait_seconds = (last_time + BATCH_STORE_INTERVAL + 1) - g_current_time;
@@ -117,7 +120,10 @@ static void *change_notify_func(void *arg)
         }
 
         if (DATA_LOAD_DONE) {
-            less_equal.version = binlog_writer_get_last_version();
+            my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+            binlog_last_version = binlog_writer_get_last_version();
+            less_equal.version = FC_MIN(my_confirmed_version,
+                    binlog_last_version);
         } else {
             less_equal.version = data_thread_get_last_data_version();
         }
