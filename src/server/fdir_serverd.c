@@ -48,6 +48,7 @@
 #include "node_manager.h"
 #include "cluster_relationship.h"
 #include "inode_generator.h"
+#include "replication_quorum.h"
 #include "server_binlog.h"
 #include "data_thread.h"
 #include "data_loader.h"
@@ -68,7 +69,6 @@ static int setup_mblock_stat_task();
 #endif
 
 static bool daemon_mode = true;
-static const char *config_filename;
 static char g_pid_filename[MAX_PATH_SIZE];
 
 int init_nio_task(struct fast_task_info *task)
@@ -124,17 +124,18 @@ static int process_cmdline(int argc, char *argv[], bool *continue_flag)
         return 1;
     }
 
-    config_filename = sf_parse_daemon_mode_and_action_ex(
+    CMDLINE_PROGRAM_FILENAME = argv[0];
+    CMDLINE_CONFIG_FILENAME = sf_parse_daemon_mode_and_action_ex(
             argc, argv, &g_fdir_global_vars.version,
             &daemon_mode, &action, "start", other_options);
-    if (config_filename == NULL) {
+    if (CMDLINE_CONFIG_FILENAME == NULL) {
         return 0;
     }
 
     log_init2();
     //log_set_time_precision(&g_log_context, LOG_TIME_PRECISION_USECOND);
 
-    result = get_base_path_from_conf_file(config_filename,
+    result = get_base_path_from_conf_file(CMDLINE_CONFIG_FILENAME,
             SF_G_BASE_PATH_STR, sizeof(SF_G_BASE_PATH_STR));
     if (result != 0) {
         log_destroy();
@@ -184,7 +185,7 @@ int main(int argc, char *argv[])
 
     sched_set_delay_params(300, 1024);
     do {
-        if ((result=setup_server_env(config_filename)) != 0) {
+        if ((result=setup_server_env(CMDLINE_CONFIG_FILENAME)) != 0) {
             break;
         }
 
@@ -241,6 +242,10 @@ int main(int argc, char *argv[])
         }
 
         if ((result=server_binlog_init()) != 0) {
+            break;
+        }
+
+        if ((result=replication_quorum_init()) != 0) {
             break;
         }
 

@@ -26,6 +26,7 @@
 #include "server_func.h"
 #include "data_thread.h"
 #include "inode_generator.h"
+#include "replication_quorum.h"
 #include "cluster_relationship.h"
 
 #define ELECTION_MAX_SLEEP_SECS   32
@@ -232,8 +233,10 @@ static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
         server_id = buff2int(body_part->server_id);
         if ((cs=fdir_get_server_by_id(server_id)) != NULL) {
             cluster_info_set_status(cs, body_part->status);
-            cs->confirmed_data_version = buff2long(
-                    body_part->data_version);
+            if (cs != CLUSTER_MYSELF_PTR) {
+                cs->confirmed_data_version = buff2long(
+                        body_part->data_version);
+            }
         }
     }
 
@@ -594,6 +597,11 @@ void cluster_relationship_trigger_reselect_master()
 
     master = CLUSTER_MASTER_ATOM_PTR;
     if (CLUSTER_MYSELF_PTR != master) {
+        return;
+    }
+
+    if (replication_quorum_end_master_term() != 0) {
+        sf_terminate_myself();
         return;
     }
 

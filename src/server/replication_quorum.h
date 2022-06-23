@@ -38,7 +38,7 @@ extern "C" {
 
     void replication_quorum_deal_version_change();
 
-    void replication_quorum_deal_master_change();
+    int replication_quorum_end_master_term();
 
 #ifdef __cplusplus
 }

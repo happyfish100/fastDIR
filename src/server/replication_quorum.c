@@ -17,6 +17,8 @@
 #include "fastcommon/pthread_func.h"
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
+#include "binlog/binlog_write.h"
+#include "binlog/binlog_reader.h"
 #include "server_global.h"
 #include "replication_quorum.h"
 
@@ -127,6 +129,100 @@ static int load_confirmed_version(int64_t *confirmed_version)
     }
 }
 
+static int unlink_confirmed_files()
+{
+    int result;
+    int index;
+    char filename[PATH_MAX];
+
+    for (index=0; index<VERSION_CONFIRMED_FILE_COUNT; index++) {
+        get_confirmed_filename(index, filename, sizeof(filename));
+        if ((result=fc_delete_file_ex(filename, "confirmed")) != 0) {
+            return result;
+        }
+    }
+
+    return 0;
+}
+
+static int rollback_binlog(const int64_t my_confirmed_version)
+{
+    int result;
+    int start_index;
+    int last_index;
+    int binlog_index;
+    int64_t last_data_version;
+    SFBinlogFilePosition hint_pos;
+    SFBinlogFilePosition position;
+    char filename[PATH_MAX];
+
+    if ((result=binlog_get_max_record_version(&last_data_version)) != 0) {
+        return result;
+    }
+
+    if (my_confirmed_version >= last_data_version) {
+        return unlink_confirmed_files();
+    }
+
+    if ((result=binlog_get_indexes(&start_index, &last_index)) != 0) {
+        return result;
+    }
+
+    hint_pos.index = last_index;
+    hint_pos.offset = 0;
+    if ((result=binlog_find_position(&hint_pos,
+                    my_confirmed_version,
+                    &position)) != 0)
+    {
+        return result;
+    }
+
+    if (position.index < last_index) {
+        if ((result=binlog_writer_set_indexes(start_index,
+                        position.index)) != 0)
+        {
+            return result;
+        }
+
+        for (binlog_index=position.index+1;
+                binlog_index<last_index;
+                binlog_index++)
+        {
+            binlog_get_filename(binlog_index, filename, sizeof(filename));
+            if ((result=fc_delete_file_ex(filename, "binlog")) != 0) {
+                return result;
+            }
+        }
+    }
+
+    binlog_get_filename(position.index, filename, sizeof(filename));
+    if (truncate(filename, position.offset) != 0) {
+        result = (errno != 0 ? errno : EPERM);
+        logError("file: "__FILE__", line: %d, "
+                "truncate file %s to length: %"PRId64" fail, "
+                "errno: %d, error info: %s", __LINE__, filename,
+                position.offset, result, STRERROR(result));
+        return result;
+    }
+
+    if ((result=binlog_get_max_record_version(&last_data_version)) != 0) {
+        return result;
+    }
+    if (last_data_version != my_confirmed_version) {
+        logError("file: "__FILE__", line: %d, "
+                "binlog last_data_version: %"PRId64" != "
+                "confirmed data version: %"PRId64", program exit!",
+                __LINE__, last_data_version, my_confirmed_version);
+        return EBUSY;
+    }
+
+    if ((result=binlog_writer_change_write_index(position.index)) != 0) {
+        return result;
+    }
+
+    return unlink_confirmed_files();
+}
+
 int replication_quorum_init()
 {
     int result;
@@ -146,6 +242,21 @@ int replication_quorum_init()
                     &MY_CONFIRMED_VERSION)) != 0)
     {
         return result;
+    }
+
+
+    {
+    int64_t last_data_version;
+    binlog_get_max_record_version(&last_data_version);
+
+    logInfo("last_data_version: %"PRId64", MY_CONFIRMED_VERSION: %"PRId64,
+            last_data_version, MY_CONFIRMED_VERSION);
+    }
+
+    if (MY_CONFIRMED_VERSION > 0) {
+        if ((result=rollback_binlog(MY_CONFIRMED_VERSION)) != 0) {
+            return result;
+        }
     }
 
     fdir_replication_quorum.dealing = 0;
@@ -271,39 +382,6 @@ static void notify_waiting_tasks(const int64_t my_confirmed_version)
     }
 }
 
-static void clear_waiting_tasks()
-{
-    struct fast_mblock_chain chain;
-    struct fast_mblock_node *node;
-
-    chain.head = chain.tail = NULL;
-    PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.lock);
-    if (QUORUM_LIST_HEAD != NULL) {
-        do {
-            node = fast_mblock_to_node_ptr(QUORUM_LIST_HEAD);
-            if (chain.head == NULL) {
-                chain.head = node;
-            } else {
-                chain.tail->next = node;
-            }
-            chain.tail = node;
-
-            ((FDIRServerTaskArg *)QUORUM_LIST_HEAD->task->arg)->context.
-                common.response.header.status = EAGAIN;
-            sf_nio_notify(QUORUM_LIST_HEAD->task, SF_NIO_STAGE_CONTINUE);
-            QUORUM_LIST_HEAD = QUORUM_LIST_HEAD->next;
-        } while (QUORUM_LIST_HEAD != NULL);
-
-        QUORUM_LIST_TAIL = NULL;
-        chain.tail->next = NULL;
-    }
-    PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
-
-    if (chain.head != NULL) {
-        fast_mblock_batch_free(&QUORUM_ENTRY_ALLOCATOR, &chain);
-    }
-}
-
 void replication_quorum_deal_version_change()
 {
 #define FIXED_SERVER_COUNT  8
@@ -373,8 +451,8 @@ void replication_quorum_deal_version_change()
             return;
         }
 
-        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, my_confirmed_version);
         notify_waiting_tasks(my_confirmed_version);
+        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, my_confirmed_version);
     }
 
     if (data_versions != fixed_data_versions) {
@@ -386,18 +464,44 @@ void replication_quorum_deal_version_change()
             dealing, 1, 0);
 }
 
-void replication_quorum_deal_master_change()
+int replication_quorum_end_master_term()
 {
     int64_t my_confirmed_version;
+    int64_t current_data_version;
+    pid_t pid;
 
-    clear_waiting_tasks();
+    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+        return 0;
+    }
+
     my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
-    if (my_confirmed_version >= FC_ATOMIC_GET(DATA_CURRENT_VERSION)) {
-        return;
+    current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+    if (my_confirmed_version >= current_data_version) {
+        return unlink_confirmed_files();
     }
-    /*
-    if (rollback_data_and_binlog(my_confirmed_version) != 0) {
-        sf_terminate_myself();
+
+    pid = fork();
+    if (pid < 0) {
+        return (errno != 0 ? errno : EBUSY);
+    } else if (pid > 0) {
+        return 0;
     }
-    */
+
+    //child process
+    if (execlp(CMDLINE_PROGRAM_FILENAME, CMDLINE_PROGRAM_FILENAME,
+                CMDLINE_CONFIG_FILENAME, "restart", NULL) < 0)
+    {
+        int result;
+        result = errno != 0 ? errno : EBUSY;
+        logError("file: "__FILE__", line: %d, "
+                "exec \"%s %s restart\" fail, errno: %d, error info: %s",
+                __LINE__, CMDLINE_PROGRAM_FILENAME, CMDLINE_CONFIG_FILENAME,
+                result, STRERROR(result));
+
+        log_sync_func(&g_log_context);
+        kill(getppid(), SIGQUIT);
+        exit(result);
+    }
+
+    return 0;
 }

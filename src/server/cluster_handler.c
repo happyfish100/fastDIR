@@ -294,6 +294,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
 {
     int result;
     int cluster_change_version;
+    bool version_changed;
     int64_t confirmed_data_version;
     FDIRProtoPingMasterReq *req;
     FDIRProtoPingMasterRespHeader *resp_header;
@@ -329,14 +330,17 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         if (REPLICA_QUORUM_NEED_MAJORITY) {
             replication_quorum_deal_version_change();
         }
+        version_changed = true;
+    } else {
+        version_changed = false;
     }
 
     resp_header = (FDIRProtoPingMasterRespHeader *)REQUEST.body;
     body_part = (FDIRProtoPingMasterRespBodyPart *)(resp_header + 1);
     long2buff(CURRENT_INODE_SN, resp_header->inode_sn);
 
-    cluster_change_version = __sync_add_and_fetch(
-            &CLUSTER_SERVER_ARRAY.change_version, 0);
+    cluster_change_version = FC_ATOMIC_GET(
+            CLUSTER_SERVER_ARRAY.change_version);
     if (CLUSTER_PEER->last_change_version != cluster_change_version) {
         CLUSTER_PEER->last_change_version = cluster_change_version;
         int2buff(CLUSTER_SERVER_ARRAY.count, resp_header->server_count);
@@ -349,6 +353,10 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         }
     } else {
         int2buff(0, resp_header->server_count);
+    }
+
+    if (version_changed) {
+        FC_ATOMIC_INC(CLUSTER_SERVER_ARRAY.change_version);
     }
 
     TASK_CTX.common.response_done = true;

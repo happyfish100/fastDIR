@@ -45,6 +45,11 @@ typedef struct server_global_vars {
     } system;
 
     struct {
+        const char *program_filename;
+        const char *config_filename;
+    } cmdline;
+
+    struct {
         FCFSAuthClientFullContext auth;
         uint16_t id;  //cluster id for generate inode
         FDIRClusterServerInfo *next_master;
@@ -129,6 +134,9 @@ typedef struct server_global_vars {
 
 #define SYSTEM_CPU_COUNT       g_server_global_vars.system.cpu_count
 #define SYSTEM_TOTAL_MEMORY    g_server_global_vars.system.total_memory
+
+#define CMDLINE_PROGRAM_FILENAME g_server_global_vars.cmdline.program_filename
+#define CMDLINE_CONFIG_FILENAME  g_server_global_vars.cmdline.config_filename
 
 #define MASTER_ELECTION_QUORUM g_server_global_vars.cluster. \
     master_election.quorum
