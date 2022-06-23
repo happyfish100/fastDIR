@@ -1824,9 +1824,12 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                 }
             } else {
                 if (result == EAGAIN) {
+                    TASK_CTX.common.log_level = REPLICA_QUORUM_NEED_MAJORITY ?
+                        LOG_DEBUG : LOG_WARNING;
                     //TODO
+                } else {
+                    TASK_CTX.common.log_level = LOG_WARNING;
                 }
-                TASK_CTX.common.log_level = LOG_WARNING;
             }
 
             fast_mblock_free_object(request->allocator, request);

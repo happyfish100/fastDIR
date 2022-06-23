@@ -557,6 +557,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         }
 
         binlog_local_consumer_replication_start();
+        replication_quorum_start_master_term();
     }
 
     MASTER_ELECTED_TIME = g_current_time;

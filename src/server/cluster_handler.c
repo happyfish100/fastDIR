@@ -328,7 +328,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         FC_ATOMIC_SET(CLUSTER_PEER->confirmed_data_version,
                 confirmed_data_version);
         if (REPLICA_QUORUM_NEED_MAJORITY) {
-            replication_quorum_deal_version_change();
+            replication_quorum_deal_version_change(confirmed_data_version);
         }
         version_changed = true;
     } else {

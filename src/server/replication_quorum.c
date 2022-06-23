@@ -27,7 +27,13 @@
 typedef struct fdir_replication_quorum_context {
     struct fast_mblock_man quorum_entry_allocator; //element: FDIRReplicationQuorumEntry
     pthread_mutex_t lock;
-    volatile int dealing;
+
+    struct {
+        volatile int dealing;
+        volatile int running;
+        pthread_lock_cond_pair_t lcp;
+    } thread;
+
     struct {
         FDIRReplicationQuorumEntry *head;
         FDIRReplicationQuorumEntry *tail;
@@ -238,12 +244,18 @@ int replication_quorum_init()
         return result;
     }
 
+    if ((result=init_pthread_lock_cond_pair(
+                    &fdir_replication_quorum.
+                    thread.lcp)) != 0)
+    {
+        return result;
+    }
+
     if ((result=load_confirmed_version((int64_t *)
                     &MY_CONFIRMED_VERSION)) != 0)
     {
         return result;
     }
-
 
     {
     int64_t last_data_version;
@@ -259,7 +271,8 @@ int replication_quorum_init()
         }
     }
 
-    fdir_replication_quorum.dealing = 0;
+    fdir_replication_quorum.thread.dealing = 0;
+    fdir_replication_quorum.thread.running = 0;
     CONFIRMED_COUNTER = 0;
     QUORUM_LIST_HEAD = QUORUM_LIST_TAIL = NULL;
     return 0;
@@ -382,7 +395,21 @@ static void notify_waiting_tasks(const int64_t my_confirmed_version)
     }
 }
 
-void replication_quorum_deal_version_change()
+void replication_quorum_deal_version_change(
+        const int64_t slave_confirmed_version)
+{
+    if (slave_confirmed_version <= FC_ATOMIC_GET(MY_CONFIRMED_VERSION)) {
+        return;
+    }
+
+    if (__sync_bool_compare_and_swap(&fdir_replication_quorum.
+                thread.dealing, 0, 1))
+    {
+        pthread_cond_signal(&fdir_replication_quorum.thread.lcp.cond);
+    }
+}
+
+static void deal_version_change()
 {
 #define FIXED_SERVER_COUNT  8
     FDIRClusterServerInfo *server;
@@ -395,13 +422,6 @@ void replication_quorum_deal_version_change()
     int half_server_count;
     int count;
     int index;
-
-    if (!__sync_bool_compare_and_swap(
-                &fdir_replication_quorum.
-                dealing, 0, 1))
-    {
-        return;
-    }
 
     if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
         data_versions = fixed_data_versions;
@@ -426,8 +446,14 @@ void replication_quorum_deal_version_change()
             data_versions[count++] = confirmed_version;
         }
     }
+    half_server_count = CLUSTER_SERVER_ARRAY.count / 2 + 1;
 
-    half_server_count = (CLUSTER_SERVER_ARRAY.count + 1) / 2;
+    logInfo("file: "__FILE__", line: %d, "
+            "my_current_version: %"PRId64", "
+            "my_confirmed_version: %"PRId64", count: %d, half_server_count: %d",
+            __LINE__, my_current_version,
+            my_confirmed_version, count, half_server_count);
+
     if (count + 1 >= half_server_count) {  //quorum majority
         if (CLUSTER_SERVER_ARRAY.count == 3) {  //fast path
             if (count == 2) {
@@ -444,6 +470,7 @@ void replication_quorum_deal_version_change()
             my_confirmed_version = data_versions[index];
         }
 
+        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, my_confirmed_version);
         if (write_to_confirmed_file(FC_ATOMIC_INC(CONFIRMED_COUNTER) %
                     VERSION_CONFIRMED_FILE_COUNT, my_confirmed_version) != 0)
         {
@@ -452,16 +479,65 @@ void replication_quorum_deal_version_change()
         }
 
         notify_waiting_tasks(my_confirmed_version);
-        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, my_confirmed_version);
     }
 
     if (data_versions != fixed_data_versions) {
         free(data_versions);
     }
+}
 
-    __sync_bool_compare_and_swap(
-            &fdir_replication_quorum.
-            dealing, 1, 0);
+static void *replication_quorum_thread_run(void *arg)
+{
+    struct timespec ts;
+
+    __sync_bool_compare_and_swap(&fdir_replication_quorum.
+            thread.running, 0, 1);
+
+    while (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
+        ts.tv_sec = g_current_time + 3;
+        ts.tv_nsec = 0;
+        PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.thread.lcp.lock);
+        pthread_cond_timedwait(&fdir_replication_quorum.
+                thread.lcp.cond, &fdir_replication_quorum.
+                thread.lcp.lock, &ts);
+        if (__sync_bool_compare_and_swap(&fdir_replication_quorum.
+                    thread.dealing, 1, 0))
+        {
+            deal_version_change();
+        }
+        PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.thread.lcp.lock);
+    }
+
+    __sync_bool_compare_and_swap(&fdir_replication_quorum.
+            thread.running, 1, 0);
+    return NULL;
+}
+
+int replication_quorum_start_master_term()
+{
+    int i;
+    pthread_t tid;
+
+    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+        return 0;
+    }
+
+    i = 0;
+    while (FC_ATOMIC_GET(fdir_replication_quorum.
+                thread.running) && i++ < 30)
+    {
+        pthread_cond_signal(&fdir_replication_quorum.thread.lcp.cond);
+        fc_sleep_ms(100);
+    }
+
+    if (FC_ATOMIC_GET(fdir_replication_quorum.thread.running)) {
+        logWarning("file: "__FILE__", line: %d, "
+                "thread alread exist", __LINE__);
+        return 0;
+    }
+
+    return fc_create_thread(&tid, replication_quorum_thread_run,
+            NULL, SF_G_THREAD_STACK_SIZE);
 }
 
 int replication_quorum_end_master_term()
@@ -474,6 +550,7 @@ int replication_quorum_end_master_term()
         return 0;
     }
 
+    pthread_cond_signal(&fdir_replication_quorum.thread.lcp.cond);
     my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
     current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
     if (my_confirmed_version >= current_data_version) {
