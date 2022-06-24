@@ -48,7 +48,7 @@ static int open_readable_binlog(ServerBinlogReader *reader)
     sf_binlog_writer_get_filename(DATA_PATH_STR,
             reader->subdir_name, reader->position.index,
             reader->filename, sizeof(reader->filename));
-    reader->fd = open(reader->filename, O_RDONLY);
+    reader->fd = open(reader->filename, O_RDONLY | O_CLOEXEC);
     if (reader->fd < 0) {
         result = errno != 0 ? errno : EACCES;
         logError("file: "__FILE__", line: %d, "

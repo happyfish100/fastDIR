@@ -480,8 +480,8 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
 {
     int result;
 
-    if ((db_updater_ctx.redo.fd=open(db_updater_ctx.
-                    redo.filename, O_RDONLY)) < 0)
+    if ((db_updater_ctx.redo.fd=open(db_updater_ctx.redo.
+                    filename, O_RDONLY | O_CLOEXEC)) < 0)
     {
         result = errno != 0 ? errno : EIO;
         if (result == ENOENT) {

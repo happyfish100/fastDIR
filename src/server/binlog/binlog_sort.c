@@ -366,7 +366,7 @@ static inline int open_file_for_read(FilenameFDPair *pair)
 {
     int result;
 
-    if ((pair->fd=open(pair->filename, O_RDONLY)) < 0) {
+    if ((pair->fd=open(pair->filename, O_RDONLY | O_CLOEXEC)) < 0) {
         result = (errno != 0 ? errno : ENOENT);
         logError("file: "__FILE__", line: %d, "
                 "open file %s fail, errno: %d, error info: %s",

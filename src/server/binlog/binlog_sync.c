@@ -257,8 +257,8 @@ static int proto_sync_binlog(BinlogSyncContext *sync_ctx)
                 full_filename, sizeof(full_filename));
     }
 
-    if ((sync_ctx->fd=open(full_filename, O_WRONLY |
-                    O_CREAT | O_TRUNC, 0644)) < 0)
+    if ((sync_ctx->fd=open(full_filename, O_WRONLY | O_CREAT |
+                    O_TRUNC | O_CLOEXEC, 0644)) < 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "open binlog file %s fail, errno: %d, error info: %s",

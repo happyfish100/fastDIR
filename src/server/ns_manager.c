@@ -124,8 +124,8 @@ int ns_manager_init()
 
     if (STORAGE_ENABLED) {
         get_binlog_filename(filename, sizeof(filename));
-        if ((fdir_manager.fd=open(filename, O_WRONLY |
-                        O_CREAT | O_APPEND, 0644)) < 0)
+        if ((fdir_manager.fd=open(filename, O_WRONLY | O_CREAT |
+                        O_APPEND | O_CLOEXEC, 0644)) < 0)
         {
             result = errno != 0 ? errno : EPERM;
             logError("file: "__FILE__", line: %d, "
