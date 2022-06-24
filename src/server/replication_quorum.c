@@ -27,6 +27,7 @@
 typedef struct fdir_replication_quorum_context {
     struct fast_mblock_man quorum_entry_allocator; //element: FDIRReplicationQuorumEntry
     pthread_mutex_t lock;
+    volatile int master_generation;
 
     struct {
         volatile int dealing;
@@ -50,6 +51,7 @@ static FDIRReplicationQuorumContext fdir_replication_quorum;
 #define QUORUM_LIST_TAIL  fdir_replication_quorum.list.tail
 #define QUORUM_ENTRY_ALLOCATOR fdir_replication_quorum.quorum_entry_allocator
 #define CONFIRMED_COUNTER fdir_replication_quorum.confirmed.counter
+#define MASTER_GENERATION fdir_replication_quorum.master_generation
 
 static inline const char *get_confirmed_filename(
         const int index, char *filename, const int size)
@@ -341,7 +343,7 @@ static int compare_int64(const int64_t *n1, const int64_t *n2)
 static int write_to_confirmed_file(const int index,
         const int64_t confirmed_version)
 {
-    const int flags = O_WRONLY | O_CREAT | O_TRUNC;
+    const int flags = O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC;
     FilenameFDPair pair;
     char buff[32];
     int crc32;
@@ -504,11 +506,13 @@ static void deal_version_change()
 static void *replication_quorum_thread_run(void *arg)
 {
     struct timespec ts;
+    int generation;
 
+    generation = (long)arg;
     __sync_bool_compare_and_swap(&fdir_replication_quorum.
             thread.running, 0, 1);
 
-    while (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
+    while (FC_ATOMIC_GET(MASTER_GENERATION) == generation) {
         ts.tv_sec = g_current_time + 3;
         ts.tv_nsec = 0;
         PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.thread.lcp.lock);
@@ -531,12 +535,14 @@ static void *replication_quorum_thread_run(void *arg)
 int replication_quorum_start_master_term()
 {
     int i;
+    int master_generation;
     pthread_t tid;
 
     if (!REPLICA_QUORUM_NEED_MAJORITY) {
         return 0;
     }
 
+    master_generation = FC_ATOMIC_INC(MASTER_GENERATION);
     i = 0;
     while (FC_ATOMIC_GET(fdir_replication_quorum.
                 thread.running) && i++ < 30)
@@ -552,7 +558,7 @@ int replication_quorum_start_master_term()
     }
 
     return fc_create_thread(&tid, replication_quorum_thread_run,
-            NULL, SF_G_THREAD_STACK_SIZE);
+            (void *)(long)master_generation, SF_G_THREAD_STACK_SIZE);
 }
 
 int replication_quorum_end_master_term()
@@ -576,6 +582,9 @@ int replication_quorum_end_master_term()
     if (pid < 0) {
         return (errno != 0 ? errno : EBUSY);
     } else if (pid > 0) {
+        logInfo("file: "__FILE__", line: %d, "
+                "i am not the master, restart to rollback data",
+                __LINE__);
         return 0;
     }
 

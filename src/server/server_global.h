@@ -146,7 +146,7 @@ typedef struct server_global_vars {
     master_election.force
 #define ELECTION_MASTER_LOST_TIMEOUT g_server_global_vars.cluster. \
     master_election.master_lost_timeout
-#define ELECTION_MAX_WAIT_TIME   g_server_global_vars.cluster. \
+#define ELECTION_MAX_WAIT_TIME g_server_global_vars.cluster. \
     master_election.max_wait_time
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config

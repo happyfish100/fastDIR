@@ -637,7 +637,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
         }
 
         int2buff(cs->server->id, body_part->server_id);
-        body_part->status = __sync_fetch_and_add(&cs->status, 0);
+        body_part->status = FC_ATOMIC_GET(cs->status);
 
         addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 cs->server), task->client_ip);
@@ -665,7 +665,7 @@ static FDIRClusterServerInfo *get_readable_server()
     FDIRClusterServerInfo *send;
 
     index = rand() % CLUSTER_SERVER_ARRAY.count;
-    if (__sync_fetch_and_add(&CLUSTER_SERVER_ARRAY.servers[index].status, 0) ==
+    if (FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.servers[index].status) ==
             FDIR_SERVER_STATUS_ACTIVE)
     {
         return CLUSTER_SERVER_ARRAY.servers + index;
@@ -676,9 +676,7 @@ static FDIRClusterServerInfo *get_readable_server()
     do {
         old_index = acc_index;
         for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
-            if (__sync_fetch_and_add(&cs->status, 0) ==
-                    FDIR_SERVER_STATUS_ACTIVE)
-            {
+            if (FC_ATOMIC_GET(cs->status) == FDIR_SERVER_STATUS_ACTIVE) {
                 if (acc_index++ == index) {
                     return cs;
                 }
@@ -1829,7 +1827,6 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
                 if (result == EAGAIN) {
                     TASK_CTX.common.log_level = REPLICA_QUORUM_NEED_MAJORITY ?
                         LOG_DEBUG : LOG_WARNING;
-                    //TODO
                 } else {
                     TASK_CTX.common.log_level = LOG_WARNING;
                 }
@@ -2888,7 +2885,7 @@ static int service_deal_modify_stat_by_path(struct fast_task_info *task)
 
 static inline int service_check_readable(struct fast_task_info *task)
 {
-    if (__sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0) !=
+    if (FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status) !=
                 FDIR_SERVER_STATUS_ACTIVE)
     {
         RESPONSE.error.length = sprintf(
@@ -3685,8 +3682,8 @@ static int service_process(struct fast_task_info *task)
         case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
             return service_deal_nss_fetch(task);
         case SF_SERVICE_PROTO_SETUP_CHANNEL_REQ:
-            if ((result=sf_server_deal_setup_channel(task,
-                            &SERVER_TASK_TYPE, &IDEMPOTENCY_CHANNEL,
+            if ((result=sf_server_deal_setup_channel(task, &SERVER_TASK_TYPE,
+                            CLUSTER_MY_SERVER_ID, &IDEMPOTENCY_CHANNEL,
                             &RESPONSE)) == 0)
             {
                 TASK_CTX.common.response_done = true;
