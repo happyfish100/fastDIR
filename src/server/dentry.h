@@ -77,19 +77,8 @@ extern "C" {
 
     int dentry_list(FDIRServerDentry *dentry, PointerArray **parray);
 
-    static inline int dentry_list_by_path(const FDIRDEntryFullName *fullname,
-            PointerArray **parray)
-    {
-        const bool hdlink_follow = false;
-        int result;
-        FDIRServerDentry *dentry;
-
-        if ((result=dentry_find_ex(fullname, &dentry, hdlink_follow)) != 0) {
-            return result;
-        }
-
-        return dentry_list(dentry, parray);
-    }
+    int dentry_list_by_path(const FDIRDEntryFullName *fullname,
+            PointerArray **parray);
 
     static inline void dentry_array_free(PointerArray **parray)
     {

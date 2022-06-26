@@ -1438,6 +1438,28 @@ int dentry_list(FDIRServerDentry *dentry, PointerArray **parray)
     return 0;
 }
 
+int dentry_list_by_path(const FDIRDEntryFullName *fullname,
+        PointerArray **parray)
+{
+    const bool hdlink_follow = false;
+    int result;
+    FDIRServerDentry *dentry;
+
+    if ((result=dentry_find_ex(fullname, &dentry, hdlink_follow)) != 0) {
+        return result;
+    }
+
+    if (STORAGE_ENABLED) {
+        if ((result=dentry_check_load_basic_children(dentry->
+                        context->thread_ctx, dentry)) != 0)
+        {
+            return result;
+        }
+    }
+
+    return dentry_list(dentry, parray);
+}
+
 int dentry_get_full_path(const FDIRServerDentry *dentry,
         BufferInfo *full_path, SFErrorInfo *error_info)
 {
