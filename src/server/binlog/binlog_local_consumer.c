@@ -80,6 +80,14 @@ static int init_binlog_local_consumer_array()
                     __LINE__, result, STRERROR(result));
             return result;
         }
+
+        replication->req_meta_array.alloc = 4 * 1024;
+        if ((replication->req_meta_array.elts=fc_malloc(sizeof(
+                            FDIRRequestMetadata) * replication->
+                        req_meta_array.alloc)) == NULL)
+        {
+            return ENOMEM;
+        }
     }
 
     slave_replication_array.count = count;

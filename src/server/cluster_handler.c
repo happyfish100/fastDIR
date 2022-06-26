@@ -415,7 +415,65 @@ static inline int check_replication_slave_task(struct fast_task_info *task)
         return -EINVAL;
     }
 
+    if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "i am master");
+        return SF_CLUSTER_ERROR_MASTER_INCONSISTENT;
+    }
+
     return 0;
+}
+
+static int cluster_deal_forword_requests_req(struct fast_task_info *task)
+{
+    int result;
+    int binlog_length;
+    int count;
+    int expect_len;
+    SFVersionRange data_version;
+    FDIRProtoForwardRequestMetadata *pmeta;
+    FDIRProtoForwardRequestMetadata *pend;
+    FDIRProtoForwardRequestsBodyHeader *body_header;
+    char *binlog;
+
+    if ((result=server_check_min_body_length(sizeof(
+                        FDIRProtoForwardRequestsBodyHeader) +
+                    FDIR_BINLOG_RECORD_MIN_SIZE)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=check_replication_slave_task(task)) != 0) {
+        return result;
+    }
+
+    body_header = (FDIRProtoForwardRequestsBodyHeader *)(task->data +
+            sizeof(FDIRProtoHeader));
+    binlog_length = buff2int(body_header->binlog_length);
+    count = buff2int(body_header->count);
+    data_version.first = buff2long(body_header->data_version.first);
+    data_version.last = buff2long(body_header->data_version.last);
+
+    expect_len = sizeof(FDIRProtoForwardRequestsBodyHeader) +
+        binlog_length + sizeof(*pmeta) * count;
+    if (expect_len != REQUEST.header.body_len) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "body length: %d != expect length: %d",
+                REQUEST.header.body_len, expect_len);
+        return EINVAL;
+    }
+
+    binlog = (char *)(body_header + 1);
+    pmeta = (FDIRProtoForwardRequestMetadata *)(binlog + binlog_length);
+    pend = pmeta + count;
+    for (; pmeta<pend; pmeta++) {
+        logInfo("req_id: %"PRId64", data_version: %"PRId64,
+                buff2long(pmeta->req_id), buff2long(pmeta->data_version));
+    }
+
+    return deal_replica_push_request(CLUSTER_CONSUMER_CTX,
+            binlog, binlog_length, &data_version);
 }
 
 static int cluster_deal_push_binlog_req(struct fast_task_info *task)
@@ -1206,6 +1264,12 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                         result *= -1;  //force close connection
                     }
                 }
+                break;
+            case FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ:
+                if ((result=cluster_deal_forword_requests_req(task)) > 0) {
+                    result *= -1;  //force close connection
+                }
+                TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
                 if ((result=cluster_deal_push_binlog_req(task)) > 0) {

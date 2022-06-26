@@ -143,9 +143,10 @@
 //replication commands, master -> slave
 #define FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ           211
 #define FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP          212
-#define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          213
-#define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         214
-#define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        215  //when slave binlog not consistent
+#define FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ     213
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ          215
+#define FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP         216
+#define FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT        217  //when slave binlog not consistent
 
 //replication commands, slave -> master
 #define FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ    221
@@ -707,8 +708,23 @@ typedef struct fdir_proto_ping_master_resp_body_part {
     char data_version[8];
 } FDIRProtoPingMasterRespBodyPart;
 
+typedef struct fdir_proto_forward_requests_body_header {
+    char binlog_length[4];
+    char count[4];
+    struct {
+        char first[8];
+        char last[8];
+    } data_version;
+} FDIRProtoForwardRequestsBodyHeader;
+
+typedef struct fdir_proto_forward_request_metadata {
+    char req_id[8];
+    char data_version[8];
+} FDIRProtoForwardRequestMetadata;
+
 typedef struct fdir_proto_push_binlog_req_body_header {
     char binlog_length[4];
+    char padding[4];
     struct {
         char first[8];
         char last[8];
@@ -717,11 +733,13 @@ typedef struct fdir_proto_push_binlog_req_body_header {
 
 typedef struct fdir_proto_push_binlog_resp_body_header {
     char count[4];
+    char padding[4];
 } FDIRProtoPushBinlogRespBodyHeader;
 
 typedef struct fdir_proto_push_binlog_resp_body_part {
     char data_version[8];
     char err_no[2];
+    char padding[6];
 } FDIRProtoPushBinlogRespBodyPart;
 
 typedef struct fdir_proto_replia_query_binlog_info_req {

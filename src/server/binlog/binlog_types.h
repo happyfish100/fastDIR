@@ -188,6 +188,7 @@ typedef struct fdir_record_ptr_array {
 
 typedef struct server_binlog_record_buffer {
     SFVersionRange data_version; //for binlog writer and idempotency (slave only)
+    int64_t req_id;
     volatile int reffer_count;
     void *args;  //for notify & release 
     release_binlog_rbuffer_func release_func;

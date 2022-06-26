@@ -270,6 +270,8 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "JOIN_SLAVE_REQ";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
             return "JOIN_SLAVE_RESP";
+        case FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ:
+            return "FORWORD_REQUESTS_REQ";
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
             return "PUSH_BINLOG_REQ";
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:

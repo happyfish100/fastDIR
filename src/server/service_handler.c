@@ -1005,6 +1005,8 @@ static inline int do_binlog_produce(struct fast_task_info *task,
     RBUFFER = rbuffer;
     if (SLAVE_SERVER_COUNT > 0) {
         task->continue_callback = handle_replica_done;
+        rbuffer->req_id = (IDEMPOTENCY_REQUEST != NULL ?
+                IDEMPOTENCY_REQUEST->req_id : 0);
         binlog_push_to_producer_queue(rbuffer);
         return TASK_STATUS_CONTINUE;
     } else {

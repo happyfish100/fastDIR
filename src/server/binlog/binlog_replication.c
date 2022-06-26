@@ -562,14 +562,18 @@ static void repush_to_replication_queue(FDIRSlaveReplication *replication,
     PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 }
 
-static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
+static int forward_requests(FDIRSlaveReplication *replication)
 {
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
-    struct fast_task_info *waiting_task;
-    FDIRProtoPushBinlogReqBodyHeader *body_header;
+    FDIRProtoHeader *header;
+    FDIRProtoForwardRequestsBodyHeader *bheader;
+    FDIRRequestMetadata *metadata;
+    FDIRRequestMetadata *metaend;
+    FDIRProtoForwardRequestMetadata *pmeta;
     SFVersionRange data_version;
+    int binlog_length;
     int body_len;
     int result;
 
@@ -585,15 +589,17 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
         return 0;
     }
 
+    metadata = replication->req_meta_array.elts;
+    replication->req_meta_array.count = 0;
     data_version.first = head->data_version.first;
     data_version.last = head->data_version.last;
     replication->task->length = sizeof(FDIRProtoHeader) +
-        sizeof(FDIRProtoPushBinlogReqBodyHeader);
+        sizeof(FDIRProtoForwardRequestsBodyHeader);
     while (head != NULL) {
         rb = head;
 
-        waiting_task = (struct fast_task_info *)rb->args;
-        if (replication->task->length + rb->buffer.length >
+        if (replication->task->length + rb->buffer.length + sizeof(
+                    *pmeta) * (replication->req_meta_array.count + 1) >
                 replication->task->size)
         {
             break;
@@ -608,26 +614,51 @@ static int sync_binlog_from_queue(FDIRSlaveReplication *replication)
 
         if ((result=push_result_ring_add(&replication->context.
                         push_result_ctx, &rb->data_version,
-                        waiting_task)) != 0)
+                        rb->args)) != 0)
         {
             sf_terminate_myself();
             return result;
         }
 
+        metadata->req_id = rb->req_id;
+        metadata->data_version = rb->data_version.last;
+
         head = head->nexts[replication->index];
         rb->release_func(rb);
+
+        ++metadata;
+        if (++replication->req_meta_array.count ==
+                replication->req_meta_array.alloc)
+        {
+            break;
+        }
+    }
+    binlog_length = replication->task->length - (sizeof(FDIRProtoHeader)
+            + sizeof(FDIRProtoForwardRequestsBodyHeader));
+
+    metaend = metadata;
+    pmeta = (FDIRProtoForwardRequestMetadata *)(replication->
+            task->data + replication->task->length);
+    for (metadata=replication->req_meta_array.elts;
+            metadata<metaend; metadata++, pmeta++)
+    {
+        long2buff(metadata->req_id, pmeta->req_id);
+        long2buff(metadata->data_version, pmeta->data_version);
     }
 
-    body_header = (FDIRProtoPushBinlogReqBodyHeader *)
+    replication->task->length += sizeof(*pmeta) *
+        replication->req_meta_array.count;
+    header = (FDIRProtoHeader *)replication->task->data;
+    bheader = (FDIRProtoForwardRequestsBodyHeader *)
         (replication->task->data + sizeof(FDIRProtoHeader));
     body_len = replication->task->length - sizeof(FDIRProtoHeader);
-    int2buff(body_len - sizeof(FDIRProtoPushBinlogReqBodyHeader),
-            body_header->binlog_length);
-    long2buff(data_version.first, body_header->data_version.first);
-    long2buff(data_version.last, body_header->data_version.last);
+    int2buff(binlog_length, bheader->binlog_length);
+    int2buff(replication->req_meta_array.count, bheader->count);
+    long2buff(data_version.first, bheader->data_version.first);
+    long2buff(data_version.last, bheader->data_version.last);
 
-    SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
-            FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
+    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ,
+            body_len);
     sf_send_add_event(replication->task);
 
     if (head != NULL) {
@@ -813,7 +844,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         }
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         push_result_ring_clear_timeouts(&replication->context.push_result_ctx);
-        return sync_binlog_from_queue(replication);
+        return forward_requests(replication);
     }
 
     return 0;
