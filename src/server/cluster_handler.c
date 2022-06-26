@@ -653,8 +653,8 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     if (server_ctx->cluster.consumer_ctx != NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "replica consumer thread already exist");
-        ioevent_add_to_deleted_list(server_ctx->
-                cluster.consumer_ctx->task);
+        sf_nio_add_to_deleted_list(task->thread_data,
+                server_ctx->cluster.consumer_ctx->task);
         return EEXIST;
     }
 

@@ -259,14 +259,6 @@ int replication_quorum_init()
         return result;
     }
 
-    {
-    int64_t last_data_version;
-    binlog_get_max_record_version(&last_data_version);
-
-    logInfo("last_data_version: %"PRId64", MY_CONFIRMED_VERSION: %"PRId64,
-            last_data_version, MY_CONFIRMED_VERSION);
-    }
-
     if (MY_CONFIRMED_VERSION > 0) {
         if ((result=rollback_binlog(MY_CONFIRMED_VERSION)) != 0) {
             return result;
@@ -571,6 +563,7 @@ int replication_quorum_end_master_term()
         return 0;
     }
 
+    FC_ATOMIC_INC(MASTER_GENERATION);
     pthread_cond_signal(&fdir_replication_quorum.thread.lcp.cond);
     my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
     current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);

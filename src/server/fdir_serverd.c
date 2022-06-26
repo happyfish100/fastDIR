@@ -132,6 +132,7 @@ static int process_cmdline(int argc, char *argv[], bool *continue_flag)
         return 0;
     }
 
+    fc_enable_fd_cloexec(true);
     log_init2();
     //log_set_time_precision(&g_log_context, LOG_TIME_PRECISION_USECOND);
 

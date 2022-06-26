@@ -1070,6 +1070,17 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
     int network_timeout;
 
     if (CLUSTER_MYSELF_PTR == master) {
+
+        //TODO
+        /*
+        {
+        static int count = 0;
+        if (++count == 30) {
+            replication_quorum_end_master_term();
+        }
+        }
+        */
+
         *is_ping = false;
         return cluster_relationship_master_quorum_check();
     }
