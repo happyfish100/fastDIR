@@ -49,9 +49,42 @@
 #include "common_handler.h"
 #include "cluster_handler.h"
 
+static bool fdir_is_master_callback(void *arg, int64_t *data_version)
+{
+    FDIRClusterServerInfo *master;
+    int64_t my_data_version;
+
+    master = CLUSTER_MASTER_ATOM_PTR;
+    my_data_version = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->
+            confirmed_data_version);
+    if (CLUSTER_MYSELF_PTR == master) {
+        *data_version = my_data_version;
+        return true;
+    } else {
+        if (master == NULL) {
+            *data_version = 0;
+        } else {
+            *data_version = FC_MIN(my_data_version,
+                    master->confirmed_data_version);
+        }
+        return false;
+    }
+}
+
 int cluster_handler_init()
 {
-    return 0;
+    const int process_interval_ms = 1000;
+    const int master_side_timeout = 600;
+    int result;
+
+    if ((result=idempotency_request_metadata_init(&REPLICA_REQ_META_CTX,
+                    fdir_is_master_callback, NULL)) != 0)
+    {
+        return result;
+    }
+
+    return idempotency_request_metadata_start(
+            process_interval_ms, master_side_timeout);
 }
 
 int cluster_handler_destroy()
@@ -432,6 +465,7 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
     int count;
     int expect_len;
     SFVersionRange data_version;
+    SFRequestMetadata metadata;
     FDIRProtoForwardRequestMetadata *pmeta;
     FDIRProtoForwardRequestMetadata *pend;
     FDIRProtoForwardRequestsBodyHeader *body_header;
@@ -468,8 +502,13 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
     pmeta = (FDIRProtoForwardRequestMetadata *)(binlog + binlog_length);
     pend = pmeta + count;
     for (; pmeta<pend; pmeta++) {
-        logInfo("req_id: %"PRId64", data_version: %"PRId64,
-                buff2long(pmeta->req_id), buff2long(pmeta->data_version));
+        metadata.req_id = buff2long(pmeta->req_id);
+        metadata.data_version = buff2long(pmeta->data_version);
+        if ((result=idempotency_request_metadata_add(
+                        &REPLICA_REQ_META_CTX, &metadata)) != 0)
+        {
+            return result;
+        }
     }
 
     return deal_replica_push_request(CLUSTER_CONSUMER_CTX,

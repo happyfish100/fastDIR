@@ -241,6 +241,9 @@ int main(int argc, char *argv[])
         if ((result=service_handler_init()) != 0) {
             break;
         }
+        if ((result=cluster_handler_init()) != 0) {
+            break;
+        }
 
         if ((result=server_binlog_init()) != 0) {
             break;

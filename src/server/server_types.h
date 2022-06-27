@@ -182,17 +182,6 @@ typedef struct fdir_cluster_server_array {
     volatile int change_version;
 } FDIRClusterServerArray;
 
-typedef struct fdir_request_metadata {
-    int64_t req_id;
-    int64_t data_version;
-} FDIRRequestMetadata;
-
-typedef struct fdir_request_metadata_array {
-    FDIRRequestMetadata *elts;
-    int count;
-    int alloc;
-} FDIRRequestMetadataArray;
-
 struct server_binlog_record_buffer;
 
 typedef struct fdir_record_buffer_queue {
@@ -260,7 +249,7 @@ typedef struct fdir_slave_replication {
         ConnectionInfo conn;
     } connection_info;
 
-    FDIRRequestMetadataArray req_meta_array;
+    SFRequestMetadataArray req_meta_array;
 
     FDIRReplicationContext context;
     struct fdir_slave_replication *next;

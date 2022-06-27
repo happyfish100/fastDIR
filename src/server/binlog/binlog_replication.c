@@ -569,8 +569,8 @@ static int forward_requests(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *tail;
     FDIRProtoHeader *header;
     FDIRProtoForwardRequestsBodyHeader *bheader;
-    FDIRRequestMetadata *metadata;
-    FDIRRequestMetadata *metaend;
+    SFRequestMetadata *metadata;
+    SFRequestMetadata *metaend;
     FDIRProtoForwardRequestMetadata *pmeta;
     SFVersionRange data_version;
     int binlog_length;
