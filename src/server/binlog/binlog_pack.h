@@ -77,6 +77,10 @@ int binlog_unpack_inode(const char *str, const int len,
         int64_t *inode, const char **record_end,
         char *error_info, const int error_size);
 
+int binlog_extract_inode_operation(const char *str,
+        const bool follow_hardlink, int64_t *inode,
+        int *operation, unsigned int *hash_code);
+
 int binlog_detect_record(const char *str, const int len,
         int64_t *data_version, const char **rec_end,
         char *error_info, const int error_size);

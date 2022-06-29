@@ -127,6 +127,16 @@ static inline int binlog_find_position_ex(const char *subdir_name,
     binlog_find_position_ex(FDIR_BINLOG_SUBDIR_NAME, hint_pos, \
             last_data_version, position)
 
+int binlog_find_inode_ex(const char *subdir_name,
+        const SFBinlogFilePosition *hint_pos,
+        const int64_t data_version, const bool follow_hardlink,
+        int64_t *inode, int *operation, unsigned int *hash_code);
+
+#define binlog_find_inode(hint_pos, data_version, \
+        follow_hardlink, inode, operation, hash_code) \
+    binlog_find_inode_ex(FDIR_BINLOG_SUBDIR_NAME, hint_pos, data_version, \
+            follow_hardlink, inode, operation, hash_code)
+
 int binlog_check_consistency(const string_t *sbinlog,
         const SFBinlogFilePosition *hint_pos,
         int *binlog_count, uint64_t *first_unmatched_dv);

@@ -113,6 +113,31 @@
 #define BINLOG_RECORD_FIELD_TAG_DATA_VERSION_LEN \
     (sizeof(BINLOG_RECORD_FIELD_TAG_DATA_VERSION_STR) - 1)
 
+#define BINLOG_RECORD_FIELD_TAG_INODE_STR \
+    BINLOG_RECORD_FIELD_NAME_INODE"="
+#define BINLOG_RECORD_FIELD_TAG_INODE_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_INODE_STR) - 1)
+
+#define BINLOG_RECORD_FIELD_TAG_OPERATION_STR \
+    BINLOG_RECORD_FIELD_NAME_OPERATION"="
+#define BINLOG_RECORD_FIELD_TAG_OPERATION_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_OPERATION_STR) - 1)
+
+#define BINLOG_RECORD_FIELD_TAG_HASH_CODE_STR \
+    BINLOG_RECORD_FIELD_NAME_HASH_CODE"="
+#define BINLOG_RECORD_FIELD_TAG_HASH_CODE_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_HASH_CODE_STR) - 1)
+
+#define BINLOG_RECORD_FIELD_TAG_MODE_STR \
+    BINLOG_RECORD_FIELD_NAME_MODE"="
+#define BINLOG_RECORD_FIELD_TAG_MODE_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_MODE_STR) - 1)
+
+#define BINLOG_RECORD_FIELD_TAG_SRC_INODE_STR \
+    BINLOG_RECORD_FIELD_NAME_SRC_INODE"="
+#define BINLOG_RECORD_FIELD_TAG_SRC_INODE_LEN \
+    (sizeof(BINLOG_RECORD_FIELD_TAG_SRC_INODE_STR) - 1)
+
 #define BINLOG_FIELD_TYPE_INTEGER   'i'
 #define BINLOG_FIELD_TYPE_STRING    's'
 
@@ -624,7 +649,6 @@ static int binlog_get_next_field_value(FieldParserContext *pcontext)
     }
 
     value = pcontext->fv.name + BINLOG_RECORD_FIELD_NAME_LENGTH + 1;
-    endptr = NULL;
     n = strtoll(value, &endptr, 10);
     if (*endptr == ',') {
         pcontext->fv.type = BINLOG_FIELD_TYPE_STRING;
@@ -1373,6 +1397,52 @@ int binlog_unpack_inode(const char *str, const int len,
 
     sprintf(error_info, "can't find field: inode");
     return ENOENT;
+}
+
+int binlog_extract_inode_operation(const char *str,
+        const bool follow_hardlink, int64_t *inode,
+        int *operation, unsigned int *hash_code)
+{
+    char *val;
+    char *endptr;
+    int mode;
+    string_t op_type;
+
+    if ((val=strstr(str, BINLOG_RECORD_FIELD_TAG_INODE_STR)) == NULL) {
+        return EINVAL;
+    }
+    *inode = strtoll(val + BINLOG_RECORD_FIELD_TAG_INODE_LEN, NULL, 10);
+
+    if ((val=strstr(str, BINLOG_RECORD_FIELD_TAG_OPERATION_STR)) == NULL) {
+        return EINVAL;
+    }
+    op_type.len = strtol(val + BINLOG_RECORD_FIELD_TAG_OPERATION_LEN,
+            &endptr, 10);
+    op_type.str = endptr + 1;  //skip comma
+    *operation = get_operation_integer(&op_type);
+
+    if ((val=strstr(str, BINLOG_RECORD_FIELD_TAG_HASH_CODE_STR)) == NULL) {
+        return EINVAL;
+    }
+    *hash_code = strtoll(val + BINLOG_RECORD_FIELD_TAG_HASH_CODE_LEN, NULL, 10);
+
+    if (!(follow_hardlink && *operation == BINLOG_OP_CREATE_DENTRY_INT)) {
+        return 0;
+    }
+
+    if ((val=strstr(str, BINLOG_RECORD_FIELD_TAG_MODE_STR)) == NULL) {
+        return EINVAL;
+    }
+    mode = strtol(val + BINLOG_RECORD_FIELD_TAG_MODE_LEN, NULL, 10);
+    if (!FDIR_IS_DENTRY_HARD_LINK(mode)) {
+        return 0;
+    }
+
+    if ((val=strstr(str, BINLOG_RECORD_FIELD_TAG_SRC_INODE_STR)) == NULL) {
+        return EINVAL;
+    }
+    *inode = strtoll(val + BINLOG_RECORD_FIELD_TAG_SRC_INODE_LEN, NULL, 10);
+    return 0;
 }
 
 int binlog_detect_record_forward(const char *str, const int len,

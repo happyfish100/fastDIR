@@ -965,3 +965,31 @@ int binlog_check_consistency(const string_t *sbinlog,
     *binlog_count = slave_rows;
     return result;
 }
+
+int binlog_find_inode_ex(const char *subdir_name,
+        const SFBinlogFilePosition *hint_pos,
+        const int64_t data_version, const bool follow_hardlink,
+        int64_t *inode, int *operation, unsigned int *hash_code)
+{
+    int result;
+    int read_bytes;
+    ServerBinlogReader reader;
+
+    if ((result=binlog_reader_init_ex(&reader, subdir_name,
+                    hint_pos, data_version - 1)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=binlog_reader_read_to_buffer(&reader, reader.
+                    binlog_buffer.buff, 1024, &read_bytes)) != 0)
+    {
+        return result;
+    }
+
+    *(reader.binlog_buffer.buff + read_bytes) = '\0';
+    result = binlog_extract_inode_operation(reader.binlog_buffer.
+            buff, follow_hardlink, inode, operation, hash_code);
+    binlog_reader_destroy(&reader);
+    return result;
+}

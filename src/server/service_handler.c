@@ -45,6 +45,8 @@
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_producer.h"
 #include "binlog/binlog_write.h"
+#include "binlog/binlog_reader.h"
+#include "binlog/binlog_pack.h"
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
@@ -1791,14 +1793,121 @@ static int server_parse_inode_for_update(struct fast_task_info *task,
     return 0;
 }
 
+static int idempotency_output(struct fast_task_info *task,
+        const int resp_cmd, const int64_t data_version)
+{
+    int result;
+    int operation;
+    unsigned int hash_code;
+    bool follow_hardlink;
+    int64_t inode;
+    FDIRDEntryStat stat;
+    FDIRDEntryStat *pstat;
+    FDIRDataThreadContext *thread_ctx;
+    FDIRServerDentry *dentry;
+    SFBinlogFilePosition hint_pos;
+
+    switch (resp_cmd) {
+        case FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP :
+        case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP:
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP:
+        case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP:
+        case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP:
+        case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP:
+        case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP:
+        case FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP:
+        case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP:
+        case FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP:
+        case FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP:
+            break;
+        default:
+            return 0;
+    }
+
+    hint_pos.index = binlog_get_current_write_index();
+    hint_pos.offset = 0;
+    follow_hardlink = (resp_cmd == FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP ||
+            resp_cmd == FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
+    if ((result=binlog_find_inode(&hint_pos, data_version,
+                    follow_hardlink, &inode, &operation,
+                    &hash_code)) != 0)
+    {
+        return result;
+    }
+
+    if (resp_cmd == FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP ||
+            resp_cmd == FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP)
+    {
+        if (operation != BINLOG_OP_REMOVE_DENTRY_INT) {
+            return EINVAL;
+        }
+        memset(&stat, 0, sizeof(stat));
+        pstat = &stat;
+    } else {
+        switch (resp_cmd) {
+            case FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP:
+            case FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP:
+            case FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP:
+            case FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP:
+            case FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP:
+            case FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP:
+                if (operation != BINLOG_OP_CREATE_DENTRY_INT) {
+                    return EINVAL;
+                }
+                break;
+            case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP:
+            case FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP:
+            case FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP:
+                if (operation != BINLOG_OP_UPDATE_DENTRY_INT) {
+                    return EINVAL;
+                }
+                break;
+            default:
+                break;
+        }
+
+        thread_ctx = get_data_thread_context(hash_code);
+        if ((result=inode_index_get_dentry(thread_ctx,
+                        inode, &dentry)) == 0)
+        {
+            pstat = &dentry->stat;
+        } else {
+            memset(&stat, 0, sizeof(stat));
+            pstat = &stat;
+        }
+    }
+
+    dstat_output(task, inode, pstat);
+    return 0;
+}
+
 static int service_update_prepare_and_check(struct fast_task_info *task,
         const int resp_cmd, bool *deal_done)
 {
     if (SERVER_TASK_TYPE == SF_SERVER_TASK_TYPE_CHANNEL_USER &&
             IDEMPOTENCY_CHANNEL != NULL)
     {
+        SFProtoIdempotencyAdditionalHeader *adheader;
         IdempotencyRequest *request;
+        int64_t req_id;
+        int64_t data_version;
         int result;
+
+        adheader = (SFProtoIdempotencyAdditionalHeader *)REQUEST.body;
+        req_id = buff2long(adheader->req_id);
+        if (SF_IDEMPOTENCY_EXTRACT_SERVER_ID(req_id) != CLUSTER_MY_SERVER_ID) {
+            if (idempotency_request_metadata_get(&REPLICA_REQ_META_CTX,
+                        req_id, &data_version) == 0)
+            {
+                *deal_done = true;
+                if (data_version <= FC_ATOMIC_GET(MY_CONFIRMED_VERSION)) {
+                    result = idempotency_output(task, resp_cmd, data_version);
+                    return (result == ENOENT ? EAGAIN : result);
+                } else {
+                    return EAGAIN;
+                }
+            }
+        }
 
         request = sf_server_update_prepare_and_check(
                 &REQUEST, &SERVER_CTX->service.request_allocator,

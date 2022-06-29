@@ -457,12 +457,6 @@ static void deal_version_change()
     }
     more_than_half = CLUSTER_SERVER_ARRAY.count / 2 + 1;
 
-    logInfo("file: "__FILE__", line: %d, "
-            "my_current_version: %"PRId64", "
-            "my_confirmed_version: %"PRId64", count: %d, more_than_half: %d",
-            __LINE__, my_current_version,
-            my_confirmed_version, count, more_than_half);
-
     if (count + 1 >= more_than_half) {  //quorum majority
         if (CLUSTER_SERVER_ARRAY.count == 3) {  //fast path
             if (count == 2) {
