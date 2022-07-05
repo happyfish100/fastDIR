@@ -33,6 +33,7 @@ typedef struct fdir_replication_quorum_context {
         volatile int dealing;
         volatile int running;
         pthread_lock_cond_pair_t lcp;
+        int64_t *data_versions;
     } thread;
 
     struct {
@@ -52,6 +53,7 @@ static FDIRReplicationQuorumContext fdir_replication_quorum;
 #define QUORUM_ENTRY_ALLOCATOR fdir_replication_quorum.quorum_entry_allocator
 #define CONFIRMED_COUNTER fdir_replication_quorum.confirmed.counter
 #define MASTER_GENERATION fdir_replication_quorum.master_generation
+#define THREAD_DATA_VERSIONS fdir_replication_quorum.thread.data_versions
 
 static inline const char *get_confirmed_filename(
         const int index, char *filename, const int size)
@@ -253,6 +255,12 @@ int replication_quorum_init()
         return result;
     }
 
+    THREAD_DATA_VERSIONS = fc_malloc(sizeof(int64_t) *
+            CLUSTER_SERVER_ARRAY.count);
+    if (THREAD_DATA_VERSIONS == NULL) {
+        return ENOMEM;
+    }
+
     if ((result=load_confirmed_version((int64_t *)
                     &MY_CONFIRMED_VERSION)) != 0)
     {
@@ -420,24 +428,14 @@ void replication_quorum_deal_version_change(
 
 static void deal_version_change()
 {
-#define FIXED_SERVER_COUNT  8
     FDIRClusterServerInfo *server;
     FDIRClusterServerInfo *end;
     int64_t my_current_version;
     int64_t my_confirmed_version;
     int64_t confirmed_version;
-    int64_t fixed_data_versions[FIXED_SERVER_COUNT];
-    int64_t *data_versions;
     int more_than_half;
     int count;
     int index;
-
-    if (CLUSTER_SERVER_ARRAY.count <= FIXED_SERVER_COUNT) {
-        data_versions = fixed_data_versions;
-    } else {
-        data_versions = fc_malloc(sizeof(int64_t) *
-                CLUSTER_SERVER_ARRAY.count);
-    }
 
     count = 0;
     my_current_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
@@ -452,7 +450,7 @@ static void deal_version_change()
         if (confirmed_version > my_confirmed_version &&
                 confirmed_version <= my_current_version)
         {
-            data_versions[count++] = confirmed_version;
+            THREAD_DATA_VERSIONS[count++] = confirmed_version;
         }
     }
     more_than_half = CLUSTER_SERVER_ARRAY.count / 2 + 1;
@@ -460,17 +458,17 @@ static void deal_version_change()
     if (count + 1 >= more_than_half) {  //quorum majority
         if (CLUSTER_SERVER_ARRAY.count == 3) {  //fast path
             if (count == 2) {
-                my_confirmed_version = FC_MAX(data_versions[0],
-                        data_versions[1]);
+                my_confirmed_version = FC_MAX(THREAD_DATA_VERSIONS[0],
+                        THREAD_DATA_VERSIONS[1]);
             } else {  //count == 1
-                my_confirmed_version = data_versions[0];
+                my_confirmed_version = THREAD_DATA_VERSIONS[0];
             }
         } else {
-            qsort(data_versions, count, sizeof(int64_t),
+            qsort(THREAD_DATA_VERSIONS, count, sizeof(int64_t),
                     (int (*)(const void *, const void *))
                     compare_int64);
             index = (count + 1) - more_than_half;
-            my_confirmed_version = data_versions[index];
+            my_confirmed_version = THREAD_DATA_VERSIONS[index];
         }
 
         FC_ATOMIC_SET(MY_CONFIRMED_VERSION, my_confirmed_version);
@@ -482,10 +480,6 @@ static void deal_version_change()
         }
 
         notify_waiting_tasks(my_confirmed_version);
-    }
-
-    if (data_versions != fixed_data_versions) {
-        free(data_versions);
     }
 }
 

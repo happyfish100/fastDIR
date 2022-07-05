@@ -936,8 +936,15 @@ static inline void service_idempotency_request_finish(
         struct fast_task_info *task, const int result)
 {
     if (IDEMPOTENCY_REQUEST != NULL) {
-        IDEMPOTENCY_REQUEST->finished = true;
-        IDEMPOTENCY_REQUEST->output.result = result;
+        if (SF_IS_SERVER_RETRIABLE_ERROR(result)) {
+            if (IDEMPOTENCY_CHANNEL != NULL) {
+                idempotency_channel_remove_request(IDEMPOTENCY_CHANNEL,
+                        IDEMPOTENCY_REQUEST->req_id);
+            }
+        } else {
+            IDEMPOTENCY_REQUEST->finished = true;
+            IDEMPOTENCY_REQUEST->output.result = result;
+        }
         idempotency_request_release(IDEMPOTENCY_REQUEST);
 
         /* server task type for channel ONLY, do NOT set task type to NONE!!! */
@@ -3029,15 +3036,7 @@ static int service_process_update(struct fast_task_info *task,
         if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
                     count, alive_count))
         {
-            if (IDEMPOTENCY_REQUEST != NULL) {
-                idempotency_channel_remove_request(IDEMPOTENCY_CHANNEL,
-                        IDEMPOTENCY_REQUEST->req_id);
-                idempotency_request_release(IDEMPOTENCY_REQUEST);
-
-                /* server task type for channel ONLY,
-                   do NOT set task type to NONE!!! */
-                IDEMPOTENCY_REQUEST = NULL;
-            }
+            service_idempotency_request_finish(task, EAGAIN);
             return EAGAIN;
         }
     }
