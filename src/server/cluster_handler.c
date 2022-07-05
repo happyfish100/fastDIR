@@ -502,12 +502,13 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
     pmeta = (FDIRProtoForwardRequestMetadata *)(binlog + binlog_length);
     pend = pmeta + count;
     for (; pmeta<pend; pmeta++) {
-        metadata.req_id = buff2long(pmeta->req_id);
-        metadata.data_version = buff2long(pmeta->data_version);
-        if ((result=idempotency_request_metadata_add(
-                        &REPLICA_REQ_META_CTX, &metadata)) != 0)
-        {
-            return result;
+        if ((metadata.req_id=buff2long(pmeta->req_id)) != 0) {
+            metadata.data_version = buff2long(pmeta->data_version);
+            if ((result=idempotency_request_metadata_add(&REPLICA_REQ_META_CTX,
+                            &metadata, 0)) != 0)
+            {
+                return result;
+            }
         }
     }
 

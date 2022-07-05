@@ -1904,7 +1904,7 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
         req_id = buff2long(adheader->req_id);
         if (SF_IDEMPOTENCY_EXTRACT_SERVER_ID(req_id) != CLUSTER_MY_SERVER_ID) {
             if (idempotency_request_metadata_get(&REPLICA_REQ_META_CTX,
-                        req_id, &data_version) == 0)
+                        req_id, &data_version, NULL) == 0)
             {
                 *deal_done = true;
                 if (data_version <= FC_ATOMIC_GET(MY_CONFIRMED_VERSION)) {
@@ -3036,6 +3036,11 @@ static int service_process_update(struct fast_task_info *task,
         if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
                     count, alive_count))
         {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "active server count: %d < half of servers: %d, "
+                    "should try again later", alive_count,
+                    CLUSTER_SERVER_ARRAY.count / 2 + 1);
+            TASK_CTX.common.log_level = LOG_NOTHING;
             service_idempotency_request_finish(task, EAGAIN);
             return EAGAIN;
         }
