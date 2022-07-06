@@ -120,6 +120,7 @@ int binlog_replay_init_ex(BinlogReplayContext *replay_ctx,
 
     rend = replay_ctx->record_array.records + replay_ctx->record_array.size;
     for (record=replay_ctx->record_array.records; record<rend; record++) {
+        record->source = fdir_record_source_slave_replay;
         record->notify.func = data_thread_deal_done_callback;
         record->notify.args = replay_ctx;
     }

@@ -176,7 +176,7 @@ static inline int service_check_master(struct fast_task_info *task)
     if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
-                "i am not master");
+                "[service] i am NOT master");
         return SF_RETRIABLE_ERROR_NOT_MASTER;
     }
 
@@ -1594,6 +1594,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
 {
     sf_hold_task(task);
 
+    RECORD->source = fdir_record_source_master_rpc;
     RECORD->record_type = record_type;
     RECORD->notify.func = notify_func;  //call by data thread
     RECORD->notify.args = task;

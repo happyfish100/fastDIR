@@ -346,6 +346,7 @@ static int do_dump()
 
     end = records.elts + g_data_thread_vars.thread_array.count;
     for (record=records.elts; record<end; record++) {
+        record->source = fdir_record_source_binlog_dump;
         record->record_type = fdir_record_type_query;
         record->operation = SERVER_OP_DUMP_DATA_INT;
         record->notify.func = data_dump_finish_notify;

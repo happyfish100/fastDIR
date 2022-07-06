@@ -248,6 +248,7 @@ static inline int init_records(BinlogReplayMTContext *ctx,
 
     end = bctx->records + bctx->elements_limit;
     for (record=bctx->records; record<end; record++) {
+        record->source = fdir_record_source_binlog_replay;
         record->notify.func = data_thread_deal_done_callback;
         record->notify.args = ctx;
         record->extra.arr_index = arr_index;

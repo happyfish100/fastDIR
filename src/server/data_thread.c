@@ -958,10 +958,25 @@ static int deal_dump_dentry(FDIRDataThreadContext *thread_ctx,
 static int deal_update_record(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
 {
+    struct fast_task_info *task;
     int result;
     int ignore_errno;
     bool set_data_verson;
     bool is_error;
+
+    if (record->source == fdir_record_source_master_rpc &&
+            CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR)
+    {
+        task = record->notify.args;
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "[data-thread] i am NOT master");
+
+        result = SF_RETRIABLE_ERROR_NOT_MASTER;
+        is_error = true;
+        record->notify.func(record, result, is_error);
+        return result;
+    }
 
     record->affected.count = 0;
     switch (record->operation) {

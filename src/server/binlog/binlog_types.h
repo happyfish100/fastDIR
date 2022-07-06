@@ -104,6 +104,13 @@ typedef enum {
     fdir_record_type_query = 'q'
 } FDIRRecordType;
 
+typedef enum {
+    fdir_record_source_binlog_replay = 0,
+    fdir_record_source_slave_replay = 0,
+    fdir_record_source_master_rpc = 1,
+    fdir_record_source_binlog_dump = 2
+} FDIRRecordSource;
+
 typedef struct {
     FDIRServerDentry *dentry;
     DABinlogOpType op_type;
@@ -172,6 +179,8 @@ typedef struct fdir_binlog_record {
         short data_thread_index;
         short arr_index;
     } extra;   //for data loader
+
+    FDIRRecordSource source;
 
     struct fdir_binlog_record *next; //for data thread queue
 } FDIRBinlogRecord;
