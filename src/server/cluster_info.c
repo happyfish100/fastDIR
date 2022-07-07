@@ -270,7 +270,7 @@ int cluster_info_setup_sync_to_file_task()
     ScheduleArray schedule_array;
 
     INIT_SCHEDULE_ENTRY(schedule_entry, sched_generate_next_id(),
-            0, 0, 0, 1, cluster_info_sync_to_file, (void *)0x1234);
+            0, 0, 0, 1, cluster_info_sync_to_file, NULL);
 
     schedule_array.count = 1;
     schedule_array.entries = &schedule_entry;

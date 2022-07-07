@@ -316,7 +316,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
 }
 
 static int cluster_get_master(FDIRClusterServerStatus *server_status,
-        const bool log_connect_error, int *active_count)
+        const bool log_connect_error, int *success_count, int *active_count)
 {
 #define STATUS_ARRAY_FIXED_COUNT  8
 	FDIRClusterServerInfo *server;
@@ -336,6 +336,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
         bytes = sizeof(FDIRClusterServerStatus) * CLUSTER_SERVER_ARRAY.count;
         cs_status = (FDIRClusterServerStatus *)fc_malloc(bytes);
         if (cs_status == NULL) {
+            *success_count = *active_count = 0;
             return ENOMEM;
         }
     }
@@ -353,7 +354,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 		}
 	}
 
-	*active_count = current_status - cs_status;
+    *success_count = *active_count = current_status - cs_status;
     if (*active_count == 0) {
         logError("file: "__FILE__", line: %d, "
                 "get server status fail, server count: %d",
@@ -361,18 +362,18 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
         return result == 0 ? ENOENT : result;
     }
 
-    if (NEED_REQUEST_VOTE_NODE(*active_count)) {
+    if (NEED_REQUEST_VOTE_NODE(*success_count)) {
         current_status->cs = NULL;
         if (get_vote_server_status(current_status) == 0) {
-            ++(*active_count);
+            ++(*success_count);
         }
     }
 
-	qsort(cs_status, *active_count,
+	qsort(cs_status, *success_count,
             sizeof(FDIRClusterServerStatus),
             cluster_cmp_server_status);
 
-	for (i=0; i<*active_count; i++) {
+	for (i=0; i<*success_count; i++) {
         if (cs_status[i].cs == NULL) {
             logDebug("file: "__FILE__", line: %d, "
                     "%d. status from vote server", __LINE__, i + 1);
@@ -389,7 +390,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
         }
     }
 
-	memcpy(server_status, cs_status + (*active_count - 1),
+	memcpy(server_status, cs_status + (*success_count - 1),
 			sizeof(FDIRClusterServerStatus));
     if (cs_status != status_array) {
         free(cs_status);
@@ -904,6 +905,7 @@ static int cluster_notify_master_changed(FDIRClusterServerStatus *server_status)
 static int cluster_select_master()
 {
 	int result;
+    int success_count;
     int active_count;
     int i;
     int max_sleep_secs;
@@ -938,8 +940,8 @@ static int cluster_select_master()
             need_log = false;
         }
 
-        if ((result=cluster_get_master(&server_status,
-                        need_log, &active_count)) != 0)
+        if ((result=cluster_get_master(&server_status, need_log,
+                        &success_count, &active_count)) != 0)
         {
             return result;
         }
@@ -947,7 +949,7 @@ static int cluster_select_master()
         ++i;
         if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
                     VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
-                    active_count) && !FORCE_MASTER_ELECTION)
+                    success_count) && !FORCE_MASTER_ELECTION)
         {
             sleep_secs = 1;
             if (need_log) {
@@ -955,7 +957,7 @@ static int cluster_select_master()
                         "round %dth select master fail because alive server "
                         "count: %d < half of total server count: %d, "
                         "try again after %d seconds.", __LINE__, i,
-                        active_count, CLUSTER_SERVER_ARRAY.count,
+                        success_count, CLUSTER_SERVER_ARRAY.count,
                         sleep_secs);
             }
             sleep(sleep_secs);
