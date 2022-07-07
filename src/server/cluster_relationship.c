@@ -31,6 +31,8 @@
 
 #define ELECTION_MAX_SLEEP_SECS   32
 
+#define ALIGN_TIME(interval) (((interval) / 60) * 60)
+
 #define NEED_REQUEST_VOTE_NODE(active_count) \
     SF_ELECTION_QUORUM_NEED_REQUEST_VOTE_NODE(MASTER_ELECTION_QUORUM, \
             VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count, active_count)
@@ -62,6 +64,9 @@ static inline void proto_unpack_server_status(
     server_status->status = resp->status;
     server_status->force_election = resp->force_election;
     server_status->server_id = buff2int(resp->server_id);
+    server_status->up_time = buff2int(resp->up_time);
+    server_status->last_heartbeat_time = buff2int(resp->last_heartbeat_time);
+    server_status->last_shutdown_time = buff2int(resp->last_shutdown_time);
     server_status->data_version = buff2long(resp->data_version);
 }
 
@@ -247,6 +252,8 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
 {
     FDIRClusterServerStatus *status1;
     FDIRClusterServerStatus *status2;
+    int restart_interval1;
+    int restart_interval2;
     int sub;
 
     status1 = (FDIRClusterServerStatus *)p1;
@@ -268,12 +275,29 @@ static int cluster_cmp_server_status(const void *p1, const void *p2)
         return sub;
     }
 
+    sub = status1->last_heartbeat_time - status2->last_heartbeat_time;
+    if (!(sub >= -3 && sub <= 3)) {
+        return sub;
+    }
+
     sub = (int)status1->master_hint - (int)status2->master_hint;
     if (sub != 0) {
         return sub;
     }
 
     sub = (int)status1->force_election - (int)status2->force_election;
+    if (sub != 0) {
+        return sub;
+    }
+
+    sub = ALIGN_TIME(status2->up_time) - ALIGN_TIME(status1->up_time);
+    if (sub != 0) {
+        return sub;
+    }
+
+    restart_interval1 = status1->up_time - status1->last_shutdown_time;
+    restart_interval2 = status2->up_time - status2->last_shutdown_time;
+    sub = ALIGN_TIME(restart_interval2) - ALIGN_TIME(restart_interval1);
     if (sub != 0) {
         return sub;
     }
@@ -297,6 +321,9 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
                 &CLUSTER_MYSELF_PTR->status, 0);
         server_status->force_election =
             (FORCE_MASTER_ELECTION ? 1 : 0);
+        server_status->up_time = g_sf_global_vars.up_time;
+        server_status->last_heartbeat_time = CLUSTER_LAST_HEARTBEAT_TIME;
+        server_status->last_shutdown_time = CLUSTER_LAST_SHUTDOWN_TIME;
         server_status->server_id = CLUSTER_MY_SERVER_ID;
         server_status->data_version = DATA_CURRENT_VERSION;
         return 0;
@@ -374,19 +401,26 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
             cluster_cmp_server_status);
 
 	for (i=0; i<*success_count; i++) {
+        int restart_interval;
+
         if (cs_status[i].cs == NULL) {
             logDebug("file: "__FILE__", line: %d, "
                     "%d. status from vote server", __LINE__, i + 1);
         } else {
+            restart_interval = cs_status[i].up_time -
+                cs_status[i].last_shutdown_time;
             logDebug("file: "__FILE__", line: %d, "
                     "server_id: %d, ip addr %s:%u, is_master: %d, "
-                    "status: %d(%s), data_version: %"PRId64, __LINE__,
-                    cs_status[i].server_id,
+                    "status: %d(%s), data_version: %"PRId64", "
+                    "last_heartbeat_time: %d, up_time: %d, "
+                    "restart interval: %d", __LINE__, cs_status[i].server_id,
                     CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
                     CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
                     cs_status[i].is_master, cs_status[i].status,
                     fdir_get_server_status_caption(cs_status[i].status),
-                    cs_status[i].data_version);
+                    cs_status[i].data_version, cs_status[i].
+                    last_heartbeat_time, ALIGN_TIME(cs_status[i].up_time),
+                    ALIGN_TIME(restart_interval));
         }
     }
 
@@ -915,7 +949,7 @@ static int cluster_select_master()
     bool force_sleep;
     time_t start_time;
     time_t last_log_time;
-    char status_prompt[512];
+    char prompt[512];
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
 
@@ -965,20 +999,25 @@ static int cluster_select_master()
         }
 
         if ((active_count == CLUSTER_SERVER_ARRAY.count) ||
-                (active_count >= 2 && server_status.is_master))
+                (active_count >= 2 && server_status.is_master) ||
+                (start_time - server_status.last_heartbeat_time <=
+                 ELECTION_MASTER_LOST_TIMEOUT + 1))
         {
             break;
         }
 
-        if ((server_status.status < FDIR_SERVER_STATUS_OFFLINE) &&
+        if ((server_status.up_time - server_status.last_shutdown_time >
+                    3600) && (server_status.last_heartbeat_time == 0) &&
                 !FORCE_MASTER_ELECTION)
         {
-            sprintf(status_prompt, "the candidate server status: %d (%s) "
-                    "does not match the selection rule. you must start "
-                    "ALL servers in the first time, or remove the "
-                    "deprecated server(s) from the config file, or execute "
-                    " fdir_serverd with option --%s", server_status.status,
-                    fdir_get_server_status_caption(server_status.status),
+             sprintf(prompt, "the candidate server id: %d, "
+                    "does not match the selection rule because it's "
+                    "restart interval: %d exceeds 3600, "
+                    "you must start ALL servers in the first time, "
+                    "or remove the deprecated server(s) from the "
+                    "config file, or execute fdir_serverd with option --%s",
+                    server_status.cs->server->id, (int)(server_status.
+                        up_time - server_status.last_shutdown_time),
                     FDIR_FORCE_ELECTION_LONG_OPTION_STR);
             force_sleep = true;
         } else {
@@ -987,10 +1026,10 @@ static int cluster_select_master()
             }
 
             if (FORCE_MASTER_ELECTION) {
-                sprintf(status_prompt, "force_master_election: %d, ",
+                sprintf(prompt, "force_master_election: %d, ",
                         FORCE_MASTER_ELECTION);
             } else {
-                *status_prompt = '\0';
+                *prompt = '\0';
             }
 
             force_sleep = false;
@@ -1012,7 +1051,7 @@ static int cluster_select_master()
                     "round %dth select master, alive server count: %d "
                     "< server count: %d, %stry again after %d seconds.",
                     __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
-                    status_prompt, sleep_secs);
+                    prompt, sleep_secs);
         }
 
         sleep(sleep_secs);
@@ -1157,6 +1196,7 @@ static void *cluster_thread_entrance(void* arg)
             {
                 fail_count = 0;
                 ping_start_time = g_current_time;
+                CLUSTER_LAST_HEARTBEAT_TIME = g_current_time;
                 sleep_seconds = 1;
             } else if (is_ping) {
                 ++fail_count;

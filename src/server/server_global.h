@@ -67,6 +67,10 @@ typedef struct server_global_vars {
             int max_wait_time;
         } master_election;
 
+        /* follower ping master or master check brain-split */
+        volatile time_t last_heartbeat_time;
+        time_t last_shutdown_time;
+
         SFContext sf_context;  //for cluster communication
     } cluster;
 
@@ -150,6 +154,11 @@ typedef struct server_global_vars {
     master_election.master_lost_timeout
 #define ELECTION_MAX_WAIT_TIME g_server_global_vars.cluster. \
     master_election.max_wait_time
+
+#define CLUSTER_LAST_HEARTBEAT_TIME g_server_global_vars. \
+    cluster.last_heartbeat_time
+#define CLUSTER_LAST_SHUTDOWN_TIME  g_server_global_vars. \
+    cluster.last_shutdown_time
 
 #define CLUSTER_CONFIG          g_server_global_vars.cluster.config
 #define CLUSTER_SERVER_CONFIG   CLUSTER_CONFIG.server_cfg

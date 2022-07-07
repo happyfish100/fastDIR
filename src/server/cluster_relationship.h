@@ -30,6 +30,9 @@ typedef struct fdir_cluster_server_status {
     char status;
     char force_election;
     int server_id;
+    int last_heartbeat_time;
+    int up_time;
+    int last_shutdown_time;
     int64_t data_version;
 } FDIRClusterServerStatus;
 

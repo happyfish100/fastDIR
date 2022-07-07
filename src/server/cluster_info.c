@@ -34,6 +34,9 @@
 #define CLUSTER_INFO_ITEM_IS_MASTER          "is_master"
 #define CLUSTER_INFO_ITEM_STATUS             "status"
 
+static int last_synced_version = 0;
+static int last_refresh_file_time = 0;
+
 static int cluster_info_write_to_file();
 
 static int init_cluster_server_array()
@@ -140,6 +143,13 @@ FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
             FC_SID_SERVERS(CLUSTER_SERVER_CONFIG));
 }
 
+static inline void get_cluster_info_filename(
+        char *full_filename, const int size)
+{
+    snprintf(full_filename, size, "%s/%s",
+            DATA_PATH_STR, CLUSTER_INFO_FILENAME);
+}
+
 static int load_servers_from_ini_ctx(IniContext *ini_context)
 {
     FDIRClusterServerInfo *cs;
@@ -167,18 +177,66 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
     return 0;
 }
 
+#define cluster_info_set_file_mtime() \
+    cluster_info_set_file_mtime_ex(g_current_time)
+
+static int cluster_info_set_file_mtime_ex(const time_t t)
+{
+    char full_filename[PATH_MAX];
+    struct timeval times[2];
+
+    times[0].tv_sec = t;
+    times[0].tv_usec = 0;
+    times[1].tv_sec = t;
+    times[1].tv_usec = 0;
+
+    get_cluster_info_filename(full_filename, sizeof(full_filename));
+    if (utimes(full_filename, times) < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "utimes file \"%s\" fail, errno: %d, error info: %s",
+                __LINE__, full_filename, errno, STRERROR(errno));
+        return errno != 0 ? errno : EPERM;
+    }
+    return 0;
+}
+
+static int get_cluster_info_file_mtime()
+{
+    char full_filename[PATH_MAX];
+    struct stat buf;
+
+    get_cluster_info_filename(full_filename, sizeof(full_filename));
+    if (stat(full_filename, &buf) < 0) {
+        logError("file: "__FILE__", line: %d, "
+                "stat file \"%s\" fail, errno: %d, error info: %s",
+                __LINE__, full_filename, errno, STRERROR(errno));
+        return errno != 0 ? errno : EPERM;
+    }
+
+    CLUSTER_LAST_SHUTDOWN_TIME = buf.st_mtime;
+    return 0;
+}
+
 static int load_cluster_info_from_file()
 {
     char full_filename[PATH_MAX];
     IniContext ini_context;
     int result;
 
-    snprintf(full_filename, sizeof(full_filename),
-            "%s/%s", DATA_PATH_STR, CLUSTER_INFO_FILENAME);
+    get_cluster_info_filename(full_filename, sizeof(full_filename));
     if (access(full_filename, F_OK) != 0) {
         if (errno == ENOENT) {
-            return cluster_info_write_to_file();
+            if ((result=cluster_info_write_to_file()) != 0) {
+                return result;
+            }
+
+            return cluster_info_set_file_mtime_ex(
+                    g_current_time - 86400);
         }
+    }
+
+    if ((result=get_cluster_info_file_mtime()) != 0) {
+        return result;
     }
 
     if ((result=iniLoadFromFile(full_filename, &ini_context)) != 0) {
@@ -197,6 +255,8 @@ static int load_cluster_info_from_file()
 int cluster_info_init(const char *cluster_config_filename)
 {
     int result;
+    time_t t;
+    struct tm tm_current;
 
     if ((result=init_cluster_server_array()) != 0) {
         return result;
@@ -208,6 +268,12 @@ int cluster_info_init(const char *cluster_config_filename)
     if ((result=find_myself_in_cluster_config(cluster_config_filename)) != 0) {
         return result;
     }
+
+    t = g_current_time + 89;
+    localtime_r(&t, &tm_current);
+    tm_current.tm_sec = 0;
+    last_refresh_file_time = mktime(&tm_current);
+    last_synced_version = CLUSTER_SERVER_ARRAY.change_version;
 
     return 0;
 }
@@ -254,13 +320,22 @@ static int cluster_info_write_to_file()
 
 static int cluster_info_sync_to_file(void *args)
 {
-    static int last_synced_version = 0;
+    if (!(CLUSTER_MASTER_ATOM_PTR != NULL &&
+                CLUSTER_LAST_HEARTBEAT_TIME > 0))
+    {
+        return 0;
+    }
 
     if (last_synced_version == CLUSTER_SERVER_ARRAY.change_version) {
+        if (g_current_time - last_refresh_file_time > 60) {
+            last_refresh_file_time = g_current_time;
+            return cluster_info_set_file_mtime();
+        }
         return 0;
     }
 
     last_synced_version = CLUSTER_SERVER_ARRAY.change_version;
+    last_refresh_file_time = g_current_time;
     return cluster_info_write_to_file();
 }
 

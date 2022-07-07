@@ -243,6 +243,9 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     resp->force_election = (FORCE_MASTER_ELECTION ? 1 : 0);
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
     long2buff(DATA_CURRENT_VERSION, resp->data_version);
+    int2buff(g_sf_global_vars.up_time, resp->up_time);
+    int2buff(CLUSTER_LAST_SHUTDOWN_TIME, resp->last_shutdown_time);
+    int2buff(CLUSTER_LAST_HEARTBEAT_TIME, resp->last_heartbeat_time);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerStatusResp);
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP;

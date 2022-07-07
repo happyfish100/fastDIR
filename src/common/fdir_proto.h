@@ -649,6 +649,9 @@ typedef struct fdir_proto_get_server_status_resp {
     char status;
     char force_election;
     char server_id[4];
+    char up_time[4];
+    char last_heartbeat_time[4];
+    char last_shutdown_time[4];
     char data_version[8];
 } FDIRProtoGetServerStatusResp;
 
