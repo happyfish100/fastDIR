@@ -20,12 +20,6 @@
 #include "server_types.h"
 #include "binlog/binlog_types.h"
 
-typedef struct fdir_replication_quorum_entry {
-    int64_t data_version;
-    struct fast_task_info *task;
-    struct fdir_replication_quorum_entry *next;
-} FDIRReplicationQuorumEntry;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -38,6 +32,9 @@ extern "C" {
 
     void replication_quorum_deal_version_change(
             const int64_t slave_confirmed_version);
+
+    void replication_quorum_push_confirmed_version(
+            const SFVersionRange *version);
 
     int replication_quorum_start_master_term();
     int replication_quorum_end_master_term();

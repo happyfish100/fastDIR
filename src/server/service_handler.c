@@ -965,7 +965,7 @@ static int handle_request_finish(struct fast_task_info *task)
 
 static int handle_replica_done(struct fast_task_info *task)
 {
-    int64_t data_version;
+    SFVersionRange data_version;
 
     if (RBUFFER == NULL) {
         logError("file: "__FILE__", line: %d, "
@@ -975,7 +975,7 @@ static int handle_replica_done(struct fast_task_info *task)
         return handle_request_finish(task);
     }
 
-    data_version = RBUFFER->data_version.last;
+    data_version = RBUFFER->data_version;
     RESPONSE_STATUS = push_to_binlog_write_queue(RBUFFER, 1);
     server_binlog_release_rbuffer(RBUFFER);
     RBUFFER = NULL;
@@ -987,12 +987,14 @@ static int handle_replica_done(struct fast_task_info *task)
         int success_count;
         success_count = FC_ATOMIC_GET(TASK_CTX.
                 service.rpc.success_count) + 1;
-        if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+        if (SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
                     count, success_count))
         {
+            replication_quorum_push_confirmed_version(&data_version);
+        } else {
             bool finished;
             if ((RESPONSE_STATUS=replication_quorum_add(task,
-                            data_version, &finished)) == 0)
+                            data_version.last, &finished)) == 0)
             {
                 if (!finished) {
                     task->continue_callback = handle_request_finish;
@@ -1001,7 +1003,7 @@ static int handle_replica_done(struct fast_task_info *task)
             }
         }
     } else {
-        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version);
+        FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version.last);
     }
 
     return handle_request_finish(task);

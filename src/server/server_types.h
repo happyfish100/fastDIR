@@ -381,7 +381,6 @@ typedef struct fdir_server_context {
             struct fast_mblock_man record_parray_allocator;
             struct fast_mblock_man request_allocator; //for idempotency_request
             struct fast_mblock_man event_allocator; //element: FDIRFTaskChangeEvent
-            struct fast_mblock_man repl_quorum_allocator; //element: FDIRReplicationQuorumEntry
             struct fc_queue queue; //for flock unlock, element: FDIRFTaskChangeEvent
         } service;
 

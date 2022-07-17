@@ -1026,7 +1026,7 @@ static int cluster_select_master()
             }
 
             if (FORCE_MASTER_ELECTION) {
-                sprintf(prompt, "force_master_election: %d, ",
+                sprintf(prompt, "force_master_election: %d",
                         FORCE_MASTER_ELECTION);
             } else {
                 *prompt = '\0';
@@ -1049,7 +1049,7 @@ static int cluster_select_master()
         if (need_log) {
             logWarning("file: "__FILE__", line: %d, "
                     "round %dth select master, alive server count: %d "
-                    "< server count: %d, %stry again after %d seconds.",
+                    "< server count: %d, %s. try again after %d seconds.",
                     __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
                     prompt, sleep_secs);
         }
