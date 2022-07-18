@@ -316,7 +316,7 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
     if (server_status->cs == CLUSTER_MYSELF_PTR) {
         server_status->is_master = (CLUSTER_MYSELF_PTR ==
                 CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
-        server_status->master_hint = MYSELF_IS_MASTER;
+        server_status->master_hint = MYSELF_IS_OLD_MASTER;
         server_status->status = __sync_fetch_and_add(
                 &CLUSTER_MYSELF_PTR->status, 0);
         server_status->force_election =
@@ -510,6 +510,9 @@ static void update_field_is_master(FDIRClusterServerInfo *new_master)
         if (new_value != old_value) {
             __sync_bool_compare_and_swap(&server->is_master,
                     old_value, new_value);
+            if (new_value == 1) {
+                __sync_bool_compare_and_swap(&server->is_old_master, 0, 1);
+            }
         }
     }
 }
@@ -593,6 +596,15 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
 
         binlog_local_consumer_replication_start();
         replication_quorum_start_master_term();
+    } else {
+        if (MYSELF_IS_OLD_MASTER) {
+            if ((result=replication_quorum_end_master_term()) != 0) {
+                sf_terminate_myself();
+                return result;
+            }
+            __sync_bool_compare_and_swap(&CLUSTER_MYSELF_PTR->
+                    is_old_master, 1, 0);
+        }
     }
 
     MASTER_ELECTED_TIME = g_current_time;
@@ -633,11 +645,6 @@ void cluster_relationship_trigger_reselect_master()
 
     master = CLUSTER_MASTER_ATOM_PTR;
     if (CLUSTER_MYSELF_PTR != master) {
-        return;
-    }
-
-    if (replication_quorum_end_master_term() != 0) {
-        sf_terminate_myself();
         return;
     }
 
@@ -1111,17 +1118,6 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
     int network_timeout;
 
     if (CLUSTER_MYSELF_PTR == master) {
-
-        //TODO
-        /*
-        {
-        static int count = 0;
-        if (++count == 30) {
-            replication_quorum_end_master_term();
-        }
-        }
-        */
-
         *is_ping = false;
         return cluster_relationship_master_quorum_check();
     }

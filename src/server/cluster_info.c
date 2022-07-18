@@ -161,7 +161,7 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
         sprintf(section_name, "%s%d",
                 SERVER_SECTION_PREFIX_STR,
                 cs->server->id);
-        cs->is_master = iniGetBoolValue(section_name,
+        cs->is_old_master = iniGetBoolValue(section_name,
                 CLUSTER_INFO_ITEM_IS_MASTER, ini_context, false);
         cs->status = iniGetIntValue(section_name,
                 CLUSTER_INFO_ITEM_STATUS, ini_context,

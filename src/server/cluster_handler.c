@@ -238,7 +238,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
 
     resp->is_master = (CLUSTER_MYSELF_PTR ==
             CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
-    resp->master_hint = MYSELF_IS_MASTER;
+    resp->master_hint = MYSELF_IS_OLD_MASTER;
     resp->status = __sync_fetch_and_add(&CLUSTER_MYSELF_PTR->status, 0);
     resp->force_election = (FORCE_MASTER_ELECTION ? 1 : 0);
     int2buff(CLUSTER_MY_SERVER_ID, resp->server_id);
@@ -686,6 +686,14 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         TASK_CTX.common.log_level = LOG_NOTHING;
         RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
         return EPROTONOSUPPORT;
+    }
+
+    if (REPLICA_QUORUM_NEED_MAJORITY && MYSELF_IS_OLD_MASTER) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "waiting rollback binlog because i am the old master");
+        TASK_CTX.common.log_level = LOG_NOTHING;
+        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
+        return EBUSY;
     }
 
     req = (FDIRProtoJoinSlaveReq *)REQUEST.body;
@@ -1295,7 +1303,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 break;
             case FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ:
                 if ((result=cluster_deal_join_slave_req(task)) > 0) {
-                    if (result != EPROTONOSUPPORT) {
+                    if (!(result == EPROTONOSUPPORT || result == EBUSY)) {
                         result *= -1;  //force close connection
                     }
                 }
@@ -1414,7 +1422,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     /*
     if (count++ % 100 == 0) {
         logInfo("%d. is_master: %d, consumer_ctx: %p, connected.count: %d",
-                count, MYSELF_IS_MASTER, server_ctx->cluster.consumer_ctx,
+                count, MYSELF_IS_OLD_MASTER, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);
     }
     */

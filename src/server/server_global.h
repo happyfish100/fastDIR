@@ -167,8 +167,8 @@ typedef struct server_global_vars {
 #define AUTH_ENABLED            AUTH_CTX.enabled
 
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
-#define MYSELF_IS_MASTER        __sync_add_and_fetch( \
-        &CLUSTER_MYSELF_PTR->is_master, 0)
+#define MYSELF_IS_OLD_MASTER   __sync_add_and_fetch( \
+        &CLUSTER_MYSELF_PTR->is_old_master, 0)
 #define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.master
 #define CLUSTER_MASTER_ATOM_PTR ((FDIRClusterServerInfo *)__sync_add_and_fetch( \
         &CLUSTER_MASTER_PTR, 0))

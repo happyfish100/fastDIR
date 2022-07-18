@@ -165,10 +165,11 @@ typedef struct fdir_server_dentry {
 
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
-    char key[FDIR_REPLICA_KEY_SIZE];  //for slave server
-    volatile char status;          //the slave status
-    volatile char is_master;       //if I am master
-    volatile bool recovering;      //if data recovering
+    char key[FDIR_REPLICA_KEY_SIZE]; //for slave server
+    volatile char status;            //the slave status
+    volatile char is_master;         //if I am the master
+    volatile char is_old_master;     //if I am the old master
+    volatile bool recovering;        //if data recovering
     SFBinlogFilePosition binlog_pos_hint;  //for replication
     volatile int64_t last_data_version;  //for replication
     volatile int64_t confirmed_data_version; //for replication quorum majority
