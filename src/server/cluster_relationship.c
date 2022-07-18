@@ -595,9 +595,13 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         }
 
         binlog_local_consumer_replication_start();
-        replication_quorum_start_master_term();
+
+        if (__sync_bool_compare_and_swap(&MYSELF_IN_MASTER_TERM, 0, 1)) {
+            replication_quorum_start_master_term();
+        }
     } else {
         if (MYSELF_IS_OLD_MASTER) {
+            __sync_bool_compare_and_swap(&MYSELF_IN_MASTER_TERM, 1, 0);
             if ((result=replication_quorum_end_master_term()) != 0) {
                 sf_terminate_myself();
                 return result;

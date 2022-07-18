@@ -355,6 +355,11 @@ int replication_quorum_add(struct fast_task_info *task,
         }
 
         *finished = false;
+        if (!FC_ATOMIC_GET(MYSELF_IN_MASTER_TERM)) {
+            result = EAGAIN;
+            break;
+        }
+
         entry = fast_mblock_alloc_object(&QUORUM_ENTRY_ALLOCATOR);
         if (entry == NULL) {
             result = ENOMEM;

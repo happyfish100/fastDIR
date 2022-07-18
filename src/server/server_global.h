@@ -53,6 +53,7 @@ typedef struct server_global_vars {
     struct {
         FCFSAuthClientFullContext auth;
         uint16_t id;  //cluster id for generate inode
+        volatile char is_my_term;
         FDIRClusterServerInfo *next_master;
         FDIRClusterServerInfo *master;
         FDIRClusterServerInfo *myself;
@@ -166,9 +167,11 @@ typedef struct server_global_vars {
 #define AUTH_CLIENT_CTX         AUTH_CTX.ctx
 #define AUTH_ENABLED            AUTH_CTX.enabled
 
+#define MYSELF_IN_MASTER_TERM   g_server_global_vars.cluster.is_my_term
 #define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
-#define MYSELF_IS_OLD_MASTER   __sync_add_and_fetch( \
+#define MYSELF_IS_OLD_MASTER    __sync_add_and_fetch( \
         &CLUSTER_MYSELF_PTR->is_old_master, 0)
+
 #define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.master
 #define CLUSTER_MASTER_ATOM_PTR ((FDIRClusterServerInfo *)__sync_add_and_fetch( \
         &CLUSTER_MASTER_PTR, 0))
