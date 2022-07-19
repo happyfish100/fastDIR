@@ -100,6 +100,8 @@ static inline int load_master_election_config(IniFullContext *ini_ctx)
             ini_ctx, "master_lost_timeout", 3, 1, 300);
     ELECTION_MAX_WAIT_TIME = iniGetIntCorrectValue(
             ini_ctx, "max_wait_time", 30, 1, 3600);
+    ELECTION_MAX_SHUTDOWN_DURATION = iniGetIntCorrectValue(
+            ini_ctx, "max_shutdown_duration", 300, 60, 86400);
     if ((result=sf_load_election_quorum_config(&MASTER_ELECTION_QUORUM,
                     ini_ctx)) == 0)
     {
@@ -435,7 +437,8 @@ static void server_log_configs()
             "inode_shared_locks_count = %d, "
             "cluster server count = %d, "
             "master-election {quorum: %s, vote_node_enabled: %d, "
-            "master_lost_timeout: %ds, max_wait_time: %ds}, "
+            "master_lost_timeout: %ds, max_wait_time: %ds, "
+            "max_shutdown_duration: %ds}, "
             "data-replication {quorum: %s, quorum_need_majority: %d}, "
             "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
@@ -450,7 +453,7 @@ static void server_log_configs()
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
             sf_get_election_quorum_caption(MASTER_ELECTION_QUORUM),
             VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
-            ELECTION_MAX_WAIT_TIME,
+            ELECTION_MAX_WAIT_TIME, ELECTION_MAX_SHUTDOWN_DURATION,
             sf_get_replication_quorum_caption(REPLICATION_QUORUM),
             REPLICA_QUORUM_NEED_MAJORITY,
             STORAGE_ENABLED);

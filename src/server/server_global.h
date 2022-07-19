@@ -66,6 +66,7 @@ typedef struct server_global_vars {
             bool vote_node_enabled;
             int master_lost_timeout;
             int max_wait_time;
+            int max_shutdown_duration;
         } master_election;
 
         /* follower ping master or master check brain-split */
@@ -155,6 +156,8 @@ typedef struct server_global_vars {
     master_election.master_lost_timeout
 #define ELECTION_MAX_WAIT_TIME g_server_global_vars.cluster. \
     master_election.max_wait_time
+#define ELECTION_MAX_SHUTDOWN_DURATION g_server_global_vars.cluster. \
+    master_election.max_shutdown_duration
 
 #define CLUSTER_LAST_HEARTBEAT_TIME g_server_global_vars. \
     cluster.last_heartbeat_time
