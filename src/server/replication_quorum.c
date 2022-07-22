@@ -22,7 +22,8 @@
 #include "server_global.h"
 #include "replication_quorum.h"
 
-#define VERSION_CONFIRMED_FILE_COUNT  2  //double files for safty
+#define VERSION_CONFIRMED_FILE_COUNT     2  //double files for safty
+#define REPLICATION_QUORUM_DAT_FILENAME  ".repl_quorum.dat"
 
 typedef struct fdir_replication_quorum_entry {
     int64_t data_version;
@@ -89,6 +90,14 @@ static FDIRReplicationQuorumContext fdir_replication_quorum;
 
 #define DV_WAITING_LIST fdir_replication_quorum.confirmed.waiting_list
 #define CONFIRMED_NEXT_DATA_VERSON  DV_WAITING_LIST.next_data_verson
+
+static inline const char *get_quorum_dat_filename(
+        char *filename, const int size)
+{
+    snprintf(filename, size, "%s/%s", DATA_PATH_STR,
+            REPLICATION_QUORUM_DAT_FILENAME);
+    return filename;
+}
 
 static inline const char *get_confirmed_filename(
         const int index, char *filename, const int size)
@@ -270,7 +279,30 @@ static int rollback_binlog(const int64_t my_confirmed_version)
 
 int replication_quorum_init()
 {
+    char quorum_filename[PATH_MAX];
+    char buff[64];
+    int len;
     int result;
+
+    get_quorum_dat_filename(quorum_filename, sizeof(quorum_filename));
+    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+        if (access(quorum_filename, F_OK) == 0) {
+            if ((result=unlink_confirmed_files()) != 0) {
+                return result;
+            }
+            unlink(quorum_filename);
+        } else {
+            result = errno != 0 ? errno : EPERM;
+            if (result != ENOENT) {
+                logError("file: "__FILE__", line: %d, "
+                        "access file %s fail, errno: %d, error info: %s",
+                        __LINE__, quorum_filename, result, STRERROR(result));
+                return result;
+            }
+        }
+
+        return 0;
+    }
 
     if ((result=fast_mblock_init_ex1(&QUORUM_ENTRY_ALLOCATOR,
                     "repl_quorum_entry", sizeof(FDIRReplicationQuorumEntry),
@@ -332,7 +364,12 @@ int replication_quorum_init()
     SET_VERSION_FLAG = 0;
     SET_VERSION_VALUE = 0;
 
-    return 0;
+    if (access(quorum_filename, F_OK) == 0) {
+        return 0;
+    } else {
+        len = sprintf(buff, "enabled=%d\n", 1);
+        return writeToFile(quorum_filename, buff, len);
+    }
 }
 
 void replication_quorum_destroy()
