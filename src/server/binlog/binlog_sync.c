@@ -506,6 +506,8 @@ static int sync_finish(BinlogSyncContext *sync_ctx)
     char recovery_path[PATH_MAX];
     char binlog_path[PATH_MAX];
 
+    /* force to write index file */
+    g_binlog_writer_ctx.writer.fw.binlog.start_index = -1;
     if ((result=binlog_writer_set_indexes(sync_ctx->binlog.start_index,
                     sync_ctx->binlog.last_index)) != 0)
     {
