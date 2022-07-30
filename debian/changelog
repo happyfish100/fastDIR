@@ -1,3 +1,9 @@
+fastdir (3.5.0-2) unstable; urgency=medium
+
+  * upgrade to 3.5.0-2
+
+ -- YuQing <384681@qq.com>  Sat, 30 Jul 2022 12:57:39 +0000
+
 fastdir (3.5.0-1) unstable; urgency=medium
 
   * upgrade to 3.5.0-1
