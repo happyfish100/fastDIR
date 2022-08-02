@@ -44,16 +44,94 @@
 typedef struct fdir_cluster_relationship_context {
     ConnectionInfo vote_connection;
     time_t master_elected_time;
+    pthread_mutex_t lock;
+    FDIRClusterServerPtrArray detect_server_parray; //for deactive detect
 } FDIRClusterRelationshipContext;
 
-#define VOTE_CONNECTION     relationship_ctx.vote_connection
-#define MASTER_ELECTED_TIME relationship_ctx.master_elected_time
+#define VOTE_CONNECTION      relationship_ctx.vote_connection
+#define MASTER_ELECTED_TIME  relationship_ctx.master_elected_time
+#define DETECT_SERVER_PARRAY relationship_ctx.detect_server_parray
 
 static FDIRClusterRelationshipContext relationship_ctx = {
     {-1, 0}, 0
 };
 
 static int get_vote_server_status(FDIRClusterServerStatus *server_status);
+
+static void add_all_slaves_to_detect_server_array()
+{
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *end;
+
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
+        if (cs != CLUSTER_MYSELF_PTR) {
+            cluster_add_to_detect_server_array(cs);
+        }
+    }
+}
+
+int cluster_add_to_detect_server_array(FDIRClusterServerInfo *cs)
+{
+    int result;
+    FDIRClusterServerInfo **pp;
+    FDIRClusterServerInfo **end;
+
+    if (!REPLICA_QUORUM_NEED_DETECT) {
+        return 0;
+    }
+
+    result = 0;
+    PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+    if (DETECT_SERVER_PARRAY.count > 0) {
+        end = DETECT_SERVER_PARRAY.servers + DETECT_SERVER_PARRAY.count;
+        for (pp=DETECT_SERVER_PARRAY.servers; pp<end; pp++) {
+            if (*pp == cs) {
+                result = EEXIST;
+                break;
+            }
+        }
+    }
+    if (result == 0) {
+        cs->connect_fail_count = 0;
+        DETECT_SERVER_PARRAY.servers[DETECT_SERVER_PARRAY.count++] = cs;
+    }
+    PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+    return result;
+}
+
+int cluster_remove_from_detect_server_array(FDIRClusterServerInfo *cs)
+{
+    int result;
+    FDIRClusterServerInfo **pp;
+    FDIRClusterServerInfo **end;
+
+    if (!REPLICA_QUORUM_NEED_DETECT) {
+        return 0;
+    }
+
+    result = ENOENT;
+    PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+    end = DETECT_SERVER_PARRAY.servers + DETECT_SERVER_PARRAY.count;
+    for (pp=DETECT_SERVER_PARRAY.servers; pp<end; pp++) {
+        if (*pp == cs) {
+            result = 0;
+            break;
+        }
+    }
+    if (result == 0) {
+        ++pp;
+        while (pp < end) {
+            *(pp - 1) = *pp;
+            ++pp;
+        }
+        DETECT_SERVER_PARRAY.count--;
+    }
+    PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+    return result;
+}
 
 static inline void proto_unpack_server_status(
         FDIRProtoGetServerStatusResp *resp,
@@ -558,6 +636,10 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
             }
             old_status = __sync_add_and_fetch(&new_master->status, 0);
         }
+
+        if (REPLICA_QUORUM_NEED_DETECT) {
+            add_all_slaves_to_detect_server_array();
+        }
     } else {
         char time_used[128];
         if (start_time > 0) {
@@ -831,16 +913,18 @@ int cluster_relationship_master_quorum_check()
         }
     }
 
-    if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+    if (sf_election_quorum_check(MASTER_ELECTION_QUORUM,
                 VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
                 active_count))
     {
+        //TODO
+    } else {
         if (g_current_time - MASTER_ELECTED_TIME <= ELECTION_MAX_SLEEP_SECS) {
             result = master_check(&active_count);
         } else {
             result = EBUSY;
         }
-        if (result !=  0) {
+        if (result != 0) {
             if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
                 logWarning("file: "__FILE__", line: %d, "
                         "trigger re-select master because master "
@@ -1020,7 +1104,7 @@ static int cluster_select_master()
         if ((server_status.up_time - server_status.last_shutdown_time >
                     ELECTION_MAX_SHUTDOWN_DURATION) && (server_status.
                         last_heartbeat_time == 0) && !FORCE_MASTER_ELECTION)
-        {
+       {
              sprintf(prompt, "the candidate server id: %d, "
                     "does not match the selection rule because it's "
                     "shutdown duration: %d exceeds %d seconds, "
@@ -1233,14 +1317,27 @@ static void *cluster_thread_entrance(void* arg)
 
 int cluster_relationship_init()
 {
-	pthread_t tid;
+    int result;
+    int bytes;
+    pthread_t tid;
+
+    if ((result=init_pthread_lock(&relationship_ctx.lock)) != 0) {
+        return result;
+    }
+
+    bytes = sizeof(FDIRClusterServerInfo *) * CLUSTER_SERVER_ARRAY.count;
+    DETECT_SERVER_PARRAY.servers = fc_malloc(bytes);
+    if (DETECT_SERVER_PARRAY.servers == NULL) {
+        return ENOMEM;
+    }
+    memset(DETECT_SERVER_PARRAY.servers, 0, bytes);
+    DETECT_SERVER_PARRAY.count = 0;
 
     VOTE_CONNECTION.sock = -1;
-	return fc_create_thread(&tid, cluster_thread_entrance, NULL,
+    return fc_create_thread(&tid, cluster_thread_entrance, NULL,
             SF_G_THREAD_STACK_SIZE);
 }
 
-int cluster_relationship_destroy()
+void cluster_relationship_destroy()
 {
-	return 0;
 }

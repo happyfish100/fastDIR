@@ -138,6 +138,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             if (CLUSTER_PEER != NULL) {
                 FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.alives);
                 cluster_relationship_master_quorum_check();
+                cluster_add_to_detect_server_array(CLUSTER_PEER);
                 CLUSTER_PEER = NULL;
             } else {
                 logError("file: "__FILE__", line: %d, "
@@ -323,6 +324,7 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
     FC_ATOMIC_INC(CLUSTER_SERVER_ARRAY.alives);
+    cluster_remove_from_detect_server_array(CLUSTER_PEER);
     return 0;
 }
 

@@ -41,7 +41,7 @@ extern "C" {
 #endif
 
 int cluster_relationship_init();
-int cluster_relationship_destroy();
+void cluster_relationship_destroy();
 
 int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master);
 
@@ -54,6 +54,10 @@ int cluster_relationship_master_quorum_check();
 int cluster_proto_get_server_status(ConnectionInfo *conn,
         const int network_timeout,
         FDIRClusterServerStatus *server_status);
+
+int cluster_add_to_detect_server_array(FDIRClusterServerInfo *cs);
+
+int cluster_remove_from_detect_server_array(FDIRClusterServerInfo *cs);
 
 #ifdef __cplusplus
 }
