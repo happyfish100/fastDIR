@@ -67,6 +67,5 @@ Package: fastdir-config
 Architecture: linux-any
 Multi-Arch: foreign
 Build-Profiles: <pkg.client> <pkg.server>
-Depends: fastdir-client (= ${binary:Version})
 Description: FastDIR config files for sample
  FastDIR config files for sample including server and client
