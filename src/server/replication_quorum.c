@@ -833,7 +833,16 @@ static void *replication_quorum_thread_run(void *arg)
                 !FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY) &&
                 FC_ATOMIC_GET(QUORUM_LIST_COUNT) > 0)
         {
+            int64_t my_confirmed_version;
+            int64_t current_data_version;
+
             clear_waiting_tasks();
+            my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+            current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+            if (my_confirmed_version < current_data_version) {
+                __sync_bool_compare_and_swap(&MY_CONFIRMED_VERSION,
+                        my_confirmed_version, current_data_version);
+            }
         }
         PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.thread.lcp.lock);
     }
