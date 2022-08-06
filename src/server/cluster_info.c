@@ -26,6 +26,7 @@
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/local_ip_func.h"
 #include "server_global.h"
+#include "cluster_relationship.h"
 #include "cluster_info.h"
 
 #define CLUSTER_INFO_FILENAME                "cluster.info"
@@ -38,6 +39,44 @@ static int last_synced_version = 0;
 static int last_refresh_file_time = 0;
 
 static int cluster_info_write_to_file();
+
+void cluster_info_set_status(FDIRClusterServerInfo *cs, const int new_status)
+{
+    int old_status;
+
+    old_status = __sync_fetch_and_add(&cs->status, 0);
+    if (old_status == new_status) {
+        return;
+    }
+
+    if (old_status == FDIR_SERVER_STATUS_ACTIVE &&
+            cs != CLUSTER_MYSELF_PTR)
+    {
+        FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.active_count);
+        if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
+            cluster_add_to_detect_server_array(cs);
+        }
+    }
+
+    do  {
+        if (__sync_bool_compare_and_swap(&cs->status,
+                    old_status, new_status))
+        {
+            break;
+        }
+        old_status = __sync_add_and_fetch(&cs->status, 0);
+    } while (old_status != new_status);
+    __sync_add_and_fetch(&CLUSTER_SERVER_ARRAY.change_version, 1);
+
+    if (new_status == FDIR_SERVER_STATUS_ACTIVE &&
+            cs != CLUSTER_MYSELF_PTR)
+    {
+        FC_ATOMIC_INC(CLUSTER_SERVER_ARRAY.active_count);
+        if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
+            cluster_remove_from_detect_server_array(cs);
+        }
+    }
+}
 
 static int init_cluster_server_array()
 {
@@ -63,7 +102,7 @@ static int init_cluster_server_array()
     }
 
     CLUSTER_SERVER_ARRAY.count = FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG);
-    CLUSTER_SERVER_ARRAY.alives = 1;
+    CLUSTER_SERVER_ARRAY.active_count = 1;
     return 0;
 }
 

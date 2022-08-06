@@ -170,7 +170,7 @@ typedef struct fdir_cluster_server_info {
     volatile char is_master;         //if I am the master
     volatile char is_old_master;     //if I am the old master
     volatile bool recovering;        //if data recovering
-    int connect_fail_count;
+    int check_fail_count;
     SFBinlogFilePosition binlog_pos_hint;    //for replication
     volatile int64_t last_data_version;      //for replication
     volatile int64_t confirmed_data_version; //for replication quorum majority
@@ -180,7 +180,7 @@ typedef struct fdir_cluster_server_info {
 typedef struct fdir_cluster_server_array {
     FDIRClusterServerInfo *servers;
     int count;
-    volatile int alives;
+    volatile int active_count;
     volatile int change_version;
 } FDIRClusterServerArray;
 

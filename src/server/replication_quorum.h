@@ -27,6 +27,8 @@ extern "C" {
     int replication_quorum_init();
     void replication_quorum_destroy();
 
+    int replication_quorum_unlink_confirmed_files();
+
     int replication_quorum_add(struct fast_task_info *task,
             const int64_t data_version, bool *finished);
 

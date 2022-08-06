@@ -3022,7 +3022,7 @@ static int service_process_update(struct fast_task_info *task,
         deal_task_func real_update_func, const int resp_cmd)
 {
     int result;
-    int alive_count;
+    int active_count;
     bool deal_done;
 
     if ((result=service_check_master(task)) != 0) {
@@ -3035,13 +3035,13 @@ static int service_process_update(struct fast_task_info *task,
     }
 
     if (REPLICA_QUORUM_NEED_MAJORITY) {
-        alive_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives);
+        active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
         if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
-                    count, alive_count))
+                    count, active_count))
         {
             RESPONSE.error.length = sprintf(RESPONSE.error.message,
                     "active server count: %d < half of servers: %d, "
-                    "should try again later", alive_count,
+                    "should try again later", active_count,
                     CLUSTER_SERVER_ARRAY.count / 2 + 1);
             TASK_CTX.common.log_level = LOG_NOTHING;
             service_idempotency_request_finish(task, EAGAIN);

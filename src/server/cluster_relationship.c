@@ -93,7 +93,7 @@ int cluster_add_to_detect_server_array(FDIRClusterServerInfo *cs)
         }
     }
     if (result == 0) {
-        cs->connect_fail_count = 0;
+        cs->check_fail_count = 0;
         DETECT_SERVER_PARRAY.servers[DETECT_SERVER_PARRAY.count++] = cs;
     }
     PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
@@ -420,6 +420,83 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
     }
 }
 
+static void disable_replica_quorum_need_majority()
+{
+    int64_t my_confirmed_version;
+    int64_t current_data_version;
+
+    __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 1, 0);
+    my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+    current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+    if (my_confirmed_version < current_data_version) {
+        __sync_bool_compare_and_swap(&MY_CONFIRMED_VERSION,
+                my_confirmed_version, current_data_version);
+    }
+    replication_quorum_unlink_confirmed_files();
+}
+
+static void detect_server_array_check()
+{
+    const bool log_connect_error = false;
+    int result;
+    int index;
+    int active_count;
+    FDIRClusterServerStatus server_status;
+
+    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
+    if (SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                count, active_count))
+    {
+        if (!FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+            __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 0, 1);
+            logInfo("file: "__FILE__", line: %d, "
+                    "server count: %d, active count: %d, set replication "
+                    "quorum to majority", __LINE__, CLUSTER_SERVER_ARRAY.
+                    count, active_count);
+        }
+        return;
+    } else if (!FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+        return;
+    }
+
+    index = 0;
+    while (1) {
+        PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+        if (index < DETECT_SERVER_PARRAY.count) {
+            server_status.cs = DETECT_SERVER_PARRAY.servers[index++];
+        } else {
+            server_status.cs = NULL;
+        }
+        PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+        if (server_status.cs == NULL) {
+            break;
+        }
+
+        result = cluster_get_server_status(&server_status, log_connect_error);
+        if (result != 0 || server_status.status != FDIR_SERVER_STATUS_ACTIVE) {
+            server_status.cs->check_fail_count++;
+            if (server_status.cs->check_fail_count >
+                    REPLICA_QUORUM_DEACTIVE_ON_FAILURES)
+            {
+                active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
+                if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                            count, active_count))
+                {
+                    if (FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+                        disable_replica_quorum_need_majority();
+                        logInfo("file: "__FILE__", line: %d, "
+                                "server count: %d, active count: %d, set "
+                                "replication quorum to any", __LINE__,
+                                CLUSTER_SERVER_ARRAY.count, active_count);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
 static int cluster_get_master(FDIRClusterServerStatus *server_status,
         const bool log_connect_error, int *success_count, int *active_count)
 {
@@ -638,6 +715,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         }
 
         if (REPLICA_QUORUM_NEED_DETECT) {
+            __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 0, 1);
             add_all_slaves_to_detect_server_array();
         }
     } else {
@@ -896,7 +974,7 @@ int cluster_relationship_master_quorum_check()
     int result;
     int active_count;
 
-    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives);
+    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
     if (NEED_CHECK_VOTE_NODE()) {
         if ((result=vote_node_active_check()) == 0) {
             if (active_count < CLUSTER_SERVER_ARRAY.count) {
@@ -913,12 +991,14 @@ int cluster_relationship_master_quorum_check()
         }
     }
 
-    if (sf_election_quorum_check(MASTER_ELECTION_QUORUM,
+    if (REPLICA_QUORUM_NEED_DETECT) {
+        detect_server_array_check();
+    }
+
+    if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
                 VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
                 active_count))
     {
-        //TODO
-    } else {
         if (g_current_time - MASTER_ELECTED_TIME <= ELECTION_MAX_SLEEP_SECS) {
             result = master_check(&active_count);
         } else {
