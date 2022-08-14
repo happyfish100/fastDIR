@@ -1190,7 +1190,7 @@ static int cluster_select_master()
                     "shutdown duration: %d exceeds %d seconds, "
                     "you must start ALL servers in the first time, "
                     "or remove the deprecated server(s) from the "
-                    "config file, or execute fdir_serverd with option --%s",
+                    "config file, or execute fdir_serverd with option --%s. ",
                     server_status.cs->server->id, (int)(server_status.
                         up_time - server_status.last_shutdown_time),
                     ELECTION_MAX_SHUTDOWN_DURATION,
@@ -1202,7 +1202,7 @@ static int cluster_select_master()
             }
 
             if (FORCE_MASTER_ELECTION) {
-                sprintf(prompt, "force_master_election: %d",
+                sprintf(prompt, "force_master_election: %d. ",
                         FORCE_MASTER_ELECTION);
             } else {
                 *prompt = '\0';
@@ -1225,7 +1225,7 @@ static int cluster_select_master()
         if (need_log) {
             logWarning("file: "__FILE__", line: %d, "
                     "round %dth select master, alive server count: %d "
-                    "< server count: %d, %s. try again after %d seconds.",
+                    "< server count: %d, %stry again after %d seconds.",
                     __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
                     prompt, sleep_secs);
         }
