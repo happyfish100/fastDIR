@@ -540,14 +540,9 @@ static void clear_waiting_tasks()
             QUORUM_LIST_HEAD = QUORUM_LIST_HEAD->next;
             ++count;
         } while (QUORUM_LIST_HEAD != NULL);
+        QUORUM_LIST_TAIL = NULL;
 
-        if (QUORUM_LIST_HEAD == NULL) {
-            QUORUM_LIST_TAIL = NULL;
-        }
         chain.tail->next = NULL;
-    }
-
-    if (chain.head != NULL) {
         fast_mblock_batch_free(&QUORUM_ENTRY_ALLOCATOR, &chain);
     }
     PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
