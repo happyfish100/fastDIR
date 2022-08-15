@@ -136,7 +136,6 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     switch (SERVER_TASK_TYPE) {
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
-                FC_ATOMIC_DEC(CLUSTER_SERVER_ARRAY.alives);
                 cluster_relationship_master_quorum_check();
                 CLUSTER_PEER = NULL;
             } else {
@@ -322,7 +321,6 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
-    FC_ATOMIC_INC(CLUSTER_SERVER_ARRAY.alives);
     return 0;
 }
 

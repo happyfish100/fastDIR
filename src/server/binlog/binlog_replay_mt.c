@@ -132,7 +132,6 @@ static void binlog_parse_thread_run(BinlogParseThreadContext *thread_ctx,
 {
     uint32_t count;
 
-    __sync_add_and_fetch(&thread_ctx->replay_ctx->parse_thread_count, 1);
     count = 0;
     while (SF_G_CONTINUE_FLAG && thread_ctx->
             replay_ctx->parse_continue_flag)
@@ -204,6 +203,7 @@ static int init_parse_thread_ctx_array(BinlogReplayMTContext *replay_ctx,
         return ENOMEM;
     }
 
+    __sync_add_and_fetch(&replay_ctx->parse_thread_count, thread_count);
     ctx_array->count = thread_count;
     end = ctx_array->contexts + ctx_array->count;
     for (ctx=ctx_array->contexts; ctx<end; ctx++) {

@@ -183,7 +183,7 @@ static int load_confirmed_version(int64_t *confirmed_version)
     }
 }
 
-static int unlink_confirmed_files()
+int replication_quorum_unlink_confirmed_files()
 {
     int result;
     int index;
@@ -215,7 +215,7 @@ static int rollback_binlog(const int64_t my_confirmed_version)
     }
 
     if (my_confirmed_version >= last_data_version) {
-        return unlink_confirmed_files();
+        return replication_quorum_unlink_confirmed_files();
     }
 
     if ((result=binlog_get_indexes(&start_index, &last_index)) != 0) {
@@ -274,7 +274,7 @@ static int rollback_binlog(const int64_t my_confirmed_version)
         return result;
     }
 
-    return unlink_confirmed_files();
+    return replication_quorum_unlink_confirmed_files();
 }
 
 int replication_quorum_init()
@@ -285,9 +285,9 @@ int replication_quorum_init()
     int result;
 
     get_quorum_dat_filename(quorum_filename, sizeof(quorum_filename));
-    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+    if (!(REPLICA_QUORUM_NEED_MAJORITY || REPLICA_QUORUM_NEED_DETECT)) {
         if (access(quorum_filename, F_OK) == 0) {
-            if ((result=unlink_confirmed_files()) != 0) {
+            if ((result=replication_quorum_unlink_confirmed_files()) != 0) {
                 return result;
             }
             unlink(quorum_filename);
@@ -517,6 +517,41 @@ static void notify_waiting_tasks(const int64_t my_confirmed_version)
     }
 }
 
+static void clear_waiting_tasks()
+{
+    struct fast_mblock_chain chain;
+    struct fast_mblock_node *node;
+    int count;
+
+    count = 0;
+    chain.head = chain.tail = NULL;
+    PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.lock);
+    if (QUORUM_LIST_HEAD != NULL) {
+        do {
+            node = fast_mblock_to_node_ptr(QUORUM_LIST_HEAD);
+            if (chain.head == NULL) {
+                chain.head = node;
+            } else {
+                chain.tail->next = node;
+            }
+            chain.tail = node;
+
+            sf_nio_notify(QUORUM_LIST_HEAD->task, SF_NIO_STAGE_CONTINUE);
+            QUORUM_LIST_HEAD = QUORUM_LIST_HEAD->next;
+            ++count;
+        } while (QUORUM_LIST_HEAD != NULL);
+        QUORUM_LIST_TAIL = NULL;
+
+        chain.tail->next = NULL;
+        fast_mblock_batch_free(&QUORUM_ENTRY_ALLOCATOR, &chain);
+    }
+    PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.lock);
+
+    if (count > 0) {
+        FC_ATOMIC_DEC_EX(QUORUM_LIST_COUNT, count);
+    }
+}
+
 void replication_quorum_deal_version_change(
         const int64_t slave_confirmed_version)
 {
@@ -716,6 +751,7 @@ static void *replication_quorum_thread_run(void *arg)
 {
     struct timespec ts;
     int generation;
+    int timeout;
     int64_t old_confirmed_version;
     int64_t new_confirmed_version;
     bool set_version;
@@ -725,8 +761,9 @@ static void *replication_quorum_thread_run(void *arg)
     __sync_bool_compare_and_swap(&fdir_replication_quorum.
             thread.running, 0, 1);
 
+    timeout = (REPLICA_QUORUM_NEED_DETECT ? 2 : 3);
     while (FC_ATOMIC_GET(MASTER_GENERATION) == generation) {
-        ts.tv_sec = g_current_time + 3;
+        ts.tv_sec = g_current_time + timeout;
         ts.tv_nsec = 0;
         PTHREAD_MUTEX_LOCK(&fdir_replication_quorum.thread.lcp.lock);
         pthread_cond_timedwait(&fdir_replication_quorum.
@@ -766,9 +803,12 @@ static void *replication_quorum_thread_run(void *arg)
                     new_confirmed_version, FC_ATOMIC_GET(QUORUM_LIST_COUNT));
                     */
 
-            if (new_confirmed_version > old_confirmed_version) {
+            if (new_confirmed_version > old_confirmed_version &&
+                    FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY))
+            {
                 if (write_to_confirmed_file(FC_ATOMIC_INC(CONFIRMED_COUNTER) %
-                            VERSION_CONFIRMED_FILE_COUNT, new_confirmed_version) != 0)
+                            VERSION_CONFIRMED_FILE_COUNT,
+                            new_confirmed_version) != 0)
                 {
                     sf_terminate_myself();
                     break;
@@ -777,6 +817,26 @@ static void *replication_quorum_thread_run(void *arg)
                 if (FC_ATOMIC_GET(QUORUM_LIST_COUNT) > 0) {
                     notify_waiting_tasks(new_confirmed_version);
                 }
+
+                if (REPLICA_QUORUM_NEED_DETECT && !FC_ATOMIC_GET(
+                            REPLICA_QUORUM_NEED_MAJORITY))
+                {
+                    replication_quorum_unlink_confirmed_files();
+                }
+            }
+        } else if (REPLICA_QUORUM_NEED_DETECT &&
+                !FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY) &&
+                FC_ATOMIC_GET(QUORUM_LIST_COUNT) > 0)
+        {
+            int64_t my_confirmed_version;
+            int64_t current_data_version;
+
+            clear_waiting_tasks();
+            my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+            current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+            if (my_confirmed_version < current_data_version) {
+                __sync_bool_compare_and_swap(&MY_CONFIRMED_VERSION,
+                        my_confirmed_version, current_data_version);
             }
         }
         PTHREAD_MUTEX_UNLOCK(&fdir_replication_quorum.thread.lcp.lock);
@@ -793,7 +853,7 @@ int replication_quorum_start_master_term()
     int master_generation;
     pthread_t tid;
 
-    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+    if (!(REPLICA_QUORUM_NEED_MAJORITY | REPLICA_QUORUM_NEED_DETECT)) {
         return 0;
     }
 
@@ -827,7 +887,7 @@ int replication_quorum_end_master_term()
     int64_t current_data_version;
     pid_t pid;
 
-    if (!REPLICA_QUORUM_NEED_MAJORITY) {
+    if (!(REPLICA_QUORUM_NEED_MAJORITY || REPLICA_QUORUM_NEED_DETECT)) {
         return 0;
     }
 
@@ -836,7 +896,7 @@ int replication_quorum_end_master_term()
     my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
     current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
     if (my_confirmed_version >= current_data_version) {
-        return unlink_confirmed_files();
+        return replication_quorum_unlink_confirmed_files();
     }
 
     pid = fork();

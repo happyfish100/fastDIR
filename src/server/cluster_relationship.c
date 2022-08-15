@@ -44,16 +44,94 @@
 typedef struct fdir_cluster_relationship_context {
     ConnectionInfo vote_connection;
     time_t master_elected_time;
+    pthread_mutex_t lock;
+    FDIRClusterServerPtrArray detect_server_parray; //for deactive detect
 } FDIRClusterRelationshipContext;
 
-#define VOTE_CONNECTION     relationship_ctx.vote_connection
-#define MASTER_ELECTED_TIME relationship_ctx.master_elected_time
+#define VOTE_CONNECTION      relationship_ctx.vote_connection
+#define MASTER_ELECTED_TIME  relationship_ctx.master_elected_time
+#define DETECT_SERVER_PARRAY relationship_ctx.detect_server_parray
 
 static FDIRClusterRelationshipContext relationship_ctx = {
     {-1, 0}, 0
 };
 
 static int get_vote_server_status(FDIRClusterServerStatus *server_status);
+
+static void add_all_slaves_to_detect_server_array()
+{
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *end;
+
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
+        if (cs != CLUSTER_MYSELF_PTR) {
+            cluster_add_to_detect_server_array(cs);
+        }
+    }
+}
+
+int cluster_add_to_detect_server_array(FDIRClusterServerInfo *cs)
+{
+    int result;
+    FDIRClusterServerInfo **pp;
+    FDIRClusterServerInfo **end;
+
+    if (!REPLICA_QUORUM_NEED_DETECT) {
+        return 0;
+    }
+
+    result = 0;
+    PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+    if (DETECT_SERVER_PARRAY.count > 0) {
+        end = DETECT_SERVER_PARRAY.servers + DETECT_SERVER_PARRAY.count;
+        for (pp=DETECT_SERVER_PARRAY.servers; pp<end; pp++) {
+            if (*pp == cs) {
+                result = EEXIST;
+                break;
+            }
+        }
+    }
+    if (result == 0) {
+        cs->check_fail_count = 0;
+        DETECT_SERVER_PARRAY.servers[DETECT_SERVER_PARRAY.count++] = cs;
+    }
+    PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+    return result;
+}
+
+int cluster_remove_from_detect_server_array(FDIRClusterServerInfo *cs)
+{
+    int result;
+    FDIRClusterServerInfo **pp;
+    FDIRClusterServerInfo **end;
+
+    if (!REPLICA_QUORUM_NEED_DETECT) {
+        return 0;
+    }
+
+    result = ENOENT;
+    PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+    end = DETECT_SERVER_PARRAY.servers + DETECT_SERVER_PARRAY.count;
+    for (pp=DETECT_SERVER_PARRAY.servers; pp<end; pp++) {
+        if (*pp == cs) {
+            result = 0;
+            break;
+        }
+    }
+    if (result == 0) {
+        ++pp;
+        while (pp < end) {
+            *(pp - 1) = *pp;
+            ++pp;
+        }
+        DETECT_SERVER_PARRAY.count--;
+    }
+    PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+    return result;
+}
 
 static inline void proto_unpack_server_status(
         FDIRProtoGetServerStatusResp *resp,
@@ -342,6 +420,83 @@ static int cluster_get_server_status(FDIRClusterServerStatus *server_status,
     }
 }
 
+static void disable_replica_quorum_need_majority()
+{
+    int64_t my_confirmed_version;
+    int64_t current_data_version;
+
+    __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 1, 0);
+    my_confirmed_version = FC_ATOMIC_GET(MY_CONFIRMED_VERSION);
+    current_data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
+    if (my_confirmed_version < current_data_version) {
+        __sync_bool_compare_and_swap(&MY_CONFIRMED_VERSION,
+                my_confirmed_version, current_data_version);
+    }
+    replication_quorum_unlink_confirmed_files();
+}
+
+static void detect_server_array_check()
+{
+    const bool log_connect_error = false;
+    int result;
+    int index;
+    int active_count;
+    FDIRClusterServerStatus server_status;
+
+    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
+    if (SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                count, active_count))
+    {
+        if (!FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+            __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 0, 1);
+            logInfo("file: "__FILE__", line: %d, "
+                    "server count: %d, active count: %d, set replication "
+                    "quorum to majority", __LINE__, CLUSTER_SERVER_ARRAY.
+                    count, active_count);
+        }
+        return;
+    } else if (!FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+        return;
+    }
+
+    index = 0;
+    while (1) {
+        PTHREAD_MUTEX_LOCK(&relationship_ctx.lock);
+        if (index < DETECT_SERVER_PARRAY.count) {
+            server_status.cs = DETECT_SERVER_PARRAY.servers[index++];
+        } else {
+            server_status.cs = NULL;
+        }
+        PTHREAD_MUTEX_UNLOCK(&relationship_ctx.lock);
+
+        if (server_status.cs == NULL) {
+            break;
+        }
+
+        result = cluster_get_server_status(&server_status, log_connect_error);
+        if (result != 0 || server_status.status != FDIR_SERVER_STATUS_ACTIVE) {
+            server_status.cs->check_fail_count++;
+            if (server_status.cs->check_fail_count >
+                    REPLICA_QUORUM_DEACTIVE_ON_FAILURES)
+            {
+                active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
+                if (!SF_REPLICATION_QUORUM_MAJORITY(CLUSTER_SERVER_ARRAY.
+                            count, active_count))
+                {
+                    if (FC_ATOMIC_GET(REPLICA_QUORUM_NEED_MAJORITY)) {
+                        disable_replica_quorum_need_majority();
+                        logInfo("file: "__FILE__", line: %d, "
+                                "server count: %d, active count: %d, set "
+                                "replication quorum to any", __LINE__,
+                                CLUSTER_SERVER_ARRAY.count, active_count);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
 static int cluster_get_master(FDIRClusterServerStatus *server_status,
         const bool log_connect_error, int *success_count, int *active_count)
 {
@@ -557,6 +712,11 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
                 break;
             }
             old_status = __sync_add_and_fetch(&new_master->status, 0);
+        }
+
+        if (REPLICA_QUORUM_NEED_DETECT) {
+            __sync_bool_compare_and_swap(&REPLICA_QUORUM_NEED_MAJORITY, 0, 1);
+            add_all_slaves_to_detect_server_array();
         }
     } else {
         char time_used[128];
@@ -814,7 +974,7 @@ int cluster_relationship_master_quorum_check()
     int result;
     int active_count;
 
-    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.alives);
+    active_count = FC_ATOMIC_GET(CLUSTER_SERVER_ARRAY.active_count);
     if (NEED_CHECK_VOTE_NODE()) {
         if ((result=vote_node_active_check()) == 0) {
             if (active_count < CLUSTER_SERVER_ARRAY.count) {
@@ -831,6 +991,10 @@ int cluster_relationship_master_quorum_check()
         }
     }
 
+    if (REPLICA_QUORUM_NEED_DETECT) {
+        detect_server_array_check();
+    }
+
     if (!sf_election_quorum_check(MASTER_ELECTION_QUORUM,
                 VOTE_NODE_ENABLED, CLUSTER_SERVER_ARRAY.count,
                 active_count))
@@ -840,7 +1004,7 @@ int cluster_relationship_master_quorum_check()
         } else {
             result = EBUSY;
         }
-        if (result !=  0) {
+        if (result != 0) {
             if (result == SF_CLUSTER_ERROR_MASTER_INCONSISTENT) {
                 logWarning("file: "__FILE__", line: %d, "
                         "trigger re-select master because master "
@@ -1020,13 +1184,13 @@ static int cluster_select_master()
         if ((server_status.up_time - server_status.last_shutdown_time >
                     ELECTION_MAX_SHUTDOWN_DURATION) && (server_status.
                         last_heartbeat_time == 0) && !FORCE_MASTER_ELECTION)
-        {
+       {
              sprintf(prompt, "the candidate server id: %d, "
                     "does not match the selection rule because it's "
                     "shutdown duration: %d exceeds %d seconds, "
                     "you must start ALL servers in the first time, "
                     "or remove the deprecated server(s) from the "
-                    "config file, or execute fdir_serverd with option --%s",
+                    "config file, or execute fdir_serverd with option --%s. ",
                     server_status.cs->server->id, (int)(server_status.
                         up_time - server_status.last_shutdown_time),
                     ELECTION_MAX_SHUTDOWN_DURATION,
@@ -1038,7 +1202,7 @@ static int cluster_select_master()
             }
 
             if (FORCE_MASTER_ELECTION) {
-                sprintf(prompt, "force_master_election: %d",
+                sprintf(prompt, "force_master_election: %d. ",
                         FORCE_MASTER_ELECTION);
             } else {
                 *prompt = '\0';
@@ -1061,7 +1225,7 @@ static int cluster_select_master()
         if (need_log) {
             logWarning("file: "__FILE__", line: %d, "
                     "round %dth select master, alive server count: %d "
-                    "< server count: %d, %s. try again after %d seconds.",
+                    "< server count: %d, %stry again after %d seconds.",
                     __LINE__, i, active_count, CLUSTER_SERVER_ARRAY.count,
                     prompt, sleep_secs);
         }
@@ -1233,14 +1397,27 @@ static void *cluster_thread_entrance(void* arg)
 
 int cluster_relationship_init()
 {
-	pthread_t tid;
+    int result;
+    int bytes;
+    pthread_t tid;
+
+    if ((result=init_pthread_lock(&relationship_ctx.lock)) != 0) {
+        return result;
+    }
+
+    bytes = sizeof(FDIRClusterServerInfo *) * CLUSTER_SERVER_ARRAY.count;
+    DETECT_SERVER_PARRAY.servers = fc_malloc(bytes);
+    if (DETECT_SERVER_PARRAY.servers == NULL) {
+        return ENOMEM;
+    }
+    memset(DETECT_SERVER_PARRAY.servers, 0, bytes);
+    DETECT_SERVER_PARRAY.count = 0;
 
     VOTE_CONNECTION.sock = -1;
-	return fc_create_thread(&tid, cluster_thread_entrance, NULL,
+    return fc_create_thread(&tid, cluster_thread_entrance, NULL,
             SF_G_THREAD_STACK_SIZE);
 }
 
-int cluster_relationship_destroy()
+void cluster_relationship_destroy()
 {
-	return 0;
 }

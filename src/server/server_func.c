@@ -115,6 +115,8 @@ static inline int load_master_election_config(IniFullContext *ini_ctx)
 static inline int load_replication_quorum_config(IniFullContext *ini_ctx)
 {
     ini_ctx->section_name = "data-replication";
+    REPLICA_QUORUM_DEACTIVE_ON_FAILURES  = iniGetIntCorrectValue(
+            ini_ctx, "deactive_on_failures", 3, 1, 100);
     return sf_load_replication_quorum_config(&REPLICATION_QUORUM, ini_ctx);
 }
 
@@ -167,6 +169,8 @@ static int load_cluster_config(IniFullContext *ini_ctx,
     }
 
     REPLICA_QUORUM_NEED_MAJORITY = SF_REPLICATION_QUORUM_NEED_MAJORITY(
+            REPLICATION_QUORUM, CLUSTER_SERVER_ARRAY.count);
+    REPLICA_QUORUM_NEED_DETECT = SF_REPLICATION_QUORUM_NEED_DETECT(
             REPLICATION_QUORUM, CLUSTER_SERVER_ARRAY.count);
     return 0;
 }
@@ -439,7 +443,8 @@ static void server_log_configs()
             "master-election {quorum: %s, vote_node_enabled: %d, "
             "master_lost_timeout: %ds, max_wait_time: %ds, "
             "max_shutdown_duration: %ds}, "
-            "data-replication {quorum: %s, quorum_need_majority: %d}, "
+            "data-replication {quorum: %s, deactive_on_failures: %d, "
+            "quorum_need_majority: %d, quorum_need_detect: %d}, "
             "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             DATA_PATH_STR, DATA_THREAD_COUNT,
@@ -455,7 +460,8 @@ static void server_log_configs()
             VOTE_NODE_ENABLED, ELECTION_MASTER_LOST_TIMEOUT,
             ELECTION_MAX_WAIT_TIME, ELECTION_MAX_SHUTDOWN_DURATION,
             sf_get_replication_quorum_caption(REPLICATION_QUORUM),
-            REPLICA_QUORUM_NEED_MAJORITY,
+            REPLICA_QUORUM_DEACTIVE_ON_FAILURES,
+            REPLICA_QUORUM_NEED_MAJORITY, REPLICA_QUORUM_NEED_DETECT,
             STORAGE_ENABLED);
 
     if (STORAGE_ENABLED) {
