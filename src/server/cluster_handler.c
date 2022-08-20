@@ -136,6 +136,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     switch (SERVER_TASK_TYPE) {
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
+                CLUSTER_PEER->replica->connection_info.send_heartbeat = true;
                 cluster_relationship_master_quorum_check();
                 CLUSTER_PEER = NULL;
             } else {
@@ -146,7 +147,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
-        case  FDIR_SERVER_TASK_TYPE_REPLICA_MASTER:
+        case FDIR_SERVER_TASK_TYPE_REPLICA_MASTER:
             if (CLUSTER_REPLICA != NULL) {
                 binlog_replication_rebind_thread(CLUSTER_REPLICA);
                 CLUSTER_REPLICA = NULL;

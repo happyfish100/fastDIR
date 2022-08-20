@@ -643,12 +643,26 @@ int cluster_relationship_pre_set_master(FDIRClusterServerInfo *master)
 
 static inline bool cluster_unset_master(FDIRClusterServerInfo *master)
 {
-    if (__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR, master, NULL)) {
-        __sync_bool_compare_and_swap(&master->is_master, 1, 0);
-        return true;
-    } else {
+    int status;
+    FDIRClusterServerInfo *cs;
+    FDIRClusterServerInfo *end;
+
+    if (!__sync_bool_compare_and_swap(&CLUSTER_MASTER_PTR, master, NULL)) {
         return false;
     }
+    __sync_bool_compare_and_swap(&master->is_master, 1, 0);
+
+    end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
+        status = FC_ATOMIC_GET(cs->status);
+        if (status == FDIR_SERVER_STATUS_SYNCING ||
+                status == FDIR_SERVER_STATUS_ACTIVE)
+        {
+            cluster_info_set_status(cs, FDIR_SERVER_STATUS_OFFLINE);
+        }
+    }
+
+    return true;
 }
 
 static void update_field_is_master(FDIRClusterServerInfo *new_master)

@@ -136,8 +136,7 @@ static int process_cmdline(int argc, char *argv[], bool *continue_flag)
     log_init2();
     //log_set_time_precision(&g_log_context, LOG_TIME_PRECISION_USECOND);
 
-    result = get_base_path_from_conf_file(CMDLINE_CONFIG_FILENAME,
-            SF_G_BASE_PATH_STR, sizeof(SF_G_BASE_PATH_STR));
+    result = sf_get_base_path_from_conf_file(CMDLINE_CONFIG_FILENAME);
     if (result != 0) {
         log_destroy();
         return result;

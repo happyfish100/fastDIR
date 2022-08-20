@@ -106,6 +106,7 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             break;
 
         case FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE:
+            replication->connection_info.send_heartbeat = false;
             cluster_info_set_status(replication->slave,
                     FDIR_SERVER_STATUS_ACTIVE);
             break;
@@ -493,7 +494,7 @@ static void release_replication_task(FDIRSlaveReplication *replication)
     task = replication->task;
     SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
     CLUSTER_REPLICA = NULL;
-    FC_ATOMIC_SET(replication->stage, FDIR_REPLICATION_STAGE_NONE);
+    set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
     sf_release_task(task);
 }
 
@@ -586,6 +587,14 @@ static int forward_requests(FDIRSlaveReplication *replication)
     PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (head == NULL) {
+        if (replication->connection_info.send_heartbeat) {
+            replication->connection_info.send_heartbeat = false;
+            replication->task->length = sizeof(FDIRProtoHeader);
+            SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+                    SF_PROTO_ACTIVE_TEST_REQ, 0);
+            sf_send_add_event(replication->task);
+        }
+
         return 0;
     }
 

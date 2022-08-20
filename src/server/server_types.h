@@ -163,6 +163,8 @@ typedef struct fdir_server_dentry {
     FDIRServerDentryDBArgs db_args[0];    //for data persistency, since V3.0
 } FDIRServerDentry;
 
+struct fdir_slave_replication;
+
 typedef struct fdir_cluster_server_info {
     FCServerInfo *server;
     char key[FDIR_REPLICA_KEY_SIZE]; //for slave server
@@ -175,6 +177,7 @@ typedef struct fdir_cluster_server_info {
     volatile int64_t last_data_version;      //for replication
     volatile int64_t confirmed_data_version; //for replication quorum majority
     volatile int last_change_version;    //for push server status to the slave
+    struct fdir_slave_replication *replica;
 } FDIRClusterServerInfo;
 
 typedef struct fdir_cluster_server_array {
@@ -253,6 +256,7 @@ typedef struct fdir_slave_replication {
         int next_connect_time;
         int last_errno;
         int fail_count;
+        volatile bool send_heartbeat;
         ConnectionInfo conn;
     } connection_info;
 

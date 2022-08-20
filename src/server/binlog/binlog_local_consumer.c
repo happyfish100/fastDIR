@@ -55,8 +55,7 @@ static int init_binlog_local_consumer_array()
     }
 
     bytes = sizeof(FDIRSlaveReplication) * count;
-    slave_replication_array.replications = (FDIRSlaveReplication *)
-        fc_malloc(bytes);
+    slave_replication_array.replications = fc_malloc(bytes);
     if (slave_replication_array.replications == NULL) {
         return ENOMEM;
     }
@@ -71,6 +70,7 @@ static int init_binlog_local_consumer_array()
             ++server;   //skip myself
         }
 
+        server->replica = replication;
         replication->index = replication - slave_replication_array.replications;
         replication->slave = server++;
         replication->connection_info.conn.sock = -1;
