@@ -307,6 +307,7 @@ void dentry_release_ex(FDIRServerDentry *dentry, const int dec_count)
 static int init_name_allocators(struct fast_allocator_context *name_acontext)
 {
 #define NAME_REGION_COUNT 4
+    const int obj_size = 0;
     struct fast_region_info regions[NAME_REGION_COUNT];
     int count;
 
@@ -328,8 +329,8 @@ static int init_name_allocators(struct fast_allocator_context *name_acontext)
         }
     }
 
-    return fast_allocator_init_ex(name_acontext, "name",
-            regions, count, 0, 0.00, 0, false);
+    return fast_allocator_init_ex(name_acontext, "name", obj_size,
+            NULL, regions, count, 0, 0.00, 0, false);
 }
 
 static int kvarray_alloc_init(SFKeyValueArray *kv_array,
