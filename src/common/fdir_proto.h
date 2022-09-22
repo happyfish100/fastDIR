@@ -793,6 +793,11 @@ typedef struct fdir_proto_nss_fetch_resp_body_part {
 #define fdir_log_network_error(response, conn, result) \
     sf_log_network_error(response, conn, "fdir", result)
 
+#define fdir_log_network_error_for_update_ex( \
+        response, conn, result, file, line)   \
+    sf_log_network_error_for_update_ex(response, \
+            conn, "fdir", result, file, line)
+
 #define fdir_log_network_error_for_update(response, conn, result) \
     sf_log_network_error_for_update(response, conn, "fdir", result)
 

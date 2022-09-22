@@ -287,9 +287,10 @@ static inline void proto_unpack_dentry(FDIRProtoStatDEntryResp *proto_stat,
     fdir_proto_unpack_dentry_stat(&proto_stat->stat, &dentry->stat);
 }
 
-static inline int do_update_dentry(FDIRClientContext *client_ctx,
+static inline int do_update_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, char *out_buff, const int out_bytes,
-        const int expect_cmd, FDIRDEntryInfo *dentry)
+        const int expect_cmd, FDIRDEntryInfo *dentry,
+        const char *file, const int line)
 {
     SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
@@ -303,11 +304,17 @@ static inline int do_update_dentry(FDIRClientContext *client_ctx,
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        fdir_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update_ex(&response,
+                conn, result, file, line);
     }
 
     return result;
 }
+
+#define do_update_dentry(client_ctx, conn, out_buff, \
+        out_bytes, expect_cmd, dentry) \
+        do_update_dentry_ex(client_ctx, conn, out_buff, out_bytes, \
+                expect_cmd, dentry, __FILE__, __LINE__)
 
 #define CLIENT_PROTO_SET_OMP(omp, front) \
     do { \
