@@ -271,46 +271,68 @@ static inline int get_operation_integer(const string_t *operation)
     }
 }
 
-static void binlog_pack_stringl(FastBuffer *buffer, const char *name,
-        const char *val, const int len, const bool need_escape)
+static void binlog_pack_stringl(FastBuffer *buffer, const char *tag_str,
+        const int tag_len, const char *val_str, const int val_len,
+        const bool need_escape)
 {
+    char tmp_buff[16];
     char len_buff[16];
     int len1, len2;
     int escape_len;
 
-    fast_buffer_append(buffer, " %s=%d,", name, len);
+    memcpy(buffer->data + buffer->length, tag_str, tag_len);
+    buffer->length += tag_len;
+    buffer->length += fc_itoa(val_len, buffer->data + buffer->length);
+    *(buffer->data + buffer->length++) = ',';
     if (need_escape) {
-        fast_char_escape(&CHAR_CONVERTER, val, len,
+        fast_char_escape(&CHAR_CONVERTER, val_str, val_len,
                 buffer->data + buffer->length, &escape_len,
                 buffer->alloc_size - buffer->length);
-        if (escape_len != len) {
-            len1 = snprintf(NULL, 0, "%d", len);
-            len2 = snprintf(len_buff, sizeof(len_buff), "%d", escape_len);
+        if (escape_len != val_len) {
+            len1 = fc_itoa(val_len, tmp_buff);
+            len2 = fc_itoa(escape_len, len_buff);
             if (len2 == len1) {
                 memcpy(buffer->data + buffer->length - (len1 + 1),
                         len_buff, len2);  //replace the length only
             } else {
                 buffer->length -= len1 + 1;
-                fast_buffer_append(buffer, "%d,", len2);
-                fast_char_escape(&CHAR_CONVERTER, val, len,
+                memcpy(buffer->data + buffer->length, len_buff, len2);
+                buffer->length += len2;
+                *(buffer->data + buffer->length++) = ',';
+
+                fast_char_escape(&CHAR_CONVERTER, val_str, val_len,
                         buffer->data + buffer->length, &escape_len,
                         buffer->alloc_size - buffer->length);
             }
         }
         buffer->length += escape_len;
     } else {
-        fast_buffer_append_buff(buffer, val, len);
+        memcpy(buffer->data + buffer->length, val_str, val_len);
+        buffer->length += val_len;
     }
 }
 
-#define BINLOG_PACK_STRING(buffer, name, value) \
-    binlog_pack_stringl(buffer, name, value.str, value.len, true)
+#define BINLOG_PACK_USER_STRING(buffer, name, value)  \
+    binlog_pack_stringl(buffer, " "name"=", sizeof(name) + 1, \
+            value.str, value.len, true)
+
+#define BINLOG_PACK_SYS_STRING(buffer, name, val_str, val_len)  \
+    binlog_pack_stringl(buffer, " "name"=", sizeof(name) + 1, \
+            val_str, val_len, false)
+
+#define BINLOG_PACK_INTEGER_EX(buffer, tag_str, tag_len, value) \
+    memcpy(buffer->data + buffer->length, tag_str, tag_len); \
+    buffer->length += tag_len; \
+    buffer->length += fc_itoa(value, buffer->data + buffer->length)
+
+#define BINLOG_PACK_INTEGER(buffer, name, value)  \
+    BINLOG_PACK_INTEGER_EX(buffer, " "name"=", sizeof(name) + 1, value)
 
 int binlog_pack_record_ex(BinlogPackContext *context,
         const FDIRBinlogRecord *record, FastBuffer *buffer)
 {
-    string_t op_caption;
     const BufferInfo *xattrs_buffer;
+    string_t op_caption;
     int old_len;
     int expect_len;
     int record_len;
@@ -368,22 +390,23 @@ int binlog_pack_record_ex(BinlogPackContext *context,
     old_len = buffer->length;
     buffer->length += width;
 
-    fast_buffer_append_buff(buffer, BINLOG_RECORD_START_TAG_STR,
+    memcpy(buffer->data + buffer->length, BINLOG_RECORD_START_TAG_STR,
             BINLOG_RECORD_START_TAG_LEN);
+    buffer->length += BINLOG_RECORD_START_TAG_LEN;
 
-    fast_buffer_append(buffer, " %s=%"PRId64,
-            BINLOG_RECORD_FIELD_NAME_DATA_VERSION, record->data_version);
+    BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_DATA_VERSION,
+            record->data_version);
 
-    fast_buffer_append(buffer, " %s=%"PRId64,
-            BINLOG_RECORD_FIELD_NAME_INODE, record->inode);
+    BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_INODE,
+            record->inode);
 
     op_caption.str = (char *)get_operation_label(record->operation);
     op_caption.len = strlen(op_caption.str);
-    binlog_pack_stringl(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
-            op_caption.str, op_caption.len, false);
+    BINLOG_PACK_SYS_STRING(buffer, BINLOG_RECORD_FIELD_NAME_OPERATION,
+            op_caption.str, op_caption.len);
 
-    fast_buffer_append(buffer, " %s=%d",
-            BINLOG_RECORD_FIELD_NAME_TIMESTAMP, record->timestamp);
+    BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_TIMESTAMP,
+            record->timestamp);
 
     if (record->options.path_info.flags != 0) {
         if (record->me.pname.parent_inode == 0 &&
@@ -396,121 +419,118 @@ int binlog_pack_record_ex(BinlogPackContext *context,
             return EINVAL;
         }
 
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_NAMESPACE,
+        BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_NAMESPACE,
                 record->ns);
 
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_PARENT,
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_PARENT,
                 record->me.pname.parent_inode);
 
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SUBNAME,
+        BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SUBNAME,
                 record->me.pname.name);
     }
 
-    fast_buffer_append(buffer, " %s=%u",
-            BINLOG_RECORD_FIELD_NAME_HASH_CODE,
+    BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_HASH_CODE,
             record->hash_code);
 
     if (record->options.link) {
-        BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_LINK,
+        BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_LINK,
                 record->link);
     }
 
     if (record->options.mode) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_MODE, record->stat.mode);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_MODE,
+                record->stat.mode);
     }
 
     if (record->options.btime) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_BTIME, record->stat.btime);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_BTIME,
+                record->stat.btime);
     }
 
     if (record->options.atime) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_ATIME, record->stat.atime);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_ATIME,
+                record->stat.atime);
     }
 
     if (record->options.ctime) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_CTIME, record->stat.ctime);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_CTIME,
+                record->stat.ctime);
     }
 
     if (record->options.mtime) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_MTIME, record->stat.mtime);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_MTIME,
+                record->stat.mtime);
     }
 
     if (record->options.uid) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_UID, record->stat.uid);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_UID,
+                record->stat.uid);
     }
 
     if (record->options.gid) {
-        fast_buffer_append(buffer, " %s=%d",
-                BINLOG_RECORD_FIELD_NAME_GID, record->stat.gid);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_GID,
+                record->stat.gid);
     }
 
     if (record->options.rdev) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_RDEV,
-                (int64_t)record->stat.rdev);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_RDEV,
+                record->stat.rdev);
     }
 
     if (record->options.size) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_FILE_SIZE, record->stat.size);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_FILE_SIZE,
+                record->stat.size);
     }
 
     if (record->options.space_end) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_SPACE_END, record->stat.space_end);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_SPACE_END,
+                record->stat.space_end);
     }
 
     if (record->options.inc_alloc) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_INC_ALLOC, record->stat.alloc);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_INC_ALLOC,
+                record->stat.alloc);
     }
 
     if (record->options.src_inode) {
-        fast_buffer_append(buffer, " %s=%"PRId64,
-                BINLOG_RECORD_FIELD_NAME_SRC_INODE, record->hdlink.src.inode);
+        BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_SRC_INODE,
+                record->hdlink.src.inode);
     }
 
     switch (record->operation) {
         case BINLOG_OP_RENAME_DENTRY_INT:
-            fast_buffer_append(buffer, " %s=%"PRId64,
-                    BINLOG_RECORD_FIELD_NAME_SRC_PARENT,
-                    record->rename.src.pname.parent_inode);
+            BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_SRC_PARENT,
+                record->rename.src.pname.parent_inode);
 
-            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
+            BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_SRC_SUBNAME,
                     record->rename.src.pname.name);
 
-            fast_buffer_append(buffer, " %s=%d",
-                    BINLOG_RECORD_FIELD_NAME_FLAGS, record->flags);
+            BINLOG_PACK_INTEGER(buffer, BINLOG_RECORD_FIELD_NAME_FLAGS,
+                    record->flags);
             break;
         case BINLOG_OP_SET_XATTR_INT:
-            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
+            BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
                     record->xattr.key);
-            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_VALUE,
+            BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_VALUE,
                     record->xattr.value);
             break;
         case BINLOG_OP_REMOVE_XATTR_INT:
-            BINLOG_PACK_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
+            BINLOG_PACK_USER_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_NAME,
                     record->xattr.key);
             break;
         case BINLOG_OP_DUMP_DENTRY_INT:
             if (xattrs_buffer != NULL) {
-                binlog_pack_stringl(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_LIST,
-                        xattrs_buffer->buff, xattrs_buffer->length, false);
+                BINLOG_PACK_SYS_STRING(buffer, BINLOG_RECORD_FIELD_NAME_XATTR_LIST,
+                        xattrs_buffer->buff, xattrs_buffer->length);
             }
             break;
         default:
             break;
     }
 
-    fast_buffer_append_buff(buffer, BINLOG_RECORD_END_TAG_STR,
+    memcpy(buffer->data + buffer->length, BINLOG_RECORD_END_TAG_STR,
             BINLOG_RECORD_END_TAG_LEN);
+    buffer->length += BINLOG_RECORD_END_TAG_LEN;
 
     record_len = buffer->length - old_len - width;
     if (record_len > FDIR_BINLOG_RECORD_MAX_SIZE - 1) {
