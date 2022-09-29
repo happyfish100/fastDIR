@@ -65,6 +65,7 @@ typedef struct {
     int64_t last_data_version;   //for waiting binlog write done
     int64_t write_done_version;  //the data version of binlog write done
     uint32_t hardlink_count;
+    int sleep_count;
     FDIRBinlogRecord record;
     VersionedBufferArray buffer_array;
     BinlogPackContext pack_ctx;
@@ -152,13 +153,15 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
         const char *subdir_name)
 {
     const uint64_t next_version = 1;
-    const int buffer_size = 4 * 1024 * 1024;
-    const int ring_size = 1024;
+    const int buffer_size = 1024 * 1024;
     const short order_mode = SF_BINLOG_THREAD_ORDER_MODE_VARY;
     const int max_record_size = 0;  //use the binlog buffer of the caller
     const int writer_count = 1;
     const bool use_fixed_buffer_size = true;
+    const bool passive_write = true;
+    int ring_size;
     char filepath[PATH_MAX];
+    char filename[PATH_MAX];
     int result;
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
@@ -175,6 +178,12 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
     dump_ctx->current_version = 0;
     dump_ctx->orphan_count = 0;
     dump_ctx->hardlink_count = 0;
+    sf_binlog_writer_get_filename_ex(DATA_PATH_STR, subdir_name,
+            DUMP_FILE_PREFIX_NAME, 0, filename, sizeof(filename));
+    if ((result=fc_delete_file(filename)) != 0) {
+        return result;
+    }
+    ring_size = DATA_THREAD_COUNT * 4 * 1024;
     if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->
                     bwctx.writer, DATA_PATH_STR, subdir_name,
                     DUMP_FILE_PREFIX_NAME, next_version, buffer_size,
@@ -187,7 +196,8 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
 
     return sf_binlog_writer_init_thread_ex(&dump_ctx->bwctx.thread,
             subdir_name, &dump_ctx->bwctx.writer, order_mode,
-            max_record_size, writer_count, use_fixed_buffer_size);
+            max_record_size, writer_count, use_fixed_buffer_size,
+            passive_write);
 }
 
 static void destroy_dump_ctx(FDIRBinlogDumpContext *dump_ctx)
@@ -248,11 +258,11 @@ static int binlog_padding(FDIRBinlogDumpContext *dump_ctx)
     wbuffer->bf.length = buffer.length;
     wbuffer->version.first = wbuffer->version.last = record.data_version;
     sf_push_to_binlog_write_queue(&dump_ctx->bwctx.writer, wbuffer);
-
+    sf_binlog_writer_flush_file(&dump_ctx->bwctx.writer);
     while (sf_binlog_writer_get_last_version(&dump_ctx->
                 bwctx.writer) < record.data_version)
     {
-        fc_sleep_ms(10);
+        fc_sleep_ms(1);
     }
 
     fast_buffer_destroy(&buffer);
@@ -476,11 +486,13 @@ static int output_dentry(DataDumperContext *dd_ctx,
 
     vb = dd_ctx->buffer_array.buffers + dd_ctx->buffer_array.
         index++ % dd_ctx->buffer_array.count;
+
+    /* wait write done to reuse buffer */
     while (vb->version > dd_ctx->write_done_version) {
-        /* wait write done to reuse buffer */
-        fc_sleep_ms(1);
-        dd_ctx->write_done_version = sf_binlog_writer_get_last_version(
-                &dd_ctx->dump_ctx->bwctx.writer);
+        fc_sleep_us(1);
+        ++dd_ctx->sleep_count;
+        dd_ctx->write_done_version = sf_binlog_writer_get_next_version(
+                &dd_ctx->dump_ctx->bwctx.writer) - 1;
     }
 
     vb->version = dd_ctx->record.data_version;
@@ -672,7 +684,7 @@ static int init_versioned_buffer_array(VersionedBufferArray *array)
     int result;
 
     array->index = 0;
-    array->count = 256;
+    array->count = 8 * 1024;
     array->buffers = fc_malloc(sizeof(VersionedFastBuffer) * array->count);
     if (array->buffers == NULL) {
         return ENOMEM;
@@ -786,18 +798,19 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     FC_ATOMIC_INC_EX(dump_ctx->hardlink_count,
             dd_ctx.hardlink.list.count);
 
-    /*
     logInfo("data thread #%d, last_data_version: %"PRId64", "
-            "current write done version: %"PRId64,
-            (int)(thread_ctx - g_data_thread_vars.thread_array.contexts),
-            dd_ctx.last_data_version, sf_binlog_writer_get_last_version(
-                &dump_ctx->bwctx.writer));
-                */
+            "current write done version: %"PRId64", sleep_count: %d, "
+            "max_waitings: %d", (int)(thread_ctx - g_data_thread_vars.
+                thread_array.contexts), dd_ctx.last_data_version,
+            sf_binlog_writer_get_last_version(
+                &dump_ctx->bwctx.writer), dd_ctx.sleep_count,
+            dump_ctx->bwctx.writer.version_ctx.ring.max_waitings);
 
     if (result == 0 && dd_ctx.last_data_version > 0) {
         while (sf_binlog_writer_get_last_version(&dump_ctx->
                     bwctx.writer) < dd_ctx.last_data_version)
         {
+            sf_binlog_writer_flush_file(&dump_ctx->bwctx.writer);
             fc_sleep_ms(10);
         }
     }
