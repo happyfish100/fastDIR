@@ -94,6 +94,7 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
+        volatile bool load_dump_done; //for store engine to load dump data
         volatile bool load_done;
     } data;
 
@@ -218,6 +219,7 @@ typedef struct server_global_vars {
 #define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
 #define DATA_THREAD_COUNT       g_server_global_vars.data.thread_count
 #define DATA_LOAD_DONE          g_server_global_vars.data.load_done
+#define LOAD_DUMP_DONE          g_server_global_vars.data.load_dump_done
 #define DATA_PATH               g_server_global_vars.data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
@@ -240,6 +242,9 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_INIT_API      g_server_global_vars.storage.api.init
 #define STORAGE_ENGINE_START_API     g_server_global_vars.storage.api.start
 #define STORAGE_ENGINE_TERMINATE_API g_server_global_vars.storage.api.terminate
+#define STORAGE_ENGINE_ADD_INODE_API g_server_global_vars.storage.api.add_inode
+#define STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API   \
+    g_server_global_vars.storage.api.save_segment_index
 #define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
 #define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch

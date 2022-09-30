@@ -23,13 +23,18 @@
 
 typedef int (*fdir_storage_engine_init_func)(IniFullContext *ini_ctx,
         const int my_server_id, const FDIRStorageEngineConfig *db_cfg,
-        const DADataGlobalConfig *data_cfg);
+        const DADataGlobalConfig *data_cfg, const bool clear_segment_index);
 
 typedef int (*fdir_storage_engine_start_func)();
 
 typedef void (*fdir_storage_engine_terminate_func)();
 
-typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *array);
+typedef int (*fdir_storage_engine_add_inode_func)(const int64_t inode);
+
+typedef int (*fdir_storage_engine_save_segment_index_func)();
+
+typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *array,
+        const bool add_inode);
 
 typedef int (*fdir_storage_engine_redo_func)(const FDIRDBUpdateFieldArray *array);
 
@@ -40,6 +45,8 @@ typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_init_func init;
     fdir_storage_engine_start_func start;
     fdir_storage_engine_terminate_func terminate;
+    fdir_storage_engine_add_inode_func add_inode;
+    fdir_storage_engine_save_segment_index_func save_segment_index;
     fdir_storage_engine_store_func store;
     fdir_storage_engine_redo_func redo;
     fdir_storage_engine_fetch_func fetch;

@@ -280,6 +280,9 @@ static int load_storage_engine_apis()
     LOAD_API(STORAGE_ENGINE_INIT_API, fdir_storage_engine_init);
     LOAD_API(STORAGE_ENGINE_START_API, fdir_storage_engine_start);
     LOAD_API(STORAGE_ENGINE_TERMINATE_API, fdir_storage_engine_terminate);
+    LOAD_API(STORAGE_ENGINE_ADD_INODE_API, fdir_storage_engine_add_inode);
+    LOAD_API(STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API, \
+            fdir_storage_engine_save_segment_index);
     LOAD_API(STORAGE_ENGINE_STORE_API, fdir_storage_engine_store);
     LOAD_API(STORAGE_ENGINE_REDO_API, fdir_storage_engine_redo);
     LOAD_API(STORAGE_ENGINE_FETCH_API, fdir_storage_engine_fetch);
@@ -561,6 +564,7 @@ int server_load_config(const char *filename)
     IniContext ini_context;
     char full_cluster_filename[PATH_MAX];
     DADataGlobalConfig data_cfg;
+    bool clear_segment_index;
     int result;
 
     if ((result=iniLoadFromFile(filename, &ini_context)) != 0) {
@@ -714,9 +718,12 @@ int server_load_config(const char *filename)
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
     data_cfg.read_by_direct_io = READ_BY_DIRECT_IO;
+
+    //TODO
+    clear_segment_index = false;
     if (STORAGE_ENABLED && (result=STORAGE_ENGINE_INIT_API(&ini_ctx,
                     CLUSTER_MY_SERVER_ID, &g_server_global_vars.
-                    storage.cfg, &data_cfg)) != 0)
+                    storage.cfg, &data_cfg, clear_segment_index)) != 0)
     {
         return result;
     }

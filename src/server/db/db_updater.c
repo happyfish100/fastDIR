@@ -557,5 +557,5 @@ int db_updater_deal(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
-    return STORAGE_ENGINE_STORE_API(&ctx->array);
+    return STORAGE_ENGINE_STORE_API(&ctx->array, LOAD_DUMP_DONE);
 }
