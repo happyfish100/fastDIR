@@ -24,7 +24,6 @@
 
 #define DUMP_FILE_PREFIX_NAME  "dump"
 
-#define DUMP_MARK_ITEM_ORDER_BY            "order_by"
 #define DUMP_MARK_ITEM_DENTRY_COUNT        "dentry_count"
 #define DUMP_MARK_ITEM_LAST_DATA_VERSION   "last_data_version"
 #define DUMP_MARK_ITEM_NEXT_BINLOG_INDEX   "next_binlog_index"
@@ -90,12 +89,10 @@ int binlog_dump_write_to_mark_file()
 
     fdir_get_dump_mark_filename(filename, sizeof(filename));
     len = sprintf(buff,
-            "%s=%c\n"
             "%s=%"PRId64"\n"
             "%s=%"PRId64"\n"
             "%s=%d\n"
             "%s=%"PRId64"\n",
-            DUMP_MARK_ITEM_ORDER_BY, DUMP_ORDER_BY,
             DUMP_MARK_ITEM_DENTRY_COUNT, DUMP_DENTRY_COUNT,
             DUMP_MARK_ITEM_LAST_DATA_VERSION, DUMP_LAST_DATA_VERSION,
             DUMP_MARK_ITEM_NEXT_BINLOG_INDEX, DUMP_NEXT_POSITION.index,
@@ -127,9 +124,6 @@ int binlog_dump_load_from_mark_file()
                 __LINE__, filename, result);
         return result;
     }
-
-    DUMP_ORDER_BY = iniGetCharValue(NULL, DUMP_MARK_ITEM_ORDER_BY,
-            &ini_context, FDIR_DUMP_ORDER_BY_NONE);
 
     DUMP_DENTRY_COUNT = iniGetInt64Value(NULL,
             DUMP_MARK_ITEM_DENTRY_COUNT,
@@ -301,7 +295,6 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
         return result;
     }
 
-    DUMP_ORDER_BY = FDIR_DUMP_ORDER_BY_NONE;
     DUMP_DENTRY_COUNT = dump_ctx->current_version;
     DUMP_LAST_DATA_VERSION = dump_ctx->last_data_version;
     DUMP_NEXT_POSITION = position;

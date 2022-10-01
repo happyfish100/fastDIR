@@ -26,7 +26,15 @@
 extern "C" {
 #endif
 
-    int binlog_sort_by_inode();
+    static inline const char *binlog_sort_get_inodes_filename(
+            char *filename, const int size)
+    {
+        snprintf(filename, size, "%s/%s/inodes.dat", DATA_PATH_STR,
+                FDIR_DATA_DUMP_SUBDIR_NAME);
+        return filename;
+    }
+
+    int binlog_sort_generate_inodes_file();
 
 #ifdef __cplusplus
 }

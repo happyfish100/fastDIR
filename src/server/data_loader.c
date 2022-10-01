@@ -72,7 +72,8 @@ int server_load_data()
                 }
             }
 
-            if ((result=binlog_sort_by_inode()) != 0) {
+            //TODO
+            if ((result=binlog_sort_generate_inodes_file()) != 0) {
                 return result;
             }
 

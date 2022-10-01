@@ -23,9 +23,6 @@
 #include "../server_global.h"
 #include "binlog_types.h"
 
-#define FDIR_DUMP_ORDER_BY_NONE   'n'
-#define FDIR_DUMP_ORDER_BY_INODE  'i'
-
 struct fdir_data_thread_context;
 
 typedef struct fdir_binlog_dump_context {
