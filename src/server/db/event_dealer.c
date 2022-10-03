@@ -55,7 +55,7 @@ int event_dealer_init()
 
 int64_t event_dealer_get_last_data_version()
 {
-    return event_dealer_ctx.updater_ctx.last_versions.dentry;
+    return event_dealer_ctx.updater_ctx.last_versions.dentry.commit;
 }
 
 static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
@@ -413,10 +413,12 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
         return result;
     }
 
-    event_dealer_ctx.updater_ctx.last_versions.dentry = last->version;
+    event_dealer_ctx.updater_ctx.last_versions.dentry.prepare = last->version;
     if ((result=deal_merged_entries()) != 0) {
         return result;
     }
+    event_dealer_ctx.updater_ctx.last_versions.dentry.commit =
+        event_dealer_ctx.updater_ctx.last_versions.dentry.prepare;
 
     return result;
 }

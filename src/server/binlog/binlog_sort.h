@@ -36,6 +36,8 @@ extern "C" {
 
     int binlog_sort_generate_inodes_file();
 
+    int binlog_sort_delete_inodes_file();
+
 #ifdef __cplusplus
 }
 #endif

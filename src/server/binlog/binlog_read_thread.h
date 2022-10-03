@@ -55,7 +55,7 @@ extern "C" {
 #endif
 
 int binlog_read_thread_init1(BinlogReadThreadContext *ctx,
-        BinlogReaderParams params[2], const int buffer_size,
+        const BinlogReaderParams params[2], const int buffer_size,
         const int buffer_count);
 
 int binlog_read_thread_init_ex(BinlogReadThreadContext *ctx,

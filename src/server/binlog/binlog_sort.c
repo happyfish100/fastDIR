@@ -81,10 +81,7 @@ static int deal_data_buffer(DumpDataSortContext *ctx)
 
             ctx->extract_inode.writer->buffer.current += sprintf(
                     ctx->extract_inode.writer->buffer.current,
-                    "%"PRId64" %"PRId64" %d\n", inode,
-                    ctx->extract_inode.r->binlog_position.offset +
-                    (p - ctx->extract_inode.r->buffer.buff),
-                    (int)(rec_end - p));
+                    "%"PRId64"\n", inode);
         }
 
         p = rec_end;
@@ -236,4 +233,12 @@ int binlog_sort_generate_inodes_file()
             "time used: %s ms.", __LINE__, buff);
 
     return 0;
+}
+
+int binlog_sort_delete_inodes_file()
+{
+    char filename[PATH_MAX];
+
+    binlog_sort_get_inodes_filename(filename, sizeof(filename));
+    return fc_delete_file_ex(filename, "inodes");
 }

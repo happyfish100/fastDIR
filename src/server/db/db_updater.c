@@ -28,7 +28,8 @@
 
 #define REDO_HEADER_FIELD_ID_RECORD_COUNT          1
 #define REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION    2
-#define REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION   3
+#define REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION   3
+#define REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION    4
 
 #define REDO_ENTRY_FIELD_ID_VERSION               1
 #define REDO_ENTRY_FIELD_ID_INODE                 2
@@ -117,8 +118,15 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     }
 
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION,
-                    ctx->last_versions.dentry)) != 0)
+                    REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION,
+                    ctx->last_versions.dentry.prepare)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=sf_serializer_pack_int64(&ctx->buffer,
+                    REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION,
+                    ctx->last_versions.dentry.commit)) != 0)
     {
         return result;
     }
@@ -128,7 +136,7 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     /*
     logInfo("count: %d, last_versions {field: %"PRId64", dentry: %"PRId64"}, "
             "buffer length: %d", ctx->array.count, ctx->last_versions.field,
-            ctx->last_versions.dentry, ctx->buffer.length);
+            ctx->last_versions.dentry.prepare, ctx->buffer.length);
             */
 
     return write_buffer_to_file(&ctx->buffer);
@@ -280,7 +288,7 @@ static int unpack_header(SFSerializerIterator *it,
     const SFSerializerFieldValue *fv;
 
     *record_count = 0;
-    ctx->last_versions.field = ctx->last_versions.dentry = 0;
+    ctx->last_versions.field = ctx->last_versions.dentry.prepare = 0;
     if ((result=unpack_from_file(it, "header", buffer)) != 0) {
         return result;
     }
@@ -293,21 +301,24 @@ static int unpack_header(SFSerializerIterator *it,
             case REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION:
                 ctx->last_versions.field = fv->value.n;
                 break;
-            case REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION:
-                ctx->last_versions.dentry = fv->value.n;
+            case REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION:
+                ctx->last_versions.dentry.prepare = fv->value.n;
+                break;
+            case REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION:
+                ctx->last_versions.dentry.commit = fv->value.n;
                 break;
             default:
                 break;
         }
     }
     if (*record_count == 0 || ctx->last_versions.field == 0 ||
-            ctx->last_versions.dentry == 0)
+            ctx->last_versions.dentry.prepare == 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "file: %s, invalid packed header, record_count: %d, "
                 "last_versions {field: %"PRId64", dentry: %"PRId64"}",
                 __LINE__, db_updater_ctx.redo.filename, *record_count,
-                ctx->last_versions.field, ctx->last_versions.dentry);
+                ctx->last_versions.field, ctx->last_versions.dentry.prepare);
         return EINVAL;
     }
 
@@ -498,7 +509,7 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
     close(db_updater_ctx.redo.fd);
 
     logInfo("last_versions {field: %"PRId64", dentry: %"PRId64"}",
-            ctx->last_versions.field, ctx->last_versions.dentry);
+            ctx->last_versions.field, ctx->last_versions.dentry.prepare);
 
     if (result != 0) {
         return result;
@@ -517,6 +528,7 @@ static int resume_from_redo_log(FDIRDBUpdaterContext *ctx)
         return result;
     }
 
+    ctx->last_versions.dentry.commit = ctx->last_versions.dentry.prepare;
     event_dealer_free_buffers(&ctx->array);
     return fdir_namespace_load_root();
 }

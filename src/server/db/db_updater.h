@@ -22,7 +22,11 @@
 typedef struct fdir_db_updater_context {
     FDIRDBUpdateFieldArray array;
     struct {
-        int64_t dentry;  //for check with FDIR server's data version
+        struct {
+            int64_t prepare;
+            int64_t commit;
+        } dentry; //for check with FDIR server's data version
+
         int64_t field;   //for check internal storage engine
     } last_versions;
     FastBuffer buffer;

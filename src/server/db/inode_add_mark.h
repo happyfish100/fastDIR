@@ -20,10 +20,9 @@
 #include "../server_types.h"
 
 typedef enum {
-    inode_add_mark_status_unkown =  0,
-    inode_add_mark_status_none   =  1,
-    inode_add_mark_status_doing  =  2,
-    inode_add_mark_status_done   =  3
+    inode_add_mark_status_none   =  0,
+    inode_add_mark_status_doing  =  1,
+    inode_add_mark_status_done   =  2
 } InodeAddMarkStatus;
 
 #ifdef __cplusplus

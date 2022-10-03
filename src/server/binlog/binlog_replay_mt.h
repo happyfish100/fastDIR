@@ -62,6 +62,13 @@ typedef struct binlog_parse_thread_ctx_array {
     int count;
 } BinlogParseThreadCtxArray;
 
+typedef struct binlog_replay_mt_stat {
+    int64_t record_count;
+    int64_t skip_count;
+    volatile int64_t warning_count;
+    volatile int64_t fail_count;
+} BinlogReplayMTStat;
+
 typedef struct binlog_replay_mt_context {
     BinlogReadThreadContext *read_thread_ctx;
 
@@ -78,10 +85,7 @@ typedef struct binlog_replay_mt_context {
 
     int64_t data_current_version;
     int last_errno;
-    int64_t record_count;
-    int64_t skip_count;
-    int64_t warning_count;
-    volatile int64_t fail_count;
+    BinlogReplayMTStat *stat;
 } BinlogReplayMTContext;
 
 #ifdef __cplusplus
@@ -89,7 +93,8 @@ extern "C" {
 #endif
 
 int binlog_replay_mt_init(BinlogReplayMTContext *replay_ctx,
-        BinlogReadThreadContext *read_thread_ctx, const int parse_threads);
+        BinlogReplayMTStat *stat, BinlogReadThreadContext *read_thread_ctx,
+        const int parse_threads);
 
 void binlog_replay_mt_destroy(BinlogReplayMTContext *replay_ctx);
 

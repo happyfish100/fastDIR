@@ -52,10 +52,10 @@ static void data_thread_deal_done_callback(
     if (result != 0) {
         if (is_error) {
             replay_ctx->last_errno = result;
-            __sync_add_and_fetch(&replay_ctx->fail_count, 1);
+            __sync_add_and_fetch(&replay_ctx->stat->fail_count, 1);
             SF_G_CONTINUE_FLAG = false;
         } else {
-            __sync_add_and_fetch(&replay_ctx->warning_count, 1);
+            __sync_add_and_fetch(&replay_ctx->stat->warning_count, 1);
         }
         service_record_deal_error_log(record, result, is_error);
     }
@@ -317,14 +317,17 @@ void binlog_replay_mt_destroy(BinlogReplayMTContext *ctx)
 }
 
 int binlog_replay_mt_init(BinlogReplayMTContext *replay_ctx,
-        BinlogReadThreadContext *read_thread_ctx, const int parse_threads)
+        BinlogReplayMTStat *stat, BinlogReadThreadContext *read_thread_ctx,
+        const int parse_threads)
 {
     int result;
 
-    replay_ctx->record_count = 0;
-    replay_ctx->skip_count = 0;
-    replay_ctx->warning_count = 0;
-    replay_ctx->fail_count = 0;
+    replay_ctx->stat = stat;
+
+    replay_ctx->stat->record_count = 0;
+    replay_ctx->stat->skip_count = 0;
+    replay_ctx->stat->warning_count = 0;
+    replay_ctx->stat->fail_count = 0;
     replay_ctx->last_errno = 0;
     replay_ctx->read_thread_ctx = read_thread_ctx;
     replay_ctx->data_current_version = __sync_add_and_fetch(
@@ -369,7 +372,7 @@ static void waiting_and_process_parse_result(BinlogReplayMTContext
         counter->total++;
 
         if (record->data_version <= replay_ctx->data_current_version) {
-            replay_ctx->skip_count++;
+            replay_ctx->stat->skip_count++;
             FC_ATOMIC_INC(counter->done);
         } else {
             replay_ctx->data_current_version = record->data_version;
@@ -508,6 +511,6 @@ void binlog_replay_mt_read_done(BinlogReplayMTContext *replay_ctx)
     for (parse_thread=replay_ctx->parse_thread_array.contexts;
             parse_thread<end; parse_thread++)
     {
-        replay_ctx->record_count += parse_thread->total_count;
+        replay_ctx->stat->record_count += parse_thread->total_count;
     }
 }

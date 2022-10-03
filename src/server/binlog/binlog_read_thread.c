@@ -40,7 +40,7 @@
 static void *binlog_read_thread_func(void *arg);
 
 int binlog_read_thread_init1(BinlogReadThreadContext *ctx,
-        BinlogReaderParams params[2], const int buffer_size,
+        const BinlogReaderParams params[2], const int buffer_size,
         const int buffer_count)
 {
     int result;

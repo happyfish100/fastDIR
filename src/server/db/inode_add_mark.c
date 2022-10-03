@@ -41,14 +41,14 @@ int inode_add_mark_load(InodeAddMarkStatus *status)
 
     inode_add_mark_get_filename(filename, sizeof(filename));
     if (access(filename, F_OK) != 0) {
-        *status = inode_add_mark_status_unkown;
+        *status = inode_add_mark_status_none;
         result = errno != 0 ? errno : EPERM;
         return result == ENOENT ? 0 : result;
     }
 
     file_size = sizeof(buff);
     if ((result=getFileContentEx(filename, buff, 0, &file_size)) != 0) {
-        *status = inode_add_mark_status_unkown;
+        *status = inode_add_mark_status_none;
         return result;
     }
 
