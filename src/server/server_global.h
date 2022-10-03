@@ -25,6 +25,7 @@
 #include "sf/sf_cluster_cfg.h"
 #include "sf/idempotency/server/request_metadata.h"
 #include "db/db_interface.h"
+#include "db/inode_add_mark.h"
 #include "fastcfs/auth/client_types.h"
 #include "common/fdir_global.h"
 #include "server_types.h"
@@ -122,6 +123,7 @@ typedef struct server_global_vars {
 
     struct {
         volatile char dumping;  //if dump data in progress
+        InodeAddMarkStatus inode_add_status; //for storage engine
         int64_t dentry_count;
         int64_t last_data_version;
         SFBinlogFilePosition next_position; //for normal binlog
@@ -249,6 +251,7 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
 
 #define FULL_DUMPING           g_server_global_vars.full_dump.dumping
+#define DUMP_INODE_ADD_STATUS  g_server_global_vars.full_dump.inode_add_status
 #define DUMP_DENTRY_COUNT      g_server_global_vars.full_dump.dentry_count
 #define DUMP_LAST_DATA_VERSION g_server_global_vars.full_dump.last_data_version
 #define DUMP_NEXT_POSITION     g_server_global_vars.full_dump.next_position

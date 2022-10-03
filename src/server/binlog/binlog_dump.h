@@ -65,8 +65,6 @@ extern "C" {
 #define fdir_get_dump_mark_filename(filename, size) \
     fdir_get_dump_mark_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
 
-    int binlog_dump_write_to_mark_file();
-
     int binlog_dump_load_from_mark_file();
 
     int binlog_dump_all_ex(const bool create_thread);

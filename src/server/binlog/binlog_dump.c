@@ -80,7 +80,7 @@ typedef struct {
 } DataDumperContext;  //for data thread
 
 
-int binlog_dump_write_to_mark_file()
+static int binlog_dump_write_to_mark_file()
 {
     char filename[PATH_MAX];
     char buff[256];

@@ -72,9 +72,15 @@ int server_load_data()
                 }
             }
 
-            //TODO
-            if ((result=binlog_sort_generate_inodes_file()) != 0) {
-                return result;
+            if (DUMP_INODE_ADD_STATUS == inode_add_mark_status_unkown) {
+                if ((result=binlog_sort_generate_inodes_file()) != 0) {
+                    return result;
+                }
+
+                DUMP_INODE_ADD_STATUS = inode_add_mark_status_none;
+                if ((result=inode_add_mark_save(DUMP_INODE_ADD_STATUS)) != 0) {
+                    return result;
+                }
             }
 
             inited = false;

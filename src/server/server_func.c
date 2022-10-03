@@ -31,6 +31,7 @@
 #include "fastcfs/vote/fcfs_vote_client.h"
 #include "common/fdir_proto.h"
 #include "common/fdir_func.h"
+#include "db/inode_add_mark.h"
 #include "db/dentry_lru.h"
 #include "server_global.h"
 #include "cluster_info.h"
@@ -719,13 +720,21 @@ int server_load_config(const char *filename)
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
     data_cfg.read_by_direct_io = READ_BY_DIRECT_IO;
 
-    //TODO
-    clear_segment_index = false;
-    if (STORAGE_ENABLED && (result=STORAGE_ENGINE_INIT_API(&ini_ctx,
-                    CLUSTER_MY_SERVER_ID, &g_server_global_vars.
-                    storage.cfg, &data_cfg, clear_segment_index)) != 0)
-    {
-        return result;
+    if (STORAGE_ENABLED) {
+        if ((result=inode_add_mark_load(&DUMP_INODE_ADD_STATUS)) != 0) {
+            return result;
+        }
+
+        clear_segment_index = (DUMP_INODE_ADD_STATUS ==
+                inode_add_mark_status_doing);
+        logInfo("DUMP_INODE_ADD_STATUS =============== %d, clear_segment_index: %d",
+                DUMP_INODE_ADD_STATUS, clear_segment_index);
+        if ((result=STORAGE_ENGINE_INIT_API(&ini_ctx, CLUSTER_MY_SERVER_ID,
+                        &g_server_global_vars.storage.cfg, &data_cfg,
+                        clear_segment_index)) != 0)
+        {
+            return result;
+        }
     }
 
     if ((result=load_binlog_shrink_config(&ini_context, filename)) != 0) {
