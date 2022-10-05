@@ -26,7 +26,7 @@
 #include "data_loader.h"
 
 static int load_data(const int parse_threads, const BinlogReaderParams *params,
-        BinlogReplayMTStat *stat)
+        BinlogReplayMTStat *stat, const bool show_prompt)
 {
     int result;
     BinlogReplayMTContext replay_ctx;
@@ -49,9 +49,11 @@ static int load_data(const int parse_threads, const BinlogReaderParams *params,
         return result;
     }
 
-    logInfo("file: "__FILE__", line: %d, "
-            "loading data, parse thread count: %d ...",
-            __LINE__, parse_threads);
+    if (show_prompt) {
+        logInfo("file: "__FILE__", line: %d, "
+                "loading data, parse thread count: %d ...",
+                __LINE__, parse_threads);
+    }
 
     result = 0;
     while (SF_G_CONTINUE_FLAG && replay_ctx.stat->fail_count == 0) {
@@ -239,23 +241,12 @@ static int load_full_dump_data(const int parse_threads,
         }
     }
 
-    if ((result=load_data(parse_threads, params, stat)) != 0) {
+    if ((result=load_data(parse_threads, params, stat, true)) != 0) {
         return result;
     }
 
     if (event_dealer_get_last_data_version() < DUMP_DENTRY_COUNT) {
         change_notify_load_done_signal();
-    }
-
-    logInfo("event_dealer_get_last_data_version: %"PRId64, event_dealer_get_last_data_version());
-
-    fc_sleep_ms(10);
-    if ((result=inode_add_mark_delete()) != 0) {
-        return result;
-    }
-
-    if ((result=binlog_dump_clear_files()) != 0) {
-        return result;
     }
 
     return 0;
@@ -273,6 +264,7 @@ int server_load_data()
     int64_t data_version;
     int parse_threads;
     int replay_count;
+    bool show_prompt;
     int result;
 
     start_time = get_current_time_ms();
@@ -324,10 +316,30 @@ int server_load_data()
     }
 
     LOAD_DUMP_DONE = true;
-    if ((result=load_data(parse_threads, params,
-                    stats + replay_count++)) != 0)
+    show_prompt = (replay_count == 0);
+    if ((result=load_data(parse_threads, params, stats +
+                    replay_count++, show_prompt)) != 0)
     {
         return result;
+    }
+
+    if (STORAGE_ENABLED && DUMP_LAST_DATA_VERSION > 0) {
+        if (event_dealer_get_last_data_version() <
+                FC_ATOMIC_GET(DATA_CURRENT_VERSION))
+        {
+            change_notify_load_done_signal();
+        }
+
+        if (event_dealer_get_last_data_version() >= DUMP_LAST_DATA_VERSION) {
+            fc_sleep_ms(10);
+            if ((result=inode_add_mark_delete()) != 0) {
+                return result;
+            }
+
+            if ((result=binlog_dump_clear_files()) != 0) {
+                return result;
+            }
+        }
     }
 
     if (replay_count == 1) {

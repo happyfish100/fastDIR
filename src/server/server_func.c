@@ -727,8 +727,6 @@ int server_load_config(const char *filename)
 
         clear_segment_index = (DUMP_INODE_ADD_STATUS ==
                 inode_add_mark_status_doing);
-        logInfo("DUMP_INODE_ADD_STATUS =============== %d, clear_segment_index: %d",
-                DUMP_INODE_ADD_STATUS, clear_segment_index);
         if ((result=STORAGE_ENGINE_INIT_API(&ini_ctx, CLUSTER_MY_SERVER_ID,
                         &g_server_global_vars.storage.cfg, &data_cfg,
                         clear_segment_index)) != 0)
