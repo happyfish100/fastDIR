@@ -282,8 +282,10 @@ static int load_storage_engine_apis()
     LOAD_API(STORAGE_ENGINE_START_API, fdir_storage_engine_start);
     LOAD_API(STORAGE_ENGINE_TERMINATE_API, fdir_storage_engine_terminate);
     LOAD_API(STORAGE_ENGINE_ADD_INODE_API, fdir_storage_engine_add_inode);
-    LOAD_API(STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API, \
+    LOAD_API(STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API,
             fdir_storage_engine_save_segment_index);
+    LOAD_API(STORAGE_ENGINE_DUMP_INODE_BINLOGS_API,
+            fdir_storage_engine_dump_inode_binlogs);
     LOAD_API(STORAGE_ENGINE_STORE_API, fdir_storage_engine_store);
     LOAD_API(STORAGE_ENGINE_REDO_API, fdir_storage_engine_redo);
     LOAD_API(STORAGE_ENGINE_FETCH_API, fdir_storage_engine_fetch);

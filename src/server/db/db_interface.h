@@ -33,6 +33,8 @@ typedef int (*fdir_storage_engine_add_inode_func)(const int64_t inode);
 
 typedef int (*fdir_storage_engine_save_segment_index_func)();
 
+typedef int (*fdir_storage_engine_dump_inode_binlogs_func)();
+
 typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *array,
         const bool add_inode);
 
@@ -47,6 +49,7 @@ typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_terminate_func terminate;
     fdir_storage_engine_add_inode_func add_inode;
     fdir_storage_engine_save_segment_index_func save_segment_index;
+    fdir_storage_engine_dump_inode_binlogs_func dump_inode_binlogs;
     fdir_storage_engine_store_func store;
     fdir_storage_engine_redo_func redo;
     fdir_storage_engine_fetch_func fetch;

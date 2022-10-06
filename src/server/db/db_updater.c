@@ -28,8 +28,7 @@
 
 #define REDO_HEADER_FIELD_ID_RECORD_COUNT          1
 #define REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION    2
-#define REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION   3
-#define REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION    4
+#define REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION   3
 
 #define REDO_ENTRY_FIELD_ID_VERSION               1
 #define REDO_ENTRY_FIELD_ID_INODE                 2
@@ -118,15 +117,8 @@ static int write_header(FDIRDBUpdaterContext *ctx)
     }
 
     if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION,
+                    REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION,
                     ctx->last_versions.dentry.prepare)) != 0)
-    {
-        return result;
-    }
-
-    if ((result=sf_serializer_pack_int64(&ctx->buffer,
-                    REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION,
-                    ctx->last_versions.dentry.commit)) != 0)
     {
         return result;
     }
@@ -301,11 +293,8 @@ static int unpack_header(SFSerializerIterator *it,
             case REDO_HEADER_FIELD_ID_LAST_FIELD_VERSION:
                 ctx->last_versions.field = fv->value.n;
                 break;
-            case REDO_HEADER_FIELD_ID_LAST_DENTRY_PREPARE_VERSION:
+            case REDO_HEADER_FIELD_ID_LAST_DENTRY_VERSION:
                 ctx->last_versions.dentry.prepare = fv->value.n;
-                break;
-            case REDO_HEADER_FIELD_ID_LAST_DENTRY_COMMIT_VERSION:
-                ctx->last_versions.dentry.commit = fv->value.n;
                 break;
             default:
                 break;

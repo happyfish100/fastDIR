@@ -246,6 +246,8 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_ADD_INODE_API g_server_global_vars.storage.api.add_inode
 #define STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API   \
     g_server_global_vars.storage.api.save_segment_index
+#define STORAGE_ENGINE_DUMP_INODE_BINLOGS_API   \
+    g_server_global_vars.storage.api.dump_inode_binlogs
 #define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
 #define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch

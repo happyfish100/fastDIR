@@ -184,11 +184,54 @@ static int add_sorted_inodes()
     return result;
 }
 
+static inline const char *get_check_dump_inode_binlogs_mark_filename(
+        char *filename, const int size)
+{
+    snprintf(filename, size, "%s/%s/.dump_inode_binlogs.flags",
+            DATA_PATH_STR, FDIR_DATA_DUMP_SUBDIR_NAME);
+    return filename;
+}
+
+static int check_dump_inode_binlogs()
+{
+    int result;
+    int64_t start_time;
+    char mark_filename[PATH_MAX];
+    char time_buff[32];
+
+    get_check_dump_inode_binlogs_mark_filename(
+            mark_filename, sizeof(mark_filename));
+    if (access(mark_filename, F_OK) != 0) {
+        result = errno != 0 ? errno : EPERM;
+        if (result == ENOENT) {
+            return 0;
+        }
+
+        logError("file: "__FILE__", line: %d, "
+                "access file %s fail, errno: %d, error info: %s",
+                __LINE__, mark_filename, result, STRERROR(result));
+        return result;
+    }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "dumping inode binlogs ...", __LINE__);
+    start_time = get_current_time_ms();
+    if ((result=STORAGE_ENGINE_DUMP_INODE_BINLOGS_API()) != 0) {
+        return result;
+    }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "dump inode binlogs done. time used: %s ms", __LINE__,
+            long_to_comma_str(get_current_time_ms() - start_time, time_buff));
+    return fc_delete_file(mark_filename);
+}
+
 static int load_full_dump_data(const int parse_threads,
         BinlogReaderParams *params, BinlogReplayMTStat *stat)
 {
     int result;
     SFBinlogFilePosition hint_pos;
+    char mark_filename[PATH_MAX];
 
     if (params[0].last_data_version > 0) {
         if (DUMP_INODE_ADD_STATUS != inode_add_mark_status_done) {
@@ -241,15 +284,22 @@ static int load_full_dump_data(const int parse_threads,
         }
     }
 
+    get_check_dump_inode_binlogs_mark_filename(
+            mark_filename, sizeof(mark_filename));
+    if ((result=writeToFile(mark_filename, "OK", 2)) != 0) {
+        return result;
+    }
+
     if ((result=load_data(parse_threads, params, stat, true)) != 0) {
         return result;
     }
 
-    if (event_dealer_get_last_data_version() < DUMP_DENTRY_COUNT) {
+    while (event_dealer_get_last_data_version() < DUMP_DENTRY_COUNT) {
         change_notify_load_done_signal();
     }
 
-    return 0;
+    fc_sleep_ms(100);
+    return check_dump_inode_binlogs();
 }
 
 int server_load_data()
@@ -259,7 +309,6 @@ int server_load_data()
     BinlogReplayMTStat stat;
     SFBinlogFilePosition hint_pos;
     int64_t start_time;
-    int64_t end_time;
     char time_buff[32];
     int64_t data_version;
     int parse_threads;
@@ -289,11 +338,15 @@ int server_load_data()
             params[0].subdir_name = FDIR_BINLOG_SUBDIR_NAME;
             params[1].subdir_name = NULL;
         } else {
-            params[0].subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
             params[1].subdir_name = NULL;
-            if ((result=load_full_dump_data(parse_threads, params,
-                            stats + replay_count++)) != 0)
-            {
+            if (params[0].last_data_version < DUMP_DENTRY_COUNT) {
+                params[0].subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
+                if ((result=load_full_dump_data(parse_threads, params,
+                                stats + replay_count++)) != 0)
+                {
+                    return result;
+                }
+            } else if ((result=check_dump_inode_binlogs()) != 0) {
                 return result;
             }
 
@@ -352,14 +405,13 @@ int server_load_data()
 
     data_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
     FC_ATOMIC_SET(BINLOG_RECORD_COUNT, stat.record_count);
-    end_time = get_current_time_ms();
     logInfo("file: "__FILE__", line: %d, "
             "load data done. record count: %"PRId64", "
             "skip count: %"PRId64", warning count: %"PRId64", "
             "current data version: %"PRId64", time used: %s ms",
             __LINE__, stat.record_count, stat.skip_count,
             stat.warning_count, data_version, long_to_comma_str(
-                end_time - start_time, time_buff));
+                get_current_time_ms() - start_time, time_buff));
 
     binlog_write_set_next_version();
     FC_ATOMIC_SET(MY_CONFIRMED_VERSION, data_version);
