@@ -77,6 +77,16 @@ static int remove_from_replication_ptr_array(FDIRSlaveReplicationPtrArray *
     return 0;
 }
 
+static inline void terminate_binlog_read_thread(
+        FDIRSlaveReplication *replication)
+{
+    if (replication->context.reader_ctx != NULL) {
+        binlog_read_thread_terminate(replication->context.reader_ctx);
+        free(replication->context.reader_ctx);
+        replication->context.reader_ctx = NULL;
+    }
+}
+
 static inline void set_replication_stage(FDIRSlaveReplication *
         replication, const int stage)
 {
@@ -169,6 +179,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     int result;
     FDIRServerContext *server_ctx;
 
+    terminate_binlog_read_thread(replication);
     server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
     if ((result=remove_from_replication_ptr_array(&server_ctx->
                 cluster.connected, replication)) == 0)
@@ -686,19 +697,29 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
     }
 
     /*
-    logInfo("file: "__FILE__", line: %d, binlog index: %d, offset: %"PRId64,
-            __LINE__, replication->slave->binlog_pos_hint.index,
+    logInfo("file: "__FILE__", line: %d, slave server id: %d, "
+            "binlog index: %d, offset: %"PRId64, __LINE__,
+            replication->slave->server->id,
+            replication->slave->binlog_pos_hint.index,
             replication->slave->binlog_pos_hint.offset);
             */
 
     if ((result=free_queue_realloc_max_buffer(replication->task)) != 0) {
+        free(replication->context.reader_ctx);
+        replication->context.reader_ctx = NULL;
         return result;
     }
-    return binlog_read_thread_init(replication->context.reader_ctx,
-            &replication->slave->binlog_pos_hint, 
-            replication->slave->last_data_version,
-            replication->task->size - (sizeof(FDIRProtoHeader) +
-                sizeof(FDIRProtoPushBinlogReqBodyHeader)));
+    if ((result=binlog_read_thread_init(replication->context.reader_ctx,
+                    &replication->slave->binlog_pos_hint,
+                    replication->slave->last_data_version,
+                    replication->task->size - (sizeof(FDIRProtoHeader) +
+                        sizeof(FDIRProtoPushBinlogReqBodyHeader)))) != 0)
+    {
+        free(replication->context.reader_ctx);
+        replication->context.reader_ctx = NULL;
+    }
+
+    return result;
 }
 
 int binlog_replications_check_response_data_version(
@@ -789,10 +810,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         char time_buff[32];
         char size_buff[32];
 
-        binlog_read_thread_terminate(replication->context.reader_ctx);
-        free(replication->context.reader_ctx);
-        replication->context.reader_ctx = NULL;
-
+        terminate_binlog_read_thread(replication);
         if (replication->context.last_data_versions.by_disk.current > 0) {
             replication_queue_discard_synced(replication);
         }
@@ -818,7 +836,10 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
 {
     int result;
 
-    //logInfo("replication stage: %d", replication->stage);
+    /*
+    logInfo("replication slave server id: %d, stage: %d",
+            replication->slave->server->id, replication->stage);
+            */
 
     if (replication->stage != FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         replication_queue_discard_all(replication);
