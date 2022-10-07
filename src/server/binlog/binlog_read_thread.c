@@ -55,6 +55,8 @@ int binlog_read_thread_init1(BinlogReadThreadContext *ctx,
     if ((result=binlog_reader_init_ex(&ctx->reader, params[0].subdir_name,
                     &params[0].hint_pos, params[0].last_data_version)) != 0)
     {
+        free(ctx->results);
+        ctx->results = NULL;
         return result;
     }
 

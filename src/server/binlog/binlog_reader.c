@@ -489,6 +489,7 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
         const SFBinlogFilePosition *hint_pos, const int64_t last_data_version)
 {
     int result;
+    char prompt[64];
 
     if ((result=sf_binlog_writer_get_binlog_indexes(DATA_PATH_STR,
                     subdir_name, &reader->start_index,
@@ -505,8 +506,14 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
         if (reader->start_index == 0) {
             reader->position.index = 0;
             reader->position.offset = 0;
-            return open_readable_binlog(reader);
+            if ((result=open_readable_binlog(reader)) != 0) {
+                binlog_reader_destroy(reader);
+            }
+            return result;
         } else {
+            logError("file: "__FILE__", line: %d, "
+                    "binlog missed!", __LINE__);
+            binlog_reader_destroy(reader);
             return SF_CLUSTER_ERROR_BINLOG_MISSED;
         }
     }
@@ -528,7 +535,18 @@ int binlog_reader_init_ex(ServerBinlogReader *reader, const char *subdir_name,
         }
     }
 
-    return binlog_reader_detect_open(reader, last_data_version);
+    if ((result=binlog_reader_detect_open(reader, last_data_version)) != 0) {
+        if (result == SF_CLUSTER_ERROR_BINLOG_MISSED) {
+            strcpy(prompt, "binlog missed");
+        } else {
+            sprintf(prompt, "errno: %d", result);
+        }
+        logError("file: "__FILE__", line: %d, "
+                "last_data_version: %"PRId64", %s",
+                __LINE__, last_data_version, prompt);
+        binlog_reader_destroy(reader);
+    }
+    return result;
 }
 
 int binlog_reader_single_init(ServerBinlogReader *reader,
