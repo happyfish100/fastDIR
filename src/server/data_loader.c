@@ -346,8 +346,12 @@ int server_load_data()
                 {
                     return result;
                 }
-            } else if ((result=check_dump_inode_binlogs()) != 0) {
-                return result;
+            } else {
+                if ((result=check_dump_inode_binlogs()) != 0) {
+                    return result;
+                }
+
+                FC_ATOMIC_SET(DATA_CURRENT_VERSION, DUMP_LAST_DATA_VERSION);
             }
 
             BINLOG_READER_SET_PARAMS(params[0], FDIR_BINLOG_SUBDIR_NAME,
