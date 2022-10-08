@@ -80,23 +80,23 @@ typedef struct {
 } DataDumperContext;  //for data thread
 
 
-static int binlog_dump_write_to_mark_file()
+static int binlog_dump_write_to_mark_file(const char *filename,
+        const int64_t dentry_count, const int64_t last_data_version,
+        const SFBinlogFilePosition *next_position)
 {
-    char filename[PATH_MAX];
     char buff[256];
     int result;
     int len;
 
-    fdir_get_dump_mark_filename(filename, sizeof(filename));
     len = sprintf(buff,
             "%s=%"PRId64"\n"
             "%s=%"PRId64"\n"
             "%s=%d\n"
             "%s=%"PRId64"\n",
-            DUMP_MARK_ITEM_DENTRY_COUNT, DUMP_DENTRY_COUNT,
-            DUMP_MARK_ITEM_LAST_DATA_VERSION, DUMP_LAST_DATA_VERSION,
-            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX, DUMP_NEXT_POSITION.index,
-            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET, DUMP_NEXT_POSITION.offset);
+            DUMP_MARK_ITEM_DENTRY_COUNT, dentry_count,
+            DUMP_MARK_ITEM_LAST_DATA_VERSION, last_data_version,
+            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX, next_position->index,
+            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET, next_position->offset);
     if ((result=safeWriteToFile(filename, buff, len)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "write to file \"%s\" fail, errno: %d, error info: %s",
@@ -277,7 +277,8 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
         return result;
     }
 
-    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    fdir_get_dump_mark_filename_ex(subdir_name,
+            mark_filename, sizeof(mark_filename));
     if ((result=fc_delete_file_ex(mark_filename, "mark")) != 0) {
         return result;
     }
@@ -295,17 +296,17 @@ static int dump_finish(FDIRBinlogDumpContext *dump_ctx,
         return result;
     }
 
-    DUMP_DENTRY_COUNT = dump_ctx->current_version;
-    DUMP_LAST_DATA_VERSION = dump_ctx->last_data_version;
-    DUMP_NEXT_POSITION = position;
-    return binlog_dump_write_to_mark_file();
+    return binlog_dump_write_to_mark_file(mark_filename,
+            dump_ctx->current_version, dump_ctx->
+            last_data_version, &position);
 }
 
-static int do_dump()
+static int do_dump(const int server_id)
 {
 #define RECORD_FIXED_COUNT  64
     int result;
     FDIRBinlogDumpContext dump_ctx;
+    char subdir_name[64];
     char out_filename[PATH_MAX];
     struct {
         FDIRBinlogRecord holder[RECORD_FIXED_COUNT];
@@ -321,7 +322,8 @@ static int do_dump()
         return ENOENT;
     }
 
-    if ((result=init_dump_ctx(&dump_ctx, FDIR_DATA_DUMP_SUBDIR_NAME)) != 0) {
+    binlog_dump_get_subdir_name(subdir_name, server_id);
+    if ((result=init_dump_ctx(&dump_ctx, subdir_name)) != 0) {
         return result;
     }
 
@@ -370,10 +372,9 @@ static int do_dump()
     destroy_dump_ctx(&dump_ctx);
 
     if (result == 0) {
-        fdir_get_dump_data_filename(out_filename, sizeof(out_filename));
-        if ((result=dump_finish(&dump_ctx, FDIR_DATA_DUMP_SUBDIR_NAME,
-                        out_filename)) == 0)
-        {
+        fdir_get_dump_data_filename_ex(subdir_name,
+                out_filename, sizeof(out_filename));
+        if ((result=dump_finish(&dump_ctx, subdir_name, out_filename)) == 0) {
             time_used_ms = get_current_time_ms() - start_time_ms;
             long_to_comma_str(time_used_ms, buff);
             logInfo("file: "__FILE__", line: %d, "
@@ -388,36 +389,39 @@ static int do_dump()
     return result;
 }
 
-static inline int dump_all()
+static inline int dump_all(const int server_id)
 {
     int result;
 
-    result = do_dump();
+    result = do_dump(server_id);
     __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
     return result;
 }
 
 static void *dump_thread_func(void *arg)
 {
-    dump_all();
+    int server_id;
+
+    server_id = (long)arg;
+    dump_all(server_id);
     return NULL;
 }
 
-int binlog_dump_all_ex(const bool create_thread)
+int binlog_dump_all_ex(const int server_id, const bool create_thread)
 {
     int result;
 
     if (__sync_bool_compare_and_swap(&FULL_DUMPING, 0, 1)) {
         if (create_thread) {
             pthread_t tid;
-            if ((result=fc_create_thread(&tid, dump_thread_func,
-                            NULL, SF_G_THREAD_STACK_SIZE)) != 0)
+            if ((result=fc_create_thread(&tid, dump_thread_func, (void *)
+                            ((long)server_id), SF_G_THREAD_STACK_SIZE)) != 0)
             {
                 __sync_bool_compare_and_swap(&FULL_DUMPING, 1, 0);
             }
             return result;
         } else {
-            return dump_all();
+            return dump_all(server_id);
         }
     } else {
         return EINPROGRESS;
@@ -812,29 +816,33 @@ int binlog_dump_data(struct fdir_data_thread_context *thread_ctx,
     return result;
 }
 
-int binlog_dump_clear_files()
+int binlog_dump_clear_files_ex(const int server_id)
 {
     int result;
+    char subdir_name[64];
     char mark_filename[PATH_MAX];
     char data_filename[PATH_MAX];
+    char filepath[PATH_MAX];
 
     if (!STORAGE_ENABLED) {
         return EINVAL;
     }
 
-    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    binlog_dump_get_subdir_name(subdir_name, server_id);
+    fdir_get_dump_mark_filename_ex(subdir_name,
+            mark_filename, sizeof(mark_filename));
     if ((result=fc_delete_file_ex(mark_filename, "mark")) != 0) {
         return result;
     }
 
-    fdir_get_dump_data_filename(data_filename, sizeof(data_filename));
+    fdir_get_dump_data_filename_ex(subdir_name,
+            data_filename, sizeof(data_filename));
     if ((result=fc_delete_file_ex(data_filename, "dump")) != 0) {
         return result;
     }
 
-    DUMP_DENTRY_COUNT = 0;
-    DUMP_LAST_DATA_VERSION = 0;
-    DUMP_NEXT_POSITION.index = 0;
-    DUMP_NEXT_POSITION.offset = 0;
+    sf_binlog_writer_get_filepath(DATA_PATH_STR,
+            subdir_name, filepath, sizeof(filepath));
+    rmdir(filepath);
     return 0;
 }

@@ -41,6 +41,17 @@ typedef struct fdir_binlog_dump_context {
 extern "C" {
 #endif
 
+    static inline const char *binlog_dump_get_subdir_name(
+            char *subdir_name, const int server_id)
+    {
+        if (server_id == CLUSTER_MY_SERVER_ID) {
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+        } else {
+            sprintf(subdir_name, "%s%d", FDIR_DATA_DUMP_SUBDIR_NAME, server_id);
+        }
+        return subdir_name;
+    }
+
     static inline const char *fdir_get_dump_data_filename_ex(
             const char *subdir_name, char *filename, const int size)
     {
@@ -67,14 +78,19 @@ extern "C" {
 
     int binlog_dump_load_from_mark_file();
 
-    int binlog_dump_all_ex(const bool create_thread);
+    int binlog_dump_all_ex(const int server_id, const bool create_thread);
 
-    int binlog_dump_clear_files();
+    int binlog_dump_clear_files_ex(const int server_id);
+
+    static inline int binlog_dump_clear_files()
+    {
+        return binlog_dump_clear_files_ex(CLUSTER_MY_SERVER_ID);
+    }
 
     static inline int binlog_dump_all()
     {
         const bool create_thread = false;
-        return binlog_dump_all_ex(create_thread);
+        return binlog_dump_all_ex(CLUSTER_MY_SERVER_ID, create_thread);
     }
 
     /* this function is called by data thread only */

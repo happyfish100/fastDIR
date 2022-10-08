@@ -268,6 +268,12 @@ static int cluster_check_server_identity(struct fast_task_info *task,
                 cluster_id, CLUSTER_ID);
         return EINVAL;
     }
+    if (*server_id == CLUSTER_MY_SERVER_ID) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d == mine: %d",
+                *server_id, CLUSTER_MY_SERVER_ID);
+        return EINVAL;
+    }
 
     *peer = fdir_get_server_by_id(*server_id);
     if (*peer == NULL) {
@@ -974,13 +980,23 @@ static int cluster_deal_slave_ack(struct fast_task_info *task)
     return result;
 }
 
-static int replica_access_file(struct fast_task_info *task,
+static int replica_check_file(struct fast_task_info *task,
         const char *filename)
 {
     int result;
+    struct stat buf;
 
-    if (access(filename, F_OK) == 0) {
-        result = 0;
+    if (stat(filename, &buf) == 0) {
+        if (STORAGE_ENABLED) {
+            if (g_current_time - buf.st_mtime < 86400) {
+                return 0;
+            }
+            if ((result=fc_delete_file(filename)) == 0) {
+                return ENOENT;
+            }
+        } else {
+            return 0;
+        }
     } else {
         result = errno != 0 ? errno : EPERM;
         if (result != ENOENT) {
@@ -998,6 +1014,7 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
     const bool create_thread = true;
     FDIRProtoReplicaQueryBinlogInfoReq *req;
     FDIRProtoReplicaQueryBinlogInfoResp *resp;
+    char subdir_name[64];
     char dump_filename[PATH_MAX];
     char mark_filename[PATH_MAX];
     int server_id;
@@ -1019,6 +1036,11 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
                 "peer server id: %d, i am not master", server_id);
         return EINVAL;
     }
+    if (server_id == CLUSTER_MY_SERVER_ID) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d is invalid", server_id);
+        return EINVAL;
+    }
 
     if ((result=binlog_get_indexes(&binlog_start_index,
                     &binlog_last_index)) != 0)
@@ -1031,32 +1053,37 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
         int result1;
         int result2;
 
-        fdir_get_dump_data_filename(dump_filename, sizeof(dump_filename));
-        if ((result1=replica_access_file(task, dump_filename)) != 0) {
+        if (STORAGE_ENABLED) {
+            binlog_dump_get_subdir_name(subdir_name, server_id);
+        } else {
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+        }
+        fdir_get_dump_data_filename_ex(subdir_name,
+                dump_filename, sizeof(dump_filename));
+        if ((result1=replica_check_file(task, dump_filename)) != 0) {
             if (result1 != ENOENT) {
                 return result1;
             }
         }
 
-        fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
-        if ((result2=replica_access_file(task, mark_filename)) != 0) {
+        fdir_get_dump_mark_filename_ex(subdir_name,
+                mark_filename, sizeof(mark_filename));
+        if ((result2=replica_check_file(task, mark_filename)) != 0) {
             if (result2 != ENOENT) {
                 return result2;
             }
         }
         if (result1 == ENOENT || result2 == ENOENT) {
-            result = binlog_dump_all_ex(create_thread);
+            result = binlog_dump_all_ex(server_id, create_thread);
             if (!(result == 0 || result == EINPROGRESS)) {
                 return result;
             }
         }
         dump_start_index = 0;
         dump_last_index = 0;
-        resp->remove_dump_data = (STORAGE_ENABLED ? 1 : 0);
     } else {
         dump_start_index = 0;
         dump_last_index = -1;
-        resp->remove_dump_data = 0;
     }
 
     int2buff(dump_start_index, resp->dump_data.start_index);
@@ -1090,7 +1117,8 @@ static inline int sync_binlog_output(struct fast_task_info *task)
 static int replica_deal_sync_binlog_first(struct fast_task_info *task)
 {
     FDIRProtoReplicaSyncBinlogFirstReq *req;
-    char *subdir_name;
+    char subdir_name[64];
+    int server_id;
     int binlog_index;
     int result;
 
@@ -1099,8 +1127,14 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
     }
 
     req = (FDIRProtoReplicaSyncBinlogFirstReq *)REQUEST.body;
+    server_id = buff2int(req->server_id);
     binlog_index = buff2int(req->binlog_index);
-    
+    if (server_id == CLUSTER_MY_SERVER_ID) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d is invalid", server_id);
+        return EINVAL;
+    }
+
     if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -1123,7 +1157,14 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
 
     if (req->file_type == FDIR_PROTO_FILE_TYPE_DUMP) {
         char dump_filename[PATH_MAX];
-        fdir_get_dump_data_filename(dump_filename, sizeof(dump_filename));
+
+        if (STORAGE_ENABLED) {
+            binlog_dump_get_subdir_name(subdir_name, server_id);
+        } else {
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+        }
+        fdir_get_dump_data_filename_ex(subdir_name,
+                dump_filename, sizeof(dump_filename));
         if (access(dump_filename, F_OK) != 0) {
             if (errno == ENOENT) {
                 return EAGAIN;
@@ -1135,10 +1176,8 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
                 return result;
             }
         }
-
-        subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
     } else if (req->file_type == FDIR_PROTO_FILE_TYPE_BINLOG) {
-        subdir_name = FDIR_BINLOG_SUBDIR_NAME;
+        strcpy(subdir_name, FDIR_BINLOG_SUBDIR_NAME);
     } else {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "unkown file type: %d", req->file_type);
@@ -1184,11 +1223,23 @@ static int replica_deal_sync_binlog_next(struct fast_task_info *task)
 static int replica_deal_sync_dump_mark(struct fast_task_info *task)
 {
     int result;
+    int server_id;
+    FDIRProtoReplicaSyncDumpMarkReq *req;
     int64_t read_bytes;
+    char subdir_name[64];
     char mark_filename[PATH_MAX];
 
-    if ((result=server_expect_body_length(0)) != 0) {
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
         return result;
+    }
+
+    req = (FDIRProtoReplicaSyncDumpMarkReq *)REQUEST.body;
+    server_id = buff2int(req->server_id);
+    if (server_id == CLUSTER_MY_SERVER_ID) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "peer server id: %d == mine: %d",
+                server_id, CLUSTER_MY_SERVER_ID);
+        return EINVAL;
     }
 
     if (CLUSTER_MYSELF_PTR != CLUSTER_MASTER_ATOM_PTR) {
@@ -1198,7 +1249,13 @@ static int replica_deal_sync_dump_mark(struct fast_task_info *task)
         return EINVAL;
     }
 
-    fdir_get_dump_mark_filename(mark_filename, sizeof(mark_filename));
+    if (STORAGE_ENABLED) {
+        binlog_dump_get_subdir_name(subdir_name, server_id);
+    } else {
+        strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+    }
+    fdir_get_dump_mark_filename_ex(subdir_name,
+            mark_filename, sizeof(mark_filename));
     read_bytes = (task->size - sizeof(FDIRProtoHeader)) - 1;
     result = getFileContentEx(mark_filename, task->data +
             sizeof(FDIRProtoHeader), 0, &read_bytes);
@@ -1218,8 +1275,6 @@ static int replica_deal_sync_binlog_report(struct fast_task_info *task)
     int server_id;
     FDIRProtoReplicaSyncBinlogReportReq *req;
     FDIRClusterServerInfo *peer;
-    FDIRClusterServerInfo *cs;
-    FDIRClusterServerInfo *end;
 
     if ((result=server_expect_body_length(sizeof(*req))) != 0) {
         return result;
@@ -1243,17 +1298,8 @@ static int replica_deal_sync_binlog_report(struct fast_task_info *task)
         peer->recovering = true;
     } else if (req->stage == FDIR_PROTO_SYNC_BINLOG_STAGE_END) {
         peer->recovering = false;
-        if (STORAGE_ENABLED && req->remove_dump_data) {
-            end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
-            for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
-                if (cs->recovering) {
-                    break;
-                }
-            }
-
-            if (cs == end) {  //no recovering slaves
-                result = binlog_dump_clear_files();
-            }
+        if (STORAGE_ENABLED) {
+            result = binlog_dump_clear_files_ex(server_id);
         }
     } else {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,

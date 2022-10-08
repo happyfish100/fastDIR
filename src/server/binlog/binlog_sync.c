@@ -39,7 +39,6 @@
 #include "binlog_sync.h"
 
 typedef struct {
-    bool remove_dump_data;
     char file_type;
     int binlog_index;
     int fd;
@@ -69,9 +68,8 @@ static int query_binlog_info(BinlogSyncContext *sync_ctx)
             FDIRProtoReplicaQueryBinlogInfoReq)];
 
     header = (FDIRProtoHeader *)out_buff;
-    req = (FDIRProtoReplicaQueryBinlogInfoReq *)
-        (out_buff + sizeof(FDIRProtoHeader));
-    int2buff(CLUSTER_MYSELF_PTR->server->id, req->server_id);
+    req = (FDIRProtoReplicaQueryBinlogInfoReq *)(header + 1);
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     response.error.length = 0;
@@ -89,7 +87,6 @@ static int query_binlog_info(BinlogSyncContext *sync_ctx)
     sync_ctx->dump_data.last_index = buff2int(resp.dump_data.last_index);
     sync_ctx->binlog.start_index = buff2int(resp.binlog.start_index);
     sync_ctx->binlog.last_index = buff2int(resp.binlog.last_index);
-    sync_ctx->remove_dump_data = resp.remove_dump_data;
     return 0;
 }
 
@@ -108,7 +105,6 @@ static int sync_binlog_report(BinlogSyncContext *sync_ctx, const char stage)
     SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     SERVER_PROTO_PACK_IDENTITY(req->si);
-    req->remove_dump_data = sync_ctx->remove_dump_data;
     req->stage = stage;
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(&sync_ctx->conn,
@@ -227,6 +223,7 @@ static inline int sync_binlog_first_to_local(
     req = (FDIRProtoReplicaSyncBinlogFirstReq *)
         (out_buff + sizeof(FDIRProtoHeader));
     req->file_type = sync_ctx->file_type;
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     int2buff(sync_ctx->binlog_index, req->binlog_index);
     return sync_binlog_to_local(sync_ctx,
             FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ,
@@ -289,14 +286,18 @@ static int proto_sync_binlog(BinlogSyncContext *sync_ctx)
 static int proto_sync_mark_file(BinlogSyncContext *sync_ctx)
 {
     int result;
-    char out_buff[sizeof(FDIRProtoHeader)];
+    char out_buff[sizeof(FDIRProtoHeader) +
+        sizeof(FDIRProtoReplicaSyncDumpMarkReq)];
     char mark_filename[PATH_MAX];
     FDIRProtoHeader *header;
+    FDIRProtoReplicaSyncDumpMarkReq *req;
     SFResponseInfo response;
 
     header = (FDIRProtoHeader *)out_buff;
+    req = (FDIRProtoReplicaSyncDumpMarkReq *)(header + 1);
     SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     response.error.length = 0;
     result = sf_send_and_check_response_header(&sync_ctx->conn, out_buff,
             sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,

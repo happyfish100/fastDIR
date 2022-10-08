@@ -759,22 +759,25 @@ typedef struct fdir_proto_replia_query_binlog_info_resp {
         char start_index[4];
         char last_index[4];
     } binlog;
-    char remove_dump_data;
-    char padding[7];
 } FDIRProtoReplicaQueryBinlogInfoResp;
 
 typedef struct fdir_proto_replia_sync_binlog_report_req {
     FDIRProtoClusterServerIdentity si;
     char stage;
-    char remove_dump_data;
-    char padding[2];
+    char padding[7];
 } FDIRProtoReplicaSyncBinlogReportReq;
 
 typedef struct fdir_proto_replia_sync_binlog_first_req {
     char file_type;  //dump data or normal binlog
-    char padding[3];
+    char padding[7];
+    char server_id[4];
     char binlog_index[4];
 } FDIRProtoReplicaSyncBinlogFirstReq;
+
+typedef struct fdir_proto_replia_sync_dump_mark_req {
+    char server_id[4];
+    char padding[4];
+} FDIRProtoReplicaSyncDumpMarkReq;
 
 typedef struct fdir_proto_nss_fetch_resp_body_header {
     char count[4];
