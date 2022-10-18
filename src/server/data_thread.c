@@ -626,15 +626,14 @@ static int check_load_children(FDIRServerDentry *parent)
             da_binlog_op_type_remove, FDIR_PIECE_FIELD_INDEX_FOR_REMOVE, \
             ((dentry)->stat.alloc > 0 ? -1 * (dentry)->stat.alloc : 0))
 
-#define GENERATE_DENTRY_MESSAGES(msg, dentry, op_type) \
+#define GENERATE_DENTRY_MESSAGES(msg, dentry, op_type, inc_alloc) \
     GENERATE_ADD_TO_PARENT_MESSAGE(msg, dentry, da_binlog_op_type_create); \
-    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, \
-            op_type, FDIR_PIECE_FIELD_INDEX_BASIC, 0)
-
+    FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(msg, dentry, op_type, \
+            FDIR_PIECE_FIELD_INDEX_BASIC, inc_alloc)
 
 #define GENERATE_MOVE_DENTRY_MESSAGES(msg, old_parent, dentry)  \
         GENERATE_REMOVE_FROM_PARENT_MESSAGE(msg, old_parent, (dentry)->inode); \
-        GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update)
+        GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update, 0)
 
 #define SET_ADD_TO_CLIST_FLAG(parent)  \
     if (parent != NULL) parent->db_args->add_to_clist = ((parent->db_args-> \
@@ -669,7 +668,7 @@ static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
 }
 
 static inline int generate_create_messages(FDIRChangeNotifyMessage **msg,
-        FDIRBinlogRecord *record)
+        FDIRBinlogRecord *record, const int64_t inc_alloc)
 {
     int result;
 
@@ -680,7 +679,7 @@ static inline int generate_create_messages(FDIRChangeNotifyMessage **msg,
         }
     }
     GENERATE_DENTRY_MESSAGES(*msg, record->me.dentry,
-            da_binlog_op_type_create);
+            da_binlog_op_type_create, inc_alloc);
     return 0;
 }
 
@@ -786,7 +785,9 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
     switch (record->operation) {
         case BINLOG_OP_CREATE_DENTRY_INT:
         case BINLOG_OP_DUMP_DENTRY_INT:
-            if ((result=generate_create_messages(&msg, record)) != 0) {
+            if ((result=generate_create_messages(&msg, record,
+                            record->stat.alloc)) != 0)
+            {
                 return result;
             }
             if (record->operation == BINLOG_OP_DUMP_DENTRY_INT &&

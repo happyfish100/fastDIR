@@ -464,6 +464,9 @@ static int dump_namespaces(FDIRDBUpdaterContext *ctx)
 
         if (entry->inc_alloc != 0) {
             ns_entry->delay.used_bytes += entry->inc_alloc;
+            if (ns_entry->delay.used_bytes < 0) {
+                ns_entry->delay.used_bytes = 0;
+            }
             ++change_count;
         }
     }
