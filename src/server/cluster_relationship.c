@@ -166,6 +166,7 @@ int cluster_proto_get_server_status(ConnectionInfo *conn,
 
     req = (FDIRProtoGetServerStatusReq *)(out_buff + sizeof(FDIRProtoHeader));
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    req->auth_enabled = (AUTH_ENABLED ? 1 : 0);
     memcpy(req->config_sign, CLUSTER_CONFIG_SIGN_BUF, SF_CLUSTER_CONFIG_SIGN_LEN);
 
     response.error.length = 0;

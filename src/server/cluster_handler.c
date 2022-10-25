@@ -191,8 +191,21 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
 }
 
 static int cluster_check_config_sign(struct fast_task_info *task,
-        const int server_id, const char *config_sign)
+        const int server_id, const bool auth_enabled,
+        const char *config_sign)
 {
+    int my_auth_enabled;
+    int req_auth_enabled;
+
+    my_auth_enabled = (AUTH_ENABLED ? 1 : 0);
+    req_auth_enabled = (auth_enabled ? 1 : 0);
+    if (req_auth_enabled != my_auth_enabled) {
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                "server #%d 's auth enabled: %d != mine: %d",
+                server_id, req_auth_enabled, my_auth_enabled);
+        return EINVAL;
+    }
+
     if (memcmp(config_sign, CLUSTER_CONFIG_SIGN_BUF,
                 SF_CLUSTER_CONFIG_SIGN_LEN) != 0)
     {
@@ -229,7 +242,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
     req = (FDIRProtoGetServerStatusReq *)REQUEST.body;
     server_id = buff2int(req->server_id);
     if ((result=cluster_check_config_sign(task, server_id,
-                    req->config_sign)) != 0)
+                    req->auth_enabled, req->config_sign)) != 0)
     {
         return result;
     }
@@ -283,7 +296,7 @@ static int cluster_check_server_identity(struct fast_task_info *task,
     }
 
     if ((result=cluster_check_config_sign(task, *server_id,
-                    si->config_sign)) != 0)
+                    si->auth_enabled, si->config_sign)) != 0)
     {
         return result;
     }
