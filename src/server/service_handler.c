@@ -1342,6 +1342,7 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
     struct fast_task_info *task;
 
     task = (struct fast_task_info *)record->notify.args;
+    RESPONSE_STATUS = result;
     if (result != 0) {
         service_record_deal_error_log_ex(record, result, is_error, task);
     } else {
@@ -1361,7 +1362,7 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 dentry_stat_output(task, &record->me.dentry);
                 break;
             case SERVICE_OP_READ_LINK_INT:
-                readlink_output(task, record->me.dentry);
+                RESPONSE_STATUS = readlink_output(task, record->me.dentry);
                 break;
             case SERVICE_OP_LOOKUP_INODE_INT:
                 lookup_inode_output(task, record->me.dentry);
@@ -1385,7 +1386,6 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
         }
     }
 
-    RESPONSE_STATUS = result;
     sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
 }
 
