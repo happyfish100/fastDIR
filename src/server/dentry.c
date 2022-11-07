@@ -666,11 +666,11 @@ int dentry_resolve_symlink(FDIRServerDentry **dentry)
                 }
 
                 path.str = buffer.buff;
+                path.len = buffer.length;
             }
 
             full_fname = full_paths[loop % 2];
-            path.len = normalize_path(path.str,
-                    (*dentry)->link.str,
+            path.len = normalize_path(&path, &(*dentry)->link,
                     full_fname, PATH_MAX);
             path.str = full_fname;
         }
