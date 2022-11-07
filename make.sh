@@ -109,7 +109,14 @@ if [ $have_pthread -eq 0 ] && [ "$uname" != "Darwin" ]; then
    fi
 fi
 
-cd src/server
+cwd=$(pwd)
+cd src/include/fastdir/
+link=$(readlink client)
+if [ $? -ne 0 ] || [ "$link" != '../../client/' ]; then
+  ln -sf ../../client/ client
+fi
+
+cd $cwd/src/server
 cp Makefile.in Makefile
 perl -pi -e "s#\\\$\(CFLAGS\)#$CFLAGS#g" Makefile
 perl -pi -e "s#\\\$\(LIBS\)#$LIBS#g" Makefile
