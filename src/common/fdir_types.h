@@ -100,6 +100,11 @@
         (pname)->name = *nm_ptr;       \
     } while (0)
 
+typedef struct fdir_dentry_operator {
+    uid_t uid;
+    gid_t gid;
+} FDIRDentryOperator;
+
 typedef struct fdir_dentry_full_name {
     string_t ns;    //namespace
     string_t path;  //full path

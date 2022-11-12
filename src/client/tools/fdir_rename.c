@@ -41,6 +41,7 @@ int main(int argc, char *argv[])
     char *dest_path;
     FDIRDEntryFullName src_fullname;
     FDIRDEntryFullName dest_fullname;
+    FDIRDentryOperator oper;
     int flags;
 	int result;
 
@@ -89,6 +90,7 @@ int main(int argc, char *argv[])
     FC_SET_STRING(dest_fullname.ns, ns);
     FC_SET_STRING(dest_fullname.path, dest_path);
 
+    oper.uid = oper.gid = 0;
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
                     &src_fullname.ns, publish)) != 0)
     {
@@ -96,5 +98,5 @@ int main(int argc, char *argv[])
     }
 
     return fdir_client_rename_dentry(&g_fdir_client_vars.client_ctx,
-                    &src_fullname, &dest_fullname, flags);
+                    &src_fullname, &dest_fullname, &oper, flags);
 }

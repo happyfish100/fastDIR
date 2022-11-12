@@ -33,7 +33,7 @@ static void usage(char *argv[])
             FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
-static int64_t inode;
+static FDIRClientOperInodePair oino;
 
 static char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 static string_t poolname;
@@ -89,6 +89,7 @@ static void *thread_func(void *args)
     FCFSAuthClientContext auth_ctx;
     FDIRClientSession session;
     FDIRDEntryInfo dentry;
+    FDIRFlockOwner owner;
     char buff[32];
     int operation;
 	int result;
@@ -105,6 +106,11 @@ static void *thread_func(void *args)
         {
             break;
         }
+
+        if ((result=fdir_client_init_node_id(&client_ctx)) != 0) {
+            break;
+        }
+
         if ((result=fdir_client_auth_session_create1_ex(
                         &client_ctx, &poolname, publish)) != 0)
         {
@@ -124,19 +130,22 @@ static void *thread_func(void *args)
             operation = LOCK_EX;
         }
 
+        owner.node = FDIR_CLIENT_NODE_ID;
+        owner.pid = getpid();
+        owner.id = owner.pid;
         offset = thread_index;
         length = 4 * offset;
-        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, inode,
-                        operation | flock_flags, offset, length)) != 0)
+        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, &oino,
+                        operation | flock_flags, offset, length, &owner)) != 0)
         {
             fprintf(stderr, "dentry lock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
-                    inode, result, STRERROR(result));
+                    oino.inode, result, STRERROR(result));
             break;
         }
 
         if ((result=fdir_client_stat_dentry_by_inode(&client_ctx,
-                        &poolname, inode, flags, &dentry)) != 0)
+                        &poolname, &oino, flags, &dentry)) != 0)
         {
             break;
         }
@@ -153,12 +162,12 @@ static void *thread_func(void *args)
             fc_sleep_ms(msleep_time);
         }
 
-        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, inode,
-                        LOCK_UN | flock_flags, offset, length)) != 0)
+        if ((result=fdir_client_flock_dentry_ex(&session, &poolname, &oino,
+                        LOCK_UN | flock_flags, offset, length, &owner)) != 0)
         {
             fprintf(stderr, "dentry unlock fail, thread: %ld, inode: %"PRId64", "
                     "errno: %d, error info: %s\n", thread_index,
-                    inode, result, STRERROR(result));
+                    oino.inode, result, STRERROR(result));
             break;
         }
         __sync_add_and_fetch(&success_count, 1);
@@ -177,7 +186,7 @@ int main(int argc, char *argv[])
 	int ch;
     char *ns;
     char *path;
-    FDIRDEntryFullName fullname;
+    FDIRClientOperFnamePair fname;
 	int result;
     pthread_t tid;
     long i;
@@ -238,10 +247,11 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
+    fname.oper.uid = fname.oper.gid = 0;
+    FC_SET_STRING(fname.fullname.ns, ns);
+    FC_SET_STRING(fname.fullname.path, path);
     if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
-                    client_ctx, &fullname, &inode)) != 0)
+                    client_ctx, &fname, &oino.inode)) != 0)
     {
         return result;
     }

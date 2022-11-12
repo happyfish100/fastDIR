@@ -31,6 +31,21 @@ typedef struct fdir_client_owner_mode_pair {
     mode_t mode;
 } FDIRClientOwnerModePair;
 
+typedef struct fdir_client_oper_fname_pair {
+    FDIRDentryOperator oper;
+    FDIRDEntryFullName fullname;
+} FDIRClientOperFnamePair;
+
+typedef struct fdir_client_oper_pname_pair {
+    FDIRDentryOperator oper;
+    FDIRDEntryPName pname;
+} FDIRClientOperPnamePair;
+
+typedef struct fdir_client_oper_inode_pair {
+    FDIRDentryOperator oper;
+    int64_t inode;
+} FDIRClientOperInodePair;
+
 typedef struct fdir_client_dentry {
     FDIRDEntryInfo dentry;
     string_t name;
@@ -180,55 +195,61 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, const int flags,
+        const FDIRClientOperFnamePair *path, const int flags,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
         const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_rename_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const int flags, FDIRDEntryInfo **dentry);
+        const FDIRDentryOperator *oper, const int flags, FDIRDEntryInfo **dentry);
 
 int fdir_client_proto_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *src_ns, const FDIRDEntryPName *src_pname,
         const string_t *dest_ns, const FDIRDEntryPName *dest_pname,
-        const int flags, FDIRDEntryInfo **dentry);
+        const FDIRDentryOperator *oper, const int flags,
+        FDIRDEntryInfo **dentry);
 
 int fdir_client_proto_lookup_inode_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         const int enoent_log_level, int64_t *inode);
 
 int fdir_client_proto_lookup_inode_by_pname(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const FDIRDEntryPName *pname,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperPnamePair *opname,
         const int enoent_log_level, int64_t *inode);
 
 int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_stat_dentry_by_inode(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_stat_dentry_by_pname(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const FDIRDEntryPName *pname,
-        const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry);
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperPnamePair *opname, const int flags,
+        const int enoent_log_level, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_readlink_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         string_t *link, const int size);
 
 int fdir_client_proto_readlink_by_pname(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const FDIRDEntryPName *pname,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperPnamePair *opname,
         string_t *link, const int size);
 
 int fdir_client_proto_readlink_by_inode(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         string_t *link, const int size);
 
 int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
@@ -242,30 +263,31 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const int64_t inode, const int64_t mflags,
-        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const int64_t mflags, const FDIRDEntryStat *stat,
+        const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname, const int64_t mflags,
+        const FDIRClientOperFnamePair *path, const int64_t mflags,
         const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_flock_dentry_ex(FDIRClientSession *session, const string_t *ns,
-        const int64_t inode, const int operation, const int64_t offset,
-        const int64_t length, const FDIRFlockOwner *owner);
+        const FDIRClientOperInodePair *oino, const int operation,
+        const int64_t offset, const int64_t length, const FDIRFlockOwner *owner);
 
 static inline int fdir_client_flock_dentry(FDIRClientSession *session,
-        const string_t *ns, const int64_t inode, const int operation,
-        const FDIRFlockOwner *owner)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const int operation, const FDIRFlockOwner *owner)
 {
     return fdir_client_flock_dentry_ex(session,
-            ns, inode, operation, 0, 0, owner);
+            ns, oino, operation, 0, 0, owner);
 }
 
 int fdir_client_proto_getlk_dentry(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
-        int *operation, int64_t *offset, int64_t *length,
-        FDIRFlockOwner *owner);
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino, int *operation,
+        int64_t *offset, int64_t *length, FDIRFlockOwner *owner);
 
 int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         const string_t *ns, const int64_t inode, const int flags,
@@ -289,57 +311,61 @@ static inline int fdir_client_dentry_sys_unlock(
 
 int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const
-        FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
+        FDIRClientOperFnamePair *path, const key_value_pair_t *xattr,
         const int flags);
 
 int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
-        const int64_t inode, const key_value_pair_t *xattr,
+        const FDIRClientOperInodePair *oino, const key_value_pair_t *xattr,
         const int flags);
 
 int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const
-        FDIRDEntryFullName *fullname, const string_t *name,
+        FDIRClientOperFnamePair *path, const string_t *name,
         const int flags, const int enoattr_log_level);
 
 int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const string_t *ns,
-        const int64_t inode, const string_t *name, const int flags,
-        const int enoattr_log_level);
+        const FDIRClientOperInodePair *oino, const string_t *name,
+        const int flags, const int enoattr_log_level);
 
 int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         const string_t *name, const int enoattr_log_level,
         string_t *value, const int size, const int flags);
 
 int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         const string_t *name, const int enoattr_log_level,
         string_t *value, const int size, const int flags);
 
 int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         string_t *list, const int size, const int flags);
 
 int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         string_t *list, const int size, const int flags);
 
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const FDIRDEntryFullName *fullname,
+        ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         FDIRClientDentryArray *array);
 
 int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
-        ConnectionInfo *conn, const string_t *ns, const int64_t inode,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         FDIRClientDentryArray *array);
 
 int fdir_client_proto_list_compact_dentry_by_path(FDIRClientContext
-        *client_ctx, ConnectionInfo *conn, const FDIRDEntryFullName
-        *fullname, FDIRClientCompactDentryArray *array);
+        *client_ctx, ConnectionInfo *conn, const FDIRClientOperFnamePair
+        *path, FDIRClientCompactDentryArray *array);
 
 int fdir_client_proto_list_compact_dentry_by_inode(FDIRClientContext
         *client_ctx, ConnectionInfo *conn, const string_t *ns,
-        const int64_t inode, FDIRClientCompactDentryArray *array);
+        const FDIRClientOperInodePair *oino,
+        FDIRClientCompactDentryArray *array);
 
 int fdir_client_dentry_array_init_ex(FDIRClientDentryArray *array,
         struct fast_mpool_man *mpool);

@@ -24,7 +24,7 @@
 #include "fastcommon/logger.h"
 #include "fastdir/client/fdir_client.h"
 
-static FDIRDEntryFullName fullname;
+static FDIRClientOperFnamePair fname;
 static char v[FDIR_XATTR_MAX_VALUE_SIZE];
 static string_t value;
 static bool hexdump = false;
@@ -43,7 +43,7 @@ static int get_xattr(const string_t *name)
     char *hex_buff;
     int result;
     if ((result=fdir_client_get_xattr_by_path(&g_fdir_client_vars.client_ctx,
-                    &fullname, name, &value, FDIR_XATTR_MAX_VALUE_SIZE,
+                    &fname, name, &value, FDIR_XATTR_MAX_VALUE_SIZE,
                     flags)) != 0)
     {
         return result;
@@ -92,7 +92,7 @@ static int dump_xattrs()
 
     list.str = buff;
     if ((result=fdir_client_list_xattr_by_path(&g_fdir_client_vars.client_ctx,
-                    &fullname, &list, MAX_NM_LIST_SIZE, flags)) != 0)
+                    &fname, &list, MAX_NM_LIST_SIZE, flags)) != 0)
     {
         return result;
     }
@@ -165,10 +165,11 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
+    fname.oper.uid = fname.oper.gid = 0;
+    FC_SET_STRING(fname.fullname.ns, ns);
+    FC_SET_STRING(fname.fullname.path, path);
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
-                    &fullname.ns, publish)) != 0)
+                    &fname.fullname.ns, publish)) != 0)
     {
         return result;
     }

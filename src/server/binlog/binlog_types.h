@@ -128,6 +128,7 @@ typedef struct fdir_binlog_record {
     int timestamp;
     int flags;
     FDIRStatModifyFlags options;
+    FDIRDentryOperator oper;
 
     union {
         struct {

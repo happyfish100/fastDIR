@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     int flags;
     char *ns;
     char *path;
-    FDIRDEntryFullName fullname;
+    FDIRClientOperFnamePair fname;
     FDIRDEntryInfo dentry;
 	int result;
 
@@ -120,16 +120,17 @@ int main(int argc, char *argv[])
     //g_log_context.log_level = LOG_DEBUG;
 
     path = argv[optind];
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
+    fname.oper.uid = fname.oper.gid = 0;
+    FC_SET_STRING(fname.fullname.ns, ns);
+    FC_SET_STRING(fname.fullname.path, path);
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
-                    &fullname.ns, publish)) != 0)
+                    &fname.fullname.ns, publish)) != 0)
     {
         return result;
     }
 
     if ((result=fdir_client_stat_dentry_by_path(&g_fdir_client_vars.
-                    client_ctx, &fullname, flags, &dentry)) != 0)
+                    client_ctx, &fname, flags, &dentry)) != 0)
     {
         return result;
     }

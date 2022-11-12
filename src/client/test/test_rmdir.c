@@ -41,14 +41,14 @@ static void usage(char *argv[])
             FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
-static int remove_dentry(FDIRDEntryFullName *fullname)
+static int remove_dentry(FDIRClientOperFnamePair *fname)
 {
     const int flags = 0;
 	int result;
 
     ++total_count;
     if ((result=fdir_client_remove_dentry(&g_fdir_client_vars.
-                    client_ctx, fullname, flags)) != 0)
+                    client_ctx, fname, flags)) != 0)
     {
         if (ignore_noent_error && result == ENOENT) {
             ++ignore_count;
@@ -57,8 +57,8 @@ static int remove_dentry(FDIRDEntryFullName *fullname)
             logError("file: "__FILE__", line: %d, "
                     "remove_dentry %.*s fail, namespace: %s, "
                     "errno: %d, error info: %s", __LINE__,
-                    fullname->path.len, fullname->path.str,
-                    fullname->ns.str, result, STRERROR(result));
+                    fname->fullname.path.len, fname->fullname.path.str,
+                    fname->fullname.ns.str, result, STRERROR(result));
         }
     }
     return result;
@@ -66,40 +66,40 @@ static int remove_dentry(FDIRDEntryFullName *fullname)
 
 static int test_rmdir()
 {
-    FDIRDEntryFullName fullname;
+    FDIRClientOperFnamePair fname;
     char path[256];
     int64_t inode;
 	int result;
     int i;
     int k;
 
-    FC_SET_STRING(fullname.ns, ns);
-    fullname.path.str = path;
-    fullname.path.len = sprintf(path, "%s", base_path);
-
+    fname.oper.uid = fname.oper.gid = 0;
+    FC_SET_STRING(fname.fullname.ns, ns);
+    fname.fullname.path.str = path;
+    fname.fullname.path.len = sprintf(path, "%s", base_path);
     if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
-                    client_ctx, &fullname, &inode)) != 0)
+                    client_ctx, &fname, &inode)) != 0)
     {
         logError("file: "__FILE__", line: %d, "
                 "lookup path %.*s fail, namespace: %s, "
                 "errno: %d, error info: %s", __LINE__,
-                fullname.path.len, fullname.path.str,
-                fullname.ns.str, result, STRERROR(result));
+                fname.fullname.path.len, fname.fullname.path.str,
+                fname.fullname.ns.str, result, STRERROR(result));
         return result;
     }
 
     for (i=0; i<SUBDIR_COUNT; i++) {
         for (k=0; k<SUBDIR_COUNT; k++) {
-            fullname.path.len = sprintf(path, "%s/%03d/%03d",
+            fname.fullname.path.len = sprintf(path, "%s/%03d/%03d",
                     base_path, i + 1, k + 1);
-            if ((result=remove_dentry(&fullname)) != 0) {
+            if ((result=remove_dentry(&fname)) != 0) {
                 return result;
             }
         }
 
-        fullname.path.len = sprintf(path, "%s/%03d",
-                base_path, i + 1);
-        if ((result=remove_dentry(&fullname)) != 0) {
+        fname.fullname.path.len = sprintf(path,
+                "%s/%03d", base_path, i + 1);
+        if ((result=remove_dentry(&fname)) != 0) {
             return result;
         }
     }

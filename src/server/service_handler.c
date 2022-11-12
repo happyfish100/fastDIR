@@ -1675,9 +1675,11 @@ static void init_record_for_create_ex(struct fast_task_info *task,
 
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
     RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->uid);
+                REQUEST.body)->oper.uid);
     RECORD->stat.gid = buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->gid);
+                REQUEST.body)->oper.gid);
+    RECORD->oper.uid = RECORD->stat.uid;
+    RECORD->oper.gid = RECORD->stat.gid;
 
     RECORD->stat.rdev = 0;
     RECORD->stat.size = size;
@@ -1716,7 +1718,7 @@ static int server_parse_dentry_for_update(struct fast_task_info *task,
    return 0;
 }
 
-static int server_parse_pname_for_query_ex(struct fast_task_info *task,
+static int server_parse_pname_for_query(struct fast_task_info *task,
         const int front_part_size)
 {
     int result;
@@ -1738,15 +1740,12 @@ static int server_parse_pname_for_query_ex(struct fast_task_info *task,
     return 0;
 }
 
-#define server_parse_pname_for_query(task) \
-    server_parse_pname_for_query_ex(task, 0)
-
 static int server_parse_pname_for_update(struct fast_task_info *task,
         const int front_part_size)
 {
     int result;
 
-    if ((result=server_parse_pname_for_query_ex(
+    if ((result=server_parse_pname_for_query(
                     task, front_part_size)) != 0)
     {
         return result;
@@ -2245,6 +2244,8 @@ static int deal_remove_dentry(struct fast_task_info *task, const int resp_cmd)
     FDIRProtoRemoveDEntryFront *front;
 
     front = (FDIRProtoRemoveDEntryFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
     RESPONSE.header.cmd = resp_cmd;
@@ -2277,11 +2278,13 @@ static int service_deal_remove_by_pname(struct fast_task_info *task)
     return deal_remove_dentry(task, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP);
 }
 
-static inline void parse_rename_flags(struct fast_task_info *task)
+static inline void parse_rename_front_part(struct fast_task_info *task)
 {
     FDIRProtoRenameDEntryFront *front;
 
     front = (FDIRProtoRenameDEntryFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
 }
 
@@ -2321,7 +2324,7 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             */
 
     RECORD->rename.src.fullname = src_fullname;
-    parse_rename_flags(task);
+    parse_rename_front_part(task);
 
     if (!fc_string_equal(&RECORD->ns, &src_fullname.ns)) {
         free_record_object(task);
@@ -2378,7 +2381,7 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     }
 
     RECORD->rename.src.pname = src_pname;
-    parse_rename_flags(task);
+    parse_rename_front_part(task);
     if (!fc_string_equal(&RECORD->ns, &src_ns)) {
         free_record_object(task);
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -2433,10 +2436,12 @@ static int parse_xattr_fields(struct fast_task_info *task,
 }
 
 static inline int do_setxattr(struct fast_task_info *task,
-        const key_value_pair_t *xattr, const int flags,
+        const key_value_pair_t *xattr, const FDIRProtoSetXAttrFields *fields,
         const int resp_cmd)
 {
-    RECORD->flags = flags;
+    RECORD->oper.uid = buff2int(fields->oper.uid);
+    RECORD->oper.gid = buff2int(fields->oper.gid);
+    RECORD->flags = buff2int(fields->flags);
     RECORD->xattr = *xattr;
     RECORD->operation = BINLOG_OP_SET_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
@@ -2495,7 +2500,7 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
         return result;
     }
 
-    return do_setxattr(task, &xattr, buff2int(fields->flags),
+    return do_setxattr(task, &xattr, fields,
             FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP);
 }
 
@@ -2537,7 +2542,7 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    return do_setxattr(task, &xattr, buff2int(fields->flags),
+    return do_setxattr(task, &xattr, fields,
             FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP);
 }
 
@@ -2561,8 +2566,13 @@ static int parse_xattr_name_info(struct fast_task_info *task,
 static inline int do_removexattr(struct fast_task_info *task,
         const string_t *name, const int resp_cmd)
 {
+    FDIRProtoXAttrFront *front;
+
+    front = (FDIRProtoXAttrFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->xattr.key = *name;
-    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
+    RECORD->flags = buff2int(front->flags);
     RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
@@ -2648,11 +2658,22 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
 }
 
-static inline void parse_stat_dentry_flags(struct fast_task_info *task)
+static inline void parse_query_dentry_front_part(struct fast_task_info *task)
+{
+    FDIRProtoOperator *oper;
+
+    oper = (FDIRProtoOperator *)REQUEST.body;
+    RECORD->oper.uid = buff2int(oper->uid);
+    RECORD->oper.gid = buff2int(oper->gid);
+}
+
+static inline void parse_stat_dentry_front_part(struct fast_task_info *task)
 {
     FDIRProtoStatDEntryFront *front;
 
     front = (FDIRProtoStatDEntryFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
 }
 
@@ -2666,7 +2687,7 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
         return result;
     }
 
-    parse_stat_dentry_flags(task);
+    parse_stat_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PATH_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2676,7 +2697,9 @@ static int service_deal_readlink_by_path(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoOperator))) != 0)
+    {
         return result;
     }
 
@@ -2689,16 +2712,19 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_query(task)) != 0) {
+    if ((result=server_parse_pname_for_query(task,
+                    sizeof(FDIRProtoOperator))) != 0)
+    {
         return result;
     }
 
+    parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_READ_LINK_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_PNAME_RESP;
     return push_query_to_data_thread_queue(task);
 }
 
-static inline int server_check_and_parse_inode_ex(
+static inline int server_check_and_parse_inode(
         struct fast_task_info *task,
         const int front_part_size)
 {
@@ -2724,17 +2750,17 @@ static inline int server_check_and_parse_inode_ex(
     return 0;
 }
 
-#define server_check_and_parse_inode(task) \
-    server_check_and_parse_inode_ex(task, 0)
-
 static int service_deal_readlink_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode(task)) != 0) {
+    if ((result=server_check_and_parse_inode(task,
+                    sizeof(FDIRProtoOperator))) != 0)
+    {
         return result;
     }
 
+    parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_READ_LINK_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_INODE_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2744,10 +2770,13 @@ static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_dentry(task, 0)) != 0) {
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoOperator))) != 0)
+    {
         return result;
     }
 
+    parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2757,13 +2786,13 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode_ex(task,
+    if ((result=server_check_and_parse_inode(task,
                     sizeof(FDIRProtoStatDEntryFront))) != 0)
     {
         return result;
     }
 
-    parse_stat_dentry_flags(task);
+    parse_stat_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_INODE_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2773,13 +2802,13 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_query_ex(task,
+    if ((result=server_parse_pname_for_query(task,
                     sizeof(FDIRProtoStatDEntryFront))) != 0)
     {
         return result;
     }
 
-    parse_stat_dentry_flags(task);
+    parse_stat_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_STAT_BY_PNAME_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2789,10 +2818,13 @@ static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_parse_pname_for_query(task)) != 0) {
+    if ((result=server_parse_pname_for_query(task,
+                    sizeof(FDIRProtoOperator))) != 0)
+    {
         return result;
     }
 
+    parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2962,6 +2994,8 @@ static int deal_modify_dentry_stat(struct fast_task_info *task,
         free_record_object(task);
         return EINVAL;
     }
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
 
     /*
@@ -3106,6 +3140,8 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         return result;
     }
 
+    RECORD->oper.uid = buff2int(req->oper.uid);
+    RECORD->oper.gid = buff2int(req->oper.gid);
     RECORD->dentry_type = fdir_dentry_type_inode;
     RECORD->inode = inode;
     FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
@@ -3334,7 +3370,12 @@ static int service_deal_sys_unlock_dentry(struct fast_task_info *task)
 
 static inline int deal_list_dentry(struct fast_task_info *task)
 {
-    RECORD->flags = buff2int(((FDIRProtoListDEntryFront *)REQUEST.body)->flags);
+    FDIRProtoListDEntryFront *front;
+
+    front = (FDIRProtoListDEntryFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
+    RECORD->flags = buff2int(front->flags);
     RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
     return push_query_to_data_thread_queue(task);
 }
@@ -3356,7 +3397,7 @@ static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode_ex(task,
+    if ((result=server_check_and_parse_inode(task,
                     sizeof(FDIRProtoListDEntryFront))) != 0)
     {
         return result;
@@ -3416,7 +3457,12 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
 static inline int do_getxattr(struct fast_task_info *task,
         const int resp_cmd)
 {
-    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
+    FDIRProtoXAttrFront *front;
+
+    front = (FDIRProtoXAttrFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
+    RECORD->flags = buff2int(front->flags);
     RECORD->operation = SERVICE_OP_GET_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_query_to_data_thread_queue(task);
@@ -3455,7 +3501,7 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
         return result;
     }
 
-    if ((result=server_check_and_parse_inode_ex(task,
+    if ((result=server_check_and_parse_inode(task,
                     sizeof(FDIRProtoXAttrFront) +
                     sizeof(FDIRProtoNameInfo) + name.len)) != 0)
     {
@@ -3469,7 +3515,12 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
 static inline int do_listxattr(struct fast_task_info *task,
         const int resp_cmd)
 {
-    RECORD->flags = buff2int(((FDIRProtoXAttrFront *)REQUEST.body)->flags);
+    FDIRProtoXAttrFront *front;
+
+    front = (FDIRProtoXAttrFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
+    RECORD->flags = buff2int(front->flags);
     RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_query_to_data_thread_queue(task);
@@ -3492,7 +3543,7 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
 
-    if ((result=server_check_and_parse_inode_ex(task,
+    if ((result=server_check_and_parse_inode(task,
                     sizeof(FDIRProtoXAttrFront))) != 0)
     {
         return result;

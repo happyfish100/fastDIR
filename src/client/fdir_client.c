@@ -104,48 +104,50 @@ int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int flags,
+        const FDIRClientOperFnamePair *path, const int flags,
         FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_dentry_ex,
-            fullname, flags, dentry);
+            path, flags, dentry);
 }
 
 int fdir_client_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
         const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_dentry_by_pname_ex,
-            ns, pname, flags, dentry);
+            ns, opname, flags, dentry);
 }
 
 int fdir_client_rename_dentry_ex(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const int flags, FDIRDEntryInfo **dentry)
+        const FDIRDentryOperator *oper, const int flags,
+        FDIRDEntryInfo **dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_rename_dentry_ex,
-            src, dest, flags, dentry);
+            src, dest, oper, flags, dentry);
 }
 
 int fdir_client_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
         const string_t *src_ns, const FDIRDEntryPName *src_pname,
         const string_t *dest_ns, const FDIRDEntryPName *dest_pname,
-        const int flags, FDIRDEntryInfo **dentry)
+        const FDIRDentryOperator *oper, const int flags,
+        FDIRDEntryInfo **dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_rename_dentry_by_pname_ex,
-            src_ns, src_pname, dest_ns, dest_pname, flags, dentry);
+            src_ns, src_pname, dest_ns, dest_pname, oper, flags, dentry);
 }
 
 int fdir_client_set_dentry_size(FDIRClientContext *client_ctx,
@@ -171,187 +173,190 @@ int fdir_client_batch_set_dentry_size(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_modify_stat_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const int64_t mflags,
-        const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const int64_t mflags, const FDIRDEntryStat *stat,
+        const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_modify_stat_by_inode,
-            ns, inode, mflags, stat, flags, dentry);
+            ns, oino, mflags, stat, flags, dentry);
 }
 
 int fdir_client_modify_stat_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int64_t mflags,
+        const FDIRClientOperFnamePair *path, const int64_t mflags,
         const FDIRDEntryStat *stat, const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_modify_stat_by_path,
-            fullname, mflags, stat, flags, dentry);
+            path, mflags, stat, flags, dentry);
 }
 
 int fdir_client_set_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const key_value_pair_t *xattr,
+        const FDIRClientOperFnamePair *path, const key_value_pair_t *xattr,
         const int flags)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_set_xattr_by_path,
-            fullname, xattr, flags);
+            path, xattr, flags);
 }
 
 int fdir_client_set_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const key_value_pair_t
-        *xattr, const int flags)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const key_value_pair_t *xattr, const int flags)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_set_xattr_by_inode,
-            ns, inode, xattr, flags);
+            ns, oino, xattr, flags);
 }
 
 int fdir_client_remove_xattr_by_path_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *name,
+        const FDIRClientOperFnamePair *path, const string_t *name,
         const int flags, const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_path,
-            fullname, name, flags, enoattr_log_level);
+            path, name, flags, enoattr_log_level);
 }
 
 int fdir_client_remove_xattr_by_inode_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const string_t *name,
-        const int flags, const int enoattr_log_level)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const string_t *name, const int flags, const int enoattr_log_level)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_remove_xattr_by_inode,
-            ns, inode, name, flags, enoattr_log_level);
+            ns, oino, name, flags, enoattr_log_level);
 }
 
 int fdir_client_getlk_dentry(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, int *operation,
-        int64_t *offset, int64_t *length, FDIRFlockOwner *owner)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        int *operation, int64_t *offset, int64_t *length,
+        FDIRFlockOwner *owner)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_getlk_dentry, ns,
-            inode, operation, offset, length, owner);
+            oino, operation, offset, length, owner);
 }
 
 int fdir_client_lookup_inode_by_path_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int enoent_log_level,
+        const FDIRClientOperFnamePair *path, const int enoent_log_level,
         int64_t *inode)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_lookup_inode_by_path,
-            fullname, enoent_log_level, inode);
+            path, enoent_log_level, inode);
 }
 
 int fdir_client_lookup_inode_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
         const int enoent_log_level, int64_t *inode)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_lookup_inode_by_pname,
-            ns, pname, enoent_log_level, inode);
+            ns, opname, enoent_log_level, inode);
 }
 
 int fdir_client_stat_dentry_by_path_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const int flags,
+        const FDIRClientOperFnamePair *path, const int flags,
         const int enoent_log_level, FDIRDEntryInfo *dentry)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_stat_dentry_by_path,
-            fullname, flags, enoent_log_level, dentry);
+            path, flags, enoent_log_level, dentry);
 }
 
 int fdir_client_stat_dentry_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode,
+        const string_t *ns, const FDIRClientOperInodePair *oino,
         const int flags, FDIRDEntryInfo *dentry)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_stat_dentry_by_inode,
-            ns, inode, flags, dentry);
+            ns, oino, flags, dentry);
 }
 
 int fdir_client_stat_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
         const int flags, const int enoent_log_level, FDIRDEntryInfo *dentry)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_stat_dentry_by_pname,
-            ns, pname, flags, enoent_log_level, dentry);
+            ns, opname, flags, enoent_log_level, dentry);
 }
 
 int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, string_t *link, const int size)
+        const FDIRClientOperFnamePair *path, string_t *link, const int size)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_readlink_by_path,
-            fullname, link, size);
+            path, link, size);
 }
 
 int fdir_client_readlink_by_pname(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
         string_t *link, const int size)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_readlink_by_pname,
-            ns, pname, link, size);
+            ns, opname, link, size);
 }
 
 int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, string_t *link,
-        const int size)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        string_t *link, const int size)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_readlink_by_inode,
-            ns, inode, link, size);
+            ns, oino, link, size);
 }
 
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, FDIRClientDentryArray *array)
+        const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_dentry_by_path,
-            fullname, array);
+            path, array);
 }
 
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, FDIRClientDentryArray *array)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        FDIRClientDentryArray *array)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_dentry_by_inode,
-            ns, inode, array);
+            ns, oino, array);
 }
 
 int fdir_client_list_compact_dentry_by_path(
         FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname,
+        const FDIRClientOperFnamePair *path,
         FDIRClientCompactDentryArray *array)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx,
             &client_ctx->cm, GET_READABLE_CONNECTION, 0,
             fdir_client_proto_list_compact_dentry_by_path,
-            fullname, array);
+            path, array);
 }
 
 int fdir_client_list_compact_dentry_by_inode(
-        FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode,
+        FDIRClientContext *client_ctx, const string_t *ns,
+        const FDIRClientOperInodePair *oino,
         FDIRClientCompactDentryArray *array)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx,
             &client_ctx->cm, GET_READABLE_CONNECTION, 0,
             fdir_client_proto_list_compact_dentry_by_inode,
-            ns, inode, array);
+            ns, oino, array);
 }
 
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
@@ -363,41 +368,41 @@ int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_get_xattr_by_path_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, const string_t *name,
+        const FDIRClientOperFnamePair *path, const string_t *name,
         const int enoattr_log_level, string_t *value,
         const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_path,
-            fullname, name, enoattr_log_level, value, size, flags);
+            path, name, enoattr_log_level, value, size, flags);
 }
 
 int fdir_client_get_xattr_by_inode_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, const string_t *name,
-        const int enoattr_log_level, string_t *value,
-        const int size, const int flags)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const string_t *name, const int enoattr_log_level,
+        string_t *value, const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_get_xattr_by_inode,
-            ns, inode, name, enoattr_log_level, value, size, flags);
+            ns, oino, name, enoattr_log_level, value, size, flags);
 }
 
 int fdir_client_list_xattr_by_path(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname, string_t *list,
+        const FDIRClientOperFnamePair *path, string_t *list,
         const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_xattr_by_path,
-            fullname, list, size, flags);
+            path, list, size, flags);
 }
 
 int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
-        const string_t *ns, const int64_t inode, string_t *list,
-        const int size, const int flags)
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        string_t *list, const int size, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_xattr_by_inode,
-            ns, inode, list, size, flags);
+            ns, oino, list, size, flags);
 }
 
 #define FDIR_CLIENT_NODE_ITEM_ID   "id"
