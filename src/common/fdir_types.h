@@ -97,7 +97,13 @@
 #define FDIR_SET_DENTRY_PNAME_PTR(pname, inode, nm_ptr) \
     do {  \
         (pname)->parent_inode = inode; \
-        (pname)->name = *nm_ptr;       \
+        (pname)->name = *(nm_ptr);     \
+    } while (0)
+
+#define FDIR_SET_DENTRY_PNAME_STR(pname, inode, nm_str) \
+    do {  \
+        (pname)->parent_inode = inode; \
+        FC_SET_STRING((pname)->name, (char *)nm_str); \
     } while (0)
 
 typedef struct fdir_dentry_operator {
