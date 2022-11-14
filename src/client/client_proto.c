@@ -936,6 +936,33 @@ int fdir_client_proto_access_dentry_by_inode(FDIRClientContext *client_ctx,
             FDIR_SERVICE_PROTO_ACCESS_BY_INODE_RESP, flags, dentry);
 }
 
+int fdir_client_proto_access_dentry_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperPnamePair *opname, const char mask,
+        const int flags, FDIRDEntryInfo *dentry)
+{
+    char out_buff[sizeof(FDIRProtoHeader) + SF_PROTO_QUERY_EXTRA_BODY_SIZE +
+        sizeof(FDIRProtoAccessDEntryByPNameReq) + NAME_MAX + PATH_MAX];
+    FDIRProtoHeader *header;
+    FDIRProtoAccessDEntryByPNameReq *req;
+    int out_bytes;
+    int result;
+
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    if ((result=client_check_set_proto_oper_pname_pair(ns, opname,
+                    &req->pname, &req->front.oper)) != 0)
+    {
+        return result;
+    }
+    int2buff(flags, req->front.flags);
+    req->front.mask = mask;
+    out_bytes += ns->len + opname->pname.name.len;
+    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_REQ,
+            out_bytes - sizeof(FDIRProtoHeader));
+    return do_access_dentry(client_ctx, conn, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_RESP, flags, dentry);
+}
+
 static int do_readlink(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, char *out_buff, const int out_bytes,
         const int expect_cmd, string_t *link, const int size)

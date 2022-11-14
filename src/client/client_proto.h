@@ -247,6 +247,11 @@ int fdir_client_proto_access_dentry_by_inode(FDIRClientContext *client_ctx,
         const FDIRClientOperInodePair *oino, const char mask,
         const int flags, FDIRDEntryInfo *dentry);
 
+int fdir_client_proto_access_dentry_by_pname(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, const string_t *ns,
+        const FDIRClientOperPnamePair *opname, const char mask,
+        const int flags, FDIRDEntryInfo *dentry);
+
 int fdir_client_proto_readlink_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
         string_t *link, const int size);

@@ -2830,6 +2830,22 @@ static int service_deal_access_dentry_by_inode(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
+static int service_deal_access_dentry_by_pname(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_parse_pname_for_query(task,
+                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+    {
+        return result;
+    }
+
+    parse_access_dentry_front_part(task);
+    RECORD->operation = SERVICE_OP_ACCESS_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_RESP;
+    return push_query_to_data_thread_queue(task);
+}
+
 static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
@@ -3788,6 +3804,11 @@ static int service_process(struct fast_task_info *task)
         case FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ:
             if ((result=service_check_readable(task)) == 0) {
                 return service_deal_access_dentry_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_access_dentry_by_pname(task);
             }
             return result;
         case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

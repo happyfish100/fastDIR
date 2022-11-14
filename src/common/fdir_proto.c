@@ -132,6 +132,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "ACCESS_BY_PATH_REQ";
         case FDIR_SERVICE_PROTO_ACCESS_BY_PATH_RESP:
             return "ACCESS_BY_PATH_RESP";
+        case FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_REQ:
+            return "ACCESS_BY_PNAME_REQ";
+        case FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_RESP:
+            return "ACCESS_BY_PNAME_RESP";
         case FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ:
             return "ACCESS_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_ACCESS_BY_INODE_RESP:

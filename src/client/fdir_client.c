@@ -312,6 +312,15 @@ int fdir_client_access_dentry_by_inode(FDIRClientContext *client_ctx,
             ns, oino, mask, flags, dentry);
 }
 
+int fdir_client_access_dentry_by_pname(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
+        const char mask, const int flags, FDIRDEntryInfo *dentry)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_access_dentry_by_pname,
+            ns, opname, mask, flags, dentry);
+}
+
 int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
         const FDIRClientOperFnamePair *path, string_t *link, const int size)
 {
