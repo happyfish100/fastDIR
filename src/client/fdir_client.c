@@ -294,6 +294,24 @@ int fdir_client_stat_dentry_by_pname_ex(FDIRClientContext *client_ctx,
             ns, opname, flags, enoent_log_level, dentry);
 }
 
+int fdir_client_access_dentry_by_path(FDIRClientContext *client_ctx,
+        const FDIRClientOperFnamePair *path, const char mask,
+        const int flags, FDIRDEntryInfo *dentry)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_access_dentry_by_path,
+            path, mask, flags, dentry);
+}
+
+int fdir_client_access_dentry_by_inode(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const char mask, const int flags, FDIRDEntryInfo *dentry)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_access_dentry_by_inode,
+            ns, oino, mask, flags, dentry);
+}
+
 int fdir_client_readlink_by_path(FDIRClientContext *client_ctx,
         const FDIRClientOperFnamePair *path, string_t *link, const int size)
 {

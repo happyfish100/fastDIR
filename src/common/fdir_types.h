@@ -80,6 +80,7 @@
 #endif
 
 #define FDIR_FOLLOW_SYMLINK_MAX      10
+#define FDIR_FLAGS_OUTPUT_DENTRY     (1 << 0)  //for access dentry
 #define FDIR_FLAGS_XATTR_CREATE      (1 << 1)  //for setxattr
 #define FDIR_FLAGS_XATTR_REPLACE     (1 << 2)  //for setxattr
 #define FDIR_FLAGS_XATTR_GET_SIZE    (1 << 3)  //for getxattr and listxattr

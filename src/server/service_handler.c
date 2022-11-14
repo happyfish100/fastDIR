@@ -1361,6 +1361,11 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
             case SERVICE_OP_STAT_DENTRY_INT:
                 dentry_stat_output(task, &record->me.dentry);
                 break;
+            case SERVICE_OP_ACCESS_DENTRY_INT:
+                if ((record->flags & FDIR_FLAGS_OUTPUT_DENTRY) != 0) {
+                    dentry_stat_output(task, &record->me.dentry);
+                }
+                break;
             case SERVICE_OP_READ_LINK_INT:
                 RESPONSE_STATUS = readlink_output(task, record->me.dentry);
                 break;
@@ -2693,6 +2698,33 @@ static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
+static inline void parse_access_dentry_front_part(struct fast_task_info *task)
+{
+    FDIRProtoAccessDEntryFront *front;
+
+    front = (FDIRProtoAccessDEntryFront *)REQUEST.body;
+    RECORD->oper.uid = buff2int(front->oper.uid);
+    RECORD->oper.gid = buff2int(front->oper.gid);
+    RECORD->flags = buff2int(front->flags);
+    RECORD->mask = front->mask;
+}
+
+static int service_deal_access_dentry_by_path(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_check_and_parse_dentry(task,
+                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+    {
+        return result;
+    }
+
+    parse_access_dentry_front_part(task);
+    RECORD->operation = SERVICE_OP_ACCESS_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_ACCESS_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
+}
+
 static int service_deal_readlink_by_path(struct fast_task_info *task)
 {
     int result;
@@ -2779,6 +2811,22 @@ static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
     parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_LOOKUP_INODE_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_RESP;
+    return push_query_to_data_thread_queue(task);
+}
+
+static int service_deal_access_dentry_by_inode(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=server_check_and_parse_inode(task,
+                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+    {
+        return result;
+    }
+
+    parse_access_dentry_front_part(task);
+    RECORD->operation = SERVICE_OP_ACCESS_DENTRY_INT;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_ACCESS_BY_INODE_RESP;
     return push_query_to_data_thread_queue(task);
 }
 
@@ -3601,6 +3649,8 @@ static int service_check_priv(struct fast_task_info *task)
 
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PATH_REQ:
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
+        case FDIR_SERVICE_PROTO_ACCESS_BY_PATH_REQ:
+        case FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ:
         case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:
         case FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ:
         case FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ:
@@ -3728,6 +3778,16 @@ static int service_process(struct fast_task_info *task)
         case FDIR_SERVICE_PROTO_LOOKUP_INODE_BY_PNAME_REQ:
             if ((result=service_check_readable(task)) == 0) {
                 return service_deal_lookup_inode_by_pname(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_ACCESS_BY_PATH_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_access_dentry_by_path(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_access_dentry_by_inode(task);
             }
             return result;
         case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

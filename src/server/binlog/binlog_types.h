@@ -46,12 +46,13 @@
 #define SERVICE_OP_FLOCK_APPLY_INT      113
 #define SERVICE_OP_FLOCK_UNLOCK_INT     114
 
-#define SERVICE_OP_STAT_DENTRY_INT  121
-#define SERVICE_OP_READ_LINK_INT    122
-#define SERVICE_OP_LOOKUP_INODE_INT 123
-#define SERVICE_OP_LIST_DENTRY_INT  124
-#define SERVICE_OP_GET_XATTR_INT    125
-#define SERVICE_OP_LIST_XATTR_INT   126
+#define SERVICE_OP_ACCESS_DENTRY_INT    120
+#define SERVICE_OP_STAT_DENTRY_INT      121
+#define SERVICE_OP_READ_LINK_INT        122
+#define SERVICE_OP_LOOKUP_INODE_INT     123
+#define SERVICE_OP_LIST_DENTRY_INT      124
+#define SERVICE_OP_GET_XATTR_INT        125
+#define SERVICE_OP_LIST_XATTR_INT       126
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -161,6 +162,7 @@ typedef struct fdir_binlog_record {
     union {
         FDIRDEntryStat stat;
         FDIRFlockParams flock_params;
+        int mask;  //for access dentry
     };
 
     union {
@@ -242,6 +244,8 @@ static inline const char *get_operation_caption(const int operation)
             return "FLOCK_APPLY";
         case SERVICE_OP_SYS_LOCK_RELEASE_INT:
             return "SYS_LOCK_RELEASE";
+        case SERVICE_OP_ACCESS_DENTRY_INT:
+            return "ACCESS_DENTRY";
         case SERVICE_OP_STAT_DENTRY_INT:
             return "STAT_DENTRY";
         case SERVICE_OP_READ_LINK_INT:

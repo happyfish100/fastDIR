@@ -1392,6 +1392,29 @@ int dentry_find_ex(const FDIRDEntryFullName *fullname,
     return 0;
 }
 
+int dentry_access(const FDIRServerDentry *dentry,
+        const FDIRDentryOperator *oper, const int mask)
+{
+#define USER_PERM_MASK(mask)  ((mask << 6) & 0700)
+#define GROUP_PERM_MASK(mask) ((mask << 3) & 0070)
+#define OTHER_PERM_MASK(mask) (mask & 0007)
+
+    if (mask == F_OK || oper->uid == 0) {
+        return 0;
+    }
+
+    if (oper->uid == dentry->stat.uid) {
+        return (dentry->stat.mode & USER_PERM_MASK(mask)) ==
+            USER_PERM_MASK(mask) ? 0 : EPERM;
+    } else if (oper->gid == dentry->stat.gid) {
+        return (dentry->stat.mode & GROUP_PERM_MASK(mask)) ==
+            GROUP_PERM_MASK(mask) ? 0 : EPERM;
+    } else {
+        return (dentry->stat.mode & OTHER_PERM_MASK(mask)) ==
+            OTHER_PERM_MASK(mask) ? 0 : EPERM;
+    }
+}
+
 int dentry_find_by_pname(FDIRServerDentry *parent, const string_t *name,
         FDIRServerDentry **dentry)
 {

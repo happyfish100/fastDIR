@@ -67,6 +67,9 @@ extern "C" {
         return dentry_find_ex(fullname, dentry, hdlink_follow);
     }
 
+    int dentry_access(const FDIRServerDentry *dentry,
+            const FDIRDentryOperator *oper, const int mask);
+
     int dentry_find_by_pname(FDIRServerDentry *parent,
             const string_t *name, FDIRServerDentry **dentry);
 

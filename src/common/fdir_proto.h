@@ -116,14 +116,18 @@
 #define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_REQ  87
 #define FDIR_SERVICE_PROTO_GET_READABLE_SERVER_RESP 88
 
-#define FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ    91
-#define FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP   92
-#define FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ   93
-#define FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP  94
-#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ   95
-#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP  96
-#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ  97
-#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP 98
+#define FDIR_SERVICE_PROTO_ACCESS_BY_PATH_REQ       89
+#define FDIR_SERVICE_PROTO_ACCESS_BY_PATH_RESP      90
+#define FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ      91
+#define FDIR_SERVICE_PROTO_ACCESS_BY_INODE_RESP     92
+#define FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ    93
+#define FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_RESP   94
+#define FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ   95
+#define FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_RESP  96
+#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ   97
+#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP  98
+#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ  99
+#define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP 100
 
 //for namespace stat sync
 #define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ        101
@@ -373,9 +377,29 @@ typedef struct fdir_proto_query_dentry_by_inode_req {
     FDIRProtoInodeInfo ino;
 } FDIRProtoQueryDentryByInodeReq;
 
+
 typedef struct fdir_proto_lookup_inode_resp {
     char inode[8];
 } FDIRProtoLookupInodeResp;
+
+
+typedef struct fdir_proto_access_dentry_front {
+    FDIRProtoOperator oper;
+    char flags[4];
+    char mask;  //F_OK, R_OK, W_OK, X_OK
+    char padding[3];
+} FDIRProtoAccessDEntryFront;
+
+typedef struct fdir_proto_access_dentry_req {
+    FDIRProtoAccessDEntryFront front;
+    FDIRProtoDEntryInfo dentry;
+} FDIRProtoAccessDEntryReq;
+
+typedef struct fdir_proto_access_dentry_by_inode_req {
+    FDIRProtoAccessDEntryFront front;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoAccessDEntryByInodeReq;
+
 
 typedef struct fdir_proto_stat_dentry_front {
     FDIRProtoOperator oper;

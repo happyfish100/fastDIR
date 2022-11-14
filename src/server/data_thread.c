@@ -1210,6 +1210,7 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
 
     switch (record->operation) {
         case SERVICE_OP_STAT_DENTRY_INT:
+        case SERVICE_OP_ACCESS_DENTRY_INT:
         case SERVICE_OP_READ_LINK_INT:
         case SERVICE_OP_LOOKUP_INODE_INT:
         case SERVICE_OP_GET_XATTR_INT:
@@ -1229,6 +1230,7 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             if (result == 0) {
                 switch (record->operation) {
                     case SERVICE_OP_STAT_DENTRY_INT:
+                    case SERVICE_OP_ACCESS_DENTRY_INT:
                     case SERVICE_OP_GET_XATTR_INT:
                     case SERVICE_OP_LIST_XATTR_INT:
                         if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
@@ -1241,14 +1243,21 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                             }
                         }
 
-                        if (record->operation == SERVICE_OP_GET_XATTR_INT) {
-                            result = inode_index_get_xattr(record->me.dentry,
-                                    &record->xattr.key, &record->xattr.value);
-                        } else if (record->operation == SERVICE_OP_LIST_XATTR_INT) {
-                            if (STORAGE_ENABLED) {
-                                result = dentry_check_load_xattr(thread_ctx,
-                                        record->me.dentry);
-                            }
+                        switch (record->operation) {
+                            case SERVICE_OP_ACCESS_DENTRY_INT:
+                                result = dentry_access(record->me.dentry,
+                                        &record->oper, record->mask);
+                                break;
+                            case SERVICE_OP_GET_XATTR_INT:
+                                result = inode_index_get_xattr(record->me.dentry,
+                                        &record->xattr.key, &record->xattr.value);
+                                break;
+                            case SERVICE_OP_LIST_XATTR_INT:
+                                if (STORAGE_ENABLED) {
+                                    result = dentry_check_load_xattr(thread_ctx,
+                                            record->me.dentry);
+                                }
+                                break;
                         }
 
                         break;
