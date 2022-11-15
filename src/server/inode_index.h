@@ -45,7 +45,7 @@ extern "C" {
 
     int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
             const int64_t parent_inode, const string_t *name,
-            FDIRServerDentry **dentry);
+            const FDIRDentryOperator *oper, FDIRServerDentry **dentry);
 
     int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,
             FDIRBinlogRecord *record);

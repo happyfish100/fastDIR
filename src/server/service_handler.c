@@ -1330,8 +1330,8 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     }
 
     log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
-            "%s%s fail, errno: %d, error info: %s%s%s%s",
-            filename, line_no, client_ip_buff,
+            "%sdentry type: %c, %s fail, errno: %d, error info: %s%s%s%s",
+            filename, line_no, client_ip_buff, record->dentry_type,
             get_operation_caption(record->operation), result,
             STRERROR(result), ns_buff, extra_buff, xattr_name_buff);
 }
@@ -2904,7 +2904,9 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
     record->stat.alloc = dsize->inc_alloc;
 }
 
-#define SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req) \
+#define SERVICE_UNPACK_DENTRY_SIZE_INFO(record, dsize, req) \
+    (record)->oper.uid = 0;  \
+    (record)->oper.gid = 0;  \
     dsize.inode = buff2long(req->inode); \
     dsize.file_size = buff2long(req->file_size); \
     dsize.inc_alloc = buff2long(req->inc_alloc); \
@@ -2940,10 +2942,10 @@ static int service_deal_set_dentry_size(struct fast_task_info *task)
         return EINVAL;
     }
 
-    SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, req);
     if ((result=alloc_record_object(task)) != 0) {
         return result;
     }
+    SERVICE_UNPACK_DENTRY_SIZE_INFO(RECORD, dsize, req);
 
     init_record_by_dsize(RECORD, &dsize);
     RECORD->dentry_type = fdir_dentry_type_inode;
@@ -3017,8 +3019,6 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
     for (record=RECORD->parray->records;
             rbody<rbend; record++, rbody++)
     {
-        SERVICE_UNPACK_DENTRY_SIZE_INFO(dsize, rbody);
-
         *record = (FDIRBinlogRecord *)fast_mblock_alloc_object(
                 &SERVER_CTX->service.record_allocator);
         if (*record == NULL) {
@@ -3028,6 +3028,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
             return EBUSY;
         }
 
+        SERVICE_UNPACK_DENTRY_SIZE_INFO(*record, dsize, rbody);
         init_record_by_dsize(*record, &dsize);
         (*record)->hash_code = hash_code;
         (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
@@ -3063,9 +3064,11 @@ static int deal_modify_dentry_stat(struct fast_task_info *task,
     RECORD->flags = buff2int(front->flags);
 
     /*
-    logInfo("file: "__FILE__", line: %d, "
-            "flags: %"PRId64" (0x%llX), masked_flags: %"PRId64", result: %d",
-            __LINE__, mflags, mflags, RECORD->options.flags, result);
+    logInfo("file: "__FILE__", line: %d, inode: %"PRId64", "
+            "flags: %"PRId64" (0x%lX), masked_flags: %"PRId64", "
+            "oper {uid: %d, gid: %d}", __LINE__, RECORD->inode, mflags,
+            mflags, RECORD->options.flags, RECORD->oper.uid,
+            RECORD->oper.gid);
             */
 
     fdir_proto_unpack_dentry_stat(&front->stat, &RECORD->stat);

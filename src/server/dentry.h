@@ -55,33 +55,70 @@ extern "C" {
             FDIRBinlogRecord *record);
 
     int dentry_find_parent(const FDIRDEntryFullName *fullname,
-            FDIRServerDentry **parent, string_t *my_name);
+            const FDIRDentryOperator *oper, FDIRServerDentry **parent,
+            string_t *my_name);
 
     int dentry_find_ex(const FDIRDEntryFullName *fullname,
-            FDIRServerDentry **dentry, const bool hdlink_follow);
+            const FDIRDentryOperator *oper, FDIRServerDentry **dentry,
+            const bool hdlink_follow);
 
     static inline int dentry_find(const FDIRDEntryFullName *fullname,
-            FDIRServerDentry **dentry)
+            const FDIRDentryOperator *oper, FDIRServerDentry **dentry)
     {
         const bool hdlink_follow = true;
-        return dentry_find_ex(fullname, dentry, hdlink_follow);
+        return dentry_find_ex(fullname, oper, dentry, hdlink_follow);
     }
 
-    int dentry_access(const FDIRServerDentry *dentry,
-            const FDIRDentryOperator *oper, const int mask);
+    static inline int dentry_access(const FDIRServerDentry *dentry,
+            const FDIRDentryOperator *oper, const int mask)
+    {
+#define USER_PERM_MASK(mask)  ((mask << 6) & 0700)
+#define GROUP_PERM_MASK(mask) ((mask << 3) & 0070)
+#define OTHER_PERM_MASK(mask) (mask & 0007)
+
+        if (mask == F_OK || oper->uid == 0) {
+            return 0;
+        }
+
+        if (oper->uid == dentry->stat.uid) {
+            if ((dentry->stat.mode & USER_PERM_MASK(mask)) ==
+                    USER_PERM_MASK(mask))
+            {
+                return 0;
+            }
+        } else if (oper->gid == dentry->stat.gid) {
+            if ((dentry->stat.mode & GROUP_PERM_MASK(mask)) ==
+                    GROUP_PERM_MASK(mask))
+            {
+                return 0;
+            }
+        } else {
+            if ((dentry->stat.mode & OTHER_PERM_MASK(mask)) ==
+                    OTHER_PERM_MASK(mask))
+            {
+                return 0;
+            }
+        }
+
+        return (mask & X_OK) ? EACCES : EPERM;
+    }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,
-            const string_t *name, FDIRServerDentry **dentry);
+            const string_t *name, const FDIRDentryOperator *oper,
+            FDIRServerDentry **dentry);
 
     int dentry_get_full_path(const FDIRServerDentry *dentry,
             BufferInfo *full_path, SFErrorInfo *error_info);
 
-    int dentry_resolve_symlink(FDIRServerDentry **dentry);
+    int dentry_resolve_symlink(FDIRServerDentry **dentry,
+            const FDIRDentryOperator *oper);
 
-    int dentry_list(FDIRServerDentry *dentry, PointerArray **parray);
+    int dentry_list(FDIRServerDentry *dentry,
+            const FDIRDentryOperator *oper,
+            PointerArray **parray);
 
     int dentry_list_by_path(const FDIRDEntryFullName *fullname,
-            PointerArray **parray);
+            const FDIRDentryOperator *oper, PointerArray **parray);
 
     static inline void dentry_array_free(PointerArray **parray)
     {

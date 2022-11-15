@@ -281,7 +281,7 @@ int inode_index_get_dentry_ex(FDIRDataThreadContext *thread_ctx,
 
 int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
         const int64_t parent_inode, const string_t *name,
-        FDIRServerDentry **dentry)
+        const FDIRDentryOperator *oper, FDIRServerDentry **dentry)
 {
     int result;
     FDIRServerDentry *parent_dentry;
@@ -292,7 +292,7 @@ int inode_index_get_dentry_by_pname(FDIRDataThreadContext *thread_ctx,
         return result;
     }
 
-    return dentry_find_by_pname(parent_dentry, name, dentry);
+    return dentry_find_by_pname(parent_dentry, name, oper, dentry);
 }
 
 int inode_index_check_set_dentry_size(FDIRDataThreadContext *thread_ctx,

@@ -324,8 +324,8 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
             */
 
     is_create = (record->operation == BINLOG_OP_CREATE_DENTRY_INT);
-    if ((result=dentry_find_parent(&record->me.fullname, &record->
-                    me.parent, &record->me.pname.name)) != 0)
+    if ((result=dentry_find_parent(&record->me.fullname, &record->oper,
+                    &record->me.parent, &record->me.pname.name)) != 0)
     {
         if (!(result == ENOENT && is_create)) {
             return result;
@@ -345,12 +345,12 @@ static int find_or_check_parent(FDIRDataThreadContext *thread_ctx,
 }
 
 static inline int set_pname_by_fullname_ex(FDIRRecordDEntry *entry,
-        const bool allow_root_path)
+        const FDIRDentryOperator *oper, const bool allow_root_path)
 {
     int result;
 
-    if ((result=dentry_find_parent(&entry->fullname, &entry->parent,
-                    &entry->pname.name)) != 0)
+    if ((result=dentry_find_parent(&entry->fullname, oper,
+                    &entry->parent, &entry->pname.name)) != 0)
     {
         return result;
     }
@@ -368,7 +368,8 @@ static inline int set_pname_by_fullname_ex(FDIRRecordDEntry *entry,
     return 0;
 }
 
-#define set_pname_by_fullname(entry) set_pname_by_fullname_ex(entry, false)
+#define set_pname_by_fullname(entry, oper) \
+    set_pname_by_fullname_ex(entry, oper, false)
 
 static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRBinlogRecord *record)
@@ -376,7 +377,7 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
     int result;
 
     if (record->dentry_type == fdir_dentry_type_fullname) {
-        if ((result=dentry_find(&record->hdlink.src.fullname,
+        if ((result=dentry_find(&record->hdlink.src.fullname, &record->oper,
                         &record->hdlink.src.dentry)) != 0)
         {
             return result;
@@ -394,8 +395,8 @@ static inline int set_hdlink_src_dentry(FDIRDataThreadContext *thread_ctx,
     if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
             S_ISLNK(record->hdlink.src.dentry->stat.mode))
     {
-        if ((result=dentry_resolve_symlink(&record->
-                        hdlink.src.dentry)) != 0)
+        if ((result=dentry_resolve_symlink(&record->hdlink.
+                        src.dentry, &record->oper)) != 0)
         {
             return result;
         }
@@ -422,10 +423,14 @@ static inline int deal_record_rename_op(FDIRDataThreadContext *thread_ctx,
     char *src_name;
 
     if (record->dentry_type == fdir_dentry_type_fullname) {
-        if ((result=set_pname_by_fullname(&record->rename.src)) != 0) {
+        if ((result=set_pname_by_fullname(&record->rename.src,
+                        &record->oper)) != 0)
+        {
             return result;
         }
-        if ((result=set_pname_by_fullname(&record->rename.dest)) != 0) {
+        if ((result=set_pname_by_fullname(&record->rename.dest,
+                        &record->oper)) != 0)
+        {
             return result;
         }
 
@@ -473,7 +478,7 @@ static inline int xattr_update_prepare(FDIRDataThreadContext
             return result;
         }
     } else {
-        if ((result=dentry_find(&record->me.fullname,
+        if ((result=dentry_find(&record->me.fullname, &record->oper,
                         &record->me.dentry)) != 0)
         {
             return result;
@@ -485,8 +490,8 @@ static inline int xattr_update_prepare(FDIRDataThreadContext
     if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
             S_ISLNK(record->me.dentry->stat.mode))
     {
-        if ((result=dentry_resolve_symlink(&record->
-                        me.dentry)) != 0)
+        if ((result=dentry_resolve_symlink(&record->me.dentry,
+                        &record->oper)) != 0)
         {
             return result;
         }
@@ -851,14 +856,81 @@ static int push_batch_set_dsize_to_db_update_queue(FDIRDataThreadContext
     return 0;
 }
 
-static inline void update_dentry_stat(FDIRServerDentry *dentry,
+static inline int update_dentry_stat(FDIRServerDentry *dentry,
         FDIRBinlogRecord *record)
 {
+    int result;
+    int keep_perms;
+
     if (record->options.mode) {
+        if (record->oper.uid == 0 || record->oper.uid ==
+                    dentry->stat.uid)
+        {
+            /*
+            POSIX: If the calling process does not have appropriate privileges,
+            and if the group ID of the file does not match the effective group
+            ID or one of the supplementary group IDs and if the file is
+            a regular file, bit S_ISGID (set-group-ID on execution)
+            in the file's mode shall be cleared. */
+            if (record->oper.uid != 0 && record->oper.gid != dentry->stat.gid) {
+                keep_perms = S_ISUID|S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO;
+            } else {
+                keep_perms = ALLPERMS;
+            }
+        } else {
+            if ((record->stat.mode & (S_IRWXU|S_IRWXG|S_IRWXO)) ==
+                    (dentry->stat.mode & (S_IRWXU|S_IRWXG|S_IRWXO)) &&
+                    (result=dentry_access(dentry, &record->oper, W_OK)) == 0)
+            {
+                /* non-owner clears the S_ISUID and S_ISGID */
+                keep_perms = S_ISVTX|S_IRWXU|S_IRWXG|S_IRWXO;
+            } else {
+                return EPERM;
+            }
+        }
         record->stat.mode = (dentry->stat.mode & S_IFMT) |
-            (record->stat.mode & ALLPERMS);
+            (record->stat.mode & keep_perms);
         dentry->stat.mode = record->stat.mode;
+
+        /* successful chmod updates ctime. */
+        record->options.ctime = 1;
+        dentry->stat.ctime = record->stat.ctime = g_current_time;
+        return 0;
     }
+
+    if (record->options.uid || record->options.gid) {
+        if (record->oper.uid != 0) {
+            return EPERM;
+        }
+
+
+        if (dentry->stat.mode & (S_ISUID|S_ISGID)) {
+            record->options.mode = 1;
+            record->stat.mode = dentry->stat.mode & ~(S_ISUID|S_ISGID);
+            dentry->stat.mode = record->stat.mode;
+        }
+
+        if (record->options.uid) {
+            if (record->stat.uid >= 0) {
+                dentry->stat.uid = record->stat.uid;
+            } else {
+                record->options.uid = 0;
+            }
+        }
+        if (record->options.gid) {
+            if (record->stat.gid >= 0) {
+                dentry->stat.gid = record->stat.gid;
+            } else {
+                record->options.gid = 0;
+            }
+        }
+        return 0;
+    }
+
+    if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0) {
+        return result;
+    }
+
     if (record->options.atime) {
         dentry->stat.atime = record->stat.atime;
     }
@@ -868,12 +940,7 @@ static inline void update_dentry_stat(FDIRServerDentry *dentry,
     if (record->options.mtime) {
         dentry->stat.mtime = record->stat.mtime;
     }
-    if (record->options.uid) {
-        dentry->stat.uid = record->stat.uid;
-    }
-    if (record->options.gid) {
-        dentry->stat.gid = record->stat.gid;
-    }
+
     if (record->options.size) {
         dentry->stat.size = record->stat.size;
     }
@@ -883,6 +950,8 @@ static inline void update_dentry_stat(FDIRServerDentry *dentry,
     if (record->options.inc_alloc) {
         dentry_set_inc_alloc_bytes(dentry, record->stat.alloc);
     }
+
+    return 0;
 }
 
 static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
@@ -897,7 +966,7 @@ static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
             return result;
         }
     } else {
-        if ((result=dentry_find(&record->me.fullname,
+        if ((result=dentry_find(&record->me.fullname, &record->oper,
                         &record->me.dentry)) != 0)
         {
             return result;
@@ -908,14 +977,15 @@ static int deal_update_dentry(FDIRDataThreadContext *thread_ctx,
     if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
             S_ISLNK(record->me.dentry->stat.mode))
     {
-        if ((result=dentry_resolve_symlink(&record->me.dentry)) != 0) {
+        if ((result=dentry_resolve_symlink(&record->me.dentry,
+                        &record->oper)) != 0)
+        {
             return result;
         }
         record->inode = record->me.dentry->inode;
     }
 
-    update_dentry_stat(record->me.dentry, record);
-    return 0;
+    return update_dentry_stat(record->me.dentry, record);
 }
 
 static inline void deal_affected_dentries(FDIRBinlogRecord *record)
@@ -1162,10 +1232,11 @@ static int deal_list_dentry(FDIRDataThreadContext *thread_ctx,
             return result;
         }
 
-        result = dentry_list(record->me.dentry, &DENTRY_LIST_CACHE.array);
+        result = dentry_list(record->me.dentry, &record->oper,
+                &DENTRY_LIST_CACHE.array);
     } else {
         result = dentry_list_by_path(&record->me.fullname,
-                &DENTRY_LIST_CACHE.array);
+                &record->oper, &DENTRY_LIST_CACHE.array);
     }
 
     return result;
@@ -1220,11 +1291,11 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                         record->inode, &record->me.dentry);
             } else if (record->dentry_type == fdir_dentry_type_pname) {
                 result = inode_index_get_dentry_by_pname(thread_ctx,
-                        record->me.pname.parent_inode, &record->
-                        me.pname.name, &record->me.dentry);
+                        record->me.pname.parent_inode, &record->me.
+                        pname.name, &record->oper, &record->me.dentry);
             } else {
                 result = dentry_find(&record->me.fullname,
-                        &record->me.dentry);
+                        &record->oper, &record->me.dentry);
             }
 
             if (result == 0) {
@@ -1236,8 +1307,8 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                         if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
                                 S_ISLNK(record->me.dentry->stat.mode))
                         {
-                            if ((result=dentry_resolve_symlink(
-                                            &record->me.dentry)) != 0)
+                            if ((result=dentry_resolve_symlink(&record->me.
+                                            dentry, &record->oper)) != 0)
                             {
                                 break;
                             }

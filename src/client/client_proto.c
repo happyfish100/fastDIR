@@ -130,14 +130,14 @@ static int client_check_set_proto_dentry(
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, fullname->ns.len, NAME_MAX);
-        return EINVAL;
+        return fullname->ns.len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     if (fullname->path.len <= 0 || fullname->path.len > PATH_MAX) {
         logError("file: "__FILE__", line: %d, "
                 "invalid path length: %d, which <= 0 or > %d",
                 __LINE__, fullname->path.len, PATH_MAX);
-        return EINVAL;
+        return fullname->path.len > PATH_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     entry_proto->ns_len = fullname->ns.len;
@@ -176,14 +176,14 @@ static int client_check_set_proto_pname(const string_t *ns,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     if (pname->name.len <= 0 || pname->name.len > NAME_MAX) {
         logError("file: "__FILE__", line: %d, "
                 "invalid path length: %d, which <= 0 or > %d",
                 __LINE__, pname->name.len, NAME_MAX);
-        return EINVAL;
+        return pname->name.len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     long2buff(pname->parent_inode, pname_proto->parent_inode);
@@ -217,7 +217,7 @@ static inline int client_check_set_proto_inode_info(const string_t *ns,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     long2buff(inode, ino_proto->inode);
@@ -249,7 +249,7 @@ static inline int client_check_set_proto_name_info(
         logError("file: "__FILE__", line: %d, "
                 "invalid name length: %d, which <= 0 or > %d",
                 __LINE__, name->len, NAME_MAX);
-        return EINVAL;
+        return name->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     nm_proto->len = name->len;
@@ -430,7 +430,7 @@ int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid link length: %d, which <= 0 or > %d",
                 __LINE__, link->len, NAME_MAX);
-        return EINVAL;
+        return link->len > PATH_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
@@ -705,7 +705,7 @@ static inline int setup_req_by_dentry_inode(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, *out_bytes);
@@ -1158,7 +1158,7 @@ int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid link length: %d, which <= 0 or > %d",
                 __LINE__, link->len, NAME_MAX);
-        return EINVAL;
+        return link->len > PATH_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
@@ -1234,7 +1234,7 @@ int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
@@ -1271,7 +1271,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
     if (count <= 0 || count > FDIR_BATCH_SET_MAX_DENTRY_COUNT) {
         logError("file: "__FILE__", line: %d, "
@@ -1336,8 +1336,21 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
+    /*
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
             FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry);
+            */
+
+    if ((result=do_update_dentry(client_ctx, conn, out_buff, out_bytes,
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry)) != 0)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", oper uid: %d, gid: %d, "
+                "file size: %"PRId64", result: %d", __LINE__,
+                oino->inode, oino->oper.uid, oino->oper.gid, stat->size, result);
+    }
+
+    return result;
 }
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
@@ -1579,7 +1592,7 @@ int fdir_client_dentry_sys_unlock_ex(FDIRClientSession *session,
             logError("file: "__FILE__", line: %d, "
                     "invalid namespace length: %d, which <= 0 or > %d",
                     __LINE__, ns->len, NAME_MAX);
-            return EINVAL;
+            return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
         }
         new_flags = dsize->flags;
     } else {
@@ -2834,7 +2847,7 @@ int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
         logError("file: "__FILE__", line: %d, "
                 "invalid namespace length: %d, which <= 0 or > %d",
                 __LINE__, ns->len, NAME_MAX);
-        return EINVAL;
+        return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
