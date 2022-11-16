@@ -1000,6 +1000,16 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
         return result;
     }
 
+    if (record->me.parent == NULL) {
+        if (!IS_DENTRY_OWNER(record->oper.uid, record->me.dentry)) {
+            return EPERM;
+        }
+    } else if (!(IS_DENTRY_OWNER(record->oper.uid, record->me.parent) ||
+                IS_DENTRY_OWNER(record->oper.uid, record->me.dentry)))
+    {
+        return EPERM;
+    }
+
     if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_ENABLED)) {
         if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_DIR) ==
                 FDIR_UNLINK_FLAGS_MATCH_DIR)

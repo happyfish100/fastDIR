@@ -69,6 +69,8 @@ extern "C" {
         return dentry_find_ex(fullname, oper, dentry, hdlink_follow);
     }
 
+#define IS_DENTRY_OWNER(_uid, _dentry) (_uid == 0 || _uid == _dentry->stat.uid)
+
     static inline int dentry_access(const FDIRServerDentry *dentry,
             const FDIRDentryOperator *oper, const int mask)
     {

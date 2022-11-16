@@ -892,22 +892,52 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
             (record->stat.mode & keep_perms);
         dentry->stat.mode = record->stat.mode;
 
-        /* successful chmod updates ctime. */
-        record->options.ctime = 1;
-        dentry->stat.ctime = record->stat.ctime = g_current_time;
-        return 0;
+        if (!record->options.ctime) {
+            /* successful chmod updates ctime. */
+            record->options.ctime = 1;
+            dentry->stat.ctime = record->stat.ctime = g_current_time;
+        }
     }
 
     if (record->options.uid || record->options.gid) {
-        if (record->oper.uid != 0) {
-            return EPERM;
-        }
+        logInfo("======inode: %"PRId64", oper { uid: %d, gid: %d}, "
+                "dentry {uid: %d, gid: %d}, options {uid: %d, gid: %d}, "
+                "record {uid: %d, gid: %d}", dentry->inode,
+                record->oper.uid, record->oper.gid,
+                dentry->stat.uid, dentry->stat.gid,
+                record->options.uid, record->options.gid,
+                record->stat.uid, record->stat.gid);
+        if (record->oper.uid == 0) {
+        } else if (record->oper.uid == dentry->stat.uid) {
+            /* can't change owner to other user */
+            if ((record->options.uid && record->stat.uid >= 0) &&
+                    record->stat.uid != dentry->stat.uid)
+            {
+                return EPERM;
+            }
 
-
-        if (dentry->stat.mode & (S_ISUID|S_ISGID)) {
-            record->options.mode = 1;
-            record->stat.mode = dentry->stat.mode & ~(S_ISUID|S_ISGID);
-            dentry->stat.mode = record->stat.mode;
+            /* when non-super-user calls chown successfully,
+             * S_ISUID and S_ISGID may be removed, except when
+             * both uid and gid are equal to -1.
+             **/
+            if (!((record->options.uid && record->stat.uid == -1)
+                        && (record->options.gid && record->stat.gid == -1)))
+            {
+                if (dentry->stat.mode & (S_ISUID|S_ISGID)) {
+                    record->options.mode = 1;
+                    record->stat.mode = dentry->stat.mode & ~(S_ISUID|S_ISGID);
+                    dentry->stat.mode = record->stat.mode;
+                }
+            }
+        } else {
+            /* chown return 0 if user is not owner of a file, but chown
+             * is called with both uid and gid equal to -1.
+             **/
+            if (!((record->options.uid && record->stat.uid == -1)
+                        && (record->options.gid && record->stat.gid == -1)))
+            {
+                return EPERM;
+            }
         }
 
         if (record->options.uid) {
@@ -924,26 +954,41 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
                 record->options.gid = 0;
             }
         }
-        return 0;
+
+        if ((record->options.uid || record->options.gid) &&
+                !record->options.ctime)
+        {
+            /* successful chown updates ctime. */
+            record->options.ctime = 1;
+            dentry->stat.ctime = record->stat.ctime = g_current_time;
+        }
     }
 
-    if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0) {
-        return result;
-    }
+    if (record->options.atime || record->options.mtime) {
+        if (!IS_DENTRY_OWNER(record->oper.uid, dentry)) {
+            return EPERM;
+        }
 
-    if (record->options.atime) {
-        dentry->stat.atime = record->stat.atime;
-    }
-    if (record->options.ctime) {
-        dentry->stat.ctime = record->stat.ctime;
-    }
-    if (record->options.mtime) {
-        dentry->stat.mtime = record->stat.mtime;
+        if (record->options.atime) {
+            dentry->stat.atime = record->stat.atime;
+        }
+        if (record->options.mtime) {
+            dentry->stat.mtime = record->stat.mtime;
+        }
     }
 
     if (record->options.size) {
+        if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0) {
+            return result;
+        }
+
         dentry->stat.size = record->stat.size;
     }
+
+    if (record->options.ctime) {
+        dentry->stat.ctime = record->stat.ctime;
+    }
+
     if (record->options.space_end) {
         dentry->stat.space_end = record->stat.space_end;
     }
@@ -1061,6 +1106,15 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                 ignore_errno = 0;
                 break;
             }
+
+            if (record->me.parent != NULL && dentry_access(record->
+                        me.parent, &record->oper, W_OK) != 0)
+            {
+                result = EACCES;
+                ignore_errno = 0;
+                break;
+            }
+
             if (record->operation == BINLOG_OP_CREATE_DENTRY_INT) {
                 if (FDIR_IS_DENTRY_HARD_LINK(record->stat.mode)) {
                     if ((result=set_hdlink_src_dentry(thread_ctx,
@@ -1080,6 +1134,7 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                         break;
                     }
                 }
+
                 result = dentry_create(thread_ctx, record);
                 ignore_errno = EEXIST;
             } else {
