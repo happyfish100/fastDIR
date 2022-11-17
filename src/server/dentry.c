@@ -1063,7 +1063,7 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     return 0;
 }
 
-static bool dentry_is_ancestor(FDIRServerDentry *dentry,
+static inline bool dentry_is_ancestor(FDIRServerDentry *dentry,
         FDIRServerDentry *parent)
 {
     while (parent != NULL) {
@@ -1093,6 +1093,56 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
         return result;
     }
 
+    if ((result=dentry_access(record->rename.src.parent,
+                    &record->oper, W_OK)) != 0)
+    {
+        return EACCES;
+    }
+
+    if ((record->rename.src.parent->stat.mode & S_ISVTX)) {
+        if (S_ISDIR(record->rename.src.dentry->stat.mode)) {
+            if (IS_DENTRY_OWNER(record->oper.uid,
+                        record->rename.src.parent))
+            {
+                if (!IS_DENTRY_OWNER(record->oper.uid,
+                            record->rename.src.dentry))
+                {
+                    if (record->rename.dest.parent !=
+                            record->rename.src.parent)
+                    {
+                        return EACCES;
+                    }
+                }
+            } else if (!IS_DENTRY_OWNER(record->oper.uid,
+                        record->rename.src.dentry))
+            {
+                return EPERM;
+            }
+        } else if (!(IS_DENTRY_OWNER(record->oper.uid, record->rename.
+                        src.parent) || IS_DENTRY_OWNER(record->oper.uid,
+                            record->rename.src.dentry)))
+        {
+            return EPERM;
+        }
+    } else {
+        if (S_ISDIR(record->rename.src.dentry->stat.mode)) {
+            if (!(IS_DENTRY_OWNER(record->oper.uid, record->rename.src.
+                            parent) || IS_DENTRY_OWNER(record->oper.uid,
+                                record->rename.src.dentry)))
+            {
+                if (record->rename.dest.parent != record->rename.src.parent) {
+                    return EACCES;
+                }
+            }
+        }
+    }
+
+    if ((result=dentry_access(record->rename.dest.parent,
+                    &record->oper, W_OK)) != 0)
+    {
+        return EACCES;
+    }
+
     if ((result=find_child(thread_ctx, record->rename.dest.parent,
                     &record->rename.dest.pname.name, &record->oper,
                     &record->rename.dest.dentry)) != 0)
@@ -1104,23 +1154,17 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
         }
     }
 
-    /*
-    logInfo("file: "__FILE__", line: %d, "
-            "record->flags: %d, RENAME_NOREPLACE: %d, RENAME_EXCHANGE: %d",
-            __LINE__, record->flags, RENAME_NOREPLACE, RENAME_EXCHANGE);
-            */
+    if (!(IS_DENTRY_OWNER(record->oper.uid, record->rename.dest.parent) ||
+                IS_DENTRY_OWNER(record->oper.uid, record->rename.dest.dentry)))
+    {
+        return EACCES;
+    }
 
     if ((record->flags & RENAME_NOREPLACE)) {
         return EEXIST;
     }
     if ((record->flags & RENAME_EXCHANGE)) {
         return 0;
-    }
-
-    if ((record->rename.dest.dentry->stat.mode & S_IFMT) !=
-            (record->rename.src.dentry->stat.mode & S_IFMT))
-    {
-        return EINVAL;
     }
 
     if (S_ISDIR(record->rename.dest.dentry->stat.mode)) {
@@ -1356,17 +1400,22 @@ int dentry_rename(FDIRDataThreadContext *thread_ctx,
     }
 
     if (record->rename.dest.parent != record->rename.src.parent) {
-        if (dentry_is_ancestor(record->rename.src.dentry,
+        if (S_ISDIR(record->rename.src.dentry->stat.mode) &&
+                dentry_is_ancestor(record->rename.src.dentry,
                     record->rename.dest.parent))
         {
             return ELOOP;
         }
 
-        if (dentry_is_ancestor(record->rename.dest.dentry != NULL ?
-                    record->rename.dest.dentry : record->rename.dest.parent,
-                    record->rename.src.parent))
-        {
-            return ELOOP;
+        if ((record->flags & RENAME_EXCHANGE)) {
+            if (record->rename.dest.dentry != NULL) {
+                if (S_ISDIR(record->rename.dest.dentry->stat.mode) &&
+                        dentry_is_ancestor(record->rename.dest.dentry,
+                            record->rename.src.parent))
+                {
+                    return ELOOP;
+                }
+            }
         }
     }
 

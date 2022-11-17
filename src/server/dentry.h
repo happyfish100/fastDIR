@@ -102,7 +102,7 @@ extern "C" {
             }
         }
 
-        return (mask & X_OK) ? EACCES : EPERM;
+        return EACCES;
     }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,
