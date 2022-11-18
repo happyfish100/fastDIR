@@ -181,7 +181,7 @@ static int client_check_set_proto_pname(const string_t *ns,
 
     if (pname->name.len <= 0 || pname->name.len > NAME_MAX) {
         logError("file: "__FILE__", line: %d, "
-                "invalid path length: %d, which <= 0 or > %d",
+                "invalid pname length: %d, which <= 0 or > %d",
                 __LINE__, pname->name.len, NAME_MAX);
         return pname->name.len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }

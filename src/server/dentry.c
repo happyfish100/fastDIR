@@ -738,6 +738,17 @@ static int dentry_find_me(FDIRDataThreadContext *thread_ctx,
         remove_from_parent = _remove_from_parent; \
     record->affected.count++
 
+#define DENTRY_NLINK_OPERATE(dentry, _op_, record) \
+        dentry->stat.nlink _op_; \
+        dentry->stat.ctime = record->timestamp; \
+        dentry->stat.mtime = record->timestamp
+
+#define DENTRY_NLINK_INC(dentry, record) \
+    DENTRY_NLINK_OPERATE(dentry, ++, record)
+
+#define DENTRY_NLINK_DEC(dentry, record) \
+    DENTRY_NLINK_OPERATE(dentry, --, record)
+
 int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
 {
     FDIRNamespaceEntry *ns_entry;
@@ -861,7 +872,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     }
 
     if (FDIR_IS_DENTRY_HARD_LINK(current->stat.mode)) {
-        current->src_dentry->stat.nlink++;
+        DENTRY_NLINK_INC(current->src_dentry, record);
         AFFECTED_DENTRIES_ADD(record, current->src_dentry,
                 da_binlog_op_type_update, false);
     } else {
@@ -878,7 +889,7 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     } else if ((result=uniq_skiplist_insert(current->
                     parent->children, current)) == 0)
     {
-        current->parent->stat.nlink++;
+        DENTRY_NLINK_INC(current->parent, record);
     } else {
         logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
                 "insert child {inode: %"PRId64", name: %.*s} to "
@@ -947,6 +958,8 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
 
             op_type = da_binlog_op_type_remove;
         } else {
+            dentry->src_dentry->stat.ctime = record->timestamp;
+            dentry->src_dentry->stat.mtime = record->timestamp;
             op_type = da_binlog_op_type_update;
         }
 
@@ -968,6 +981,8 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
                __LINE__, dentry->inode, dentry->stat.nlink);
              */
 
+            dentry->stat.ctime = record->timestamp;
+            dentry->stat.mtime = record->timestamp;
             op_type = da_binlog_op_type_update;
             *free_dentry = false;
         }
@@ -1049,7 +1064,7 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
     } else if ((result=uniq_skiplist_delete_ex(record->me.parent->
                     children, record->me.dentry, free_dentry)) == 0)
     {
-        record->me.parent->stat.nlink--;
+        DENTRY_NLINK_DEC(record->me.parent, record);
     } else {
         logError("file: "__FILE__", line: %d, parent inode: %"PRId64", "
                 "delete child {inode: %"PRId64", name: %.*s} from "
@@ -1354,11 +1369,11 @@ static int move_dentry(FDIRDataThreadContext *thread_ctx,
         }
 
         if (record->rename.overwritten != NULL) {
-            record->rename.src.parent->stat.nlink--;
+            DENTRY_NLINK_DEC(record->rename.src.parent, record);
         } else {
             if (record->rename.dest.parent != record->rename.src.parent) {
-                record->rename.src.parent->stat.nlink--;
-                record->rename.dest.parent->stat.nlink++;
+                DENTRY_NLINK_DEC(record->rename.src.parent, record);
+                DENTRY_NLINK_INC(record->rename.dest.parent, record);
             }
         }
 

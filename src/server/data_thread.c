@@ -900,6 +900,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
     }
 
     if (record->options.uid || record->options.gid) {
+        /*
         logInfo("======inode: %"PRId64", oper { uid: %d, gid: %d}, "
                 "dentry {uid: %d, gid: %d}, options {uid: %d, gid: %d}, "
                 "record {uid: %d, gid: %d}", dentry->inode,
@@ -907,6 +908,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
                 dentry->stat.uid, dentry->stat.gid,
                 record->options.uid, record->options.gid,
                 record->stat.uid, record->stat.gid);
+                */
         if (record->oper.uid == 0) {
         } else if (record->oper.uid == dentry->stat.uid) {
             /* can't change owner to other user */
@@ -1135,6 +1137,11 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                     if ((result=set_hdlink_src_dentry(thread_ctx,
                                     record)) != 0)
                     {
+                        logError("file: "__FILE__", line: %d, "
+                                "hash code: %u, inode: %"PRId64", "
+                                "get src inode: %"PRId64", fail", __LINE__,
+                                record->hash_code, record->inode,
+                                record->hdlink.src.inode);
                         ignore_errno = 0;
                         break;
                     }

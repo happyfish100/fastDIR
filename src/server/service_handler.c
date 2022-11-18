@@ -1041,7 +1041,6 @@ static int server_binlog_produce(struct fast_task_info *task)
 
     rbuffer->data_version.first = RECORD->data_version;
     rbuffer->data_version.last = RECORD->data_version;
-    RECORD->timestamp = g_current_time;
     result = binlog_pack_record(RECORD, &rbuffer->buffer);
     free_record_object(task);
 
@@ -1451,7 +1450,6 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
             rbuffer->data_version.first = (*pp)->data_version;
         }
 
-        (*pp)->timestamp = g_current_time;
         if ((result=binlog_pack_record(*pp, &rbuffer->buffer)) != 0) {
             break;
         }
@@ -1603,6 +1601,7 @@ static inline int push_record_to_data_thread_queue(struct fast_task_info *task,
 {
     sf_hold_task(task);
 
+    RECORD->timestamp = g_current_time;
     RECORD->source = fdir_record_source_master_rpc;
     RECORD->record_type = record_type;
     RECORD->notify.func = notify_func;  //call by data thread
@@ -3032,6 +3031,7 @@ static int service_deal_batch_set_dentry_size(struct fast_task_info *task)
 
         SERVICE_UNPACK_DENTRY_SIZE_INFO(*record, dsize, rbody);
         init_record_by_dsize(*record, &dsize);
+        (*record)->timestamp = g_current_time;
         (*record)->hash_code = hash_code;
         (*record)->operation = BINLOG_OP_UPDATE_DENTRY_INT;
     }

@@ -55,36 +55,32 @@ static int load_data(const int parse_threads, const BinlogReaderParams *params,
                 __LINE__, parse_threads);
     }
 
-    result = 0;
     while (SF_G_CONTINUE_FLAG && replay_ctx.stat->fail_count == 0) {
         if ((r=binlog_read_thread_fetch_result(&reader_ctx)) == NULL) {
-            result = EINTR;
-            break;
+            return EINTR;
         }
 
         //logInfo("errno: %d, buffer length: %d", r->err_no, r->buffer.length);
         if (r->err_no == ENOENT) {
             break;
         } else if (r->err_no != 0) {
-            result = r->err_no;
-            break;
+            return r->err_no;
         }
 
         if ((result=binlog_replay_mt_parse_buffer(&replay_ctx, r)) != 0) {
-            break;
+            return result;
         }
+    }
+
+    if (replay_ctx.stat->fail_count > 0 || !SF_G_CONTINUE_FLAG) {
+        fc_sleep_ms(100);
+        return (replay_ctx.last_errno != 0 ?
+                replay_ctx.last_errno : EBUSY);
     }
 
     binlog_replay_mt_read_done(&replay_ctx);
     binlog_replay_mt_destroy(&replay_ctx);
     binlog_read_thread_terminate(&reader_ctx);
-
-    if (result == 0) {
-        if (replay_ctx.stat->fail_count > 0) {
-            result = (replay_ctx.last_errno != 0 ?
-                    replay_ctx.last_errno : EBUSY);
-        }
-    }
 
     return 0;
 }
