@@ -172,6 +172,8 @@ typedef union {
         bool space_end: 1;  //for space end offset
         bool src_inode: 1;  //for create hard link only
         bool blocked: 1;    //for set flock and sys-lock only
+        bool atime_now: 1;  //set atime to now when update dentry
+        bool mtime_now: 1;  //set mtime to now when update dentry
     };
 } FDIRStatModifyFlags;
 

@@ -966,14 +966,29 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
 
     if (record->options.atime || record->options.mtime) {
         if (!IS_DENTRY_OWNER(record->oper.uid, dentry)) {
-            return EPERM;
+            if (record->options.atime_now && record->options.mtime_now) {
+                if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0)
+                {
+                    return result;
+                }
+            } else {
+                return EPERM;
+            }
         }
 
         if (record->options.atime) {
-            dentry->stat.atime = record->stat.atime;
+            if (record->options.atime_now) {
+                dentry->stat.atime = record->stat.atime = g_current_time;
+            } else {
+                dentry->stat.atime = record->stat.atime;
+            }
         }
         if (record->options.mtime) {
-            dentry->stat.mtime = record->stat.mtime;
+            if (record->options.mtime_now) {
+                dentry->stat.mtime = record->stat.mtime = g_current_time;
+            } else {
+                dentry->stat.mtime = record->stat.mtime;
+            }
         }
     }
 

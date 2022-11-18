@@ -74,6 +74,8 @@ int service_handler_init()
     mask.uid  = 1;
     mask.gid  = 1;
     mask.size = 1;
+    mask.atime_now = 1;
+    mask.mtime_now = 1;
     dstat_mflags_mask = mask.flags;
 
     next_token = ((int64_t)g_current_time) << 32;
