@@ -19,7 +19,7 @@
 
 #include "../server_types.h"
 
-#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  8
+#define FDIR_CHANGE_NOTIFY_MAX_MSGS_PER_EVENT  12
 
 struct fdir_data_thread_context;
 

@@ -1297,8 +1297,8 @@ static int exchange_dentry(FDIRDataThreadContext *thread_ctx,
         if (name_changed) {
             dentry_strfree(record->rename.src.dentry->
                     context, old_src_pair.ptr);
-            dentry_strfree(record->rename.dest.
-                    dentry->context, old_dest_pair.ptr);
+            dentry_strfree(record->rename.dest.dentry->
+                    context, old_dest_pair.ptr);
         }
     } while (0);
 

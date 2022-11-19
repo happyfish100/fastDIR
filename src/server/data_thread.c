@@ -644,6 +644,13 @@ static int check_load_children(FDIRServerDentry *parent)
     if (parent != NULL) parent->db_args->add_to_clist = ((parent->db_args-> \
                 loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0)
 
+#define GENERATE_UPDATE_PARENT_MESSAGE(msg, parent) \
+    if (parent != NULL) {  \
+        FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(    \
+            msg, parent, da_binlog_op_type_update,  \
+            FDIR_PIECE_FIELD_INDEX_BASIC, 0); \
+    }
+
 static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
         FDIRBinlogRecord *record)
 {
@@ -656,6 +663,7 @@ static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
         if (current->op_type == da_binlog_op_type_remove) {
             SET_ADD_TO_CLIST_FLAG(current->dentry->parent);
             GENERATE_REOMVE_DENTRY_MESSAGES(*msg, current->dentry);
+            GENERATE_UPDATE_PARENT_MESSAGE(*msg, current->dentry->parent);
         } else {  //update
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg,
                     current->dentry, da_binlog_op_type_update,
@@ -664,6 +672,8 @@ static inline int generate_affected_messages(FDIRChangeNotifyMessage **msg,
                 SET_ADD_TO_CLIST_FLAG(current->dentry->parent);
                 GENERATE_REMOVE_FROM_PARENT_MESSAGE(*msg, record->me.
                         dentry->parent, record->me.dentry->inode);
+                GENERATE_UPDATE_PARENT_MESSAGE(*msg,
+                        record->me.dentry->parent);
                 record->me.dentry->parent = NULL;   //orphan inode
             }
         }
@@ -685,6 +695,7 @@ static inline int generate_create_messages(FDIRChangeNotifyMessage **msg,
     }
     GENERATE_DENTRY_MESSAGES(*msg, record->me.dentry,
             da_binlog_op_type_create, inc_alloc);
+    GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->me.dentry->parent);
     return 0;
 }
 
@@ -711,11 +722,17 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
             FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                     rename.dest.dentry, da_binlog_op_type_update,
                     FDIR_PIECE_FIELD_INDEX_BASIC, 0);
+            GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                    rename.src.parent);
         } else {
             GENERATE_MOVE_DENTRY_MESSAGES(*msg, record->rename.
                     src.parent, record->rename.src.dentry);
             GENERATE_MOVE_DENTRY_MESSAGES(*msg, record->rename.
                     dest.parent, record->rename.dest.dentry);
+            GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                    rename.src.parent);
+            GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                    rename.dest.parent);
         }
         return 0;
     }
@@ -726,17 +743,21 @@ static int generate_rename_messages(FDIRChangeNotifyMessage **msg,
         }
     }
 
-    if (record->rename.src.dentry->parent ==
-            record->rename.src.parent)
-    {
+    if (record->rename.src.parent == record->rename.dest.parent) {
         GENERATE_ADD_TO_PARENT_MESSAGE(*msg, record->rename.src.dentry,
                 da_binlog_op_type_update);
         FDIR_CHANGE_NOTIFY_FILL_MSG_AND_INC_PTR(*msg, record->
                 rename.src.dentry, da_binlog_op_type_update,
                 FDIR_PIECE_FIELD_INDEX_BASIC, 0);
+        GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                rename.src.parent);
     } else {  //parent changed
         GENERATE_MOVE_DENTRY_MESSAGES(*msg, record->rename.
                 src.parent, record->rename.src.dentry);
+        GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                rename.src.parent);
+        GENERATE_UPDATE_PARENT_MESSAGE(*msg, record->
+                rename.dest.parent);
 
         record->rename.src.parent->db_args->loaded_count--;
         record->rename.src.dentry->parent->db_args->loaded_count++;

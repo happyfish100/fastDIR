@@ -726,6 +726,14 @@ int server_load_config(const char *filename)
         if ((result=inode_add_mark_load(&DUMP_INODE_ADD_STATUS)) != 0) {
             return result;
         }
+        if (DUMP_INODE_ADD_STATUS != inode_add_mark_status_none &&
+                fc_get_path_child_count(STORAGE_PATH.str) == 0)
+        {
+            DUMP_INODE_ADD_STATUS = inode_add_mark_status_none;
+            if ((result=inode_add_mark_save(DUMP_INODE_ADD_STATUS)) != 0) {
+                return result;
+            }
+        }
 
         clear_segment_index = (DUMP_INODE_ADD_STATUS ==
                 inode_add_mark_status_doing);
