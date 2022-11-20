@@ -36,6 +36,7 @@ typedef struct server_global_vars {
     int node_hashtable_capacity;
 
     int dentry_max_data_size;
+    FDIRPosixACLPolicy posix_acl;
 
     int reload_interval_ms;
 
@@ -209,6 +210,9 @@ typedef struct server_global_vars {
     replication.req_meta_ctx
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
+#define FDIR_POSIX_ACL          g_server_global_vars.posix_acl
+#define FDIR_USE_POSIX_ACL      (FDIR_POSIX_ACL == fdir_posix_acl_strict)
+
 #define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
 #define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars.data. \
     slave_binlog_check_last_rows

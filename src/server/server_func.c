@@ -254,6 +254,31 @@ static int load_dentry_max_data_size(IniFullContext *ini_ctx)
     return 0;
 }
 
+static int load_posix_acl(IniFullContext *ini_ctx)
+{
+    char *posix_acl;
+
+    posix_acl = iniGetStrValue(ini_ctx->section_name,
+            "posix_acl", ini_ctx->context);
+    if (posix_acl == NULL || *posix_acl == '\0') {
+        FDIR_POSIX_ACL = fdir_posix_acl_strict;
+        return 0;
+    }
+
+    if (strcasecmp(posix_acl, "strict") == 0) {
+        FDIR_POSIX_ACL = fdir_posix_acl_strict;
+    } else if (strcasecmp(posix_acl, "none") == 0) {
+        FDIR_POSIX_ACL = fdir_posix_acl_none;
+    } else {
+        logError("file: "__FILE__", line: %d, "
+                "config file: %s , unkown posix_acl: %s",
+                __LINE__, ini_ctx->filename, posix_acl);
+        return EINVAL;
+    }
+
+    return 0;
+}
+
 #define LOAD_API(var, fname) \
     do { \
         var = (fname##_func)dlsym(dlhandle, #fname); \
@@ -435,8 +460,9 @@ static void server_log_configs()
             sz_auth_config, sizeof(sz_auth_config));
 
     len = snprintf(sz_server_config, sizeof(sz_server_config),
-            "cluster_id = %d, my server id = %d, data_path = %s, "
-            "data_threads = %d, dentry_max_data_size = %d, "
+            "cluster_id = %d, my server id = %d, posix_acl: %s, "
+            "data_path = %s, data_threads = %d, "
+            "dentry_max_data_size = %d, "
             "binlog_buffer_size = %d KB, "
             "slave_binlog_check_last_rows = %d, "
             "reload_interval_ms = %d ms, "
@@ -453,6 +479,7 @@ static void server_log_configs()
             "quorum_need_majority: %d, quorum_need_detect: %d}, "
             "storage-engine { enabled: %d",
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
+            (FDIR_POSIX_ACL == fdir_posix_acl_strict ? "strict" : "none"),
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
             SLAVE_BINLOG_CHECK_LAST_ROWS,
@@ -599,6 +626,10 @@ int server_load_config(const char *filename)
     }
 
     if ((result=load_dentry_max_data_size(&ini_ctx)) != 0) {
+        return result;
+    }
+
+    if ((result=load_posix_acl(&ini_ctx)) != 0) {
         return result;
     }
 

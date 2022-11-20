@@ -884,9 +884,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
     int keep_perms;
 
     if (record->options.mode) {
-        if (record->oper.uid == 0 || record->oper.uid ==
-                    dentry->stat.uid)
-        {
+        if (IS_DENTRY_OWNER(record->oper.uid, dentry)) {
             /*
             POSIX: If the calling process does not have appropriate privileges,
             and if the group ID of the file does not match the effective group
@@ -930,7 +928,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
                 record->options.uid, record->options.gid,
                 record->stat.uid, record->stat.gid);
                 */
-        if (record->oper.uid == 0) {
+        if (!FDIR_USE_POSIX_ACL || record->oper.uid == 0) {
         } else if (record->oper.uid == dentry->stat.uid) {
             /* can't change owner to other user */
             if ((record->options.uid && record->stat.uid >= 0) &&

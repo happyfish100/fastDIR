@@ -132,6 +132,11 @@ struct fdir_flock_entry;
         FDIR_DENTRY_LOADED_FLAGS_CHILDREN | FDIR_DENTRY_LOADED_FLAGS_XATTR |\
         FDIR_DENTRY_LOADED_FLAGS_CLIST)
 
+typedef enum {
+    fdir_posix_acl_none,
+    fdir_posix_acl_strict
+} FDIRPosixACLPolicy;
+
 typedef struct fdir_server_dentry_db_args {
     IdNameArray *children;         //children inodes for update event dealer
     struct fc_list_head lru_dlink; //for dentry LRU elimination

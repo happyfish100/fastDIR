@@ -1111,7 +1111,7 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
     if ((result=dentry_access(record->rename.src.parent,
                     &record->oper, W_OK)) != 0)
     {
-        return EACCES;
+        return result;
     }
 
     if ((record->rename.src.parent->stat.mode & S_ISVTX)) {
@@ -1155,7 +1155,7 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
     if ((result=dentry_access(record->rename.dest.parent,
                     &record->oper, W_OK)) != 0)
     {
-        return EACCES;
+        return result;
     }
 
     if ((result=find_child(thread_ctx, record->rename.dest.parent,

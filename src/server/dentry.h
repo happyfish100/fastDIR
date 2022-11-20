@@ -69,7 +69,8 @@ extern "C" {
         return dentry_find_ex(fullname, oper, dentry, hdlink_follow);
     }
 
-#define IS_DENTRY_OWNER(_uid, _dentry) (_uid == 0 || _uid == _dentry->stat.uid)
+#define IS_DENTRY_OWNER(_uid, _dentry) (!FDIR_USE_POSIX_ACL || \
+        _uid == 0 || _uid == _dentry->stat.uid)
 
     static inline int dentry_access(const FDIRServerDentry *dentry,
             const FDIRDentryOperator *oper, const int mask)
@@ -78,6 +79,9 @@ extern "C" {
 #define GROUP_PERM_MASK(mask) ((mask << 3) & 0070)
 #define OTHER_PERM_MASK(mask) (mask & 0007)
 
+        if (!FDIR_USE_POSIX_ACL) {
+            return 0;
+        }
         if (mask == F_OK || oper->uid == 0) {
             return 0;
         }
