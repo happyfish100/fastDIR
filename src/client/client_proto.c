@@ -1336,21 +1336,8 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
-    /*
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
             FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry);
-            */
-
-    if ((result=do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry)) != 0)
-    {
-        logError("file: "__FILE__", line: %d, "
-                "inode: %"PRId64", oper uid: %d, gid: %d, "
-                "file size: %"PRId64", result: %d", __LINE__,
-                oino->inode, oino->oper.uid, oino->oper.gid, stat->size, result);
-    }
-
-    return result;
 }
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
