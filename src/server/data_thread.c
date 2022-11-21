@@ -912,7 +912,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
         dentry->stat.mode = record->stat.mode;
 
         if (record->source == fdir_record_source_master_rpc &&
-                !record->options.ctime)
+                FDIR_USE_POSIX_ACL && !record->options.ctime)
         {
             /* successful chmod updates ctime. */
             record->options.ctime = 1;
@@ -980,7 +980,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
 
         if (record->source == fdir_record_source_master_rpc &&
                 (record->options.uid || record->options.gid) &&
-                !record->options.ctime)
+                FDIR_USE_POSIX_ACL && !record->options.ctime)
         {
             /* successful chown updates ctime. */
             record->options.ctime = 1;
