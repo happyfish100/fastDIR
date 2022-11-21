@@ -911,10 +911,12 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
             (record->stat.mode & keep_perms);
         dentry->stat.mode = record->stat.mode;
 
-        if (!record->options.ctime) {
+        if (record->source == fdir_record_source_master_rpc &&
+                !record->options.ctime)
+        {
             /* successful chmod updates ctime. */
             record->options.ctime = 1;
-            dentry->stat.ctime = record->stat.ctime = g_current_time;
+            dentry->stat.ctime = record->stat.ctime = record->timestamp;
         }
     }
 
@@ -976,12 +978,13 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
             }
         }
 
-        if ((record->options.uid || record->options.gid) &&
+        if (record->source == fdir_record_source_master_rpc &&
+                (record->options.uid || record->options.gid) &&
                 !record->options.ctime)
         {
             /* successful chown updates ctime. */
             record->options.ctime = 1;
-            dentry->stat.ctime = record->stat.ctime = g_current_time;
+            dentry->stat.ctime = record->stat.ctime = record->timestamp;
         }
     }
 
