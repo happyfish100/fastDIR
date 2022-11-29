@@ -604,7 +604,8 @@ typedef struct fdir_proto_service_stat_resp {
     char server_id[4];
     char is_master;
     char status;
-    char padding[1];
+    char auth_enabled;
+    char storage_engine;
 
     struct {
         char current_count[4];

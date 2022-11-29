@@ -296,10 +296,12 @@ static int service_deal_service_stat(struct fast_task_info *task)
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_RESP_BODY(task);
 
+    int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
     stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
         CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
     stat_resp->status = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status);
-    int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
+    stat_resp->auth_enabled = AUTH_ENABLED ? 1 : 0;
+    stat_resp->storage_engine = STORAGE_ENABLED ? 1 : 0;
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);

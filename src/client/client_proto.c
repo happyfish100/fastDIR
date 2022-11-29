@@ -2537,9 +2537,11 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
         return result;
     }
 
+    stat->server_id = buff2int(stat_resp.server_id);
     stat->is_master = stat_resp.is_master;
     stat->status = stat_resp.status;
-    stat->server_id = buff2int(stat_resp.server_id);
+    stat->auth_enabled = stat_resp.auth_enabled;
+    stat->storage_engine = stat_resp.storage_engine;
     stat->connection.current_count = buff2int(
             stat_resp.connection.current_count);
     stat->connection.max_count = buff2int(stat_resp.connection.max_count);

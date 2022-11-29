@@ -88,6 +88,8 @@ typedef struct fdir_client_service_stat {
     int server_id;
     bool is_master;
     char status;
+    bool auth_enabled;
+    bool storage_engine;
 
     struct {
         int current_count;

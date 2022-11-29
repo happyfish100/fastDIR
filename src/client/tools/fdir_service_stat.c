@@ -37,6 +37,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             "\thost: %s:%u\n"
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
+            "\tauth_enabled: %s\n"
+            "\tstorage_engine: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
             "\tdata : {current_version: %"PRId64", "
             "confirmed_version: %"PRId64"}\n"
@@ -45,6 +47,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             conn->port, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
+            stat->auth_enabled ? "true" : "false",
+            stat->storage_engine ? "true" : "false",
             stat->connection.current_count,
             stat->connection.max_count,
             stat->data.current_version,
