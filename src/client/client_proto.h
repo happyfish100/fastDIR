@@ -90,6 +90,8 @@ typedef struct fdir_client_service_stat {
     char status;
     bool auth_enabled;
     bool storage_engine;
+    char version_holder[12];
+    string_t version;
 
     struct {
         int current_count;

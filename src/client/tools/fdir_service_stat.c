@@ -35,6 +35,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
     printf( "\tserver_id: %d\n"
             "\thost: %s:%u\n"
+            "\tversion: %.*s\n"
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
             "\tauth_enabled: %s\n"
@@ -43,8 +44,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             "\tdata : {current_version: %"PRId64", "
             "confirmed_version: %"PRId64"}\n"
             "\tbinlog : {current_version: %"PRId64,
-            stat->server_id, conn->ip_addr,
-            conn->port, stat->status,
+            stat->server_id, conn->ip_addr, conn->port,
+            stat->version.len, stat->version.str, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->auth_enabled ? "true" : "false",

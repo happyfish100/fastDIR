@@ -302,6 +302,9 @@ static int service_deal_service_stat(struct fast_task_info *task)
     stat_resp->status = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status);
     stat_resp->auth_enabled = AUTH_ENABLED ? 1 : 0;
     stat_resp->storage_engine = STORAGE_ENABLED ? 1 : 0;
+    stat_resp->version.len = sprintf(stat_resp->version.str, "%d.%d.%d",
+            g_fdir_global_vars.version.major, g_fdir_global_vars.
+            version.minor, g_fdir_global_vars.version.patch);
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);

@@ -2537,11 +2537,26 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
         return result;
     }
 
+    stat->version.str = stat->version_holder;
+    stat->version.len = stat_resp.version.len;
+    if (stat->version.len <= 0 || stat->version.len >=
+            sizeof(stat->version_holder))
+    {
+        logError("file: "__FILE__", line: %d, "
+                "invalid version length: %d, which <= 0 or >= %d",
+                __LINE__, stat->version.len, (int)
+                sizeof(stat->version_holder));
+        return EINVAL;
+    }
+
     stat->server_id = buff2int(stat_resp.server_id);
     stat->is_master = stat_resp.is_master;
     stat->status = stat_resp.status;
     stat->auth_enabled = stat_resp.auth_enabled;
     stat->storage_engine = stat_resp.storage_engine;
+    memcpy(stat->version.str, stat_resp.version.str, stat->version.len);
+    *(stat->version.str + stat->version.len) = '\0';
+
     stat->connection.current_count = buff2int(
             stat_resp.connection.current_count);
     stat->connection.max_count = buff2int(stat_resp.connection.max_count);
