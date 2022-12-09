@@ -466,6 +466,16 @@ static inline int find_child(FDIRDataThreadContext *thread_ctx,
         return ENOTDIR;
     }
 
+    if (name->str[0] == '.') {
+        if (name->len == 1) {  //for .
+            *child = parent;
+            return 0;
+        } else if (name->len == 2 && name->str[1] == '.') {  //for ..
+            *child = (parent->parent != NULL ? parent->parent : parent);
+            return 0;
+        }
+    }
+
     if ((result=dentry_access(parent, oper, X_OK)) != 0) {
         return result;
     }
@@ -1530,25 +1540,25 @@ int dentry_list(FDIRServerDentry *dentry,
 }
 
 int dentry_list_by_path(const FDIRDEntryFullName *fullname,
-        const FDIRDentryOperator *oper, PointerArray **parray)
+        const FDIRDentryOperator *oper, PointerArray **parray,
+        FDIRServerDentry **dentry)
 {
     const bool hdlink_follow = false;
     int result;
-    FDIRServerDentry *dentry;
 
-    if ((result=dentry_find_ex(fullname, oper, &dentry, hdlink_follow)) != 0) {
+    if ((result=dentry_find_ex(fullname, oper, dentry, hdlink_follow)) != 0) {
         return result;
     }
 
     if (STORAGE_ENABLED) {
-        if ((result=dentry_check_load_basic_children(dentry->
-                        context->thread_ctx, dentry)) != 0)
+        if ((result=dentry_check_load_basic_children((*dentry)->
+                        context->thread_ctx, *dentry)) != 0)
         {
             return result;
         }
     }
 
-    return dentry_list(dentry, oper, parray);
+    return dentry_list(*dentry, oper, parray);
 }
 
 int dentry_get_full_path(const FDIRServerDentry *dentry,

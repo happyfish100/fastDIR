@@ -364,6 +364,7 @@ typedef struct {
             int offset;
             int release_start;
             bool compact_output;
+            bool output_special;
             time_t expires;  //expire time
         } dentry_list_cache; //for dentry_list
 

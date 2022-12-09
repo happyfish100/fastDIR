@@ -124,7 +124,8 @@ extern "C" {
             PointerArray **parray);
 
     int dentry_list_by_path(const FDIRDEntryFullName *fullname,
-            const FDIRDentryOperator *oper, PointerArray **parray);
+            const FDIRDentryOperator *oper, PointerArray **parray,
+            FDIRServerDentry **dentry);
 
     static inline void dentry_array_free(PointerArray **parray)
     {

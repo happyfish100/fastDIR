@@ -91,6 +91,7 @@
 #define FDIR_UNLINK_FLAGS_MATCH_FILE ((1 << 2) | FDIR_UNLINK_FLAGS_MATCH_ENABLED)
 
 #define FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT  (1 << 1) //for POSIX readdir
+#define FDIR_LIST_DENTRY_FLAGS_OUTPUT_SPECIAL  (1 << 2) //output . and ..
 
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')

@@ -1334,8 +1334,8 @@ static int deal_list_dentry(FDIRDataThreadContext *thread_ctx,
         result = dentry_list(record->me.dentry, &record->oper,
                 &DENTRY_LIST_CACHE.array);
     } else {
-        result = dentry_list_by_path(&record->me.fullname,
-                &record->oper, &DENTRY_LIST_CACHE.array);
+        result = dentry_list_by_path(&record->me.fullname, &record->oper,
+                &DENTRY_LIST_CACHE.array, &record->me.dentry);
     }
 
     return result;

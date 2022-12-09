@@ -259,11 +259,12 @@ int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
         const int size);
 
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
-        const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array);
+        const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array,
+        const int flags);
 
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRClientOperInodePair *oino,
-        FDIRClientDentryArray *array);
+        FDIRClientDentryArray *array, const int flags);
 
 int fdir_client_list_compact_dentry_by_path(
         FDIRClientContext *client_ctx,

@@ -2454,10 +2454,8 @@ static int list_dentry_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
-        FDIRClientDentryArray *array)
+        FDIRClientDentryArray *array, const int flags)
 {
-    const int flags = 0;
-
     reset_dentry_array(array);
     return list_dentry_by_path(client_ctx, conn, path,
             (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
@@ -2467,10 +2465,8 @@ int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
 int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns,
         const FDIRClientOperInodePair *oino,
-        FDIRClientDentryArray *array)
+        FDIRClientDentryArray *array, const int flags)
 {
-    const int flags = 0;
-
     reset_dentry_array(array);
     return list_dentry_by_inode(client_ctx, conn, ns, oino,
             (list_dentry_parse_resp_body_func)parse_list_dentry_response_body,
@@ -2481,7 +2477,8 @@ int fdir_client_proto_list_compact_dentry_by_path(FDIRClientContext
         *client_ctx, ConnectionInfo *conn, const FDIRClientOperFnamePair
         *path, FDIRClientCompactDentryArray *array)
 {
-    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT;
+    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT |
+        FDIR_LIST_DENTRY_FLAGS_OUTPUT_SPECIAL;
 
     array->count = 0;
     return list_dentry_by_path(client_ctx, conn, path,
@@ -2494,7 +2491,8 @@ int fdir_client_proto_list_compact_dentry_by_inode(FDIRClientContext
         const FDIRClientOperInodePair *oino,
         FDIRClientCompactDentryArray *array)
 {
-    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT;
+    const int flags = FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT |
+        FDIR_LIST_DENTRY_FLAGS_OUTPUT_SPECIAL;
 
     array->count = 0;
     return list_dentry_by_inode(client_ctx, conn, ns, oino,

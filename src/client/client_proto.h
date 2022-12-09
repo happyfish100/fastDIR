@@ -369,12 +369,12 @@ int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_list_dentry_by_path(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const FDIRClientOperFnamePair *path,
-        FDIRClientDentryArray *array);
+        FDIRClientDentryArray *array, const int flags);
 
 int fdir_client_proto_list_dentry_by_inode(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns,
         const FDIRClientOperInodePair *oino,
-        FDIRClientDentryArray *array);
+        FDIRClientDentryArray *array, const int flags);
 
 int fdir_client_proto_list_compact_dentry_by_path(FDIRClientContext
         *client_ctx, ConnectionInfo *conn, const FDIRClientOperFnamePair

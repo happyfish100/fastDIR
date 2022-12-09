@@ -348,20 +348,21 @@ int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
-        const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array)
+        const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array,
+        const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_dentry_by_path,
-            path, array);
+            path, array, flags);
 }
 
 int fdir_client_list_dentry_by_inode(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRClientOperInodePair *oino,
-        FDIRClientDentryArray *array)
+        FDIRClientDentryArray *array, const int flags)
 {
     SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
             GET_READABLE_CONNECTION, 0, fdir_client_proto_list_dentry_by_inode,
-            ns, oino, array);
+            ns, oino, array, flags);
 }
 
 int fdir_client_list_compact_dentry_by_path(
