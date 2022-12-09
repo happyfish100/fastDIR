@@ -46,6 +46,7 @@ static void output_dentry_array(FDIRClientDentryArray *array)
 int main(int argc, char *argv[])
 {
     const bool publish = false;
+    const int flags = 0;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
     char *ns;
@@ -100,7 +101,7 @@ int main(int argc, char *argv[])
     }
 
     if ((result=fdir_client_list_dentry_by_path(&g_fdir_client_vars.
-                    client_ctx, &fname, &array)) != 0)
+                    client_ctx, &fname, &array, flags)) != 0)
     {
         return result;
     }
