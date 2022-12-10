@@ -2479,6 +2479,12 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
             */
 
     if ((result=service_check_dentry_name(task, RECORD->dentry_type,
+                    &RECORD->rename.src)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=service_check_dentry_name(task, RECORD->dentry_type,
                     &RECORD->rename.dest)) != 0)
     {
         return result;
@@ -2526,6 +2532,12 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "src and dest namespace not equal");
         return EINVAL;
+    }
+
+    if ((result=service_check_dentry_name(task, RECORD->dentry_type,
+                    &RECORD->rename.src)) != 0)
+    {
+        return result;
     }
 
     if ((result=service_check_dentry_name(task, RECORD->dentry_type,
