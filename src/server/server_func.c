@@ -176,63 +176,6 @@ static int load_cluster_config(IniFullContext *ini_ctx,
     return 0;
 }
 
-static int load_data_path_config(IniFullContext *ini_ctx, string_t *path)
-{
-    char *data_path;
-
-    data_path = iniGetStrValue(ini_ctx->section_name,
-            "data_path", ini_ctx->context);
-    if (data_path == NULL) {
-        data_path = "data";
-    } else if (*data_path == '\0') {
-        logError("file: "__FILE__", line: %d, "
-                "config file: %s%s%s, empty data_path! "
-                "please set data_path correctly.", __LINE__,
-                ini_ctx->filename, ini_ctx->section_name != NULL ?
-                ", section: " : "", ini_ctx->section_name != NULL ?
-                ini_ctx->section_name : "");
-        return EINVAL;
-    }
-
-    if (*data_path == '/') {
-        path->len = strlen(data_path);
-        path->str = fc_strdup1(data_path, path->len);
-        if (path->str == NULL) {
-            return ENOMEM;
-        }
-    } else {
-        path->len = strlen(SF_G_BASE_PATH_STR) + strlen(data_path) + 1;
-        path->str = (char *)fc_malloc(path->len + 1);
-        if (path->str == NULL) {
-            return ENOMEM;
-        }
-        path->len = sprintf(path->str, "%s/%s",
-                SF_G_BASE_PATH_STR, data_path);
-    }
-    chopPath(path->str);
-    path->len = strlen(path->str);
-
-    if (access(path->str, F_OK) != 0) {
-        if (errno != ENOENT) {
-            logError("file: "__FILE__", line: %d, "
-                    "access %s fail, errno: %d, error info: %s",
-                    __LINE__, path->str, errno, STRERROR(errno));
-            return errno != 0 ? errno : EPERM;
-        }
-
-        if (mkdir(path->str, 0775) != 0) {
-            logError("file: "__FILE__", line: %d, "
-                    "mkdir %s fail, errno: %d, error info: %s",
-                    __LINE__, path->str, errno, STRERROR(errno));
-            return errno != 0 ? errno : EPERM;
-        }
-
-        SF_CHOWN_TO_RUNBY_RETURN_ON_ERROR(path->str);
-    }
-
-    return 0;
-}
-
 static int load_dentry_max_data_size(IniFullContext *ini_ctx)
 {
     DENTRY_MAX_DATA_SIZE = iniGetByteCorrectValue(ini_ctx,
@@ -347,7 +290,9 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         return result;
     }
 
-    if ((result=load_data_path_config(ini_ctx, &STORAGE_PATH)) != 0) {
+    if ((result=sf_load_data_path_config_ex(ini_ctx, "data_path",
+                    "db", &STORAGE_PATH)) != 0)
+    {
         return result;
     }
 
@@ -621,7 +566,7 @@ int server_load_config(const char *filename)
     }
 
     FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, &ini_context);
-    if ((result=load_data_path_config(&ini_ctx, &DATA_PATH)) != 0) {
+    if ((result=sf_load_data_path_config(&ini_ctx, &DATA_PATH)) != 0) {
         return result;
     }
 
