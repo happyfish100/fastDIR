@@ -105,8 +105,8 @@ int fdir_pooled_connection_manager_init(FDIRClientContext *client_ctx,
                     &client_ctx->common_cfg, group_count,
                     client_ctx->cluster.service_group_index,
                     server_count, max_count_per_entry, max_idle_time,
-                    connect_done_callback, client_ctx,
-                    bg_thread_enabled)) != 0)
+                    connect_done_callback, client_ctx, &client_ctx->
+                    cluster.server_cfg, bg_thread_enabled)) != 0)
     {
         return result;
     }
