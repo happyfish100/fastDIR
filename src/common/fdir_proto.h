@@ -217,6 +217,11 @@ typedef struct fdir_proto_name_info {
 typedef struct fdir_proto_operator {
     char uid[4];
     char gid[4];
+    struct {
+        unsigned char count;
+        char padding[3];
+        char list[0];
+    } additional_gids;
 } FDIRProtoOperator;
 
 typedef struct fdir_proto_create_dentry_front {
@@ -227,9 +232,9 @@ typedef struct fdir_proto_create_dentry_front {
             char padding1[4];
         };
     };
-    FDIRProtoOperator oper;
     char mode[4];
     char padding2[4];
+    FDIRProtoOperator oper;
 } FDIRProtoCreateDEntryFront;
 
 typedef struct fdir_proto_create_dentry_req {
@@ -243,10 +248,10 @@ typedef struct fdir_proto_create_dentry_by_pname_req {
 } FDIRProtoCreateDEntryByPNameReq;
 
 typedef struct fdir_proto_symlink_dentry_front {
-    FDIRProtoCreateDEntryFront common;
-    char padding[2];
     char link_len[2];
-    char link_str[0];
+    char padding[2];
+    FDIRProtoCreateDEntryFront common;
+    //char link_str[0];
 } FDIRProtoSymlinkDEntryFront;
 
 typedef struct fdir_proto_symlink_dentry_by_name_req {
@@ -266,9 +271,8 @@ typedef struct fdir_proto_hdlink_dentry {
 } FDIRProtoHDLinkDEntry;
 
 typedef struct fdir_proto_hdlink_by_pname_front {
-    FDIRProtoCreateDEntryFront common;
-    char padding[4];
     char src_inode[8];
+    FDIRProtoCreateDEntryFront common;
 } FDIRProtoHDlinkByPNameFront;
 
 typedef struct fdir_proto_hdlink_dentry_by_pname {
@@ -277,9 +281,9 @@ typedef struct fdir_proto_hdlink_dentry_by_pname {
 } FDIRProtoHDLinkDEntryByPName;
 
 typedef struct fdir_proto_remove_dentry_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char padding[4];
+    FDIRProtoOperator oper;
 } FDIRProtoRemoveDEntryFront;
 
 typedef struct fdir_proto_remove_dentry {
@@ -293,9 +297,9 @@ typedef struct fdir_proto_remove_dentry_by_pname {
 } FDIRProtoRemoveDEntryByPName;
 
 typedef struct fdir_proto_rename_dentry_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char padding[4];
+    FDIRProtoOperator oper;
 } FDIRProtoRenameDEntryFront;
 
 typedef struct fdir_proto_rename_dentry {
@@ -348,10 +352,10 @@ typedef struct fdir_proto_dentry_stat {
 } FDIRProtoDEntryStat;
 
 typedef struct fdir_proto_modify_stat_front {
-    FDIRProtoOperator oper;
     char mflags[8];  //modify flags
     char flags[4];   //follow syslink flags
     FDIRProtoDEntryStat stat;
+    FDIRProtoOperator oper;
 } FDIRProtoModifyStatFront;
 
 typedef struct fdir_proto_modify_stat_by_inode_req {
@@ -386,10 +390,10 @@ typedef struct fdir_proto_lookup_inode_resp {
 
 
 typedef struct fdir_proto_access_dentry_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char mask;  //F_OK, R_OK, W_OK, X_OK
     char padding[3];
+    FDIRProtoOperator oper;
 } FDIRProtoAccessDEntryFront;
 
 typedef struct fdir_proto_access_dentry_req {
@@ -408,9 +412,9 @@ typedef struct fdir_proto_access_dentry_by_pname_req {
 } FDIRProtoAccessDEntryByPNameReq;
 
 typedef struct fdir_proto_stat_dentry_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char padding[4];
+    FDIRProtoOperator oper;
 } FDIRProtoStatDEntryFront;
 
 typedef struct fdir_proto_stat_dentry_req {
@@ -433,8 +437,7 @@ typedef struct fdir_proto_stat_dentry_resp {
     FDIRProtoDEntryStat stat;
 } FDIRProtoStatDEntryResp;
 
-typedef struct fdir_proto_flock_dentry_req {
-    FDIRProtoOperator oper;
+typedef struct fdir_proto_flock_dentry_front {
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region length, 0 for until end of file */
     struct {
@@ -446,11 +449,15 @@ typedef struct fdir_proto_flock_dentry_req {
                          LOCK_EX for write exclusive lock,
                          LOCK_NB for non-block with LOCK_SH or LOCK_EX,
                          LOCK_UN for unlock */
+    FDIRProtoOperator oper;
+} FDIRProtoFlockDEntryFront;
+
+typedef struct fdir_proto_flock_dentry_req {
+    FDIRProtoFlockDEntryFront front;
     FDIRProtoInodeInfo ino;
 } FDIRProtoFlockDEntryReq;
 
-typedef struct fdir_proto_getlk_dentry_req {
-    FDIRProtoOperator oper;
+typedef struct fdir_proto_getlk_dentry_front {
     char offset[8];  /* lock region offset */
     char length[8];  /* lock region length, 0 for until end of file */
     struct {
@@ -459,6 +466,11 @@ typedef struct fdir_proto_getlk_dentry_req {
         char id[8];   //owner id
     } owner;
     char operation[4];
+    FDIRProtoOperator oper;
+} FDIRProtoGetlkDEntryFront;
+
+typedef struct fdir_proto_getlk_dentry_req {
+    FDIRProtoGetlkDEntryFront front;
     FDIRProtoInodeInfo ino;
 } FDIRProtoGetlkDEntryReq;
 
@@ -497,9 +509,9 @@ typedef struct fdir_proto_sys_unlock_dentry_req {
 } FDIRProtoSysUnlockDEntryReq;
 
 typedef struct fdir_proto_list_dentry_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char padding[4];
+    FDIRProtoOperator oper;
 } FDIRProtoListDEntryFront;
 
 typedef struct fdir_proto_list_dentry_by_path_req {
@@ -550,12 +562,12 @@ typedef struct fdir_proto_list_dentry_resp_compact_part {
 } FDIRProtoListDEntryRespCompactPart;
 
 typedef struct fdir_proto_set_xattr_fields {
-    FDIRProtoOperator oper;
     unsigned char name_len;
     char value_len[2];
     char padding[1];
     char flags[4];
-    char name_str[0];
+    FDIRProtoOperator oper;
+    //char name_str[0];
     //char value_str[0];
 } FDIRProtoSetXAttrFields;
 
@@ -570,9 +582,9 @@ typedef struct fdir_proto_set_xattr_by_inode_req {
 } FDIRProtoSetXAttrByInodeReq;
 
 typedef struct fdir_proto_xattr_front {
-    FDIRProtoOperator oper;
     char flags[4];
     char padding[4];
+    FDIRProtoOperator oper;
 } FDIRProtoXAttrFront;
 
 typedef struct fdir_proto_get_xattr_by_path_req {

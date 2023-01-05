@@ -29,6 +29,8 @@
 
 #define FDIR_MAX_PATH_COUNT             128
 #define FDIR_BATCH_SET_MAX_DENTRY_COUNT 256
+#define FDIR_MAX_USER_GROUP_COUNT       255
+#define FDIR_MAX_USER_GROUP_BYTES       (FDIR_MAX_USER_GROUP_COUNT * 4)
 
 #define FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT  6
 #define FDIR_XATTR_KVARRAY_MAX_ELEMENTS (1 << FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT)
@@ -111,6 +113,10 @@
 typedef struct fdir_dentry_operator {
     uid_t uid;
     gid_t gid;
+    struct {
+        unsigned char count;
+        const char *list;  //4 bytes network order integer array
+    } additional_gids;
 } FDIRDentryOperator;
 
 typedef struct fdir_dentry_full_name {

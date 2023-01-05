@@ -95,7 +95,8 @@
 #define SERVICE_FLOCK     TASK_CTX.service.flock
 #define SERVICE_FTASK     SERVICE_FLOCK.ftask
 #define SERVICE_STASK     SERVICE_FLOCK.stask
-#define DENTRY_LIST_CACHE TASK_CTX.service.dentry_list_cache
+#define DENTRY_LIST_CACHE  TASK_CTX.service.dentry_list_cache
+#define SERVICE_FRONT_SIZE TASK_CTX.service.front_size
 
 #define SERVER_TASK_TYPE     TASK_CTX.task_type
 #define SERVER_TASK_VERSION  TASK_CTX.task_version
@@ -379,9 +380,10 @@ typedef struct {
         struct fdir_binlog_record *record;
         struct server_binlog_record_buffer *rbuffer;
         struct {
-            volatile int waiting_count;
-            volatile int success_count;
+            volatile short waiting_count;
+            volatile short success_count;
         } rpc;
+        short front_size;
     } service;
 
 } FSServerTaskContext;

@@ -62,6 +62,30 @@ static int64_t dstat_mflags_mask = 0;
 
 typedef int (*deal_task_func)(struct fast_task_info *task);
 
+#define SERVICE_SET_OPER_SIZE() \
+    SERVICE_FRONT_SIZE = sizeof(FDIRProtoOperator) + ((FDIRProtoOperator *) \
+            REQUEST.body)->additional_gids.count * 4
+
+#define SERVICE_SET_FRONT_SIZE(T) \
+    SERVICE_FRONT_SIZE = sizeof(T) + ((T *)REQUEST.body)->  \
+        oper.additional_gids.count * 4
+
+#define SERVICE_SET_NESTED_FRONT_SIZE(T) \
+    SERVICE_FRONT_SIZE = sizeof(T) + ((T *)REQUEST.body)->  \
+        common.oper.additional_gids.count * 4
+
+static inline void service_parse_operator(struct fast_task_info *task,
+        const FDIRProtoOperator *oper)
+{
+    RECORD->oper.uid = buff2int(oper->uid);
+    RECORD->oper.gid = buff2int(oper->gid);
+    RECORD->oper.additional_gids.count = oper->additional_gids.count;
+    RECORD->oper.additional_gids.list = oper->additional_gids.list;
+}
+
+#define parse_query_dentry_front_part(task) \
+    service_parse_operator(task, (FDIRProtoOperator *)REQUEST.body)
+
 int service_handler_init()
 {
     FDIRStatModifyFlags mask;
@@ -1683,7 +1707,8 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
         {
             p = REQUEST.body + REQUEST.header.body_len;
         } else {
-            p = REQUEST.body + sizeof(FDIRProtoStatDEntryResp);
+            p = REQUEST.body + SERVICE_FRONT_SIZE +
+                sizeof(FDIRProtoStatDEntryResp);
         }
     } else {
         p = REQUEST.body + sizeof(FDIRProtoStatDEntryResp);
@@ -1697,8 +1722,8 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
         return EOVERFLOW;
     }
 
-    memcpy(p, record->ns.str, record->ns.len);
-    memcpy(p + record->ns.len, record->me.pname.name.str,
+    memmove(p, record->ns.str, record->ns.len);
+    memmove(p + record->ns.len, record->me.pname.name.str,
             record->me.pname.name.len);
 
     record->ns.str = p;
@@ -1707,7 +1732,8 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 }
 
 #define init_record_for_create(task, mode) \
-    if ((result=init_record_for_create_ex(task, mode, 0, false)) != 0) {\
+    if ((result=init_record_for_create_ex(task, (FDIRProtoCreateDEntryFront *) \
+                REQUEST.body, mode, 0, false)) != 0) { \
         return result; \
     } \
     if (S_ISBLK(RECORD->stat.mode) || S_ISCHR(RECORD->stat.mode)) {   \
@@ -1773,7 +1799,8 @@ static int service_check_dentry_name(struct fast_task_info *task,
 }
 
 static int init_record_for_create_ex(struct fast_task_info *task,
-        const int mode, const int size, const bool is_hdlink)
+        const FDIRProtoCreateDEntryFront *pfront, const int mode,
+        const int size, const bool is_hdlink)
 {
     int result;
 
@@ -1789,13 +1816,10 @@ static int init_record_for_create_ex(struct fast_task_info *task,
         RECORD->stat.mode = FDIR_UNSET_DENTRY_HARD_LINK(mode);
     }
 
+    service_parse_operator(task, &pfront->oper);
     RECORD->operation = BINLOG_OP_CREATE_DENTRY_INT;
-    RECORD->stat.uid = buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->oper.uid);
-    RECORD->stat.gid = buff2int(((FDIRProtoCreateDEntryFront *)
-                REQUEST.body)->oper.gid);
-    RECORD->oper.uid = RECORD->stat.uid;
-    RECORD->oper.gid = RECORD->stat.gid;
+    RECORD->stat.uid = RECORD->oper.uid;
+    RECORD->stat.gid = RECORD->oper.gid;
 
     RECORD->stat.rdev = 0;
     RECORD->stat.size = size;
@@ -2108,8 +2132,9 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     int result;
     int mode;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoCreateDEntryFront);
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2127,8 +2152,9 @@ static int service_deal_create_by_pname(struct fast_task_info *task)
     int result;
     int mode;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoCreateDEntryFront);
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2153,10 +2179,10 @@ static int parse_symlink_dentry_front(struct fast_task_info *task,
         return EINVAL;
     }
 
+    SERVICE_SET_NESTED_FRONT_SIZE(FDIRProtoSymlinkDEntryFront);
     front = (FDIRProtoSymlinkDEntryFront *)REQUEST.body;
     link->len = buff2short(front->link_len);
-    link->str = front->link_str;
-
+    link->str = REQUEST.body + SERVICE_FRONT_SIZE;
     if (link->len <= 0 || link->len >= PATH_MAX) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "link length: %d is invalid", link->len);
@@ -2173,8 +2199,8 @@ static inline int init_record_for_symlink(struct fast_task_info *task,
 {
     int result;
 
-    if ((result=init_record_for_create_ex(task, mode,
-                    link->len, false)) != 0)
+    if ((result=init_record_for_create_ex(task, &((FDIRProtoSymlinkDEntryFront *)
+                        REQUEST.body)->common, mode, link->len, false)) != 0)
     {
         return result;
     }
@@ -2192,11 +2218,11 @@ int service_set_record_link(FDIRBinlogRecord *record,
     link_str = record->me.pname.name.str + record->me.pname.name.len;
     if (link_str + record->link.len > task->data + task->size) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "task pkg size: %d is too small", task->size);
+                "task buffer size: %d is too small", task->size);
         return EOVERFLOW;
     }
 
-    memcpy(link_str, record->link.str, record->link.len);
+    memmove(link_str, record->link.str, record->link.len);
     record->link.str = link_str;
     return 0;
 }
@@ -2212,8 +2238,7 @@ static int service_deal_symlink_dentry(struct fast_task_info *task)
     }
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoSymlinkDEntryFront) +
-                    link.len)) != 0)
+                    SERVICE_FRONT_SIZE + link.len)) != 0)
     {
         return result;
     }
@@ -2236,7 +2261,7 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
     }
 
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoSymlinkDEntryFront) + link.len)) != 0)
+                    SERVICE_FRONT_SIZE + link.len)) != 0)
     {
         return result;
     }
@@ -2254,7 +2279,8 @@ static int service_deal_symlink_by_pname(struct fast_task_info *task)
 }
 
 static int do_hdlink_dentry(struct fast_task_info *task,
-        const int mode, const int flags, const int resp_cmd)
+        FDIRProtoCreateDEntryFront *pfront, const int mode,
+        const int flags, const int resp_cmd)
 {
     int result;
 
@@ -2268,7 +2294,7 @@ static int do_hdlink_dentry(struct fast_task_info *task,
             RECORD->hdlink.dest.pname.name.str);
             */
 
-    if ((result=init_record_for_create_ex(task, mode, 0, true)) != 0) {
+    if ((result=init_record_for_create_ex(task, pfront, mode, 0, true)) != 0) {
         return result;
     }
     RECORD->flags = flags;
@@ -2284,23 +2310,24 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     int mode;
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoCreateDEntryFront);
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoHDLinkDEntry) + 4,
-                    sizeof(FDIRProtoHDLinkDEntry) + 2 *
+                    sizeof(FDIRProtoHDLinkDEntry) +
+                    SERVICE_FRONT_SIZE + 2 *
                     (NAME_MAX + PATH_MAX))) != 0)
     {
         return result;
     }
 
     if ((result=server_parse_dentry_info(task, REQUEST.body +
-                    sizeof(FDIRProtoCreateDEntryFront),
-                    &src_fullname)) != 0)
+                    SERVICE_FRONT_SIZE, &src_fullname)) != 0)
     {
         return result;
     }
 
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoCreateDEntryFront) +
+                    SERVICE_FRONT_SIZE +
                     sizeof(FDIRProtoDEntryInfo) +
                     src_fullname.ns.len +
                     src_fullname.path.len)) != 0)
@@ -2325,7 +2352,7 @@ static int service_deal_hdlink_dentry(struct fast_task_info *task)
     RECORD->hdlink.src.fullname = src_fullname;
     front = (FDIRProtoCreateDEntryFront *)REQUEST.body;
     mode = buff2int(front->mode);
-    return do_hdlink_dentry(task, mode, buff2int(front->flags),
+    return do_hdlink_dentry(task, front, mode, buff2int(front->flags),
             FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP);
 }
 
@@ -2341,6 +2368,7 @@ static int parse_hdlink_dentry_front(struct fast_task_info *task,
         return EINVAL;
     }
 
+    SERVICE_SET_NESTED_FRONT_SIZE(FDIRProtoHDlinkByPNameFront);
     front = (FDIRProtoHDlinkByPNameFront *)REQUEST.body;
     *src_inode = buff2long(front->src_inode);
     *mode = buff2int(front->common.mode);
@@ -2362,13 +2390,14 @@ static int service_deal_hdlink_by_pname(struct fast_task_info *task)
     }
 
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoHDlinkByPNameFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
 
     RECORD->hdlink.src.inode = src_inode;
-    return do_hdlink_dentry(task, mode, flags,
+    return do_hdlink_dentry(task, &((FDIRProtoHDlinkByPNameFront *)
+                        REQUEST.body)->common, mode, flags,
             FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP);
 }
 
@@ -2377,9 +2406,8 @@ static int deal_remove_dentry(struct fast_task_info *task, const int resp_cmd)
     FDIRProtoRemoveDEntryFront *front;
 
     front = (FDIRProtoRemoveDEntryFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
     RECORD->operation = BINLOG_OP_REMOVE_DENTRY_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
@@ -2389,8 +2417,9 @@ static int service_deal_remove_dentry(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoRemoveDEntryFront);
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoRemoveDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2402,8 +2431,9 @@ static int service_deal_remove_by_pname(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoRemoveDEntryFront);
     if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoRemoveDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2416,9 +2446,8 @@ static inline void parse_rename_front_part(struct fast_task_info *task)
     FDIRProtoRenameDEntryFront *front;
 
     front = (FDIRProtoRenameDEntryFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
 }
 
 static int service_deal_rename_dentry(struct fast_task_info *task)
@@ -2426,23 +2455,22 @@ static int service_deal_rename_dentry(struct fast_task_info *task)
     FDIRDEntryFullName src_fullname;
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoRenameDEntryFront);
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntry) + 4,
-                    sizeof(FDIRProtoRenameDEntry) + 2 *
-                    (NAME_MAX + PATH_MAX))) != 0)
+                    sizeof(FDIRProtoRenameDEntry) + SERVICE_FRONT_SIZE +
+                    2 * (NAME_MAX + PATH_MAX))) != 0)
     {
         return result;
     }
 
     if ((result=server_parse_dentry_info(task, REQUEST.body +
-                    sizeof(FDIRProtoRenameDEntryFront),
-                    &src_fullname)) != 0)
+                    SERVICE_FRONT_SIZE, &src_fullname)) != 0)
     {
         return result;
     }
 
-    if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoRenameDEntryFront) +
+    if ((result=server_parse_dentry_for_update(task, SERVICE_FRONT_SIZE +
                     sizeof(FDIRProtoDEntryInfo) + src_fullname.ns.len +
                     src_fullname.path.len)) != 0)
     {
@@ -2502,25 +2530,25 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
     string_t src_ns;
     FDIRDEntryPName src_pname;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoRenameDEntryFront);
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoRenameDEntryByPName) + 4,
-                    sizeof(FDIRProtoRenameDEntryByPName) + 2 *
+                    sizeof(FDIRProtoRenameDEntryByPName) +
+                    SERVICE_FRONT_SIZE + 2 *
                     (NAME_MAX + PATH_MAX))) != 0)
     {
         return result;
     }
 
-    if ((result=server_parse_pname(task,
-                    sizeof(FDIRProtoRenameDEntryFront),
+    if ((result=server_parse_pname(task, SERVICE_FRONT_SIZE,
                     &src_ns, &src_pname)) != 0)
     {
         return result;
     }
 
-    if ((result=server_parse_pname_for_update(task,
-                    sizeof(FDIRProtoRenameDEntryFront) +
-                    sizeof(FDIRProtoDEntryByPName) +
-                    src_ns.len + src_pname.name.len)) != 0)
+    if ((result=server_parse_pname_for_update(task, SERVICE_FRONT_SIZE +
+                    sizeof(FDIRProtoDEntryByPName) + src_ns.len +
+                    src_pname.name.len)) != 0)
     {
         return result;
     }
@@ -2553,12 +2581,13 @@ static int service_deal_rename_by_pname(struct fast_task_info *task)
 }
 
 static int parse_xattr_fields(struct fast_task_info *task,
-        FDIRProtoSetXAttrFields *fields, key_value_pair_t *xattr)
+        const int additional_len, FDIRProtoSetXAttrFields *fields,
+        key_value_pair_t *xattr)
 {
     xattr->key.len = fields->name_len;
-    xattr->key.str = fields->name_str;
+    xattr->key.str = fields->oper.additional_gids.list + additional_len;
     xattr->value.len = buff2short(fields->value_len);
-    xattr->value.str = fields->name_str + xattr->key.len;
+    xattr->value.str = xattr->key.str + xattr->key.len;
     if (xattr->key.len <= 0) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "invalid xattr name, length: %d <= 0",
@@ -2596,9 +2625,8 @@ static inline int do_setxattr(struct fast_task_info *task,
         const key_value_pair_t *xattr, const FDIRProtoSetXAttrFields *fields,
         const int resp_cmd)
 {
-    RECORD->oper.uid = buff2int(fields->oper.uid);
-    RECORD->oper.gid = buff2int(fields->oper.gid);
     RECORD->flags = buff2int(fields->flags);
+    service_parse_operator(task, &fields->oper);
     RECORD->xattr = *xattr;
     RECORD->operation = BINLOG_OP_SET_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
@@ -2624,23 +2652,28 @@ static int parse_dentry_for_xattr_update(struct fast_task_info *task,
 static int service_deal_set_xattr_by_path(struct fast_task_info *task)
 {
     int result;
+    int additional_len;
     int min_body_len;
-    int fields_part_len;;
+    int fields_part_len;
     FDIRProtoSetXAttrFields *fields;
     key_value_pair_t xattr;
 
-    if ((result=server_check_min_body_length(sizeof(
-                        FDIRProtoSetXAttrByPathReq) + 3)) != 0)
+    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
+    additional_len = fields->oper.additional_gids.count * 4;
+    if ((result=server_check_min_body_length(
+                    sizeof(FDIRProtoSetXAttrByPathReq) +
+                    additional_len + 3)) != 0)
     {
         return result;
     }
 
-    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
-    if ((result=parse_xattr_fields(task, fields, &xattr)) != 0) {
+    if ((result=parse_xattr_fields(task, additional_len,
+                    fields, &xattr)) != 0)
+    {
         return result;
     }
 
-    min_body_len = sizeof(FDIRProtoSetXAttrByPathReq) +
+    min_body_len = sizeof(FDIRProtoSetXAttrByPathReq) + additional_len +
         xattr.key.len + xattr.value.len + 2;
     if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -2649,7 +2682,7 @@ static int service_deal_set_xattr_by_path(struct fast_task_info *task)
         return EINVAL;
     }
 
-    fields_part_len = sizeof(FDIRProtoSetXAttrFields) +
+    fields_part_len = sizeof(FDIRProtoSetXAttrFields) + additional_len +
         xattr.key.len + xattr.value.len;
     if ((result=parse_dentry_for_xattr_update(task,
                     fields_part_len)) != 0)
@@ -2665,24 +2698,28 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
 {
     FDIRProtoSetXAttrFields *fields;
     key_value_pair_t xattr;
+    int additional_len;
     int min_body_len;
     int front_part_size;
     int result;
 
+    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
+    additional_len = fields->oper.additional_gids.count * 4;
     if ((result=server_check_body_length(
-                    sizeof(FDIRProtoSetXAttrByInodeReq) + 2,
-                    sizeof(FDIRProtoSetXAttrByInodeReq) + 1 +
+                    sizeof(FDIRProtoSetXAttrByInodeReq) + additional_len + 2,
+                    sizeof(FDIRProtoSetXAttrByInodeReq) + additional_len + 1 +
                     NAME_MAX + FDIR_XATTR_MAX_VALUE_SIZE)) != 0)
     {
         return result;
     }
 
-    fields = (FDIRProtoSetXAttrFields *)REQUEST.body;
-    if ((result=parse_xattr_fields(task, fields, &xattr)) != 0) {
+    if ((result=parse_xattr_fields(task, additional_len,
+                    fields, &xattr)) != 0)
+    {
         return result;
     }
 
-    min_body_len = sizeof(FDIRProtoSetXAttrByInodeReq) +
+    min_body_len = sizeof(FDIRProtoSetXAttrByInodeReq) + additional_len +
         xattr.key.len + xattr.value.len + 1;
     if (REQUEST.header.body_len < min_body_len) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
@@ -2691,7 +2728,7 @@ static int service_deal_set_xattr_by_inode(struct fast_task_info *task)
         return EINVAL;
     }
 
-    front_part_size = sizeof(FDIRProtoSetXAttrFields) +
+    front_part_size = sizeof(FDIRProtoSetXAttrFields) + additional_len +
         xattr.key.len + xattr.value.len;
     if ((result=server_parse_inode_for_update(
                     task, front_part_size)) != 0)
@@ -2713,8 +2750,7 @@ static int parse_xattr_name_info(struct fast_task_info *task,
         return result;
     }
 
-    proto_name = (FDIRProtoNameInfo *)(REQUEST.body +
-            sizeof(FDIRProtoXAttrFront));
+    proto_name = (FDIRProtoNameInfo *)(REQUEST.body + SERVICE_FRONT_SIZE);
     name->len = proto_name->len;
     name->str = proto_name->str;
     return 0;
@@ -2726,10 +2762,9 @@ static inline int do_removexattr(struct fast_task_info *task,
     FDIRProtoXAttrFront *front;
 
     front = (FDIRProtoXAttrFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->xattr.key = *name;
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
     RECORD->operation = BINLOG_OP_REMOVE_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_update_to_data_thread_queue(task);
@@ -2739,10 +2774,11 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
 {
     int result;
     int min_body_len;
-    int fields_part_len;;
+    int fields_part_len;
     int min_size;
     string_t name;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     if ((result=server_check_min_body_length(sizeof(
                         FDIRProtoRemoveXAttrByPathReq) + 3)) != 0)
     {
@@ -2762,7 +2798,7 @@ static int service_deal_remove_xattr_by_path(struct fast_task_info *task)
         return EINVAL;
     }
 
-    fields_part_len = sizeof(FDIRProtoXAttrFront) +
+    fields_part_len = SERVICE_FRONT_SIZE +
         sizeof(FDIRProtoNameInfo) + name.len;
     if ((result=parse_dentry_for_xattr_update(task,
                     fields_part_len)) != 0)
@@ -2782,6 +2818,7 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
     int min_size;
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     if ((result=server_check_body_length(
                     sizeof(FDIRProtoRemoveXAttrByInodeReq) + 2,
                     sizeof(FDIRProtoRemoveXAttrByInodeReq) + 1 +
@@ -2803,7 +2840,7 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
         return EINVAL;
     }
 
-    front_part_size = sizeof(FDIRProtoXAttrFront) +
+    front_part_size = SERVICE_FRONT_SIZE +
         sizeof(FDIRProtoNameInfo) + name.len;
     if ((result=server_parse_inode_for_update(
                     task, front_part_size)) != 0)
@@ -2815,31 +2852,22 @@ static int service_deal_remove_xattr_by_inode(struct fast_task_info *task)
             FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_RESP);
 }
 
-static inline void parse_query_dentry_front_part(struct fast_task_info *task)
-{
-    FDIRProtoOperator *oper;
-
-    oper = (FDIRProtoOperator *)REQUEST.body;
-    RECORD->oper.uid = buff2int(oper->uid);
-    RECORD->oper.gid = buff2int(oper->gid);
-}
-
 static inline void parse_stat_dentry_front_part(struct fast_task_info *task)
 {
     FDIRProtoStatDEntryFront *front;
 
     front = (FDIRProtoStatDEntryFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
 }
 
 static int service_deal_stat_dentry_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoStatDEntryFront);
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2855,18 +2883,18 @@ static inline void parse_access_dentry_front_part(struct fast_task_info *task)
     FDIRProtoAccessDEntryFront *front;
 
     front = (FDIRProtoAccessDEntryFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
     RECORD->mask = front->mask;
+    service_parse_operator(task, &front->oper);
 }
 
 static int service_deal_access_dentry_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoAccessDEntryFront);
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2881,12 +2909,14 @@ static int service_deal_readlink_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_OPER_SIZE();
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoOperator))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
 
+    parse_query_dentry_front_part(task);
     RECORD->operation = SERVICE_OP_READ_LINK_INT;
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_READLINK_BY_PATH_RESP;
     return push_query_to_data_thread_queue(task);
@@ -2896,8 +2926,9 @@ static int service_deal_readlink_by_pname(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_OPER_SIZE();
     if ((result=server_parse_pname_for_query(task,
-                    sizeof(FDIRProtoOperator))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2938,8 +2969,9 @@ static int service_deal_readlink_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_OPER_SIZE();
     if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoOperator))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2954,8 +2986,9 @@ static int service_deal_lookup_inode_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_OPER_SIZE();
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoOperator))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2970,8 +3003,9 @@ static int service_deal_access_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoAccessDEntryFront);
     if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -2986,8 +3020,9 @@ static int service_deal_access_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoAccessDEntryFront);
     if ((result=server_parse_pname_for_query(task,
-                    sizeof(FDIRProtoAccessDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3002,8 +3037,9 @@ static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoStatDEntryFront);
     if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3018,8 +3054,9 @@ static int service_deal_stat_dentry_by_pname(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoStatDEntryFront);
     if ((result=server_parse_pname_for_query(task,
-                    sizeof(FDIRProtoStatDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3034,8 +3071,9 @@ static int service_deal_lookup_inode_by_pname(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_OPER_SIZE();
     if ((result=server_parse_pname_for_query(task,
-                    sizeof(FDIRProtoOperator))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3059,6 +3097,7 @@ static inline void init_record_by_dsize(FDIRBinlogRecord *record,
 #define SERVICE_UNPACK_DENTRY_SIZE_INFO(record, dsize, req) \
     (record)->oper.uid = 0;  \
     (record)->oper.gid = 0;  \
+    (record)->oper.additional_gids.count = 0; \
     dsize.inode = buff2long(req->inode); \
     dsize.file_size = buff2long(req->file_size); \
     dsize.inc_alloc = buff2long(req->inc_alloc); \
@@ -3212,9 +3251,8 @@ static int deal_modify_dentry_stat(struct fast_task_info *task,
         free_record_object(task);
         return EINVAL;
     }
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
 
     /*
     logInfo("file: "__FILE__", line: %d, inode: %"PRId64", "
@@ -3234,8 +3272,9 @@ static int service_deal_modify_stat_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoModifyStatFront);
     if ((result=server_parse_inode_for_update(task,
-                    sizeof(FDIRProtoModifyStatFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3248,8 +3287,9 @@ static int service_deal_modify_stat_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoModifyStatFront);
     if ((result=server_parse_dentry_for_update(task,
-                    sizeof(FDIRProtoModifyStatFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3312,36 +3352,34 @@ static int service_process_update(struct fast_task_info *task,
 
 static int service_deal_flock_dentry(struct fast_task_info *task)
 {
-    FDIRProtoFlockDEntryReq *req;
+    FDIRProtoFlockDEntryFront *front;
     int result;
     short operation;
-    int64_t inode;
     FDIRFlockParams params;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
-    req = (FDIRProtoFlockDEntryReq *)REQUEST.body;
-    if ((result=server_expect_body_length(sizeof(*req) +
-                    req->ino.ns_len)) != 0)
+    SERVICE_SET_FRONT_SIZE(FDIRProtoFlockDEntryFront);
+    if ((result=server_check_and_parse_inode(task,
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
 
-    inode = buff2long(req->ino.inode);
-    params.offset = buff2long(req->offset);
-    params.length = buff2long(req->length);
-    params.owner.node = buff2int(req->owner.node);
-    params.owner.pid = buff2int(req->owner.pid);
-    params.owner.id = buff2long(req->owner.id);
-    operation = buff2int(req->operation);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_FLOCK_DENTRY_RESP;
+    front = (FDIRProtoFlockDEntryFront *)REQUEST.body;
+    params.offset = buff2long(front->offset);
+    params.length = buff2long(front->length);
+    params.owner.node = buff2int(front->owner.node);
+    params.owner.pid = buff2int(front->owner.pid);
+    params.owner.id = buff2long(front->owner.id);
+    operation = buff2int(front->operation);
 
-    /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
             "owner.id: %"PRId64", owner.pid: %d", __LINE__, __FUNCTION__,
-            task->event.fd, operation, inode, params.offset, params.length,
-            params.owner.node, params.owner.id, params.owner.pid);
-            */
+            task->event.fd, operation, RECORD->inode, params.offset,
+            params.length, params.owner.node, params.owner.id,
+            params.owner.pid);
 
     if (operation & LOCK_UN) {
         params.type = LOCK_UN;
@@ -3353,19 +3391,11 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid operation: %d", operation);
+        free_record_object(task);
         return EINVAL;
     }
 
-    if ((result=alloc_record_object(task)) != 0) {
-        return result;
-    }
-
-    RECORD->oper.uid = buff2int(req->oper.uid);
-    RECORD->oper.gid = buff2int(req->oper.gid);
-    RECORD->dentry_type = fdir_dentry_type_inode;
-    RECORD->inode = inode;
-    FC_SET_STRING_EX(RECORD->ns, req->ino.ns_str, req->ino.ns_len);
-    RECORD->hash_code = fc_simple_hash(req->ino.ns_str, req->ino.ns_len);
+    service_parse_operator(task, &front->oper);
     RECORD->options.blocked = ((operation & LOCK_NB) == 0 ? 1 : 0);
     RECORD->flock_params = params;
     RECORD->flock = &SERVICE_FLOCK;
@@ -3381,38 +3411,37 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 
 static int service_deal_getlk_dentry(struct fast_task_info *task)
 {
-    FDIRProtoGetlkDEntryReq *req;
+    FDIRProtoGetlkDEntryFront *front;
     FDIRProtoGetlkDEntryResp *resp;
     FDIRFLockTask ftask;
-    int64_t inode;
     int64_t offset;
     int64_t length;
     short operation;
     int result;
     FDIRFLockRegion region;
 
-    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
-    req = (FDIRProtoGetlkDEntryReq *)REQUEST.body;
-    if ((result=server_expect_body_length(sizeof(*req) +
-                    req->ino.ns_len)) != 0)
+    SERVICE_SET_FRONT_SIZE(FDIRProtoGetlkDEntryFront);
+    if ((result=server_check_and_parse_inode(task,
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
 
-    inode = buff2long(req->ino.inode);
-    offset = buff2long(req->offset);
-    length = buff2long(req->length);
-    operation = buff2int(req->operation);
-    ftask.owner.node = buff2int(req->owner.node);
-    ftask.owner.pid = buff2int(req->owner.pid);
-    ftask.owner.id = buff2long(req->owner.id);
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
+    front = (FDIRProtoGetlkDEntryFront *)REQUEST.body;
+    offset = buff2long(front->offset);
+    length = buff2long(front->length);
+    operation = buff2int(front->operation);
+    ftask.owner.node = buff2int(front->owner.node);
+    ftask.owner.pid = buff2int(front->owner.pid);
+    ftask.owner.id = buff2long(front->owner.id);
 
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
             "owner.id: %"PRId64", owner.pid: %d", __LINE__, __FUNCTION__,
-            task->event.fd, operation, inode, offset, length,
+            task->event.fd, operation, RECORD->inode, offset, length,
             ftask.owner.node, ftask.owner.id, ftask.owner.pid);
             */
 
@@ -3424,6 +3453,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "invalid operation: %d", operation);
+        free_record_object(task);
         return EINVAL;
     }
 
@@ -3431,7 +3461,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     region.offset = offset;
     region.length = length;
     ftask.region = &region;  //for region compare
-    result = inode_index_flock_getlk(inode, &ftask);
+    result = inode_index_flock_getlk(RECORD->inode, &ftask);
     if (result == 0 || result == ENOENT) {
         resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_RESP_BODY(task);
         int2buff(ftask.owner.node, resp->owner.node);
@@ -3452,6 +3482,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
         TASK_CTX.common.response_done = true;
     }
 
+    free_record_object(task);
     return result;
 }
 
@@ -3593,9 +3624,8 @@ static inline int deal_list_dentry(struct fast_task_info *task)
     FDIRProtoListDEntryFront *front;
 
     front = (FDIRProtoListDEntryFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
     RECORD->operation = SERVICE_OP_LIST_DENTRY_INT;
     return push_query_to_data_thread_queue(task);
 }
@@ -3604,8 +3634,9 @@ static int service_deal_list_dentry_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoListDEntryFront);
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoListDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3617,8 +3648,9 @@ static int service_deal_list_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoListDEntryFront);
     if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoListDEntryFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3680,9 +3712,8 @@ static inline int do_getxattr(struct fast_task_info *task,
     FDIRProtoXAttrFront *front;
 
     front = (FDIRProtoXAttrFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
     RECORD->operation = SERVICE_OP_GET_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_query_to_data_thread_queue(task);
@@ -3694,13 +3725,13 @@ static int service_get_xattr_by_path(struct fast_task_info *task)
     int min_size;
     string_t name;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     min_size = sizeof(FDIRProtoGetXAttrByPathReq) + 1;
     if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
-    if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoXAttrFront) +
+    if ((result=server_check_and_parse_dentry(task, SERVICE_FRONT_SIZE +
                     sizeof(FDIRProtoNameInfo) + name.len)) != 0)
     {
         return result;
@@ -3716,13 +3747,13 @@ static int service_get_xattr_by_inode(struct fast_task_info *task)
     int min_size;
     string_t name;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     min_size = sizeof(FDIRProtoGetXAttrByInodeReq) + 1;
     if ((result=parse_xattr_name_info(task, min_size, &name)) != 0) {
         return result;
     }
 
-    if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoXAttrFront) +
+    if ((result=server_check_and_parse_inode(task, SERVICE_FRONT_SIZE +
                     sizeof(FDIRProtoNameInfo) + name.len)) != 0)
     {
         return result;
@@ -3738,9 +3769,8 @@ static inline int do_listxattr(struct fast_task_info *task,
     FDIRProtoXAttrFront *front;
 
     front = (FDIRProtoXAttrFront *)REQUEST.body;
-    RECORD->oper.uid = buff2int(front->oper.uid);
-    RECORD->oper.gid = buff2int(front->oper.gid);
     RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
     RECORD->operation = SERVICE_OP_LIST_XATTR_INT;
     RESPONSE.header.cmd = resp_cmd;
     return push_query_to_data_thread_queue(task);
@@ -3750,8 +3780,9 @@ static int service_list_xattr_by_path(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     if ((result=server_check_and_parse_dentry(task,
-                    sizeof(FDIRProtoXAttrFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
@@ -3763,8 +3794,9 @@ static int service_list_xattr_by_inode(struct fast_task_info *task)
 {
     int result;
 
+    SERVICE_SET_FRONT_SIZE(FDIRProtoXAttrFront);
     if ((result=server_check_and_parse_inode(task,
-                    sizeof(FDIRProtoXAttrFront))) != 0)
+                    SERVICE_FRONT_SIZE)) != 0)
     {
         return result;
     }
