@@ -70,7 +70,20 @@ extern "C" {
     }
 
 #define IS_DENTRY_OWNER(_uid, _dentry) (!FDIR_USE_POSIX_ACL || \
-        _uid == 0 || _uid == _dentry->stat.uid)
+        (_uid == 0) || (_uid == _dentry->stat.uid))
+
+    static inline bool group_contain(const gid_t gid,
+            const FDIRDentryOperator *oper)
+    {
+        int i;
+
+        for (i=0; i<oper->additional_gids.count; i++) {
+            if (gid == buff2int(oper->additional_gids.list + 4 * i)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     static inline int dentry_access(const FDIRServerDentry *dentry,
             const FDIRDentryOperator *oper, const int mask)
@@ -78,6 +91,13 @@ extern "C" {
 #define USER_PERM_MASK(mask)  ((mask << 6) & 0700)
 #define GROUP_PERM_MASK(mask) ((mask << 3) & 0070)
 #define OTHER_PERM_MASK(mask) (mask & 0007)
+
+#define USER_PERM_ALLOWED(mode, mask) \
+        ((mode & USER_PERM_MASK(mask)) == USER_PERM_MASK(mask))
+#define GROUP_PERM_ALLOWED(mode, mask) \
+        ((mode & GROUP_PERM_MASK(mask)) == GROUP_PERM_MASK(mask))
+#define OTHER_PERM_ALLOWED(mode, mask) \
+        ((mode & OTHER_PERM_MASK(mask)) == OTHER_PERM_MASK(mask))
 
         if (!FDIR_USE_POSIX_ACL) {
             return 0;
@@ -87,26 +107,24 @@ extern "C" {
         }
 
         if (oper->uid == dentry->stat.uid) {
-            if ((dentry->stat.mode & USER_PERM_MASK(mask)) ==
-                    USER_PERM_MASK(mask))
+            return USER_PERM_ALLOWED(dentry->stat.mode, mask) ? 0 : EACCES;
+        }
+        if (oper->gid == dentry->stat.gid) {
+            return GROUP_PERM_ALLOWED(dentry->stat.mode, mask)  ? 0 : EACCES;
+        }
+        if (oper->additional_gids.count > 0) {
+            if (GROUP_PERM_ALLOWED(dentry->stat.mode, mask) &&
+                    OTHER_PERM_ALLOWED(dentry->stat.mode, mask))
             {
                 return 0;
             }
-        } else if (oper->gid == dentry->stat.gid) {
-            if ((dentry->stat.mode & GROUP_PERM_MASK(mask)) ==
-                    GROUP_PERM_MASK(mask))
-            {
-                return 0;
-            }
-        } else {
-            if ((dentry->stat.mode & OTHER_PERM_MASK(mask)) ==
-                    OTHER_PERM_MASK(mask))
-            {
-                return 0;
+
+            if (group_contain(dentry->stat.gid, oper)) {
+                return GROUP_PERM_ALLOWED(dentry->stat.mode, mask) ? 0 : EACCES;
             }
         }
 
-        return EACCES;
+         return OTHER_PERM_ALLOWED(dentry->stat.mode, mask) ? 0 : EACCES;
     }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,

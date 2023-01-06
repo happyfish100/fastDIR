@@ -939,6 +939,15 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
                 return EPERM;
             }
 
+
+            if (record->options.gid && record->stat.gid >= 0) {
+                if (!((record->stat.gid == record->oper.gid) || group_contain(
+                                record->stat.gid, &record->oper)))
+                {
+                    return EPERM;
+                }
+            }
+
             /* when non-super-user calls chown successfully,
              * S_ISUID and S_ISGID may be removed, except when
              * both uid and gid are equal to -1.
