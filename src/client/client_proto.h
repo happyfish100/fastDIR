@@ -25,12 +25,6 @@
 
 typedef struct dirent FDIRDirent;
 
-typedef struct fdir_client_owner_mode_pair {
-    uid_t uid;
-    gid_t gid;
-    mode_t mode;
-} FDIRClientOwnerModePair;
-
 typedef struct fdir_client_oper_fname_pair {
     FDIRDentryOperator oper;
     FDIRDEntryFullName fullname;
@@ -164,38 +158,35 @@ int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
 
 int fdir_client_proto_create_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const FDIRDEntryFullName *fullname,
-        const FDIRClientOwnerModePair *omp,
+        const FDIRClientOperFnamePair *path, const mode_t mode,
         const dev_t rdev, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_create_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp,
-        const dev_t rdev, FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
+        const mode_t mode, const dev_t rdev, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
-        const string_t *link, const FDIRDEntryFullName *fullname,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry);
+        const string_t *link, const FDIRClientOperFnamePair *path,
+        const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const string_t *link, const string_t *ns,
-        const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
-        FDIRDEntryInfo *dentry);
+        const FDIRClientOperPnamePair *opname,
+        const mode_t mode, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const FDIRClientOwnerModePair *omp, const int flags,
+        const FDIRDentryOperator *oper, const mode_t mode, const int flags,
         FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id, const int64_t src_inode,
-        const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp, const int flags,
-        FDIRDEntryInfo *dentry);
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
+        const mode_t mode, const int flags, FDIRDEntryInfo *dentry);
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const uint64_t req_id,

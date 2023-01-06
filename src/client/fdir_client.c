@@ -33,74 +33,72 @@ int fdir_client_generate_node_id(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_create_dentry_ex(FDIRClientContext *client_ctx,
-        const FDIRDEntryFullName *fullname,
-        const FDIRClientOwnerModePair *omp,
+        const FDIRClientOperFnamePair *path, const mode_t mode,
         const dev_t rdev, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_create_dentry,
-            fullname, omp, rdev, dentry);
+            path, mode, rdev, dentry);
 }
 
 int fdir_client_create_dentry_by_pname_ex(FDIRClientContext *client_ctx,
-        const string_t *ns, const FDIRDEntryPName *pname,
-        const FDIRClientOwnerModePair *omp, const dev_t rdev,
-        FDIRDEntryInfo *dentry)
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
+        const mode_t mode, const dev_t rdev, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_create_dentry_by_pname,
-            ns, pname, omp, rdev, dentry);
+            ns, opname, mode, rdev, dentry);
 }
 
 int fdir_client_symlink_dentry(FDIRClientContext *client_ctx,
-        const string_t *link, const FDIRDEntryFullName *fullname,
-        const FDIRClientOwnerModePair *omp, FDIRDEntryInfo *dentry)
+        const string_t *link, const FDIRClientOperFnamePair *path,
+        const mode_t mode, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_symlink_dentry,
-            link, fullname, omp, dentry);
+            link, path, mode, dentry);
 }
 
 int fdir_client_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
         const string_t *link, const string_t *ns,
-        const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
-        FDIRDEntryInfo *dentry)
+        const FDIRClientOperPnamePair *opname,
+        const mode_t mode, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_symlink_dentry_by_pname,
-            link, ns, pname, omp, dentry);
+            link, ns, opname, mode, dentry);
 }
 
 int fdir_client_link_dentry(FDIRClientContext *client_ctx,
         const FDIRDEntryFullName *src, const FDIRDEntryFullName *dest,
-        const FDIRClientOwnerModePair *omp, const int flags,
-        FDIRDEntryInfo *dentry)
+        const FDIRDentryOperator *oper, const mode_t mode,
+        const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_link_dentry,
-            src, dest, omp, flags, dentry);
+            src, dest, oper, mode, flags, dentry);
 }
 
 int fdir_client_link_dentry_by_pname(FDIRClientContext *client_ctx,
         const int64_t src_inode, const string_t *ns,
-        const FDIRDEntryPName *pname, const FDIRClientOwnerModePair *omp,
+        const FDIRClientOperPnamePair *opname, const mode_t mode,
         const int flags, FDIRDEntryInfo *dentry)
 {
     const SFConnectionParameters *connection_params;
 
     SF_CLIENT_IDEMPOTENCY_UPDATE_WRAPPER(client_ctx, &client_ctx->cm,
             GET_MASTER_CONNECTION, 0, fdir_client_proto_link_dentry_by_pname,
-            src_inode, ns, pname, omp, flags, dentry);
+            src_inode, ns, opname, mode, flags, dentry);
 }
 
 int fdir_client_remove_dentry_ex(FDIRClientContext *client_ctx,
