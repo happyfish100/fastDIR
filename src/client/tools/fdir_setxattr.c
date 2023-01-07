@@ -99,6 +99,8 @@ int main(int argc, char *argv[])
 
     path = argv[optind];
     fname.oper.uid = fname.oper.gid = 0;
+    fname.oper.additional_gids.count = 0;
+    fname.oper.additional_gids.list = NULL;
     FC_SET_STRING(fname.fullname.ns, ns);
     FC_SET_STRING(fname.fullname.path, path);
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,

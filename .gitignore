@@ -43,6 +43,7 @@ src/client/tools/fdir_setxattr
 src/client/tools/fdir_getxattr
 src/client/tools/fdir_list_servers
 src/client/test/test_mkdir
+src/client/test/test_rmdir
 src/client/test/test_flock
 
 # other

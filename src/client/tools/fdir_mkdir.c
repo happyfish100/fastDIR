@@ -36,13 +36,13 @@ int main(int argc, char *argv[])
     const bool publish = false;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
 	int ch;
+    mode_t mode;
     char *ns;
-    char *path;
-    FDIRDEntryFullName fullname;
+    char *pt;
+    FDIRClientOperFnamePair path;
 	int result;
     int base;
     char *endptr;
-    FDIRClientOwnerModePair omp;
     FDIRDEntryInfo dentry;
 
     if (argc < 2) {
@@ -50,9 +50,11 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    omp.mode = 0755;
-    omp.uid = geteuid();
-    omp.gid = getegid();
+    mode = 0755;
+    path.oper.uid = geteuid();
+    path.oper.gid = getegid();
+    path.oper.additional_gids.count = 0;
+    path.oper.additional_gids.list = NULL;
     ns = NULL;
     while ((ch=getopt(argc, argv, "hc:g:m:n:u:")) != -1) {
         switch (ch) {
@@ -71,13 +73,13 @@ int main(int argc, char *argv[])
                 } else {
                     base = 10;
                 }
-                omp.mode = strtol(optarg, &endptr, base);
+                mode = strtol(optarg, &endptr, base);
                 break;
             case 'u':
-                omp.uid = strtol(optarg, &endptr, 10);
+                path.oper.uid = strtol(optarg, &endptr, 10);
                 break;
             case 'g':
-                omp.gid = strtol(optarg, &endptr, 10);
+                path.oper.gid = strtol(optarg, &endptr, 10);
                 break;
             default:
                 usage(argv);
@@ -93,16 +95,16 @@ int main(int argc, char *argv[])
     log_init();
     //g_log_context.log_level = LOG_DEBUG;
 
-    path = argv[optind];
-    FC_SET_STRING(fullname.ns, ns);
-    FC_SET_STRING(fullname.path, path);
+    pt = argv[optind];
+    FC_SET_STRING(path.fullname.ns, ns);
+    FC_SET_STRING(path.fullname.path, pt);
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
-                    &fullname.ns, publish)) != 0)
+                    &path.fullname.ns, publish)) != 0)
     {
         return result;
     }
 
-    omp.mode |= S_IFDIR;
+    mode |= S_IFDIR;
     return fdir_client_create_dentry(&g_fdir_client_vars.
-            client_ctx, &fullname, &omp, &dentry);
+            client_ctx, &path, mode, &dentry);
 }

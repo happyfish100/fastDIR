@@ -91,6 +91,8 @@ int main(int argc, char *argv[])
     FC_SET_STRING(dest_fullname.path, dest_path);
 
     oper.uid = oper.gid = 0;
+    oper.additional_gids.count = 0;
+    oper.additional_gids.list = NULL;
     if ((result=fdir_client_simple_init_with_auth_ex(config_filename,
                     &src_fullname.ns, publish)) != 0)
     {
