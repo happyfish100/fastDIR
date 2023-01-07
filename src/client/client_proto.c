@@ -478,6 +478,7 @@ int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveDEntry *req;
+    FDIRProtoDEntryInfo *entry_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoRemoveDEntry) + NAME_MAX + PATH_MAX];
     int out_bytes;
@@ -485,14 +486,17 @@ int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_DENTRY_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -556,8 +560,8 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
             header, req, req_id, out_bytes);
     proto_pname = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
             FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
-    if ((result=client_check_set_proto_pname(ns,
-                    &opname->pname, proto_pname)) != 0)
+    if ((result=client_check_set_proto_pname(ns, &opname->
+                    pname, proto_pname)) != 0)
     {
         return result;
     }
@@ -610,6 +614,7 @@ int fdir_client_proto_rename_dentry_ex(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRenameDEntry *req;
+    FDIRProtoDEntryInfo *src_pentry;
     FDIRProtoDEntryInfo *dest_pentry;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoRenameDEntry) + 2 * (NAME_MAX + PATH_MAX)];
@@ -618,11 +623,13 @@ int fdir_client_proto_rename_dentry_ex(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
-    if ((result=client_check_set_proto_dentry(src, &req->src)) != 0) {
+    src_pentry = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(*oper));
+    if ((result=client_check_set_proto_dentry(src, src_pentry)) != 0) {
         return result;
     }
 
-    dest_pentry = (FDIRProtoDEntryInfo *)((char *)(&req->src + 1) +
+    dest_pentry = (FDIRProtoDEntryInfo *)((char *)(src_pentry + 1) +
             src->ns.len + src->path.len);
     if ((result=client_check_set_proto_dentry(dest, dest_pentry)) != 0) {
         return result;
@@ -648,6 +655,7 @@ int fdir_client_proto_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRenameDEntryByPName *req;
+    FDIRProtoDEntryByPName *src_pentry;
     FDIRProtoDEntryByPName *dest_pentry;
     int out_bytes;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
@@ -656,16 +664,18 @@ int fdir_client_proto_rename_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
-    if ((result=client_check_set_proto_pname(src_ns, src_pname,
-                    &req->src)) != 0)
+    src_pentry = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(*oper));
+    if ((result=client_check_set_proto_pname(src_ns,
+                    src_pname, src_pentry)) != 0)
     {
         return result;
     }
 
-    dest_pentry = (FDIRProtoDEntryByPName *)((char *)(&req->src + 1) +
+    dest_pentry = (FDIRProtoDEntryByPName *)((char *)(src_pentry + 1) +
             src_ns->len + src_pname->name.len);
-    if ((result=client_check_set_proto_pname(dest_ns, dest_pname,
-                    dest_pentry)) != 0)
+    if ((result=client_check_set_proto_pname(dest_ns,
+                    dest_pname, dest_pentry)) != 0)
     {
         return result;
     }
@@ -688,15 +698,19 @@ static int setup_req_by_dentry_fullname(FDIRClientContext *client_ctx,
     int result;
     FDIRProtoHeader *header;
     FDIRProtoQueryDentryReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, *out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->oper) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(
-                    path, &req->dentry, &req->oper)) != 0)
+                    path, entry_proto, &req->oper)) != 0)
     {
         return result;
     }
-    *out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    *out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
     return 0;
 }
@@ -708,16 +722,20 @@ static int setup_req_by_dentry_pname(FDIRClientContext *client_ctx,
     int result;
     FDIRProtoHeader *header;
     FDIRProtoQueryDentryByPNameReq *req;
+    FDIRProtoDEntryByPName *pname_proto;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, *out_bytes);
+    pname_proto = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->oper) +
+            FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
     if ((result=client_check_set_proto_oper_pname_pair(ns,
-                    opname, &req->pname, &req->oper)) != 0)
+                    opname, pname_proto, &req->oper)) != 0)
     {
         return result;
     }
 
-    *out_bytes += ns->len + opname->pname.name.len;
+    *out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(opname->oper) +
+        ns->len + opname->pname.name.len;
     SF_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
     return 0;
 }
@@ -728,6 +746,7 @@ static inline int setup_req_by_dentry_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoQueryDentryByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
 
     if (ns->len <= 0 || ns->len > NAME_MAX) {
         logError("file: "__FILE__", line: %d, "
@@ -736,14 +755,17 @@ static inline int setup_req_by_dentry_inode(FDIRClientContext *client_ctx,
         return ns->len > NAME_MAX ? ENAMETOOLONG : EINVAL;
     }
 
-    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, *out_bytes);
-    *out_bytes += ns->len;
-    SF_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
-
+    SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
+            header, req, 0, *out_bytes);
     FDIR_PROTO_FILL_OPERATOR(oino->oper, req->oper);
-    long2buff(oino->inode, req->ino.inode);
-    req->ino.ns_len = ns->len;
-    memcpy(req->ino.ns_str, ns->str, ns->len);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->oper) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
+    long2buff(oino->inode, proto_ino->inode);
+    proto_ino->ns_len = ns->len;
+    memcpy(proto_ino->ns_str, ns->str, ns->len);
+
+    *out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
+    SF_PROTO_SET_HEADER(header, req_cmd, *out_bytes - sizeof(FDIRProtoHeader));
     return 0;
 }
 
@@ -867,17 +889,21 @@ int fdir_client_proto_stat_dentry_by_path(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoStatDEntryReq) + NAME_MAX + PATH_MAX];
     FDIRProtoHeader *header;
     FDIRProtoStatDEntryReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_stat_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -919,18 +945,22 @@ int fdir_client_proto_access_dentry_by_path(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoAccessDEntryReq) + NAME_MAX + PATH_MAX];
     FDIRProtoHeader *header;
     FDIRProtoAccessDEntryReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
     req->front.mask = mask;
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_ACCESS_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_access_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -946,18 +976,21 @@ int fdir_client_proto_access_dentry_by_inode(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoAccessDEntryByInodeReq) + NAME_MAX + PATH_MAX];
     FDIRProtoHeader *header;
     FDIRProtoAccessDEntryByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
     if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
-                    &req->ino, &req->front.oper)) != 0)
+                    proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
     req->front.mask = mask;
-    out_bytes += ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_ACCESS_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_access_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -973,18 +1006,22 @@ int fdir_client_proto_access_dentry_by_pname(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoAccessDEntryByPNameReq) + NAME_MAX + PATH_MAX];
     FDIRProtoHeader *header;
     FDIRProtoAccessDEntryByPNameReq *req;
+    FDIRProtoDEntryByPName *pname_proto;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    pname_proto = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
     if ((result=client_check_set_proto_oper_pname_pair(ns, opname,
-                    &req->pname, &req->front.oper)) != 0)
+                    pname_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
     req->front.mask = mask;
-    out_bytes += ns->len + opname->pname.name.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(opname->oper) +
+        ns->len + opname->pname.name.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_access_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -1095,17 +1132,20 @@ int fdir_client_proto_stat_dentry_by_inode(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoStatDEntryByInodeReq) + NAME_MAX];
     FDIRProtoHeader *header;
     FDIRProtoStatDEntryByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
     if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
-                    &req->ino, &req->front.oper)) != 0)
+                    proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
-    out_bytes += ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_stat_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -1121,17 +1161,21 @@ int fdir_client_proto_stat_dentry_by_pname(FDIRClientContext *client_ctx,
         sizeof(FDIRProtoStatDEntryByPNameReq) + 2 * NAME_MAX];
     FDIRProtoHeader *header;
     FDIRProtoStatDEntryByPNameReq *req;
+    FDIRProtoDEntryByPName *pname_proto;
     int out_bytes;
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    pname_proto = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
     if ((result=client_check_set_proto_oper_pname_pair(ns, opname,
-                    &req->pname, &req->front.oper)) != 0)
+                    pname_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
-    out_bytes += ns->len + opname->pname.name.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(opname->oper) +
+        ns->len + opname->pname.name.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_STAT_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1156,8 +1200,8 @@ int fdir_client_proto_create_dentry_by_pname(FDIRClientContext *client_ctx,
             header, req, req_id, out_bytes);
     proto_pname = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
             FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
-    if ((result=client_check_set_proto_pname(ns,
-                    &opname->pname, proto_pname)) != 0)
+    if ((result=client_check_set_proto_pname(ns, &opname->
+                    pname, proto_pname)) != 0)
     {
         return result;
     }
@@ -1200,8 +1244,8 @@ int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
     link_str = out_buff + sizeof(req->front) +
         FDIR_ADDITIONAL_GROUP_BYTES(opname->oper);
     pname_proto = (FDIRProtoDEntryByPName *)(link_str + link->len);
-    if ((result=client_check_set_proto_pname(ns,
-                    &opname->pname, pname_proto)) != 0)
+    if ((result=client_check_set_proto_pname(ns, &opname->
+                    pname, pname_proto)) != 0)
     {
         return result;
     }
@@ -1225,6 +1269,7 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveDEntryByPName *req;
+    FDIRProtoDEntryByPName *pname_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoRemoveDEntryByPName) + 2 * NAME_MAX];
     int out_bytes;
@@ -1232,14 +1277,17 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
+    pname_proto = (FDIRProtoDEntryByPName *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(opname->oper));
     if ((result=client_check_set_proto_oper_pname_pair(ns, opname,
-                    &req->pname, &req->front.oper)) != 0)
+                    pname_proto, &req->front.oper)) != 0)
     {
         return result;
     }
 
     int2buff(flags, req->front.flags);
-    out_bytes += ns->len + opname->pname.name.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(opname->oper) +
+        ns->len + opname->pname.name.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1357,6 +1405,7 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoModifyStatByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoModifyStatByInodeReq) + NAME_MAX];
     int out_bytes;
@@ -1364,14 +1413,16 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
     if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
-                    &req->ino, &req->front.oper)) != 0)
+                    proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
 
     CLIENT_PROTO_SET_MODIFY_STAT_FRONT(req->front);
-    out_bytes += ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1386,6 +1437,7 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoModifyStatByPathReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoModifyStatByPathReq) + NAME_MAX];
     int out_bytes;
@@ -1393,14 +1445,17 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
 
     CLIENT_PROTO_SET_MODIFY_STAT_FRONT(req->front);
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
@@ -1577,7 +1632,8 @@ int fdir_client_dentry_sys_lock(FDIRClientSession *session,
         return EFAULT;
     }
 
-    SF_PROTO_CLIENT_SET_REQ(session->ctx, out_buff, header, req, 0, out_bytes);
+    SF_PROTO_CLIENT_SET_REQ(session->ctx, out_buff,
+            header, req, 0, out_bytes);
     if ((result=client_check_set_proto_inode_info(
                     ns, inode, &req->ino)) != 0)
     {
@@ -1708,8 +1764,8 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
     }
 
     out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
-        xattr->key.len + xattr->value.len +
-        path->fullname.ns.len + path->fullname.path.len;
+        xattr->key.len + xattr->value.len + path->
+        fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1780,6 +1836,7 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByPathReq *req;
+    FDIRProtoNameInfo *proto_name;
     FDIRProtoDEntryInfo *proto_dentry;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoRemoveXAttrByPathReq) + 2 * NAME_MAX + PATH_MAX];
@@ -1789,11 +1846,13 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
-    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+    proto_name = (FDIRProtoNameInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
+    if ((result=client_check_set_proto_name_info(name, proto_name)) != 0) {
         return result;
     }
 
-    proto_dentry = (FDIRProtoDEntryInfo *)(req->name.str + name->len);
+    proto_dentry = (FDIRProtoDEntryInfo *)(proto_name->str + name->len);
     if ((result=client_check_set_proto_oper_fname_pair(path,
                     proto_dentry, &req->front.oper)) != 0)
     {
@@ -1801,7 +1860,8 @@ int fdir_client_proto_remove_xattr_by_path(FDIRClientContext *client_ctx,
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += name->len + path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) + name->len +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1824,6 +1884,7 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoRemoveXAttrByInodeReq *req;
+    FDIRProtoNameInfo *proto_name;
     FDIRProtoInodeInfo *ino_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_UPDATE_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoRemoveXAttrByInodeReq) + 2 * NAME_MAX];
@@ -1833,11 +1894,13 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, req_id, out_bytes);
-    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+    proto_name = (FDIRProtoNameInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
+    if ((result=client_check_set_proto_name_info(name, proto_name)) != 0) {
         return result;
     }
 
-    ino_proto = (FDIRProtoInodeInfo *)(req->name.str + name->len);
+    ino_proto = (FDIRProtoInodeInfo *)(proto_name->str + name->len);
     if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
                     ino_proto, &req->front.oper)) != 0)
     {
@@ -1845,7 +1908,8 @@ int fdir_client_proto_remove_xattr_by_inode(FDIRClientContext *client_ctx,
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += name->len + ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) +
+        name->len + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_REMOVE_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1886,6 +1950,7 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoGetXAttrByPathReq *req;
+    FDIRProtoNameInfo *proto_name;
     FDIRProtoDEntryInfo *proto_dentry;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoGetXAttrByPathReq) + 2 * NAME_MAX + PATH_MAX];
@@ -1895,11 +1960,13 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
     int result;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
-    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+    proto_name = (FDIRProtoNameInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
+    if ((result=client_check_set_proto_name_info(name, proto_name)) != 0) {
         return result;
     }
 
-    proto_dentry = (FDIRProtoDEntryInfo *)(req->name.str + name->len);
+    proto_dentry = (FDIRProtoDEntryInfo *)(proto_name->str + name->len);
     if ((result=client_check_set_proto_oper_fname_pair(path,
                     proto_dentry, &req->front.oper)) != 0)
     {
@@ -1907,7 +1974,8 @@ int fdir_client_proto_get_xattr_by_path(FDIRClientContext *client_ctx,
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += name->len + path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) + name->len +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1930,7 +1998,8 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoGetXAttrByInodeReq *req;
-    FDIRProtoInodeInfo *ino;
+    FDIRProtoNameInfo *proto_name;
+    FDIRProtoInodeInfo *proto_ino;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoGetXAttrByInodeReq) + 2 * NAME_MAX];
     SFResponseInfo response;
@@ -1939,19 +2008,22 @@ int fdir_client_proto_get_xattr_by_inode(FDIRClientContext *client_ctx,
     int log_level;
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
-    if ((result=client_check_set_proto_name_info(name, &req->name)) != 0) {
+    proto_name = (FDIRProtoNameInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
+    if ((result=client_check_set_proto_name_info(name, proto_name)) != 0) {
         return result;
     }
 
-    ino = (FDIRProtoInodeInfo *)(req->name.str + name->len);
-    if ((result=client_check_set_proto_oper_inode_pair(ns,
-                    oino, ino, &req->front.oper)) != 0)
+    proto_ino = (FDIRProtoInodeInfo *)(proto_name->str + name->len);
+    if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
+                    proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += name->len + ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) +
+        name->len + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_GET_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -1972,6 +2044,7 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoListXAttrByPathReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoListXAttrByPathReq) + NAME_MAX + PATH_MAX];
     SFResponseInfo response;
@@ -1980,14 +2053,17 @@ int fdir_client_proto_list_xattr_by_path(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -2007,6 +2083,7 @@ int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoListXAttrByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoListXAttrByInodeReq) + NAME_MAX];
     SFResponseInfo response;
@@ -2015,14 +2092,16 @@ int fdir_client_proto_list_xattr_by_inode(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, out_bytes);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
     if ((result=client_check_set_proto_oper_inode_pair(ns,
-                    oino, &req->ino, &req->front.oper)) != 0)
+                    oino, proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 
@@ -2449,6 +2528,7 @@ static int list_dentry_by_path(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoListDEntryByPathReq *req;
+    FDIRProtoDEntryInfo *entry_proto;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoListDEntryByPathReq) + NAME_MAX + PATH_MAX];
     int out_bytes;
@@ -2456,14 +2536,17 @@ static int list_dentry_by_path(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, out_bytes);
+    entry_proto = (FDIRProtoDEntryInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(path->oper));
     if ((result=client_check_set_proto_oper_fname_pair(path,
-                    &req->dentry, &req->front.oper)) != 0)
+                    entry_proto, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += path->fullname.ns.len + path->fullname.path.len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(path->oper) +
+        path->fullname.ns.len + path->fullname.path.len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return list_dentry(client_ctx, conn, out_buff,
@@ -2487,6 +2570,7 @@ static int list_dentry_by_inode(FDIRClientContext *client_ctx,
 {
     FDIRProtoHeader *header;
     FDIRProtoListDEntryByInodeReq *req;
+    FDIRProtoInodeInfo *proto_ino;
     char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE +
         sizeof(FDIRProtoListDEntryByInodeReq) + NAME_MAX];
     int out_bytes;
@@ -2494,14 +2578,16 @@ static int list_dentry_by_inode(FDIRClientContext *client_ctx,
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff,
             header, req, 0, out_bytes);
+    proto_ino = (FDIRProtoInodeInfo *)(out_buff + sizeof(req->front) +
+            FDIR_ADDITIONAL_GROUP_BYTES(oino->oper));
     if ((result=client_check_set_proto_oper_inode_pair(ns, oino,
-                    &req->ino, &req->front.oper)) != 0)
+                    proto_ino, &req->front.oper)) != 0)
     {
         return result;
     }
     int2buff(flags, req->front.flags);
 
-    out_bytes += ns->len;
+    out_bytes += FDIR_ADDITIONAL_GROUP_BYTES(oino->oper) + ns->len;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_LIST_DENTRY_BY_INODE_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return list_dentry(client_ctx, conn, out_buff,
