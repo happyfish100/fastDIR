@@ -34,6 +34,12 @@
 #define FDIR_ADDITIONAL_GROUP_BYTES(oper) \
     ((oper).additional_gids.count * 4)
 
+#define FDIR_SET_OPERATOR(oper, _uid, _gid, _gcount, _glist) \
+    (oper).uid = _uid;  \
+    (oper).gid = _gid;  \
+    (oper).additional_gids.count = _gcount; \
+    (oper).additional_gids.list = _glist
+
 #define FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT  6
 #define FDIR_XATTR_KVARRAY_MAX_ELEMENTS (1 << FDIR_XATTR_KVARRAY_ALLOCATOR_COUNT)
 #define FDIR_XATTR_MAX_VALUE_SIZE       256

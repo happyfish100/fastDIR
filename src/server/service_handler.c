@@ -775,8 +775,6 @@ static int server_parse_dentry_info(struct fast_task_info *task,
         return EINVAL;
     }
 
-    logInfo("ns length: %d, path length: %d", fullname->ns.len, fullname->path.len);
-
     if (fullname->path.len <= 0) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
@@ -2135,9 +2133,6 @@ static int service_deal_create_dentry(struct fast_task_info *task)
     int mode;
 
     SERVICE_SET_FRONT_SIZE(FDIRProtoCreateDEntryFront);
-
-    logInfo("SERVICE_FRONT_SIZE: %d, sizeof(FDIRProtoCreateDEntryFront): %d",
-            SERVICE_FRONT_SIZE, (int)sizeof(FDIRProtoCreateDEntryFront));
     if ((result=server_parse_dentry_for_update(task,
                     SERVICE_FRONT_SIZE)) != 0)
     {
