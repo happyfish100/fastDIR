@@ -30,7 +30,7 @@
 #define FDIR_MAX_PATH_COUNT             128
 #define FDIR_BATCH_SET_MAX_DENTRY_COUNT 256
 #define FDIR_MAX_USER_GROUP_COUNT       255
-#define FDIR_MAX_USER_GROUP_BYTES       (FDIR_MAX_USER_GROUP_COUNT * 4)
+#define FDIR_MAX_USER_GROUP_BYTES       ((FDIR_MAX_USER_GROUP_COUNT + 1) * 4)
 #define FDIR_ADDITIONAL_GROUP_BYTES(oper) \
     ((oper).additional_gids.count * 4)
 
