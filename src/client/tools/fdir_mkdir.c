@@ -51,10 +51,7 @@ int main(int argc, char *argv[])
     }
 
     mode = 0755;
-    path.oper.uid = geteuid();
-    path.oper.gid = getegid();
-    path.oper.additional_gids.count = 0;
-    path.oper.additional_gids.list = NULL;
+    FDIR_SET_OPERATOR(path.oper, geteuid(), getegid(), 0, NULL);
     ns = NULL;
     while ((ch=getopt(argc, argv, "hc:g:m:n:u:")) != -1) {
         switch (ch) {

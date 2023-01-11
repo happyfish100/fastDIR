@@ -180,15 +180,15 @@ int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
         const string_t *ns, const FDIRClientOperInodePair *oino,
         string_t *list, const int size, const int flags);
 
-#define fdir_client_lookup_inode_by_path(client_ctx, fullname, inode) \
-    fdir_client_lookup_inode_by_path_ex(client_ctx, fullname, LOG_ERR, inode)
+#define fdir_client_lookup_inode_by_path(client_ctx, path, inode) \
+    fdir_client_lookup_inode_by_path_ex(client_ctx, path, LOG_ERR, inode)
 
 #define fdir_client_lookup_inode_by_pname(client_ctx, ns, opname, inode) \
     fdir_client_lookup_inode_by_pname_ex(client_ctx, ns, opname, LOG_ERR, inode)
 
-#define fdir_client_stat_dentry_by_path(client_ctx, fullname, flags, dentry) \
+#define fdir_client_stat_dentry_by_path(client_ctx, path, flags, dentry) \
     fdir_client_stat_dentry_by_path_ex(client_ctx, \
-            fullname, LOG_ERR, flags, dentry)
+            path, LOG_ERR, flags, dentry)
 
 #define fdir_client_stat_dentry_by_pname(client_ctx, ns, opname, flags, dentry) \
     fdir_client_stat_dentry_by_pname_ex(client_ctx, \

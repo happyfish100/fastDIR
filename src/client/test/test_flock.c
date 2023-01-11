@@ -247,9 +247,10 @@ int main(int argc, char *argv[])
         return result;
     }
 
-    fname.oper.uid = fname.oper.gid = 0;
     FC_SET_STRING(fname.fullname.ns, ns);
     FC_SET_STRING(fname.fullname.path, path);
+    FDIR_SET_OPERATOR(fname.oper, 0, 0, 0, NULL);
+    oino.oper = fname.oper;
     if ((result=fdir_client_lookup_inode_by_path(&g_fdir_client_vars.
                     client_ctx, &fname, &oino.inode)) != 0)
     {

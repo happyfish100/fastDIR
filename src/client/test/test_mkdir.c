@@ -194,8 +194,7 @@ int main(int argc, char *argv[])
     logDebug("idempotency_enabled: %d", g_fdir_client_vars.
             client_ctx.idempotency_enabled);
 
-    oper.uid = geteuid();
-    oper.gid = getegid();
+    FDIR_SET_OPERATOR(oper, geteuid(), getegid(), 0, NULL);
     start_time = get_current_time_ms();
     result = test_mkdir();
     time_used = get_current_time_ms() - start_time;

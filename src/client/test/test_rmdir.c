@@ -73,9 +73,7 @@ static int test_rmdir()
     int i;
     int k;
 
-    fname.oper.uid = fname.oper.gid = 0;
-    fname.oper.additional_gids.count = 0;
-    fname.oper.additional_gids.list = NULL;
+    FDIR_SET_OPERATOR(fname.oper, 0, 0, 0, NULL);
     FC_SET_STRING(fname.fullname.ns, ns);
     fname.fullname.path.str = path;
     fname.fullname.path.len = sprintf(path, "%s", base_path);
