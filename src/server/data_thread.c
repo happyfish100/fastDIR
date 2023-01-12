@@ -933,6 +933,17 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
         if (!FDIR_USE_POSIX_ACL || record->oper.uid == 0) {
         } else if (record->oper.uid == dentry->stat.uid) {
             /* can't change owner to other user */
+
+            /*
+            logInfo("oper {uid: %d, gid: %d, additional count: %d, first gid: %d}, "
+                    "change to {uid: %d, gid: %d}",
+                    record->oper.uid, record->oper.gid,
+                    record->oper.additional_gids.count,
+                    record->oper.additional_gids.count > 0 ?
+                    buff2int(record->oper.additional_gids.list) : -1,
+                    record->stat.uid, record->stat.gid);
+                    */
+
             if ((record->options.uid && record->stat.uid >= 0) &&
                     record->stat.uid != dentry->stat.uid)
             {

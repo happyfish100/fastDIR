@@ -119,12 +119,37 @@ extern "C" {
                 return 0;
             }
 
+            /*
+            logInfo("oper {uid: %d, gid: %d}, dentry gid: %d, contail: %d, "
+                    "mode: %o, mask: %o, group allowd: %d",
+                    oper->uid, oper->gid, dentry->stat.gid,
+                    group_contain(dentry->stat.gid, oper),
+                    dentry->stat.mode, mask, GROUP_PERM_ALLOWED(
+                        dentry->stat.mode, mask));
+             */
             if (group_contain(dentry->stat.gid, oper)) {
                 return GROUP_PERM_ALLOWED(dentry->stat.mode, mask) ? 0 : EACCES;
             }
+
+            /*
+            for (int i=0; i<oper->additional_gids.count; i++) {
+                logInfo("%d. gid: %d", i+1, buff2int(oper->
+                            additional_gids.list + 4 * i));
+            }
+            */
         }
 
          return OTHER_PERM_ALLOWED(dentry->stat.mode, mask) ? 0 : EACCES;
+    }
+
+    static inline int dentry_owner_or_access(const FDIRServerDentry *dentry,
+            const FDIRDentryOperator *oper, const int mask)
+    {
+        if (IS_DENTRY_OWNER(oper->uid, dentry)) {
+            return 0;
+        } else {
+            return dentry_access(dentry, oper, mask);
+        }
     }
 
     int dentry_find_by_pname(FDIRServerDentry *parent,

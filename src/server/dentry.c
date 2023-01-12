@@ -1025,14 +1025,20 @@ int dentry_remove(FDIRDataThreadContext *thread_ctx,
         return result;
     }
 
-    if (record->me.parent == NULL) {
-        if (!IS_DENTRY_OWNER(record->oper.uid, record->me.dentry)) {
+    if (record->me.parent != NULL && (record->me.parent->stat.mode & S_ISVTX)) {
+        if (!(IS_DENTRY_OWNER(record->oper.uid, record->me.parent) ||
+                    IS_DENTRY_OWNER(record->oper.uid, record->me.dentry)))
+        {
             return EPERM;
         }
-    } else if (!(IS_DENTRY_OWNER(record->oper.uid, record->me.parent) ||
-                IS_DENTRY_OWNER(record->oper.uid, record->me.dentry)))
+    } else if (!(record->me.parent != NULL && IS_DENTRY_OWNER(record->
+                    oper.uid, record->me.parent)))
     {
-        return EPERM;
+        if (dentry_owner_or_access(record->me.dentry,
+                    &record->oper, W_OK) != 0)
+        {
+            return EPERM;
+        }
     }
 
     if ((record->flags & FDIR_UNLINK_FLAGS_MATCH_ENABLED)) {
