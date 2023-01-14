@@ -181,7 +181,10 @@ int main(int argc, char *argv[])
 
     sf_enable_exit_on_oom();
     srand(time(NULL));
+
+#ifdef FDIR_MBLOCK_CHECK
     fast_mblock_manager_init();
+#endif
 
     sched_set_delay_params(300, 1024);
     do {
