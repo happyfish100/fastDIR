@@ -1010,12 +1010,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
 
     if (record->options.atime || record->options.mtime) {
         if (!IS_DENTRY_OWNER(record->oper.uid, dentry)) {
-            if (record->options.atime_now && record->options.mtime_now) {
-                if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0)
-                {
-                    return result;
-                }
-            } else {
+            if ((result=dentry_access(dentry, &record->oper, W_OK)) != 0) {
                 return EPERM;
             }
         }
