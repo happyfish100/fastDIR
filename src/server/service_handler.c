@@ -3373,6 +3373,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
     params.owner.id = buff2long(front->owner.id);
     operation = buff2int(front->operation);
 
+    /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
@@ -3380,6 +3381,7 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
             task->event.fd, operation, RECORD->inode, params.offset,
             params.length, params.owner.node, params.owner.id,
             params.owner.pid);
+            */
 
     if (operation & LOCK_UN) {
         params.type = LOCK_UN;
@@ -3693,6 +3695,10 @@ static int service_deal_list_dentry_next(struct fast_task_info *task)
                 RESPONSE.error.message,
                 "invalid token for next list");
         return EINVAL;
+    }
+
+    if (DENTRY_LIST_CACHE.output_special) {
+        offset -= 2;
     }
     if (offset != DENTRY_LIST_CACHE.offset) {
         RESPONSE.error.length = sprintf(
