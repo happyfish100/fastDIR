@@ -237,6 +237,14 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "LIST_XATTR_BY_INODE_REQ";
         case FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP:
             return "LIST_XATTR_BY_INODE_RESP";
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_REQ:
+            return "GET_FULLNAME_BY_PNAME_REQ";
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_RESP:
+            return "GET_FULLNAME_BY_PNAME_RESP";
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_REQ:
+            return "GET_FULLNAME_BY_INODE_REQ";
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_RESP:
+            return "GET_FULLNAME_BY_INODE_RESP";
 
         case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
             return "NSS_SUBSCRIBE_REQ";

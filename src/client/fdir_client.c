@@ -345,6 +345,24 @@ int fdir_client_readlink_by_inode(FDIRClientContext *client_ctx,
             ns, oino, link, size);
 }
 
+int fdir_client_get_fullname_by_pname(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRClientOperPnamePair *opname,
+        const int flags, string_t *fullname, const int size)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_get_fullname_by_pname,
+            ns, opname, flags, fullname, size);
+}
+
+int fdir_client_get_fullname_by_inode(FDIRClientContext *client_ctx,
+        const string_t *ns, const FDIRClientOperInodePair *oino,
+        const int flags, string_t *fullname, const int size)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_get_fullname_by_inode,
+            ns, oino, flags, fullname, size);
+}
+
 int fdir_client_list_dentry_by_path(FDIRClientContext *client_ctx,
         const FDIRClientOperFnamePair *path, FDIRClientDentryArray *array,
         const int flags)

@@ -53,6 +53,7 @@
 #define SERVICE_OP_LIST_DENTRY_INT      124
 #define SERVICE_OP_GET_XATTR_INT        125
 #define SERVICE_OP_LIST_XATTR_INT       126
+#define SERVICE_OP_GET_FULLNAME_INT     127
 
 #define BINLOG_OP_NONE_STR           ""
 #define BINLOG_OP_CREATE_DENTRY_STR  "cr"
@@ -167,6 +168,7 @@ typedef struct fdir_binlog_record {
 
     union {
         string_t link;
+        BufferInfo fullname;   //for get fullname
         key_value_pair_t xattr;
     };
 
@@ -258,6 +260,8 @@ static inline const char *get_operation_caption(const int operation)
             return "GET_XATTR";
         case SERVICE_OP_LIST_XATTR_INT:
             return "LIST_XATTR";
+        case SERVICE_OP_GET_FULLNAME_INT:
+            return "GET_FULLNAME";
         default:
             return "UNKOWN";
     }

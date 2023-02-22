@@ -1146,6 +1146,13 @@ static inline void lookup_inode_output(struct fast_task_info *task,
     TASK_CTX.common.response_done = true;
 }
 
+static inline void get_fullname_output(struct fast_task_info *task,
+        const int fname_len)
+{
+    RESPONSE.header.body_len = fname_len;
+    TASK_CTX.common.response_done = true;
+}
+
 static void server_list_dentry_output(struct fast_task_info *task,
         FDIRServerDentry *dentry, const bool is_first)
 {
@@ -1377,7 +1384,9 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
         *xattr_name_buff = '\0';
     }
 
-    if (record->data_version != 0) {
+    if (record->record_type == fdir_record_type_update &&
+            record->data_version != 0)
+    {
         extra_len = sprintf(extra_buff, ", data version: "
                 "%"PRId64, record->data_version);
     } else {
@@ -1393,6 +1402,13 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
                 ", parent inode: %"PRId64", dir name: %.*s",
                 record->me.pname.parent_inode, record->me.pname.name.len,
                 record->me.pname.name.str);
+    }
+
+    if (result == EPERM || result == EACCES) {
+        snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
+                ", oper {uid: %d, gid: %d}, additional group count: %d",
+                record->oper.uid, record->oper.gid,
+                record->oper.additional_gids.count);
     }
 
     log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
@@ -1431,6 +1447,9 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
                 if ((record->flags & FDIR_FLAGS_OUTPUT_DENTRY) != 0) {
                     dentry_stat_output(task, &record->me.dentry);
                 }
+                break;
+            case SERVICE_OP_GET_FULLNAME_INT:
+                get_fullname_output(task, record->fullname.length);
                 break;
             case SERVICE_OP_READ_LINK_INT:
                 RESPONSE_STATUS = readlink_output(task, record->me.dentry);
@@ -3033,6 +3052,54 @@ static int service_deal_access_dentry_by_pname(struct fast_task_info *task)
     return push_query_to_data_thread_queue(task);
 }
 
+static inline void parse_get_fullname_front_part(struct fast_task_info *task)
+{
+    FDIRProtoGetFullnameFront *front;
+
+    front = (FDIRProtoGetFullnameFront *)REQUEST.body;
+    RECORD->flags = buff2int(front->flags);
+    service_parse_operator(task, &front->oper);
+}
+
+static int deal_get_fname(struct fast_task_info *task, const int resp_cmd)
+{
+    parse_get_fullname_front_part(task);
+    RECORD->operation = SERVICE_OP_GET_FULLNAME_INT;
+    RESPONSE.header.cmd = resp_cmd;
+    RECORD->fullname.length = 0;
+    RECORD->fullname.alloc_size = task->size - sizeof(FDIRProtoHeader);
+    RECORD->fullname.buff = task->data + sizeof(FDIRProtoHeader);
+    return push_query_to_data_thread_queue(task);
+}
+
+static int service_deal_get_fullname_by_inode(struct fast_task_info *task)
+{
+    int result;
+
+    SERVICE_SET_FRONT_SIZE(FDIRProtoGetFullnameFront);
+    if ((result=server_check_and_parse_inode(task,
+                    SERVICE_FRONT_SIZE)) != 0)
+    {
+        return result;
+    }
+
+    return deal_get_fname(task, FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_RESP);
+}
+
+static int service_deal_get_fullname_by_pname(struct fast_task_info *task)
+{
+    int result;
+
+    SERVICE_SET_FRONT_SIZE(FDIRProtoGetFullnameFront);
+    if ((result=server_parse_pname_for_query(task,
+                    SERVICE_FRONT_SIZE)) != 0)
+    {
+        return result;
+    }
+
+    return deal_get_fname(task, FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_RESP);
+}
+
 static int service_deal_stat_dentry_by_inode(struct fast_task_info *task)
 {
     int result;
@@ -4003,6 +4070,16 @@ static int service_process(struct fast_task_info *task)
         case FDIR_SERVICE_PROTO_ACCESS_BY_PNAME_REQ:
             if ((result=service_check_readable(task)) == 0) {
                 return service_deal_access_dentry_by_pname(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_get_fullname_by_inode(task);
+            }
+            return result;
+        case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_REQ:
+            if ((result=service_check_readable(task)) == 0) {
+                return service_deal_get_fullname_by_pname(task);
             }
             return result;
         case FDIR_SERVICE_PROTO_STAT_BY_PATH_REQ:

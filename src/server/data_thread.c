@@ -1400,6 +1400,7 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         case SERVICE_OP_LOOKUP_INODE_INT:
         case SERVICE_OP_GET_XATTR_INT:
         case SERVICE_OP_LIST_XATTR_INT:
+        case SERVICE_OP_GET_FULLNAME_INT:
             if (record->dentry_type == fdir_dentry_type_inode) {
                 result = inode_index_get_dentry(thread_ctx,
                         record->inode, &record->me.dentry);
@@ -1413,11 +1414,13 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
             }
 
             if (result == 0) {
+                SFErrorInfo error_info;
                 switch (record->operation) {
                     case SERVICE_OP_STAT_DENTRY_INT:
                     case SERVICE_OP_ACCESS_DENTRY_INT:
                     case SERVICE_OP_GET_XATTR_INT:
                     case SERVICE_OP_LIST_XATTR_INT:
+                    case SERVICE_OP_GET_FULLNAME_INT:
                         if ((record->flags & FDIR_FLAGS_FOLLOW_SYMLINK) &&
                                 S_ISLNK(record->me.dentry->stat.mode))
                         {
@@ -1441,6 +1444,17 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
                                 if (STORAGE_ENABLED) {
                                     result = dentry_check_load_xattr(thread_ctx,
                                             record->me.dentry);
+                                }
+                                break;
+                            case SERVICE_OP_GET_FULLNAME_INT:
+                                *(error_info.message) = '\0';
+                                if ((result=dentry_get_full_path(record->me.
+                                                dentry, &record->fullname,
+                                                &error_info)) != 0)
+                                {
+                                    logError("file: "__FILE__", line: %d, "
+                                            "get dentry path fail, error info: %s",
+                                            __LINE__, error_info.message);
                                 }
                                 break;
                         }

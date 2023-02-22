@@ -130,6 +130,10 @@
 #define FDIR_SERVICE_PROTO_LIST_XATTR_BY_PATH_RESP  100
 #define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_REQ  101
 #define FDIR_SERVICE_PROTO_LIST_XATTR_BY_INODE_RESP 102
+#define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_REQ  103
+#define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_PNAME_RESP 104
+#define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_REQ  105
+#define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_RESP 106
 
 //for namespace stat sync
 #define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ        151
@@ -410,6 +414,22 @@ typedef struct fdir_proto_access_dentry_by_pname_req {
     FDIRProtoAccessDEntryFront front;
     FDIRProtoDEntryByPName pname;
 } FDIRProtoAccessDEntryByPNameReq;
+
+typedef struct fdir_proto_get_fullname_front {
+    char flags[4];
+    char padding[4];
+    FDIRProtoOperator oper;
+} FDIRProtoGetFullnameFront;
+
+typedef struct fdir_proto_get_fullname_by_inode_req {
+    FDIRProtoGetFullnameFront front;
+    FDIRProtoInodeInfo ino;
+} FDIRProtoGetFullnameByInodeReq;
+
+typedef struct fdir_proto_get_fullname_by_pname_req {
+    FDIRProtoGetFullnameFront front;
+    FDIRProtoDEntryByPName pname;
+} FDIRProtoGetFullnameByPNameReq;
 
 typedef struct fdir_proto_stat_dentry_front {
     char flags[4];
