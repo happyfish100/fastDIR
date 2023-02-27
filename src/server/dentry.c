@@ -1185,10 +1185,14 @@ static int rename_check(FDIRDataThreadContext *thread_ctx,
         }
     }
 
-    if (!(IS_DENTRY_OWNER(record->oper.uid, record->rename.dest.parent) ||
-                IS_DENTRY_OWNER(record->oper.uid, record->rename.dest.dentry)))
-    {
-        return EACCES;
+    if ((record->rename.dest.parent->stat.mode & S_ISVTX)) {
+        if (!(IS_DENTRY_OWNER(record->oper.uid,
+                        record->rename.dest.parent) ||
+                    IS_DENTRY_OWNER(record->oper.uid,
+                        record->rename.dest.dentry)))
+        {
+            return EACCES;
+        }
     }
 
     if ((record->flags & RENAME_NOREPLACE)) {
