@@ -1349,7 +1349,7 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     char client_ip_buff[64];
     char ns_buff[256];
     char xattr_name_buff[256];
-    char extra_buff[256];
+    char extra_buff[512];
     int extra_len;
     int log_level;
 
@@ -1403,12 +1403,25 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     if (record->dentry_type == fdir_dentry_type_pname &&
             record->me.pname.name.str != NULL)
     {
-        extra_len += snprintf(extra_buff + extra_len,
-                sizeof(extra_buff) - extra_len, ", parent "
-                "inode: %"PRId64", dir name: %.*s",
-                record->me.pname.parent_inode,
-                record->me.pname.name.len,
-                record->me.pname.name.str);
+        if (record->operation == BINLOG_OP_RENAME_DENTRY_INT) {
+            extra_len += snprintf(extra_buff + extra_len,
+                    sizeof(extra_buff) - extra_len, ", src parent "
+                    "inode: %"PRId64", dir name: %.*s, dest parent "
+                    "inode: %"PRId64", dir name: %.*s",
+                    record->rename.src.pname.parent_inode,
+                    record->rename.src.pname.name.len,
+                    record->rename.src.pname.name.str,
+                    record->rename.dest.pname.parent_inode,
+                    record->rename.dest.pname.name.len,
+                    record->rename.dest.pname.name.str);
+        } else {
+            extra_len += snprintf(extra_buff + extra_len,
+                    sizeof(extra_buff) - extra_len, ", parent "
+                    "inode: %"PRId64", dir name: %.*s",
+                    record->me.pname.parent_inode,
+                    record->me.pname.name.len,
+                    record->me.pname.name.str);
+        }
     }
 
     if (result == EPERM || result == EACCES) {
