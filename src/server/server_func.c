@@ -350,11 +350,6 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         STORAGE_MEMORY_LIMIT = 0.99;
     }
 
-#ifdef OS_LINUX
-    READ_BY_DIRECT_IO = iniGetBoolValue(ini_ctx->section_name,
-            "read_by_direct_io", ini_ctx->context, false);
-#endif
-
     return 0;
 }
 
@@ -448,21 +443,12 @@ static void server_log_configs()
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", eliminate_interval: %d s, memory_limit: %.2f%%",
+                ", eliminate_interval: %d s, memory_limit: %.2f%%}",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
                 DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100);
-
-#ifdef OS_LINUX
-        len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
-                ", read_by_direct_io: %d}", READ_BY_DIRECT_IO);
-#else
-        len += snprintf(sz_server_config + len,
-                sizeof(sz_server_config) - len, "}");
-#endif
-
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }
@@ -696,8 +682,6 @@ int server_load_config(const char *filename)
     data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
-    data_cfg.read_by_direct_io = READ_BY_DIRECT_IO;
-
     if (STORAGE_ENABLED) {
         if ((result=inode_add_mark_load(&DUMP_INODE_ADD_STATUS)) != 0) {
             return result;
