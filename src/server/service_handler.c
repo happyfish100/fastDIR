@@ -1392,23 +1392,37 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     } else {
         extra_len = 0;
     }
-    if (record->inode > 0) {
+
+    if (record->dentry_type == fdir_dentry_type_inode &&
+            record->inode > 0)
+    {
         extra_len += sprintf(extra_buff + extra_len, ", current inode: "
                 "%"PRId64, record->inode);
     }
 
-    if (record->me.pname.name.str != NULL) {
-        snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
-                ", parent inode: %"PRId64", dir name: %.*s",
-                record->me.pname.parent_inode, record->me.pname.name.len,
+    if (record->dentry_type == fdir_dentry_type_pname &&
+            record->me.pname.name.str != NULL)
+    {
+        extra_len += snprintf(extra_buff + extra_len,
+                sizeof(extra_buff) - extra_len, ", parent "
+                "inode: %"PRId64", dir name: %.*s",
+                record->me.pname.parent_inode,
+                record->me.pname.name.len,
                 record->me.pname.name.str);
     }
 
     if (result == EPERM || result == EACCES) {
-        snprintf(extra_buff + extra_len, sizeof(extra_buff) - extra_len,
-                ", oper {uid: %d, gid: %d}, additional group count: %d",
+        extra_len += snprintf(extra_buff + extra_len,
+                sizeof(extra_buff) - extra_len,
+                ", oper {uid: %d, gid: %d}"
+                ", additional group count: %d",
                 record->oper.uid, record->oper.gid,
                 record->oper.additional_gids.count);
+        if (record->operation == SERVICE_OP_ACCESS_DENTRY_INT) {
+            extra_len += snprintf(extra_buff + extra_len,
+                    sizeof(extra_buff) - extra_len,
+                    ", access mask: %o", record->mask);
+        }
     }
 
     log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
