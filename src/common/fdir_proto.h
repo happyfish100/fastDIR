@@ -890,24 +890,67 @@ typedef struct fdir_proto_nss_fetch_resp_body_part {
     FDIRProtoNameInfo ns_name;
 } FDIRProtoNSSFetchRespBodyPart;
 
+static inline void fdir_log_network_error_ex1(SFResponseInfo *response,
+        const ConnectionInfo *conn, const int result, const int log_level,
+        const char *file, const int line)
+{
+    if (result == EPERM || result == EACCES) {
+        if (log_level < LOG_WARNING) {
+            sf_log_network_error_ex1(response, conn, "fdir",
+                    result, LOG_WARNING, file, line);
+            return;
+        }
+    }
+
+    sf_log_network_error_ex1(response, conn, "fdir",
+            result, log_level, file, line);
+}
+
 #define fdir_log_network_error_ex(response, conn, result, log_level) \
-    sf_log_network_error_ex(response, conn, "fdir", result, log_level)
+    fdir_log_network_error_ex1(response, conn, result, log_level, \
+            __FILE__, __LINE__)
 
 #define fdir_log_network_error(response, conn, result) \
-    sf_log_network_error(response, conn, "fdir", result)
+    fdir_log_network_error_ex(response, conn, result, LOG_ERR)
 
-#define fdir_log_network_error_for_update_ex( \
-        response, conn, result, file, line)   \
-    sf_log_network_error_for_update_ex(response, \
-            conn, "fdir", result, file, line)
+static inline void fdir_log_network_error_for_update_ex(
+        SFResponseInfo *response, const ConnectionInfo *conn,
+        const int result, const char *file, const int line)
+{
+    if (result == EPERM || result == EACCES) {
+        fdir_log_network_error_ex1(response, conn,
+                result, LOG_ERR, file, line);
+        return;
+    }
+
+    sf_log_network_error_for_update_ex(response,
+            conn, "fdir", result, file, line);
+}
 
 #define fdir_log_network_error_for_update(response, conn, result) \
-    sf_log_network_error_for_update(response, conn, "fdir", result)
+    fdir_log_network_error_for_update_ex(response, conn, result,  \
+            __FILE__, __LINE__)
+
+
+static inline void fdir_log_network_error_for_delete_ex(
+        SFResponseInfo *response, const ConnectionInfo *conn,
+        const int result, const int enoent_log_level,
+        const char *file, const int line)
+{
+    if (result == EPERM || result == EACCES) {
+        fdir_log_network_error_ex1(response, conn,
+                result, LOG_ERR, file, line);
+        return;
+    }
+
+    sf_log_network_error_for_delete_ex(response, conn, "fdir",
+            result, enoent_log_level, file, line);
+}
 
 #define fdir_log_network_error_for_delete(response, \
         conn, result, enoent_log_level) \
-    sf_log_network_error_for_delete(response, conn, \
-            "fdir", result, enoent_log_level)
+    fdir_log_network_error_for_delete_ex(response, conn, \
+            result, enoent_log_level, __FILE__, __LINE__)
 
 #ifdef __cplusplus
 extern "C" {
