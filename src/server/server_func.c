@@ -524,7 +524,7 @@ int server_load_config(const char *filename)
     IniFullContext ini_ctx;
     IniContext ini_context;
     char full_cluster_filename[PATH_MAX];
-    DADataGlobalConfig data_cfg;
+    DADataConfig data_cfg;
     bool clear_segment_index;
     int result;
 

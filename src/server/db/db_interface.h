@@ -23,7 +23,7 @@
 
 typedef int (*fdir_storage_engine_init_func)(IniFullContext *ini_ctx,
         const int my_server_id, const FDIRStorageEngineConfig *db_cfg,
-        const DADataGlobalConfig *data_cfg, const bool clear_segment_index);
+        const DADataConfig *data_cfg, const bool clear_segment_index);
 
 typedef int (*fdir_storage_engine_start_func)();
 
@@ -41,7 +41,7 @@ typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *arra
 typedef int (*fdir_storage_engine_redo_func)(const FDIRDBUpdateFieldArray *array);
 
 typedef int (*fdir_storage_engine_fetch_func)(const int64_t inode,
-        const int field_index, DASynchronizedReadContext *ctx);
+        const int field_index, DASynchronizedReadContext *rctx);
 
 typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_init_func init;
