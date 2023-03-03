@@ -174,6 +174,15 @@ int main(int argc, char *argv[])
     int result;
     int64_t max_data_version;
 
+    g_server_global_vars = malloc(sizeof(FDIRServerGlobalVars));
+    if (g_server_global_vars == NULL) {
+        fprintf(stderr, "malloc %d bytes fail!\n",
+                (int)sizeof(FDIRServerGlobalVars));
+        return ENOMEM;
+    }
+    memset(g_server_global_vars, 0, sizeof(FDIRServerGlobalVars));
+
+
     result = process_cmdline(argc, argv, (bool *)&SF_G_CONTINUE_FLAG);
     if (!SF_G_CONTINUE_FLAG) {
         return result;
@@ -196,7 +205,7 @@ int main(int argc, char *argv[])
             break;
         }
 
-        if ((result=sf_add_slow_log_schedule(&g_server_global_vars.
+        if ((result=sf_add_slow_log_schedule(&g_server_global_vars->
                         slow_log)) != 0)
         {
             break;

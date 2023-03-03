@@ -104,7 +104,7 @@ int ns_manager_init()
     }
 
     fdir_manager.hashtable.count = 0;
-    bytes = sizeof(FDIRNamespaceEntry *) * g_server_global_vars.
+    bytes = sizeof(FDIRNamespaceEntry *) * g_server_global_vars->
         namespace_hashtable_capacity;
     fdir_manager.hashtable.buckets = (FDIRNamespaceEntry **)fc_malloc(bytes);
     if (fdir_manager.hashtable.buckets == NULL) {
@@ -280,7 +280,7 @@ static FDIRNamespaceEntry *create_namespace(FDIRDataThreadContext *thread_ctx,
     \
     hash_code = fc_simple_hash((ns)->str, (ns)->len);  \
     bucket = fdir_manager.hashtable.buckets + (hash_code) % \
-        g_server_global_vars.namespace_hashtable_capacity
+        g_server_global_vars->namespace_hashtable_capacity
 
 
 FDIRNamespaceEntry *fdir_namespace_get(FDIRDataThreadContext *thread_ctx,

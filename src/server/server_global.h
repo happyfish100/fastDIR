@@ -149,137 +149,137 @@ typedef struct server_global_vars {
 
 } FDIRServerGlobalVars;
 
-#define SYSTEM_CPU_COUNT       g_server_global_vars.system.cpu_count
-#define SYSTEM_TOTAL_MEMORY    g_server_global_vars.system.total_memory
+#define SYSTEM_CPU_COUNT       g_server_global_vars->system.cpu_count
+#define SYSTEM_TOTAL_MEMORY    g_server_global_vars->system.total_memory
 
-#define CMDLINE_PROGRAM_FILENAME g_server_global_vars.cmdline.program_filename
-#define CMDLINE_CONFIG_FILENAME  g_server_global_vars.cmdline.config_filename
+#define CMDLINE_PROGRAM_FILENAME g_server_global_vars->cmdline.program_filename
+#define CMDLINE_CONFIG_FILENAME  g_server_global_vars->cmdline.config_filename
 
-#define MASTER_ELECTION_QUORUM g_server_global_vars.cluster. \
+#define MASTER_ELECTION_QUORUM g_server_global_vars->cluster. \
     master_election.quorum
-#define VOTE_NODE_ENABLED      g_server_global_vars.cluster. \
+#define VOTE_NODE_ENABLED      g_server_global_vars->cluster. \
     master_election.vote_node_enabled
-#define FORCE_MASTER_ELECTION  g_server_global_vars.cluster. \
+#define FORCE_MASTER_ELECTION  g_server_global_vars->cluster. \
     master_election.force
-#define ELECTION_MASTER_LOST_TIMEOUT g_server_global_vars.cluster. \
+#define ELECTION_MASTER_LOST_TIMEOUT g_server_global_vars->cluster. \
     master_election.master_lost_timeout
-#define ELECTION_MAX_WAIT_TIME g_server_global_vars.cluster. \
+#define ELECTION_MAX_WAIT_TIME g_server_global_vars->cluster. \
     master_election.max_wait_time
-#define ELECTION_MAX_SHUTDOWN_DURATION g_server_global_vars.cluster. \
+#define ELECTION_MAX_SHUTDOWN_DURATION g_server_global_vars->cluster. \
     master_election.max_shutdown_duration
 
-#define CLUSTER_LAST_HEARTBEAT_TIME g_server_global_vars. \
+#define CLUSTER_LAST_HEARTBEAT_TIME g_server_global_vars-> \
     cluster.last_heartbeat_time
-#define CLUSTER_LAST_SHUTDOWN_TIME  g_server_global_vars. \
+#define CLUSTER_LAST_SHUTDOWN_TIME  g_server_global_vars-> \
     cluster.last_shutdown_time
 
-#define CLUSTER_CONFIG          g_server_global_vars.cluster.config
+#define CLUSTER_CONFIG          g_server_global_vars->cluster.config
 #define CLUSTER_SERVER_CONFIG   CLUSTER_CONFIG.server_cfg
-#define AUTH_CTX                g_server_global_vars.cluster.auth
+#define AUTH_CTX                g_server_global_vars->cluster.auth
 #define AUTH_CLIENT_CTX         AUTH_CTX.ctx
 #define AUTH_ENABLED            AUTH_CTX.enabled
 
-#define MYSELF_IN_MASTER_TERM   g_server_global_vars.cluster.is_my_term
-#define CLUSTER_MYSELF_PTR      g_server_global_vars.cluster.myself
+#define MYSELF_IN_MASTER_TERM   g_server_global_vars->cluster.is_my_term
+#define CLUSTER_MYSELF_PTR      g_server_global_vars->cluster.myself
 #define MYSELF_IS_OLD_MASTER    __sync_add_and_fetch( \
         &CLUSTER_MYSELF_PTR->is_old_master, 0)
 
-#define CLUSTER_MASTER_PTR      g_server_global_vars.cluster.master
+#define CLUSTER_MASTER_PTR      g_server_global_vars->cluster.master
 #define CLUSTER_MASTER_ATOM_PTR ((FDIRClusterServerInfo *)__sync_add_and_fetch( \
         &CLUSTER_MASTER_PTR, 0))
 
-#define CLUSTER_NEXT_MASTER     g_server_global_vars.cluster.next_master
+#define CLUSTER_NEXT_MASTER     g_server_global_vars->cluster.next_master
 
-#define CLUSTER_SERVER_ARRAY    g_server_global_vars.cluster.server_array
+#define CLUSTER_SERVER_ARRAY    g_server_global_vars->cluster.server_array
 
-#define CLUSTER_ID              g_server_global_vars.cluster.id
+#define CLUSTER_ID              g_server_global_vars->cluster.id
 #define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
 #define MY_CONFIRMED_VERSION    CLUSTER_MYSELF_PTR->confirmed_data_version
 
-#define CLUSTER_SF_CTX          g_server_global_vars.cluster.sf_context
+#define CLUSTER_SF_CTX          g_server_global_vars->cluster.sf_context
 
-#define REPLICATION_QUORUM           g_server_global_vars.replication.quorum
-#define REPLICA_QUORUM_NEED_MAJORITY g_server_global_vars. \
+#define REPLICATION_QUORUM           g_server_global_vars->replication.quorum
+#define REPLICA_QUORUM_NEED_MAJORITY g_server_global_vars-> \
     replication.quorum_need_majority
-#define REPLICA_QUORUM_NEED_DETECT   g_server_global_vars. \
+#define REPLICA_QUORUM_NEED_DETECT   g_server_global_vars-> \
     replication.quorum_need_detect
-#define REPLICA_QUORUM_DEACTIVE_ON_FAILURES g_server_global_vars. \
+#define REPLICA_QUORUM_DEACTIVE_ON_FAILURES g_server_global_vars-> \
     replication.deactive_on_failures
-#define REPLICA_REQ_META_CTX         g_server_global_vars. \
+#define REPLICA_REQ_META_CTX         g_server_global_vars-> \
     replication.req_meta_ctx
 
-#define DENTRY_MAX_DATA_SIZE    g_server_global_vars.dentry_max_data_size
-#define FDIR_POSIX_ACL          g_server_global_vars.posix_acl
+#define DENTRY_MAX_DATA_SIZE    g_server_global_vars->dentry_max_data_size
+#define FDIR_POSIX_ACL          g_server_global_vars->posix_acl
 #define FDIR_USE_POSIX_ACL      (FDIR_POSIX_ACL == fdir_posix_acl_strict)
 
-#define BINLOG_BUFFER_SIZE      g_server_global_vars.data.binlog_buffer_size
-#define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars.data. \
+#define BINLOG_BUFFER_SIZE      g_server_global_vars->data.binlog_buffer_size
+#define SLAVE_BINLOG_CHECK_LAST_ROWS  g_server_global_vars->data. \
     slave_binlog_check_last_rows
 
-#define CURRENT_INODE_SN        g_server_global_vars.inode.generator.sn
-#define INODE_CLUSTER_PART      g_server_global_vars.inode.generator.cluster
-#define INODE_SHARED_LOCKS_COUNT g_server_global_vars.inode.entries.shared_locks_count
-#define INODE_HASHTABLE_CAPACITY g_server_global_vars.inode.entries.hashtable_capacity
-#define DATA_CURRENT_VERSION    g_server_global_vars.data.current_version
-#define DATA_THREAD_COUNT       g_server_global_vars.data.thread_count
-#define DATA_LOAD_DONE          g_server_global_vars.data.load_done
-#define LOAD_DUMP_DONE          g_server_global_vars.data.load_dump_done
-#define DATA_PATH               g_server_global_vars.data.path
+#define CURRENT_INODE_SN        g_server_global_vars->inode.generator.sn
+#define INODE_CLUSTER_PART      g_server_global_vars->inode.generator.cluster
+#define INODE_SHARED_LOCKS_COUNT g_server_global_vars->inode.entries.shared_locks_count
+#define INODE_HASHTABLE_CAPACITY g_server_global_vars->inode.entries.hashtable_capacity
+#define DATA_CURRENT_VERSION    g_server_global_vars->data.current_version
+#define DATA_THREAD_COUNT       g_server_global_vars->data.thread_count
+#define DATA_LOAD_DONE          g_server_global_vars->data.load_done
+#define LOAD_DUMP_DONE          g_server_global_vars->data.load_dump_done
+#define DATA_PATH               g_server_global_vars->data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len
 
-#define STORAGE_ENABLED         g_server_global_vars.storage.enabled
-#define STORAGE_PATH            g_server_global_vars.storage.cfg.path
+#define STORAGE_ENABLED         g_server_global_vars->storage.enabled
+#define STORAGE_PATH            g_server_global_vars->storage.cfg.path
 #define STORAGE_PATH_STR        STORAGE_PATH.str
 #define STORAGE_PATH_LEN        STORAGE_PATH.len
 
-#define STORAGE_ENGINE_LIBRARY  g_server_global_vars.storage.library
-#define BATCH_STORE_INTERVAL    g_server_global_vars.storage.batch_store_interval
-#define BATCH_STORE_ON_MODIFIES g_server_global_vars.storage.batch_store_on_modifies
-#define INODE_BINLOG_SUBDIRS    g_server_global_vars.storage.cfg.inode_binlog_subdirs
-#define INDEX_DUMP_INTERVAL     g_server_global_vars.storage.cfg.index_dump_interval
-#define INDEX_DUMP_BASE_TIME    g_server_global_vars.storage.cfg.index_dump_base_time
-#define DENTRY_ELIMINATE_INTERVAL g_server_global_vars.storage.eliminate_interval
-#define STORAGE_MEMORY_LIMIT      g_server_global_vars.storage.memory_limit
+#define STORAGE_ENGINE_LIBRARY  g_server_global_vars->storage.library
+#define BATCH_STORE_INTERVAL    g_server_global_vars->storage.batch_store_interval
+#define BATCH_STORE_ON_MODIFIES g_server_global_vars->storage.batch_store_on_modifies
+#define INODE_BINLOG_SUBDIRS    g_server_global_vars->storage.cfg.inode_binlog_subdirs
+#define INDEX_DUMP_INTERVAL     g_server_global_vars->storage.cfg.index_dump_interval
+#define INDEX_DUMP_BASE_TIME    g_server_global_vars->storage.cfg.index_dump_base_time
+#define DENTRY_ELIMINATE_INTERVAL g_server_global_vars->storage.eliminate_interval
+#define STORAGE_MEMORY_LIMIT      g_server_global_vars->storage.memory_limit
 
-#define STORAGE_ENGINE_INIT_API      g_server_global_vars.storage.api.init
-#define STORAGE_ENGINE_START_API     g_server_global_vars.storage.api.start
-#define STORAGE_ENGINE_TERMINATE_API g_server_global_vars.storage.api.terminate
-#define STORAGE_ENGINE_ADD_INODE_API g_server_global_vars.storage.api.add_inode
+#define STORAGE_ENGINE_INIT_API      g_server_global_vars->storage.api.init
+#define STORAGE_ENGINE_START_API     g_server_global_vars->storage.api.start
+#define STORAGE_ENGINE_TERMINATE_API g_server_global_vars->storage.api.terminate
+#define STORAGE_ENGINE_ADD_INODE_API g_server_global_vars->storage.api.add_inode
 #define STORAGE_ENGINE_SAVE_SEGMENT_INDEX_API   \
-    g_server_global_vars.storage.api.save_segment_index
+    g_server_global_vars->storage.api.save_segment_index
 #define STORAGE_ENGINE_DUMP_INODE_BINLOGS_API   \
-    g_server_global_vars.storage.api.dump_inode_binlogs
-#define STORAGE_ENGINE_STORE_API     g_server_global_vars.storage.api.store
-#define STORAGE_ENGINE_REDO_API      g_server_global_vars.storage.api.redo
-#define STORAGE_ENGINE_FETCH_API     g_server_global_vars.storage.api.fetch
+    g_server_global_vars->storage.api.dump_inode_binlogs
+#define STORAGE_ENGINE_STORE_API     g_server_global_vars->storage.api.store
+#define STORAGE_ENGINE_REDO_API      g_server_global_vars->storage.api.redo
+#define STORAGE_ENGINE_FETCH_API     g_server_global_vars->storage.api.fetch
 
-#define FULL_DUMPING           g_server_global_vars.full_dump.dumping
-#define DUMP_INODE_ADD_STATUS  g_server_global_vars.full_dump.inode_add_status
-#define DUMP_DENTRY_COUNT      g_server_global_vars.full_dump.dentry_count
-#define DUMP_LAST_DATA_VERSION g_server_global_vars.full_dump.last_data_version
-#define DUMP_NEXT_POSITION     g_server_global_vars.full_dump.next_position
+#define FULL_DUMPING           g_server_global_vars->full_dump.dumping
+#define DUMP_INODE_ADD_STATUS  g_server_global_vars->full_dump.inode_add_status
+#define DUMP_DENTRY_COUNT      g_server_global_vars->full_dump.dentry_count
+#define DUMP_LAST_DATA_VERSION g_server_global_vars->full_dump.last_data_version
+#define DUMP_NEXT_POSITION     g_server_global_vars->full_dump.next_position
 
-#define BINLOG_RECORD_COUNT  g_server_global_vars.binlog.record_count
-#define BINLOG_DEDUP_ENABLED g_server_global_vars.binlog.dedup_enabled
-#define BINLOG_DEDUP_RATIO   g_server_global_vars.binlog.target_dedup_ratio
-#define BINLOG_DEDUP_TIME    g_server_global_vars.binlog.dedup_time
-#define BINLOG_KEEP_DAYS     g_server_global_vars.binlog.keep_days
-#define BINLOG_DELETE_TIME   g_server_global_vars.binlog.delete_time
+#define BINLOG_RECORD_COUNT  g_server_global_vars->binlog.record_count
+#define BINLOG_DEDUP_ENABLED g_server_global_vars->binlog.dedup_enabled
+#define BINLOG_DEDUP_RATIO   g_server_global_vars->binlog.target_dedup_ratio
+#define BINLOG_DEDUP_TIME    g_server_global_vars->binlog.dedup_time
+#define BINLOG_KEEP_DAYS     g_server_global_vars->binlog.keep_days
+#define BINLOG_DELETE_TIME   g_server_global_vars->binlog.delete_time
 
-#define SLOW_LOG                g_server_global_vars.slow_log
+#define SLOW_LOG                g_server_global_vars->slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg
 #define SLOW_LOG_CTX            SLOW_LOG.ctx
 
-#define THREAD_POOL             g_server_global_vars.thread_pool
-#define DENTRY_PARRAY_ALLOCATOR g_server_global_vars.dentry_parray_allocator
+#define THREAD_POOL             g_server_global_vars->thread_pool
+#define DENTRY_PARRAY_ALLOCATOR g_server_global_vars->dentry_parray_allocator
 
 #define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG) - 1)
 
 #define REPLICA_KEY_BUFF        CLUSTER_MYSELF_PTR->key
 
-#define CLUSTER_GROUP_INDEX     g_server_global_vars.cluster.config.cluster_group_index
-#define SERVICE_GROUP_INDEX     g_server_global_vars.cluster.config.service_group_index
+#define CLUSTER_GROUP_INDEX     g_server_global_vars->cluster.config.cluster_group_index
+#define SERVICE_GROUP_INDEX     g_server_global_vars->cluster.config.service_group_index
 
 #define CLUSTER_GROUP_ADDRESS_ARRAY(server) \
     (server)->group_addrs[CLUSTER_GROUP_INDEX].address_array
@@ -301,13 +301,13 @@ typedef struct server_global_vars {
 #define SERVICE_GROUP_ADDRESS_FIRST_PORT(server) \
     SERVICE_GROUP_ADDRESS_FIRST_PTR(server)->conn.port
 
-#define CLUSTER_CONFIG_SIGN_BUF g_server_global_vars.cluster.config.md5_digest
+#define CLUSTER_CONFIG_SIGN_BUF g_server_global_vars->cluster.config.md5_digest
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-    extern FDIRServerGlobalVars g_server_global_vars;
+    extern FDIRServerGlobalVars *g_server_global_vars;
 
 #ifdef __cplusplus
 }
