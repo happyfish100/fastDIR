@@ -435,7 +435,11 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
             (int)(mem_size / (1024 * 1024)), (int)sizeof(FDIRServerDentry));
             */
 
-    inode_total = mem_size / 300;
+    if (STORAGE_ENABLED) {
+        inode_total = mem_size / 24;
+    } else {
+        inode_total = mem_size / 300;
+    }
     if ((result=fdir_namespace_stat(&ns, &stat)) != 0) {
         return result;
     }
@@ -448,6 +452,58 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
 
     RESPONSE.header.body_len = sizeof(FDIRProtoNamespaceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_STAT_RESP;
+    TASK_CTX.common.response_done = true;
+    return 0;
+}
+
+static int service_deal_namespace_list(struct fast_task_info *task)
+{
+    int result;
+    const FDIRNamespacePtrArray *ns_array;
+    FDIRProtoNamespaceListRespHeader *header;
+    FDIRProtoNamespaceListRespBody *body;
+    FDIRProtoNamespaceListRespBody *last_body;
+    FDIRNamespaceEntry **ns;
+    FDIRNamespaceEntry **end;
+
+    if ((result=server_expect_body_length(0)) != 0) {
+        return result;
+    }
+
+    if ((ns_array=fdir_namespace_get_all()) == NULL) {
+        return ENOENT;
+    }
+
+    last_body = (FDIRProtoNamespaceListRespBody *)((task->data + task->size)
+            - (sizeof(FDIRProtoNamespaceListRespBody) + NAME_MAX));
+    header = (FDIRProtoNamespaceListRespHeader *)SF_PROTO_RESP_BODY(task);
+    body = (FDIRProtoNamespaceListRespBody *)(header + 1);
+    end = ns_array->namespaces + ns_array->count;
+    for (ns=ns_array->namespaces; ns<end; ns++) {
+        if (body > last_body) {
+            break;
+        }
+        if ((*ns)->current.used_bytes > 0) {
+            long2buff((*ns)->current.used_bytes, body->used_bytes);
+        } else {
+            long2buff(0, body->used_bytes);
+        }
+        long2buff((*ns)->current.counts.file, body->file_count);
+        long2buff((*ns)->current.counts.dir, body->dir_count);
+        if ((*ns)->name.len > 255) {
+            body->name_len = 255;
+        } else {
+            body->name_len = (*ns)->name.len;
+        }
+        memcpy(body->name_str, (*ns)->name.str, body->name_len);
+        body = (FDIRProtoNamespaceListRespBody *)(
+                (char *)(body + 1) + (*ns)->name.len);
+    }
+
+    int2buff(ns - ns_array->namespaces, header->count);
+    int2buff(CLUSTER_MY_SERVER_ID, header->server_id);
+    RESPONSE.header.body_len = (char *)body - (char *)header;
+    RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NAMESPACE_LIST_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -3923,6 +3979,7 @@ static int service_check_priv(struct fast_task_info *task)
         case SF_SERVICE_PROTO_REBIND_CHANNEL_REQ:
         case FDIR_SERVICE_PROTO_NSS_FETCH_REQ:
         case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ:
+        case FDIR_SERVICE_PROTO_NAMESPACE_LIST_REQ:
             return 0;
 
         case FDIR_SERVICE_PROTO_CREATE_DENTRY_REQ:
@@ -4204,6 +4261,8 @@ static int service_process(struct fast_task_info *task)
             return service_deal_cluster_stat(task);
         case FDIR_SERVICE_PROTO_NAMESPACE_STAT_REQ:
             return service_deal_namespace_stat(task);
+        case FDIR_SERVICE_PROTO_NAMESPACE_LIST_REQ:
+            return service_deal_namespace_list(task);
         case FDIR_SERVICE_PROTO_GENERATE_NODE_ID_REQ:
             if ((result=service_check_master(task)) == 0) {
                 return service_deal_generate_node_id(task);
