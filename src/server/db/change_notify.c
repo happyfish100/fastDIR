@@ -108,7 +108,7 @@ static void *change_notify_func(void *arg)
         waiting_count = FC_ATOMIC_GET(change_notify_ctx.waiting_count);
         if (wait_seconds > 0 && waiting_count < BATCH_STORE_ON_MODIFIES) {
             lcp_timedwait_sec(&change_notify_ctx.queue.
-                    queue.lc_pair, wait_seconds);
+                    queue.lcp, wait_seconds);
         }
 
         last_time = g_current_time;
@@ -183,7 +183,7 @@ void change_notify_push_to_queue(FDIRChangeNotifyEvent *event)
             waiting_count, 1) == BATCH_STORE_ON_MODIFIES;
     sorted_queue_push_silence(&change_notify_ctx.queue, event);
     if (notify) {
-        pthread_cond_signal(&change_notify_ctx.queue.queue.lc_pair.cond);
+        pthread_cond_signal(&change_notify_ctx.queue.queue.lcp.cond);
     }
 }
 
@@ -195,7 +195,7 @@ void change_notify_load_done_signal()
     while (FC_ATOMIC_GET(change_notify_ctx.waiting_count) > 0 &&
             SF_G_CONTINUE_FLAG)
     {
-        pthread_cond_signal(&change_notify_ctx.queue.queue.lc_pair.cond);
+        pthread_cond_signal(&change_notify_ctx.queue.queue.lcp.cond);
         fc_sleep_us(sleep_us);
         if (sleep_us < 10 * 1000) {
             sleep_us *= 2;

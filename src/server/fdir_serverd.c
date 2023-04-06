@@ -383,6 +383,11 @@ int main(int argc, char *argv[])
     inode_generator_destroy();
     server_binlog_terminate();
     sf_service_destroy();
+
+    if (STORAGE_ENABLED) {
+        STORAGE_ENGINE_TERMINATE_API();
+    }
+
     delete_pid_file(g_pid_filename);
     logInfo("file: "__FILE__", line: %d, "
             "program exit normally.\n", __LINE__);
