@@ -916,7 +916,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
         {
             /* successful chmod updates ctime. */
             record->options.ctime = 1;
-            dentry->stat.ctime = record->stat.ctime = record->timestamp;
+            record->stat.ctime = record->timestamp;
         }
     }
 
@@ -1004,7 +1004,7 @@ static inline int update_dentry_stat(FDIRServerDentry *dentry,
         {
             /* successful chown updates ctime. */
             record->options.ctime = 1;
-            dentry->stat.ctime = record->stat.ctime = record->timestamp;
+            record->stat.ctime = record->timestamp;
         }
     }
 
