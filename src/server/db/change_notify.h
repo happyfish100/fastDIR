@@ -48,7 +48,7 @@ typedef struct fdir_change_notify_event {
     int64_t version;
     FDIRChangeNotifyMessageArray marray;
     struct fdir_data_thread_context *thread_ctx;
-    struct fdir_change_notify_event *next; //for queue
+    struct fc_list_head dlink; //for queue
 } FDIRChangeNotifyEvent;
 
 #define FDIR_CHANGE_NOTIFY_FILL_MESSAGE(message, ent, type, index, alloc) \

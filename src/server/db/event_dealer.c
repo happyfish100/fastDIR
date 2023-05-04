@@ -383,7 +383,7 @@ static int deal_merged_entries()
     return result;
 }
 
-int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
+int event_dealer_do(struct fc_list_head *head, int *count)
 {
     int result;
     FDIRChangeNotifyEvent *event;
@@ -391,17 +391,12 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
 
     MSG_PTR_ARRAY.count = 0;
     *count = 0;
-    event = head;
-    do {
+    fc_list_for_each_entry (event, head, dlink) {
         ++(*count);
-
         if ((result=add_to_msg_ptr_array(event)) != 0) {
             return result;
         }
-
-        last = event;
-        event = event->next;
-    } while (event != NULL);
+    }
 
     if (MSG_PTR_ARRAY.count > 1) {
         qsort(MSG_PTR_ARRAY.messages, MSG_PTR_ARRAY.count,
@@ -413,6 +408,7 @@ int event_dealer_do(FDIRChangeNotifyEvent *head, int *count)
         return result;
     }
 
+    last = fc_list_entry(head->prev, FDIRChangeNotifyEvent, dlink);
     event_dealer_ctx.updater_ctx.last_versions.dentry.prepare = last->version;
     if ((result=deal_merged_entries()) != 0) {
         return result;
