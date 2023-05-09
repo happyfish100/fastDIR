@@ -124,7 +124,7 @@ static void *change_notify_func(void *arg)
             less_equal.version = data_thread_get_last_data_version();
         }
 
-        sorted_queue_try_pop_all(&change_notify_ctx.
+        sorted_queue_try_pop_to_chain(&change_notify_ctx.
                 queue, &less_equal, &head);
         if (!fc_list_empty(&head)) {
             /*
