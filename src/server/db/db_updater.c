@@ -48,12 +48,6 @@ static DBUpdaterCtx db_updater_ctx;
 
 #define NS_DUMP_CTX  db_updater_ctx.ns_dump_ctx
 
-static int compare_field_version(const FDIRDBUpdateFieldInfo *entry1,
-        const FDIRDBUpdateFieldInfo *entry2)
-{
-    return fc_compare_int64(entry1->version, entry2->version);
-}
-
 int db_updater_realloc_dentry_array(FDIRDBUpdateFieldArray *array)
 {
     FDIRDBUpdateFieldInfo *entries;
@@ -546,12 +540,6 @@ void db_updater_destroy()
 int db_updater_deal(FDIRDBUpdaterContext *ctx)
 {
     int result;
-
-    if (ctx->array.count > 1) {
-        qsort(ctx->array.entries, ctx->array.count, sizeof(
-                    FDIRDBUpdateFieldInfo), (int (*)(const void *,
-                            const void *))compare_field_version);
-    }
 
     if ((result=write_redo_log(ctx)) != 0) {
         return result;

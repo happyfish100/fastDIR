@@ -350,11 +350,6 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         STORAGE_MEMORY_LIMIT = 0.99;
     }
 
-#ifdef OS_LINUX
-    READ_BY_DIRECT_IO = iniGetBoolValue(ini_ctx->section_name,
-            "read_by_direct_io", ini_ctx->context, false);
-#endif
-
     return 0;
 }
 
@@ -428,10 +423,10 @@ static void server_log_configs()
             DATA_PATH_STR, DATA_THREAD_COUNT,
             DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
             SLAVE_BINLOG_CHECK_LAST_ROWS,
-            g_server_global_vars.reload_interval_ms,
-            g_server_global_vars.check_alive_interval,
-            g_server_global_vars.namespace_hashtable_capacity,
-            g_server_global_vars.node_hashtable_capacity,
+            g_server_global_vars->reload_interval_ms,
+            g_server_global_vars->check_alive_interval,
+            g_server_global_vars->namespace_hashtable_capacity,
+            g_server_global_vars->node_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
             FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG),
             sf_get_election_quorum_caption(MASTER_ELECTION_QUORUM),
@@ -448,21 +443,12 @@ static void server_log_configs()
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", eliminate_interval: %d s, memory_limit: %.2f%%",
+                ", eliminate_interval: %d s, memory_limit: %.2f%%}",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
                 DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100);
-
-#ifdef OS_LINUX
-        len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
-                ", read_by_direct_io: %d}", READ_BY_DIRECT_IO);
-#else
-        len += snprintf(sz_server_config + len,
-                sizeof(sz_server_config) - len, "}");
-#endif
-
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }
@@ -538,7 +524,7 @@ int server_load_config(const char *filename)
     IniFullContext ini_ctx;
     IniContext ini_context;
     char full_cluster_filename[PATH_MAX];
-    DADataGlobalConfig data_cfg;
+    DADataConfig data_cfg;
     bool clear_segment_index;
     int result;
 
@@ -600,35 +586,35 @@ int server_load_config(const char *filename)
         SLAVE_BINLOG_CHECK_LAST_ROWS = FDIR_MAX_SLAVE_BINLOG_CHECK_LAST_ROWS;
     }
 
-    g_server_global_vars.reload_interval_ms = iniGetIntValue(NULL,
+    g_server_global_vars->reload_interval_ms = iniGetIntValue(NULL,
             "reload_interval_ms", &ini_context,
             FDIR_SERVER_DEFAULT_RELOAD_INTERVAL);
-    if (g_server_global_vars.reload_interval_ms <= 0) {
-        g_server_global_vars.reload_interval_ms =
+    if (g_server_global_vars->reload_interval_ms <= 0) {
+        g_server_global_vars->reload_interval_ms =
             FDIR_SERVER_DEFAULT_RELOAD_INTERVAL;
     }
 
-    g_server_global_vars.check_alive_interval = iniGetIntValue(NULL,
+    g_server_global_vars->check_alive_interval = iniGetIntValue(NULL,
             "check_alive_interval", &ini_context,
             FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL);
-    if (g_server_global_vars.check_alive_interval <= 0) {
-        g_server_global_vars.check_alive_interval =
+    if (g_server_global_vars->check_alive_interval <= 0) {
+        g_server_global_vars->check_alive_interval =
             FDIR_SERVER_DEFAULT_CHECK_ALIVE_INTERVAL;
     }
 
-    g_server_global_vars.namespace_hashtable_capacity = iniGetIntValue(NULL,
+    g_server_global_vars->namespace_hashtable_capacity = iniGetIntValue(NULL,
             "namespace_hashtable_capacity", &ini_context,
             FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY);
-    if (g_server_global_vars.namespace_hashtable_capacity <= 0) {
-        g_server_global_vars.namespace_hashtable_capacity =
+    if (g_server_global_vars->namespace_hashtable_capacity <= 0) {
+        g_server_global_vars->namespace_hashtable_capacity =
             FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY;
     }
 
-    g_server_global_vars.node_hashtable_capacity = iniGetIntValue(NULL,
+    g_server_global_vars->node_hashtable_capacity = iniGetIntValue(NULL,
             "node_hashtable_capacity", &ini_context,
             FDIR_NODE_HASHTABLE_DEFAULT_CAPACITY);
-    if (g_server_global_vars.node_hashtable_capacity <= 0) {
-        g_server_global_vars.node_hashtable_capacity =
+    if (g_server_global_vars->node_hashtable_capacity <= 0) {
+        g_server_global_vars->node_hashtable_capacity =
             FDIR_NAMESPACE_HASHTABLE_DEFAULT_CAPACITY;
     }
 
@@ -681,14 +667,14 @@ int server_load_config(const char *filename)
     }
 
     if (DENTRY_ELIMINATE_INTERVAL > 0) {
-        g_server_global_vars.storage.cfg.memory_limit = (int64_t)
+        g_server_global_vars->storage.cfg.memory_limit = (int64_t)
             (SYSTEM_TOTAL_MEMORY * STORAGE_MEMORY_LIMIT *
              MEMORY_LIMIT_INODE_RATIO);
-        if (g_server_global_vars.storage.cfg.memory_limit < 64 * 1024 * 1024) {
-            g_server_global_vars.storage.cfg.memory_limit = 64 * 1024 * 1024;
+        if (g_server_global_vars->storage.cfg.memory_limit < 64 * 1024 * 1024) {
+            g_server_global_vars->storage.cfg.memory_limit = 64 * 1024 * 1024;
         }
     } else {
-        g_server_global_vars.storage.cfg.memory_limit = 0;  //no limit
+        g_server_global_vars->storage.cfg.memory_limit = 0;  //no limit
     }
 
     data_cfg.path = STORAGE_PATH;
@@ -696,8 +682,6 @@ int server_load_config(const char *filename)
     data_cfg.binlog_subdirs = INODE_BINLOG_SUBDIRS;
     data_cfg.trunk_index_dump_interval = INDEX_DUMP_INTERVAL;
     data_cfg.trunk_index_dump_base_time = INDEX_DUMP_BASE_TIME;
-    data_cfg.read_by_direct_io = READ_BY_DIRECT_IO;
-
     if (STORAGE_ENABLED) {
         if ((result=inode_add_mark_load(&DUMP_INODE_ADD_STATUS)) != 0) {
             return result;
@@ -714,7 +698,7 @@ int server_load_config(const char *filename)
         clear_segment_index = (DUMP_INODE_ADD_STATUS ==
                 inode_add_mark_status_doing);
         if ((result=STORAGE_ENGINE_INIT_API(&ini_ctx, CLUSTER_MY_SERVER_ID,
-                        &g_server_global_vars.storage.cfg, &data_cfg,
+                        &g_server_global_vars->storage.cfg, &data_cfg,
                         clear_segment_index)) != 0)
         {
             return result;

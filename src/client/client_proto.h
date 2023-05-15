@@ -140,6 +140,20 @@ typedef struct fdir_client_namespace_stat_array {
     SFProtoRecvBuffer buffer;
 } FDIRClientNamespaceStatArray;
 
+typedef struct fdir_client_namespace_entry {
+    string_t ns_name;
+    int64_t dir_count;
+    int64_t file_count;
+    int64_t used_bytes;
+} FDIRClientNamespaceEntry;
+
+typedef struct fdir_client_namespace_array {
+    int alloc;
+    int count;
+    FDIRClientNamespaceEntry *entries;
+    SFProtoRecvBuffer buffer;
+} FDIRClientNamespaceArray;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -409,6 +423,15 @@ int fdir_client_proto_nss_fetch(FDIRClientContext *client_ctx,
 
 int fdir_client_namespace_stat_array_init(FDIRClientNamespaceStatArray *array);
 void fdir_client_namespace_stat_array_free(FDIRClientNamespaceStatArray *array);
+
+
+int fdir_client_proto_namespace_list(FDIRClientContext *client_ctx,
+        ConnectionInfo *conn, int *server_id,
+        FDIRClientNamespaceArray *array);
+
+int fdir_client_namespace_array_init(FDIRClientNamespaceArray *array);
+void fdir_client_namespace_array_free(FDIRClientNamespaceArray *array);
+
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
         const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat);

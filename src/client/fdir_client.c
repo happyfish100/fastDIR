@@ -411,6 +411,14 @@ int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
             ns, stat);
 }
 
+int fdir_client_namespace_list(FDIRClientContext *client_ctx,
+        int *server_id, FDIRClientNamespaceArray *array)
+{
+    SF_CLIENT_IDEMPOTENCY_QUERY_WRAPPER(client_ctx, &client_ctx->cm,
+            GET_READABLE_CONNECTION, 0, fdir_client_proto_namespace_list,
+            server_id, array);
+}
+
 int fdir_client_get_xattr_by_path_ex(FDIRClientContext *client_ctx,
         const FDIRClientOperFnamePair *path, const string_t *name,
         const int enoattr_log_level, string_t *value,

@@ -39,7 +39,6 @@ SFBinlogWriterContext g_binlog_writer_ctx;
 int binlog_write_init()
 {
     const int binlog_init_buffer_size = 1024;
-    const int writer_count = 1;
     const bool use_fixed_buffer_size = false;
     const bool passive_write = false;
     int result;
@@ -57,7 +56,7 @@ int binlog_write_init()
     if ((result=sf_binlog_writer_init_thread_ex(&g_binlog_writer_ctx.thread,
                     FDIR_BINLOG_SUBDIR_NAME, &g_binlog_writer_ctx.writer,
                     SF_BINLOG_THREAD_ORDER_MODE_VARY, binlog_init_buffer_size,
-                    writer_count, use_fixed_buffer_size, passive_write)) != 0)
+                    use_fixed_buffer_size, passive_write)) != 0)
     {
         return result;
     }

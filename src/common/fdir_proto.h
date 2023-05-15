@@ -135,6 +135,9 @@
 #define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_REQ  105
 #define FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_RESP 106
 
+#define FDIR_SERVICE_PROTO_NAMESPACE_LIST_REQ       141
+#define FDIR_SERVICE_PROTO_NAMESPACE_LIST_RESP      142
+
 //for namespace stat sync
 #define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ        151
 #define FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP       152
@@ -631,6 +634,19 @@ typedef struct fdir_proto_list_xattr_by_path_req {
 
 typedef FDIRProtoGetXAttrByPathReq  FDIRProtoRemoveXAttrByPathReq;
 typedef FDIRProtoGetXAttrByInodeReq FDIRProtoRemoveXAttrByInodeReq;
+
+typedef struct fdir_proto_namespace_list_resp_header {
+    char count[4];
+    char server_id[4];
+} FDIRProtoNamespaceListRespHeader;
+
+typedef struct fdir_proto_namespace_list_resp_body {
+    char dir_count[8];
+    char file_count[8];
+    char used_bytes[8];
+    unsigned char name_len;
+    char name_str[0];
+} FDIRProtoNamespaceListRespBody;
 
 typedef struct fdir_proto_service_stat_resp {
     char server_id[4];

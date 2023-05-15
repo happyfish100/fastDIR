@@ -150,7 +150,6 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
     const int buffer_size = 1024 * 1024;
     const short order_mode = SF_BINLOG_THREAD_ORDER_MODE_VARY;
     const int max_record_size = 0;  //use the binlog buffer of the caller
-    const int writer_count = 1;
     const bool use_fixed_buffer_size = true;
     const bool passive_write = true;
     int ring_size;
@@ -190,8 +189,7 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
 
     return sf_binlog_writer_init_thread_ex(&dump_ctx->bwctx.thread,
             subdir_name, &dump_ctx->bwctx.writer, order_mode,
-            max_record_size, writer_count, use_fixed_buffer_size,
-            passive_write);
+            max_record_size, use_fixed_buffer_size, passive_write);
 }
 
 static void destroy_dump_ctx(FDIRBinlogDumpContext *dump_ctx)

@@ -15,6 +15,7 @@
 
 #include "fastcommon/logger.h"
 #include "fastcommon/pthread_func.h"
+#include "sf/sf_service.h"
 #include "sf/sf_func.h"
 #include "sf/sf_nio.h"
 #include "binlog/binlog_write.h"
@@ -886,6 +887,7 @@ int replication_quorum_end_master_term()
     int64_t my_confirmed_version;
     int64_t current_data_version;
     pid_t pid;
+    int result;
 
     if (!(REPLICA_QUORUM_NEED_MAJORITY || REPLICA_QUORUM_NEED_DETECT)) {
         return 0;
@@ -901,19 +903,24 @@ int replication_quorum_end_master_term()
 
     pid = fork();
     if (pid < 0) {
-        return (errno != 0 ? errno : EBUSY);
-    } else if (pid > 0) {
+        result = (errno != 0 ? errno : EBUSY);
+        logError("file: "__FILE__", line: %d, "
+                "call fork fail, errno: %d, error info: %s",
+                __LINE__, result, STRERROR(result));
+        return result;
+    } else if (pid > 0) {  //parent process
         logInfo("file: "__FILE__", line: %d, "
                 "i am not the master, restart to rollback data",
                 __LINE__);
         return 0;
     }
 
-    //child process
+    //child process, close server sockets
+    sf_socket_close_ex(&CLUSTER_SF_CTX);
+    sf_socket_close();
     if (execlp(CMDLINE_PROGRAM_FILENAME, CMDLINE_PROGRAM_FILENAME,
                 CMDLINE_CONFIG_FILENAME, "restart", NULL) < 0)
     {
-        int result;
         result = errno != 0 ? errno : EBUSY;
         logError("file: "__FILE__", line: %d, "
                 "exec \"%s %s restart\" fail, errno: %d, error info: %s",

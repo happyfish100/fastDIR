@@ -58,7 +58,7 @@ int node_manager_init()
     }
 
     fdir_node_manager.hashtable.count = 0;
-    bytes = sizeof(FDIRNodeEntry *) * g_server_global_vars.
+    bytes = sizeof(FDIRNodeEntry *) * g_server_global_vars->
         node_hashtable_capacity;
     fdir_node_manager.hashtable.buckets = fc_malloc(bytes);
     if (fdir_node_manager.hashtable.buckets == NULL) {
@@ -81,7 +81,7 @@ void node_manager_destroy()
     FDIRNodeEntry **bucket; \
     \
     bucket = fdir_node_manager.hashtable.buckets + (id) % \
-        g_server_global_vars.node_hashtable_capacity
+        g_server_global_vars->node_hashtable_capacity
 
 
 static int create_node(FDIRNodeEntry **bucket, const int id,

@@ -246,6 +246,10 @@ const char *fdir_get_cmd_caption(const int cmd)
         case FDIR_SERVICE_PROTO_GET_FULLNAME_BY_INODE_RESP:
             return "GET_FULLNAME_BY_INODE_RESP";
 
+        case FDIR_SERVICE_PROTO_NAMESPACE_LIST_REQ:
+            return "NAMESPACE_LIST_REQ";
+        case FDIR_SERVICE_PROTO_NAMESPACE_LIST_RESP:
+            return "NAMESPACE_LIST_RESP";
         case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_REQ:
             return "NSS_SUBSCRIBE_REQ";
         case FDIR_SERVICE_PROTO_NSS_SUBSCRIBE_RESP:

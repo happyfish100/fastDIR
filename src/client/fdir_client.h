@@ -286,6 +286,10 @@ int fdir_client_list_compact_dentry_by_inode(
 int fdir_client_namespace_stat(FDIRClientContext *client_ctx,
         const string_t *ns, FDIRClientNamespaceStat *stat);
 
+int fdir_client_namespace_list(FDIRClientContext *client_ctx,
+        int *server_id, FDIRClientNamespaceArray *array);
+
+
 //init node id for flock
 int fdir_client_init_node_id(FDIRClientContext *client_ctx);
 

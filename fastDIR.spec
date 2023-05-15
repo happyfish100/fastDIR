@@ -119,6 +119,7 @@ mkdir -p /opt/fastcfs/fdir
 /usr/bin/fdir_service_stat
 /usr/bin/fdir_stat
 /usr/bin/fdir_list_servers
+/usr/bin/fdir_namespace_list
 
 %files -n %{FastDIRDevel}
 %defattr(-,root,root,-)
