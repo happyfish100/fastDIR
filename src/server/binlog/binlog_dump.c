@@ -400,6 +400,10 @@ static void *dump_thread_func(void *arg)
 {
     int server_id;
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "data-dump");
+#endif
+
     server_id = (long)arg;
     dump_all(server_id);
     return NULL;

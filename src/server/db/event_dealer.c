@@ -373,14 +373,17 @@ static int deal_merged_entries()
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
 
-    result = db_updater_deal(&event_dealer_ctx.updater_ctx);
+    if ((result=db_updater_deal(&event_dealer_ctx.updater_ctx)) != 0) {
+        return result;
+    }
+
     end = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count;
     for (entry=MERGED_DENTRY_ARRAY.entries; entry<end; entry++) {
         dentry_release_ex(entry->args, entry->merge_count);
     }
 
     event_dealer_free_buffers(&MERGED_DENTRY_ARRAY);
-    return result;
+    return 0;
 }
 
 int event_dealer_do(struct fc_list_head *head, int *count)

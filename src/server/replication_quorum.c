@@ -758,6 +758,10 @@ static void *replication_quorum_thread_run(void *arg)
     bool set_version;
     bool by_slave;
 
+#ifdef OS_LINUX
+    prctl(PR_SET_NAME, "replica-quorum");
+#endif
+
     generation = (long)arg;
     __sync_bool_compare_and_swap(&fdir_replication_quorum.
             thread.running, 0, 1);
