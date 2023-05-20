@@ -1480,7 +1480,7 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
         }
     }
 
-    if (result == EPERM || result == EACCES) {
+    if ((result == EPERM || result == EACCES) && FDIR_USE_POSIX_ACL) {
         extra_len += snprintf(extra_buff + extra_len,
                 sizeof(extra_buff) - extra_len,
                 ", oper {uid: %d, gid: %d}"
@@ -2118,19 +2118,39 @@ static int idempotency_output(struct fast_task_info *task,
                 break;
         }
 
-        thread_ctx = get_data_thread_context(hash_code);
-        if ((result=inode_index_get_dentry(thread_ctx,
-                        inode, &dentry)) == 0)
-        {
-            pstat = &dentry->stat;
+        if (STORAGE_ENABLED) {
+            if ((result=alloc_record_object(task)) != 0) {
+                return result;
+            }
+            RECORD->dentry_type = fdir_dentry_type_inode;
+            RECORD->inode = inode;
+            RECORD->flags = 0;
+            RECORD->hash_code = hash_code;
+            FC_SET_STRING_EX(RECORD->ns, "", 0);
+            FC_SET_STRING_NULL(RECORD->me.pname.name);
+            RECORD->oper.uid = RECORD->oper.gid = 0;
+            RECORD->oper.additional_gids.count = 0;
+            RESPONSE.header.cmd = resp_cmd;
+            RECORD->operation = SERVICE_OP_STAT_DENTRY_INT;
+            result = push_query_to_data_thread_queue(task);
         } else {
-            memset(&stat, 0, sizeof(stat));
-            pstat = &stat;
+            thread_ctx = get_data_thread_context(hash_code);
+            if ((result=inode_index_get_dentry(thread_ctx,
+                            inode, &dentry)) == 0)
+            {
+                pstat = &dentry->stat;
+            } else {
+                memset(&stat, 0, sizeof(stat));
+                pstat = &stat;
+            }
         }
     }
 
-    dstat_output(task, inode, pstat);
-    return 0;
+    if (result != TASK_STATUS_CONTINUE) {
+        RESPONSE.header.cmd = resp_cmd;
+        dstat_output(task, inode, pstat);
+    }
+    return result;
 }
 
 static int service_update_prepare_and_check(struct fast_task_info *task,
