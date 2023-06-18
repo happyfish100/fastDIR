@@ -653,7 +653,11 @@ typedef struct fdir_proto_service_stat_resp {
     char is_master;
     char status;
     char auth_enabled;
-    char storage_engine;
+    struct {
+        char enabled;
+        char current_version[8];
+    } storage_engine;
+
     char padding[5];
     struct {
         char len;

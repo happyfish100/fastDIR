@@ -83,7 +83,10 @@ typedef struct fdir_client_service_stat {
     bool is_master;
     char status;
     bool auth_enabled;
-    bool storage_engine;
+    struct {
+        bool enabled;
+        int64_t current_version;
+    } storage_engine;
     char version_holder[12];
     string_t version;
 

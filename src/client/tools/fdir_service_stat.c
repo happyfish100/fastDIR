@@ -33,13 +33,22 @@ static void usage(char *argv[])
 
 static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
+    char storage_engine_buff[128];
+    int len;
+
+    len = sprintf(storage_engine_buff, "enabled: %s", stat->
+            storage_engine.enabled ? "true" : "false");
+    if (stat->storage_engine.enabled) {
+        sprintf(storage_engine_buff + len, ", current_version: %"PRId64,
+                stat->storage_engine.current_version);
+    }
     printf( "\tserver_id: %d\n"
             "\thost: %s:%u\n"
             "\tversion: %.*s\n"
             "\tstatus: %d (%s)\n"
             "\tis_master: %s\n"
             "\tauth_enabled: %s\n"
-            "\tstorage_engine: %s\n"
+            "\tstorage_engine: {%s}\n"
             "\tconnection : {current: %d, max: %d}\n"
             "\tdata : {current_version: %"PRId64", "
             "confirmed_version: %"PRId64"}\n"
@@ -49,7 +58,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->auth_enabled ? "true" : "false",
-            stat->storage_engine ? "true" : "false",
+            storage_engine_buff,
             stat->connection.current_count,
             stat->connection.max_count,
             stat->data.current_version,
@@ -57,8 +66,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             stat->binlog.current_version);
 
     if (stat->is_master) {
-        printf( ", writer: {next_version: %"PRId64", "
-                "total_count: %"PRId64", "
+        printf( ", writer: {next_version: %"PRId64", \n"
+                "\t\t  total_count: %"PRId64", "
                 "waiting_count: %d, max_waitings: %d}",
                 stat->binlog.writer.next_version,
                 stat->binlog.writer.total_count,
@@ -68,8 +77,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 
     printf( "}\n"
             "\tdentry : {current_inode_sn: %"PRId64", "
-            "ns_count: %"PRId64", "
-            "dir_count: %"PRId64", "
+            "ns_count: %"PRId64", \n"
+            "\t\t  dir_count: %"PRId64", "
             "file_count: %"PRId64"}\n\n",
             stat->dentry.current_inode_sn,
             stat->dentry.counters.ns,

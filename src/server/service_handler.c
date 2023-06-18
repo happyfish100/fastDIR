@@ -47,6 +47,7 @@
 #include "binlog/binlog_write.h"
 #include "binlog/binlog_reader.h"
 #include "binlog/binlog_pack.h"
+#include "db/event_dealer.h"
 #include "server_global.h"
 #include "server_func.h"
 #include "dentry.h"
@@ -325,7 +326,15 @@ static int service_deal_service_stat(struct fast_task_info *task)
         CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
     stat_resp->status = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status);
     stat_resp->auth_enabled = AUTH_ENABLED ? 1 : 0;
-    stat_resp->storage_engine = STORAGE_ENABLED ? 1 : 0;
+    if (STORAGE_ENABLED) {
+        stat_resp->storage_engine.enabled = 1;
+        long2buff(event_dealer_get_last_data_version(),
+                stat_resp->storage_engine.current_version);
+    } else {
+        stat_resp->storage_engine.enabled = 0;
+        long2buff(0, stat_resp->storage_engine.current_version);
+    }
+
     stat_resp->version.len = sprintf(stat_resp->version.str, "%d.%d.%d",
             g_fdir_global_vars.version.major, g_fdir_global_vars.
             version.minor, g_fdir_global_vars.version.patch);
