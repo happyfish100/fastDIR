@@ -144,10 +144,16 @@ static void *change_notify_func(void *arg)
     return NULL;
 }
 
-static int notify_event_compare(const FDIRChangeNotifyEvent *event1,
+static int notify_event_push_compare(const FDIRChangeNotifyEvent *event1,
         const FDIRChangeNotifyEvent *event2)
 {
     return fc_compare_int64(event1->version, event2->version);
+}
+
+static int notify_event_pop_compare(const FDIRChangeNotifyEvent *event,
+        const FDIRChangeNotifyEvent *less_equal, void *arg)
+{
+    return fc_compare_int64(event->version, less_equal->version);
 }
 
 int change_notify_init()
@@ -158,7 +164,9 @@ int change_notify_init()
     if ((result=sorted_queue_init(&change_notify_ctx.queue, (long)
                     (&((FDIRChangeNotifyEvent *)NULL)->dlink),
                     (int (*)(const void *, const void *))
-                    notify_event_compare)) != 0)
+                    notify_event_push_compare,
+                    (int (*)(const void *, const void *, void *arg))
+                    notify_event_pop_compare, NULL)) != 0)
     {
         return result;
     }

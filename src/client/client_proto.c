@@ -185,9 +185,9 @@ static int client_check_set_proto_dentry(
 #define FDIR_PROTO_FILL_OPERATOR(oper, proto) \
     int2buff((oper).uid, (proto).uid);  \
     int2buff((oper).gid, (proto).gid);  \
-    if ((oper).additional_gids.count > 0) {  \
+    if ((oper).additional_gids.count > 0) {   \
         memcpy((proto).additional_gids.list,  \
-                (oper).additional_gids.list, \
+                (oper).additional_gids.list,  \
                 FDIR_ADDITIONAL_GROUP_BYTES(oper)); \
     } \
     (proto).additional_gids.count = (oper).additional_gids.count
