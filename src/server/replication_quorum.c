@@ -140,12 +140,25 @@ static int get_confirmed_version_from_file(const int index,
 
     *confirmed_version = strtoll(buff, &endptr, 10);
     if (*endptr != ' ') {
+        logWarning("file: "__FILE__", line: %d, "
+                "get confirmed version from file %s fail, "
+                "content length: %d, content: %s", __LINE__,
+                filename, (int)file_size, buff);
         return EINVAL;
     }
 
     crc32.calc = CRC32(buff, endptr - buff);
     crc32.value = strtol(endptr + 1, NULL, 16);
-    return (crc32.value == crc32.calc ? 0 : EINVAL);
+    if (crc32.value == crc32.calc) {
+        return 0;
+    } else {
+        logWarning("file: "__FILE__", line: %d, "
+                "get confirmed version from file %s fail, "
+                "crc32: %08x != calculate: %08x, content length: %d, "
+                "content: %s", __LINE__, filename, crc32.value,
+                crc32.calc, (int)file_size, buff);
+        return EINVAL;
+    }
 }
 
 static int load_confirmed_version(int64_t *confirmed_version)
