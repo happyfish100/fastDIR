@@ -138,6 +138,11 @@ static int get_confirmed_version_from_file(const int index,
         return result;
     }
 
+    if (file_size == 0) {
+        *confirmed_version = 0;
+        return 0;
+    }
+
     *confirmed_version = strtoll(buff, &endptr, 10);
     if (*endptr != ' ') {
         logWarning("file: "__FILE__", line: %d, "
