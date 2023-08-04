@@ -265,6 +265,7 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
 {
     int result;
     char *library;
+    char *children_container;
 
     ini_ctx->section_name = "storage-engine";
     STORAGE_ENABLED = iniGetBoolValue(ini_ctx->section_name,
@@ -348,6 +349,16 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
                 "memory_limit: %%%.2f is too large, set to 99%%",
                 __LINE__, STORAGE_MEMORY_LIMIT);
         STORAGE_MEMORY_LIMIT = 0.99;
+    }
+
+    children_container = iniGetStrValue(ini_ctx->section_name,
+            "children_container", ini_ctx->context);
+    if (children_container != NULL && strcasecmp(
+                children_container, "skiplist") == 0)
+    {
+        CHILDREN_CONTAINER = fdir_children_container_skiplist;
+    } else {
+        CHILDREN_CONTAINER = fdir_children_container_sortedarray;
     }
 
     return 0;
@@ -443,12 +454,15 @@ static void server_log_configs()
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
-                ", eliminate_interval: %d s, memory_limit: %.2f%%}",
+                ", eliminate_interval: %d s, memory_limit: %.2f%%"
+                ", children_container: %s}",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
-                DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100);
+                DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100,
+                CHILDREN_CONTAINER == fdir_children_container_sortedarray ?
+                "sortedarray" : "skiplist");
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }

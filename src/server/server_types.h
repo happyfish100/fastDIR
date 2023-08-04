@@ -138,6 +138,11 @@ typedef enum {
     fdir_posix_acl_strict
 } FDIRPosixACLPolicy;
 
+typedef enum {
+    fdir_children_container_sortedarray,
+    fdir_children_container_skiplist
+} FDIRChildrenContainer;
+
 typedef struct fdir_server_dentry_db_args {
     IdNameArray *children;         //children inodes for update event dealer
     struct fc_list_head lru_dlink; //for dentry LRU elimination

@@ -195,9 +195,10 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
 
             if ((*msg)->dentry->db_args->children == NULL) {
                 logWarning("file: "__FILE__", line: %d, "
-                        "inode: %"PRId64", child inode: %"PRId64", "
-                        "the children array is NULL!", __LINE__,
-                        (*msg)->dentry->inode, (*msg)->child.id);
+                        "inode: %"PRId64", op_type: %c, array "
+                        "child inode: %"PRId64", the children "
+                        "is NULL!", __LINE__, (*msg)->dentry->inode,
+                        (*msg)->op_type, (*msg)->child.id);
                 continue;
             }
 
@@ -210,8 +211,10 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
                 id_name_pair_t *end;
 
                 logWarning("file: "__FILE__", line: %d, "
-                        "parent inode: %"PRId64", child %"PRId64" not exist",
-                        __LINE__, (*msg)->dentry->inode, (*msg)->child.id);
+                        "parent inode: %"PRId64", op_type: %c, "
+                        "child %"PRId64" not exist", __LINE__,
+                        (*msg)->dentry->inode, (*msg)->op_type,
+                        (*msg)->child.id);
 
                 end = (*msg)->dentry->db_args->children->elts +
                     (*msg)->dentry->db_args->children->count;

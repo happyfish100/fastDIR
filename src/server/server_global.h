@@ -138,6 +138,7 @@ typedef struct server_global_vars {
         int eliminate_interval;
         FDIRStorageEngineConfig cfg;
         double memory_limit;   //ratio
+        FDIRChildrenContainer children_container;
         char *library;
         FDIRStorageEngineInterface api;
     } storage;
@@ -244,6 +245,7 @@ typedef struct server_global_vars {
 #define INDEX_DUMP_BASE_TIME    g_server_global_vars->storage.cfg.index_dump_base_time
 #define DENTRY_ELIMINATE_INTERVAL g_server_global_vars->storage.eliminate_interval
 #define STORAGE_MEMORY_LIMIT      g_server_global_vars->storage.memory_limit
+#define CHILDREN_CONTAINER        g_server_global_vars->storage.children_container
 
 #define STORAGE_ENGINE_INIT_API      g_server_global_vars->storage.api.init
 #define STORAGE_ENGINE_START_API     g_server_global_vars->storage.api.start
