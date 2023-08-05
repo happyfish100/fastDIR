@@ -72,13 +72,16 @@ int dentry_serializer_init()
         return result;
     }
 
-    if ((result=id_name_array_allocator_init(&ID_NAME_ARRAY_ALLOCATOR_CTX,
-                    min_bits, max_bits)) != 0)
-    {
-        return result;
+    if (CHILDREN_CONTAINER == fdir_children_container_sortedarray) {
+        if ((result=id_name_array_allocator_init(&ID_NAME_ARRAY_ALLOCATOR_CTX,
+                        min_bits, max_bits)) != 0)
+        {
+            return result;
+        }
+
+        sorted_id_name_array_init(&ID_NAME_SORTED_ARRAY_CTX, allow_duplication);
     }
 
-    sorted_id_name_array_init(&ID_NAME_SORTED_ARRAY_CTX, allow_duplication);
     return 0;
 }
 
@@ -237,8 +240,11 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
     int result;
 
     if (field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
-        if (dentry->db_args->children == NULL ||
-                dentry->db_args->children->count == 0)
+        if ((CHILDREN_CONTAINER == fdir_children_container_skiplist &&
+                    uniq_skiplist_empty(dentry->db_args->children.sl)) ||
+                (CHILDREN_CONTAINER == fdir_children_container_sortedarray &&
+                 (dentry->db_args->children.sa == NULL ||
+                  dentry->db_args->children.sa->count == 0)))
         {
             *buffer = NULL;
             return 0;
@@ -264,10 +270,16 @@ int dentry_serializer_pack(const FDIRServerDentry *dentry,
             break;
         case FDIR_PIECE_FIELD_INDEX_CHILDREN:
             if (S_ISDIR(dentry->stat.mode)) {
-                result = sf_serializer_pack_id_name_array(*buffer,
-                        DENTRY_FIELD_ID_CHILDREN,
-                        dentry->db_args->children->elts,
-                        dentry->db_args->children->count);
+                if (CHILDREN_CONTAINER == fdir_children_container_skiplist) {
+                    result = sf_serializer_pack_id_name_skiplist(
+                            *buffer, DENTRY_FIELD_ID_CHILDREN,
+                            dentry->db_args->children.sl);
+                } else {
+                    result = sf_serializer_pack_id_name_array(
+                            *buffer, DENTRY_FIELD_ID_CHILDREN,
+                            dentry->db_args->children.sa->elts,
+                            dentry->db_args->children.sa->count);
+                }
             } else {
                 result = EINVAL;
             }

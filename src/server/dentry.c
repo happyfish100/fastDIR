@@ -33,8 +33,6 @@ typedef struct {
     string_t *ptr;
 } StringHolderPtrPair;
 
-const int max_level_count = 20;
-
 static int dentry_init_obj_with_db(FDIRServerDentry *dentry, void *init_args)
 {
     dentry_lru_init_dlink(dentry);
@@ -234,18 +232,23 @@ void dentry_free_for_elimination(FDIRServerDentry *dentry)
     }
 
     if (STORAGE_ENABLED) {
-        if (dentry->db_args->children != NULL) {
-            id_name_pair_t *pair;
-            id_name_pair_t *end;
+        if (dentry->db_args->children.ptr != NULL) {
+            if (CHILDREN_CONTAINER == fdir_children_container_skiplist) {
+                uniq_skiplist_free(dentry->db_args->children.sl);
+            } else {
+                id_name_pair_t *p;
+                id_name_pair_t *end;
 
-            end = dentry->db_args->children->elts +
-                dentry->db_args->children->count;
-            for (pair=dentry->db_args->children->elts; pair<end; pair++) {
-                dentry_strfree(dentry->context, &pair->name);
+                end = dentry->db_args->children.sa->elts +
+                    dentry->db_args->children.sa->count;
+                for (p=dentry->db_args->children.sa->elts; p<end; p++) {
+                    dentry_strfree(dentry->context, &p->name);
+                }
+                id_name_array_allocator_free(&ID_NAME_ARRAY_ALLOCATOR_CTX,
+                        dentry->db_args->children.sa);
             }
-            id_name_array_allocator_free(&ID_NAME_ARRAY_ALLOCATOR_CTX,
-                    dentry->db_args->children);
-            dentry->db_args->children = NULL;
+
+            dentry->db_args->children.ptr = NULL;
         }
 
         if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC)) {
@@ -281,14 +284,14 @@ static void dentry_immediate_free(void *ctx, void *ptr)
     dentry_free_ex(ptr, (long)ctx);
 }
 
-static void dentry_free_func(FDIRServerDentry *dentry,
+static void dentry_free_func(UniqSkiplist *sl, FDIRServerDentry *dentry,
         const int delay_seconds)
 {
     dentry_delay_free(dentry);
 }
 
-static void dentry_free_func_with_db(FDIRServerDentry *dentry,
-        const int delay_seconds)
+static void dentry_free_func_with_db(UniqSkiplist *sl,
+        FDIRServerDentry *dentry, const int delay_seconds)
 {
     if ((dentry->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_BASIC)) {
         dentry_delay_free(dentry);
@@ -407,6 +410,15 @@ static inline void dentry_init_pool(FDIRDentryPool *pool,
     pool->count = 0;
 }
 
+static void dentry_free_child(UniqSkiplist *sl,
+        id_name_pair_t *child, const int delay_seconds)
+{
+    FDIRDentryContext *context;
+    context = sl->factory->arg;
+    dentry_strfree(context, &child->name);
+    fast_mblock_free_object(&context->db_args.child_allocator, child);
+}
+
 int dentry_init_context(FDIRDataThreadContext *thread_ctx)
 {
     const int delay_free_seconds = 0;
@@ -422,12 +434,33 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
     } else {
         free_func = (uniq_skiplist_free_func)dentry_free_func;
     }
-    if ((result=uniq_skiplist_init_ex(&context->factory, max_level_count,
+    if ((result=uniq_skiplist_init_ex(&context->factory, SKIPLIST_MAX_LEVEL,
                     dentry_compare, free_func, 16 * 1024,
                     SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
-                    delay_free_seconds)) != 0)
+                    delay_free_seconds, NULL)) != 0)
     {
         return result;
+    }
+
+    if (STORAGE_ENABLED && CHILDREN_CONTAINER ==
+            fdir_children_container_skiplist)
+    {
+        if ((result=uniq_skiplist_init_ex(&context->db_args.factory,
+                        SKIPLIST_MAX_LEVEL, (skiplist_compare_func)
+                        array_compare_element_id_name,
+                        (uniq_skiplist_free_func)dentry_free_child,
+                        16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
+                        delay_free_seconds, context)) != 0)
+        {
+            return result;
+        }
+
+        if ((result=fast_mblock_init_ex1(&context->db_args.child_allocator,
+                        "db-child", sizeof(id_name_pair_t), 16 * 1024, 0,
+                        NULL, NULL, false)) != 0)
+        {
+            return result;
+        }
     }
 
     if ((result=init_name_allocators(&context->name_acontext)) != 0) {

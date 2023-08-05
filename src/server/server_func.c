@@ -414,6 +414,7 @@ static void server_log_configs()
             "cluster_id = %d, my server id = %d, posix_acl: %s, "
             "data_path = %s, data_threads = %d, "
             "dentry_max_data_size = %d, "
+            "skiplist_max_level = %d, "
             "binlog_buffer_size = %d KB, "
             "slave_binlog_check_last_rows = %d, "
             "reload_interval_ms = %d ms, "
@@ -432,7 +433,8 @@ static void server_log_configs()
             CLUSTER_ID, CLUSTER_MY_SERVER_ID,
             (FDIR_POSIX_ACL == fdir_posix_acl_strict ? "strict" : "none"),
             DATA_PATH_STR, DATA_THREAD_COUNT,
-            DENTRY_MAX_DATA_SIZE, BINLOG_BUFFER_SIZE / 1024,
+            DENTRY_MAX_DATA_SIZE, SKIPLIST_MAX_LEVEL,
+            BINLOG_BUFFER_SIZE / 1024,
             SLAVE_BINLOG_CHECK_LAST_ROWS,
             g_server_global_vars->reload_interval_ms,
             g_server_global_vars->check_alive_interval,
@@ -470,12 +472,13 @@ static void server_log_configs()
     binlog_shrink_config_to_string(sz_binlog_shrink_config,
             sizeof(sz_binlog_shrink_config));
 
-    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}, "
-            "%s, %s, %s", g_fdir_global_vars.version.major,
+    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}",
+            g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch, sz_global_config,
-            sz_slowlog_config, sz_service_config, sz_cluster_config,
-            sz_server_config, sz_binlog_shrink_config, sz_auth_config);
+            sz_slowlog_config, sz_service_config, sz_cluster_config);
+    logInfo("%s, %s, %s", sz_server_config, sz_binlog_shrink_config,
+            sz_auth_config);
     log_local_host_ip_addrs();
     log_cluster_server_config();
 }
@@ -573,6 +576,9 @@ int server_load_config(const char *filename)
     if ((result=load_dentry_max_data_size(&ini_ctx)) != 0) {
         return result;
     }
+
+    SKIPLIST_MAX_LEVEL = iniGetIntCorrectValue(&ini_ctx,
+            "skiplist_max_level", 12, 8, 20);
 
     if ((result=load_posix_acl(&ini_ctx)) != 0) {
         return result;

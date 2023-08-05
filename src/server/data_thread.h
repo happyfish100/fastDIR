@@ -53,6 +53,10 @@ typedef struct fdir_dentry_pool {
 typedef struct fdir_dentry_context {
     UniqSkiplistFactory factory;
     struct {
+        UniqSkiplistFactory factory;
+        struct fast_mblock_man child_allocator;  //element: id_name_pair_t
+    } db_args;  //for storage engine
+    struct {
         FDIRDentryPool local_alloc;
         FDIRDentryPool batch_free;
     } pools;

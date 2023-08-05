@@ -144,7 +144,11 @@ typedef enum {
 } FDIRChildrenContainer;
 
 typedef struct fdir_server_dentry_db_args {
-    IdNameArray *children;         //children inodes for update event dealer
+    union {
+        IdNameArray *sa;
+        UniqSkiplist *sl;
+        void *ptr;
+    } children;         //children inodes for update event dealer
     struct fc_list_head lru_dlink; //for dentry LRU elimination
     int loaded_count;              //children loaded count
     short loaded_flags;

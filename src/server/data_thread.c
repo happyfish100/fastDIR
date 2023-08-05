@@ -57,8 +57,7 @@ int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
 {
     ServerImmediateFreeNode *node;
 
-    node = (ServerImmediateFreeNode *)fast_mblock_alloc_object(
-            &free_ctx->allocator);
+    node = fast_mblock_alloc_object(&free_ctx->allocator);
     if (node == NULL) {
         return ENOMEM;
     }
@@ -77,8 +76,7 @@ int server_add_to_immediate_free_queue(ServerFreeContext *free_ctx,
 {
     ServerImmediateFreeNode *node;
 
-    node = (ServerImmediateFreeNode *)fast_mblock_alloc_object(
-            &free_ctx->allocator);
+    node = fast_mblock_alloc_object(&free_ctx->allocator);
     if (node == NULL) {
         return ENOMEM;
     }
@@ -549,38 +547,73 @@ static int check_load_children(FDIRServerDentry *parent)
     int target_count;
     FDIRServerDentry *child;
     id_name_pair_t pair;
+    id_name_pair_t *elt;
     UniqSkiplistIterator it;
 
     if ((parent->db_args->loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST)) {
         return 0;
     }
 
-    target_count = 0;
-    uniq_skiplist_iterator(parent->children, &it);
-    while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
-        ++target_count;
-    }
-
-    if (target_count > 0) {
-        parent->db_args->children = id_name_array_allocator_alloc(
-                &ID_NAME_ARRAY_ALLOCATOR_CTX, target_count);
-        if (parent->db_args->children == NULL) {
+    if (CHILDREN_CONTAINER == fdir_children_container_skiplist) {
+        parent->db_args->children.sl = uniq_skiplist_new(&parent->context->
+                db_args.factory, DENTRY_SKIPLIST_INIT_LEVEL_COUNT);
+        if (parent->db_args->children.sl == NULL) {
             return ENOMEM;
         }
 
         uniq_skiplist_iterator(parent->children, &it);
-        while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
-            pair.id = child->inode;
+        while ((child=uniq_skiplist_next(&it)) != NULL) {
+            if ((elt=fast_mblock_alloc_object(&parent->context->
+                            db_args.child_allocator)) == NULL)
+            {
+                return ENOMEM;
+            }
+
+            elt->id = child->inode;
             if ((result=dentry_strdup(parent->context,
-                            &pair.name, &child->name)) != 0)
+                            &elt->name, &child->name)) != 0)
             {
                 return result;
             }
-            if ((result=sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX,
-                            parent->db_args->children->elts, &parent->
-                            db_args->children->count, &pair)) != 0)
+            if ((result=uniq_skiplist_insert(parent->db_args->
+                            children.sl, elt)) != 0)
             {
+                logError("file: "__FILE__", line: %d, inode: %"PRId64", "
+                        "insert child {inode: %"PRId64", name: %.*s} to "
+                        "skiplist fail, errno: %d, error info: %s", __LINE__,
+                        parent->inode, child->inode, child->name.len,
+                        child->name.str, result, STRERROR(result));
                 return result;
+            }
+        }
+    } else {
+        target_count = 0;
+        uniq_skiplist_iterator(parent->children, &it);
+        while ((child=uniq_skiplist_next(&it)) != NULL) {
+            ++target_count;
+        }
+
+        if (target_count > 0) {
+            parent->db_args->children.sa = id_name_array_allocator_alloc(
+                    &ID_NAME_ARRAY_ALLOCATOR_CTX, target_count);
+            if (parent->db_args->children.sa == NULL) {
+                return ENOMEM;
+            }
+
+            uniq_skiplist_iterator(parent->children, &it);
+            while ((child=uniq_skiplist_next(&it)) != NULL) {
+                pair.id = child->inode;
+                if ((result=dentry_strdup(parent->context,
+                                &pair.name, &child->name)) != 0)
+                {
+                    return result;
+                }
+                if ((result=sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX,
+                                parent->db_args->children.sa->elts, &parent->
+                                db_args->children.sa->count, &pair)) != 0)
+                {
+                    return result;
+                }
             }
         }
     }
@@ -799,8 +832,7 @@ static int push_to_db_update_queue(FDIRDataThreadContext *thread_ctx,
     FDIRChangeNotifyEvent *event;
     FDIRChangeNotifyMessage *msg;
 
-    event = (FDIRChangeNotifyEvent *)fast_mblock_alloc_object(
-            &thread_ctx->event.allocator);
+    event = fast_mblock_alloc_object(&thread_ctx->event.allocator);
     if (event == NULL) {
         return ENOMEM;
     }

@@ -145,24 +145,102 @@ static inline void free_message_buffer(
 }
 
 static int insert_children(FDIRServerDentry *dentry,
-        const id_name_pair_t *pair)
+        const id_name_pair_t *child)
 {
     int target_count;
-    if (dentry->db_args->children == NULL || dentry->db_args->
-            children->alloc <= dentry->db_args->children->count)
-    {
-        target_count = dentry->db_args->children != NULL ?
-            dentry->db_args->children->count + 1 : 1;
-        dentry->db_args->children = id_name_array_allocator_realloc(
-                &ID_NAME_ARRAY_ALLOCATOR_CTX, dentry->db_args->
-                children, target_count);
-        if (dentry->db_args->children == NULL) {
+    id_name_pair_t *elt;
+
+    if (CHILDREN_CONTAINER == fdir_children_container_skiplist) {
+        if ((elt=fast_mblock_alloc_object(&dentry->context->
+                            db_args.child_allocator)) == NULL)
+        {
             return ENOMEM;
+        }
+
+        *elt = *child;
+        return uniq_skiplist_insert(dentry->db_args->children.sl, elt);
+    } else {
+        if (dentry->db_args->children.sa == NULL || dentry->db_args->
+                children.sa->alloc <= dentry->db_args->children.sa->count)
+        {
+            target_count = dentry->db_args->children.sa != NULL ?
+                dentry->db_args->children.sa->count + 1 : 1;
+            dentry->db_args->children.sa = id_name_array_allocator_realloc(
+                    &ID_NAME_ARRAY_ALLOCATOR_CTX, dentry->db_args->
+                    children.sa, target_count);
+            if (dentry->db_args->children.sa == NULL) {
+                return ENOMEM;
+            }
+        }
+
+        return sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX, dentry->db_args->
+                children.sa->elts, &dentry->db_args->children.sa->count, child);
+    }
+}
+
+static int remove_or_update_children(FDIRServerDentry *dentry,
+        const DABinlogOpType op_type, const id_name_pair_t *child)
+{
+    id_name_pair_t *found;
+    id_name_pair_t *elt;
+
+    if (dentry->db_args->children.ptr == NULL) {
+        logWarning("file: "__FILE__", line: %d, "
+                "inode: %"PRId64", op_type: %c, array "
+                "child inode: %"PRId64", the children "
+                "is NULL!", __LINE__, dentry->inode,
+                op_type, child->id);
+        return EBUSY;
+    }
+
+    if (CHILDREN_CONTAINER == fdir_children_container_skiplist) {
+        if (op_type == da_binlog_op_type_remove) {
+            return uniq_skiplist_delete(dentry->db_args->
+                    children.sl, (void *)child);
+        } else {
+            if ((elt=fast_mblock_alloc_object(&dentry->context->
+                            db_args.child_allocator)) == NULL)
+            {
+                return ENOMEM;
+            }
+
+            *elt = *child;
+            return uniq_skiplist_replace(dentry->db_args->children.sl, elt);
+        }
+    } else {
+        if ((found=sorted_array_find(&ID_NAME_SORTED_ARRAY_CTX,
+                        dentry->db_args->children.sa->elts,
+                        dentry->db_args->children.sa->count,
+                        child)) == NULL)
+        {
+            id_name_pair_t *pair;
+            id_name_pair_t *end;
+
+            end = dentry->db_args->children.sa->elts +
+                dentry->db_args->children.sa->count;
+            for (pair=dentry->db_args->children.sa->elts; pair<end; pair++) {
+                logInfo("children[%d]: %"PRId64, (int)(pair - dentry->
+                            db_args->children.sa->elts) + 1, pair->id);
+            }
+
+            return ENOENT;
+        }
+
+        server_immediate_free_str(dentry->context,
+                found->name.str);
+
+        if (op_type == da_binlog_op_type_remove) {
+            sorted_array_delete_by_index(&ID_NAME_SORTED_ARRAY_CTX,
+                    dentry->db_args->children.sa->elts,
+                    &dentry->db_args->children.sa->count,
+                    found - (id_name_pair_t *)dentry->
+                    db_args->children.sa->elts);
+        } else { //update
+            found->name = child->name;
         }
     }
 
-    return sorted_array_insert(&ID_NAME_SORTED_ARRAY_CTX, dentry->db_args->
-            children->elts, &dentry->db_args->children->count, pair);
+    return 0;
 }
 
 static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
@@ -184,59 +262,26 @@ static int merge_children_messages(FDIRDBUpdateFieldInfo *merged,
                     return result;
                 } else {
                     logWarning("file: "__FILE__", line: %d, "
-                            "inode: %"PRId64", insert child %"PRId64" "
-                            "fail, errno: %d, error info: %s", __LINE__,
-                            (*msg)->dentry->inode, (*msg)->child.id,
+                            "inode: %"PRId64", insert child {inode: %"PRId64
+                            ", name: %.*s} fail, errno: %d, error info: %s",
+                            __LINE__, (*msg)->dentry->inode, (*msg)->child.id,
+                            (*msg)->child.name.len, (*msg)->child.name.str,
                             result, STRERROR(result));
                 }
             }
         } else {
-            id_name_pair_t *found;
-
-            if ((*msg)->dentry->db_args->children == NULL) {
-                logWarning("file: "__FILE__", line: %d, "
-                        "inode: %"PRId64", op_type: %c, array "
-                        "child inode: %"PRId64", the children "
-                        "is NULL!", __LINE__, (*msg)->dentry->inode,
-                        (*msg)->op_type, (*msg)->child.id);
-                continue;
+            if ((result=remove_or_update_children((*msg)->dentry, (*msg)->
+                            op_type, &(*msg)->child)) == ENOMEM)
+            {
+                return result;
             }
 
-            if ((found=sorted_array_find(&ID_NAME_SORTED_ARRAY_CTX,
-                            (*msg)->dentry->db_args->children->elts,
-                            (*msg)->dentry->db_args->children->count,
-                            &(*msg)->child)) == NULL)
-            {
-                id_name_pair_t *pair;
-                id_name_pair_t *end;
-
+            if (result == ENOENT) {
                 logWarning("file: "__FILE__", line: %d, "
                         "parent inode: %"PRId64", op_type: %c, "
                         "child %"PRId64" not exist", __LINE__,
                         (*msg)->dentry->inode, (*msg)->op_type,
                         (*msg)->child.id);
-
-                end = (*msg)->dentry->db_args->children->elts +
-                    (*msg)->dentry->db_args->children->count;
-                for (pair=(*msg)->dentry->db_args->children->elts; pair<end; pair++) {
-                    logInfo("children[%d]: %"PRId64, (int)(pair - (*msg)->dentry->
-                        db_args->children->elts) + 1, pair->id);
-                }
-
-                continue;
-            }
-
-            server_immediate_free_str((*msg)->dentry->context,
-                    found->name.str);
-
-            if ((*msg)->op_type == da_binlog_op_type_remove) {
-                sorted_array_delete_by_index(&ID_NAME_SORTED_ARRAY_CTX,
-                        (*msg)->dentry->db_args->children->elts,
-                        &(*msg)->dentry->db_args->children->count,
-                        found - (id_name_pair_t *)(*msg)->dentry->
-                        db_args->children->elts);
-            } else { //update
-                found->name = (*msg)->child.name;
             }
         }
     }
