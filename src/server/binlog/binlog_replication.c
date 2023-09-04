@@ -135,7 +135,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     struct fast_task_info *task;
     FDIRServerContext *server_ctx;
 
-    if ((task=sf_alloc_init_task(&CLUSTER_SF_CTX, -1)) == NULL) {
+    if ((task=sf_alloc_init_task(CLUSTER_NET_HANDLER, -1)) == NULL) {
         return ENOMEM;
     }
 

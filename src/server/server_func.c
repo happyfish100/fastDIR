@@ -568,6 +568,11 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    //TODO
+    CLUSTER_NET_HANDLER = CLUSTER_SF_CTX.handlers +
+        SF_SOCKET_NETWORK_HANDLER_INDEX;
+    CLUSTER_NET_HANDLER->enabled = true;
+
     FAST_INI_SET_FULL_CTX_EX(ini_ctx, filename, NULL, &ini_context);
     if ((result=sf_load_data_path_config(&ini_ctx, &DATA_PATH)) != 0) {
         return result;
