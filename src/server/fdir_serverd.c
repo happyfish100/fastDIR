@@ -76,7 +76,12 @@ int init_nio_task(struct fast_task_info *task)
     task->connect_timeout = SF_G_CONNECT_TIMEOUT;
     task->network_timeout = SF_G_NETWORK_TIMEOUT;
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
-    return 0;
+
+    if (RDMA_INIT_CONNECTION != NULL) {
+        return RDMA_INIT_CONNECTION(task, RDMA_INIT_CONNECTION);
+    } else {
+        return 0;
+    }
 }
 
 static int parse_cmd_options(int argc, char *argv[])
@@ -278,8 +283,8 @@ int main(int argc, char *argv[])
                 cluster_thread_loop_callback, NULL,
                 sf_proto_set_body_length, NULL, NULL, cluster_deal_task,
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
-                5000, sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
-                init_nio_task, NULL);
+                5000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
+                sizeof(FDIRServerTaskArg), init_nio_task, NULL);
         if (result != 0) {
             break;
         }
@@ -328,8 +333,8 @@ int main(int argc, char *argv[])
                 service_thread_loop_callback, NULL,
                 sf_proto_set_body_length, NULL, NULL, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
-                sizeof(FDIRProtoHeader), sizeof(FDIRServerTaskArg),
-                init_nio_task, NULL);
+                sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
+                sizeof(FDIRServerTaskArg), init_nio_task, NULL);
         if (result != 0) {
             break;
         }
