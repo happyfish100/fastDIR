@@ -32,8 +32,8 @@ int fdir_alloc_group_servers(FDIRServerGroup *server_group,
 {
     int bytes;
 
-    bytes = sizeof(ConnectionInfo) * alloc_size;
-    server_group->servers = (ConnectionInfo *)fc_malloc(bytes);
+    bytes = sizeof(ConnectionInfo *) * alloc_size;
+    server_group->servers = (ConnectionInfo **)fc_malloc(bytes);
     if (server_group->servers == NULL) {
         return errno != 0 ? errno : ENOMEM;
     }
@@ -139,6 +139,7 @@ int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
         FCFSAuthClientContext *auth_ctx, IniFullContext *ini_ctx)
 {
     IniContext iniContext;
+    FCServerGroupInfo *server_group;
     int result;
 
     client_ctx->auth.ctx = auth_ctx;
@@ -157,6 +158,15 @@ int fdir_client_load_from_file_ex1(FDIRClientContext *client_ctx,
     if (ini_ctx->context == &iniContext) {
         iniFreeContext(&iniContext);
         ini_ctx->context = NULL;
+    }
+
+    if (result == 0) {
+        server_group = fc_server_get_group_by_index(
+                &client_ctx->cluster.server_cfg,
+                client_ctx->cluster.service_group_index);
+        if (server_group->comm_type != fc_comm_type_sock) {
+            result = conn_pool_global_init_for_rdma();
+        }
     }
 
     return result;

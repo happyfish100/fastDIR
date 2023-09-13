@@ -31,7 +31,7 @@ struct fdir_client_context;
 typedef struct fdir_server_group {
     int alloc_size;
     int count;
-    ConnectionInfo *servers;
+    ConnectionInfo **servers;
 } FDIRServerGroup;
 
 typedef struct fdir_client_session {

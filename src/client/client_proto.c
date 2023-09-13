@@ -1074,7 +1074,13 @@ static int do_readlink(FDIRClientContext *client_ctx,
             return EOVERFLOW;
         }
 
-        if ((result=tcprecvdata_nb_ex(conn->sock, link->str,
+        if (conn->comm_type == fc_comm_type_rdma) {
+            memcpy(link->str, G_RDMA_CONNECTION_CALLBACKS.
+                    get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                    response.header.body_len);
+            link->len = response.header.body_len;
+            *(link->str + link->len) = '\0';
+        } else if ((result=tcprecvdata_nb_ex(conn->sock, link->str,
                         response.header.body_len, client_ctx->common_cfg.
                         network_timeout, &link->len)) == 0)
         {
@@ -1229,7 +1235,13 @@ static inline int do_get_fullname(FDIRClientContext *client_ctx,
             return EOVERFLOW;
         }
 
-        if ((result=tcprecvdata_nb_ex(conn->sock, fullname->str,
+        if (conn->comm_type == fc_comm_type_rdma) {
+            memcpy(fullname->str, G_RDMA_CONNECTION_CALLBACKS.
+                    get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                    response.header.body_len);
+            fullname->len = response.header.body_len;
+            *(fullname->str + fullname->len) = '\0';
+        } else if ((result=tcprecvdata_nb_ex(conn->sock, fullname->str,
                         response.header.body_len, client_ctx->common_cfg.
                         network_timeout, &fullname->len)) == 0)
         {
@@ -2544,7 +2556,11 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
         return result;
     }
 
-    if ((result=tcprecvdata_nb(conn->sock, array->buffer.buff,
+    if (conn->comm_type == fc_comm_type_rdma) {
+        memcpy(array->buffer.buff, G_RDMA_CONNECTION_CALLBACKS.
+                get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                response->header.body_len);
+    } else if ((result=tcprecvdata_nb(conn->sock, array->buffer.buff,
                     response->header.body_len, client_ctx->
                     common_cfg.network_timeout)) != 0)
     {
@@ -2863,6 +2879,7 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
     int calc_size;
+    bool need_free;
 
     if ((conn=client_ctx->cm.ops.get_master_connection(
                     &client_ctx->cm, 0, &result)) == NULL)
@@ -2876,23 +2893,30 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     in_buff = fixed_buff;
+    need_free = false;
     if ((result=sf_send_and_check_response_header(conn, out_buff,
                     out_bytes, &response, client_ctx->common_cfg.
                     network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
     {
-        if (response.header.body_len > sizeof(fixed_buff)) {
-            in_buff = (char *)fc_malloc(response.header.body_len);
-            if (in_buff == NULL) {
-                response.error.length = sprintf(response.error.message,
-                        "malloc %d bytes fail", response.header.body_len);
-                result = ENOMEM;
+        if (conn->comm_type == fc_comm_type_rdma) {
+            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_buffer(conn)->buff +
+                + sizeof(FDIRProtoHeader);
+        } else {
+            if (response.header.body_len > sizeof(fixed_buff)) {
+                in_buff = (char *)fc_malloc(response.header.body_len);
+                if (in_buff == NULL) {
+                    response.error.length = sprintf(response.error.message,
+                            "malloc %d bytes fail", response.header.body_len);
+                    result = ENOMEM;
+                }
+                need_free = true;
             }
-        }
 
-        if (result == 0) {
-            result = tcprecvdata_nb(conn->sock, in_buff,
-                    response.header.body_len, client_ctx->
-                    common_cfg.network_timeout);
+            if (result == 0) {
+                result = tcprecvdata_nb(conn->sock, in_buff,
+                        response.header.body_len, client_ctx->
+                        common_cfg.network_timeout);
+            }
         }
     }
 
@@ -2937,10 +2961,8 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     SF_CLIENT_RELEASE_CONNECTION(&client_ctx->cm, conn, result);
-    if (in_buff != fixed_buff) {
-        if (in_buff != NULL) {
-            free(in_buff);
-        }
+    if (need_free) {
+        free(in_buff);
     }
 
     return result;
@@ -2993,6 +3015,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         memcpy(server->conn.ip_addr, server_resp.ip_addr, IP_ADDRESS_SIZE);
         *(server->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
         server->conn.port = buff2short(server_resp.port);
+        server->conn.comm_type = conn->comm_type;
     }
 
     SF_CLIENT_RELEASE_CONNECTION(&client_ctx->cm, conn, result);
@@ -3014,6 +3037,7 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     SFResponseInfo response;
     int result;
     int calc_size;
+    bool need_free;
 
     if ((conn=client_ctx->cm.ops.get_connection(
                     &client_ctx->cm, 0, &result)) == NULL)
@@ -3027,23 +3051,30 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
 
     response.error.length = 0;
     in_buff = fixed_buff;
+    need_free = false;
     if ((result=sf_send_and_check_response_header(conn, out_buff,
                     sizeof(out_buff), &response, client_ctx->common_cfg.
                     network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
     {
-        if (response.header.body_len > sizeof(fixed_buff)) {
-            in_buff = (char *)fc_malloc(response.header.body_len);
-            if (in_buff == NULL) {
-                response.error.length = sprintf(response.error.message,
-                        "malloc %d bytes fail", response.header.body_len);
-                result = ENOMEM;
+        if (conn->comm_type == fc_comm_type_rdma) {
+            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_buffer(conn)->buff +
+                + sizeof(FDIRProtoHeader);
+        } else {
+            if (response.header.body_len > sizeof(fixed_buff)) {
+                in_buff = (char *)fc_malloc(response.header.body_len);
+                if (in_buff == NULL) {
+                    response.error.length = sprintf(response.error.message,
+                            "malloc %d bytes fail", response.header.body_len);
+                    result = ENOMEM;
+                }
+                need_free = true;
             }
-        }
 
-        if (result == 0) {
-            result = tcprecvdata_nb(conn->sock, in_buff,
-                    response.header.body_len, client_ctx->
-                    common_cfg.network_timeout);
+            if (result == 0) {
+                result = tcprecvdata_nb(conn->sock, in_buff,
+                        response.header.body_len, client_ctx->
+                        common_cfg.network_timeout);
+            }
         }
     }
 
@@ -3080,15 +3111,14 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
             memcpy(slave->conn.ip_addr, body_part->ip_addr, IP_ADDRESS_SIZE);
             *(slave->conn.ip_addr + IP_ADDRESS_SIZE - 1) = '\0';
             slave->conn.port = buff2short(body_part->port);
+            slave->conn.comm_type = conn->comm_type;
             slave->status = body_part->status;
         }
     }
 
     SF_CLIENT_RELEASE_CONNECTION(&client_ctx->cm, conn, result);
-    if (in_buff != fixed_buff) {
-        if (in_buff != NULL) {
-            free(in_buff);
-        }
+    if (need_free) {
+        free(in_buff);
     }
 
     return result;

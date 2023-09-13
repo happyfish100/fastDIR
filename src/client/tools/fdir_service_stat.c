@@ -139,13 +139,19 @@ static int service_stat(char *host)
             service_group_index].address_array.addrs[0]->conn;
         conn.sock = -1;
     } else {
+        FCServerGroupInfo *server_group;
+
         if ((result=conn_pool_parse_server_info(host, &conn,
                         FDIR_SERVER_DEFAULT_SERVICE_PORT)) != 0)
         {
             return result;
         }
-    }
 
+        server_group = fc_server_get_group_by_index(
+                &g_fdir_client_vars.client_ctx.cluster.server_cfg,
+                g_fdir_client_vars.client_ctx.cluster.service_group_index);
+        conn.comm_type = server_group->comm_type;
+    }
 
     if ((result=fdir_client_service_stat(&g_fdir_client_vars.
                     client_ctx, &conn, &stat)) != 0)

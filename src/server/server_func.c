@@ -568,6 +568,7 @@ int server_load_config(const char *filename)
                     comm_type, filename, &ini_context, "service",
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
+                    server_group->buffer_size,
                     task_buffer_extra_size)) != 0)
     {
         return result;

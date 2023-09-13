@@ -29,21 +29,24 @@ typedef struct fdir_cm_simple_extra {
     } master_cache;
     FDIRClientContext *client_ctx;
     FDIRServerGroup *cluster_sarray;
+    ConnectionExtraParams conn_extra_params;  //for RDMA
 } FDIRCMSimpleExtra;
 
 static inline int make_connection(SFConnectionManager *cm,
         ConnectionInfo *conn)
 {
+    const char *service_name = "fdir";
     int result;
     SFConnectionParameters conn_params;
     FDIRCMSimpleExtra *extra;
 
-    if (conn->sock >= 0) {
+    if (G_COMMON_CONNECTION_CALLBACKS[conn->comm_type].is_connected(conn)) {
         return 0;
     }
 
-    if ((result=conn_pool_connect_server(conn, cm->
-                    common_cfg->connect_timeout)) != 0)
+    if ((result=G_COMMON_CONNECTION_CALLBACKS[conn->comm_type].
+                make_connection(conn, service_name, cm->common_cfg->
+                    connect_timeout * 1000, NULL, true)) != 0)
     {
         return result;
     }
@@ -52,7 +55,8 @@ static inline int make_connection(SFConnectionManager *cm,
     if ((result=fdir_client_proto_join_server(extra->
                     client_ctx, conn, &conn_params)) != 0)
     {
-        conn_pool_disconnect_server(conn);
+        G_COMMON_CONNECTION_CALLBACKS[conn->comm_type].
+            close_connection(conn);
     }
 
     return result;
@@ -62,7 +66,7 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
 {
     int bytes;
     int alloc_size;
-    ConnectionInfo *servers;
+    ConnectionInfo **servers;
 
     if (server_group->alloc_size > server_group->count) {
         return 0;
@@ -73,8 +77,8 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
     } else {
         alloc_size = 4;
     }
-    bytes = sizeof(ConnectionInfo) * alloc_size;
-    servers = (ConnectionInfo *)fc_malloc(bytes);
+    bytes = sizeof(ConnectionInfo *) * alloc_size;
+    servers = (ConnectionInfo **)fc_malloc(bytes);
     if (servers == NULL) {
         return errno != 0 ? errno : ENOMEM;
     }
@@ -82,7 +86,7 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
 
     if (server_group->count > 0) {
         memcpy(servers, server_group->servers,
-                sizeof(ConnectionInfo) * server_group->count);
+                sizeof(ConnectionInfo *) * server_group->count);
     }
 
     server_group->servers = servers;
@@ -90,17 +94,36 @@ static int check_realloc_group_servers(FDIRServerGroup *server_group)
     return 0;
 }
 
+static ConnectionInfo **add_to_server_list(FDIRCMSimpleExtra *extra,
+        const ConnectionInfo *target, int *err_no)
+{
+    FDIRServerGroup *cluster_sarray;
+    ConnectionInfo **conn;
+
+    cluster_sarray = extra->cluster_sarray;
+    conn = cluster_sarray->servers + cluster_sarray->count;
+    if ((*conn=conn_pool_alloc_connection(target->comm_type, &extra->
+                    conn_extra_params, err_no)) == NULL)
+    {
+        return NULL;
+    }
+
+    conn_pool_set_server_info(*conn, target->ip_addr, target->port);
+    cluster_sarray->count++;
+    return conn;
+}
+
 static ConnectionInfo *get_spec_connection(SFConnectionManager *cm,
         const ConnectionInfo *target, int *err_no)
 {
     FDIRServerGroup *cluster_sarray;
-    ConnectionInfo *conn;
-    ConnectionInfo *end;
+    ConnectionInfo **conn;
+    ConnectionInfo **end;
 
     cluster_sarray = ((FDIRCMSimpleExtra *)cm->extra)->cluster_sarray;
     end = cluster_sarray->servers + cluster_sarray->count;
     for (conn=cluster_sarray->servers; conn<end; conn++) {
-        if (FC_CONNECTION_SERVER_EQUAL1(*conn, *target)) {
+        if (FC_CONNECTION_SERVER_EQUAL1(**conn, *target)) {
             break;
         }
     }
@@ -111,14 +134,17 @@ static ConnectionInfo *get_spec_connection(SFConnectionManager *cm,
             return NULL;
         }
 
-        conn = cluster_sarray->servers + cluster_sarray->count++;
-        conn_pool_set_server_info(conn, target->ip_addr, target->port);
+        if ((conn=add_to_server_list((FDIRCMSimpleExtra *)
+                        cm->extra, target, err_no)) == NULL)
+        {
+            return NULL;
+        }
     }
 
-    if ((*err_no=make_connection(cm, conn)) != 0) {
+    if ((*err_no=make_connection(cm, *conn)) != 0) {
         return NULL;
     }
-    return conn;
+    return *conn;
 }
 
 static ConnectionInfo *get_connection(SFConnectionManager *cm,
@@ -127,20 +153,20 @@ static ConnectionInfo *get_connection(SFConnectionManager *cm,
     int index;
     int i;
     FDIRServerGroup *cluster_sarray;
+    ConnectionInfo **server;
     ConnectionInfo *conn;
-    ConnectionInfo *server;
 
     cluster_sarray = ((FDIRCMSimpleExtra *)cm->extra)->cluster_sarray;
     index = rand() % cluster_sarray->count;
     server = cluster_sarray->servers + index;
-    if ((conn=get_spec_connection(cm, server, err_no)) != NULL) {
+    if ((conn=get_spec_connection(cm, *server, err_no)) != NULL) {
         return conn;
     }
 
     i = (index + 1) % cluster_sarray->count;
     while (i != index) {
         server = cluster_sarray->servers + i;
-        if ((conn=get_spec_connection(cm, server, err_no)) != NULL) {
+        if ((conn=get_spec_connection(cm, *server, err_no)) != NULL) {
             return conn;
         }
 
@@ -240,8 +266,7 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
     return NULL;
 }
 
-static void close_connection(SFConnectionManager *cm,
-        ConnectionInfo *conn)
+static void close_connection(SFConnectionManager *cm, ConnectionInfo *conn)
 {
     FDIRCMSimpleExtra *extra;
     extra = (FDIRCMSimpleExtra *)cm->extra;
@@ -249,7 +274,8 @@ static void close_connection(SFConnectionManager *cm,
         extra->master_cache.conn = NULL;
     }
 
-    conn_pool_disconnect_server(conn);
+    G_COMMON_CONNECTION_CALLBACKS[conn->comm_type].
+        close_connection(conn);
 }
 
 static const struct sf_connection_parameters *get_connection_params(
@@ -258,24 +284,27 @@ static const struct sf_connection_parameters *get_connection_params(
     return NULL;
 }
 
-static void copy_to_server_group_array(FDIRClientContext *client_ctx,
-        FDIRServerGroup *server_group)
+static int copy_to_server_group_array(FDIRClientContext *client_ctx,
+        FDIRCMSimpleExtra *extra)
 {
     FCServerInfo *server;
     FCServerInfo *end;
-    ConnectionInfo *conn;
     int server_count;
+    int result;
 
+    extra->cluster_sarray->count = 0;
     server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
-    conn = server_group->servers;
     end = FC_SID_SERVERS(client_ctx->cluster.server_cfg) + server_count;
     for (server=FC_SID_SERVERS(client_ctx->cluster.server_cfg); server<end;
-            server++, conn++)
+            server++)
     {
-        *conn = server->group_addrs[client_ctx->cluster.service_group_index].
-            address_array.addrs[0]->conn;
+        if (add_to_server_list(extra, &server->group_addrs[client_ctx->
+                    cluster.service_group_index].address_array.
+                    addrs[0]->conn, &result) == NULL)
+        {
+            return result;
+        }
     }
-    server_group->count = server_count;
 
     /*
     {
@@ -287,6 +316,8 @@ static void copy_to_server_group_array(FDIRClientContext *client_ctx,
         }
     }
     */
+
+    return 0;
 }
 
 int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
@@ -302,12 +333,6 @@ int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
         return ENOMEM;
     }
 
-    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
-    if ((result=fdir_alloc_group_servers(cluster_sarray, server_count)) != 0) {
-        return result;
-    }
-    copy_to_server_group_array(client_ctx, cluster_sarray);
-
     extra = (FDIRCMSimpleExtra *)fc_malloc(sizeof(FDIRCMSimpleExtra));
     if (extra == NULL) {
         return ENOMEM;
@@ -315,6 +340,18 @@ int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
     memset(extra, 0, sizeof(FDIRCMSimpleExtra));
     extra->cluster_sarray = cluster_sarray;
     extra->client_ctx = client_ctx;
+    if ((result=conn_pool_set_rdma_extra_params(&extra->conn_extra_params,
+                    &client_ctx->cluster.server_cfg, client_ctx->cluster.
+                    service_group_index)) != 0)
+    {
+        return result;
+    }
+
+    server_count = FC_SID_SERVER_COUNT(client_ctx->cluster.server_cfg);
+    if ((result=fdir_alloc_group_servers(cluster_sarray, server_count)) != 0) {
+        return result;
+    }
+    copy_to_server_group_array(client_ctx, extra);
 
     cm->extra = extra;
     cm->common_cfg = &client_ctx->common_cfg;
@@ -322,7 +359,6 @@ int fdir_simple_connection_manager_init(FDIRClientContext *client_ctx,
     cm->ops.get_spec_connection = get_spec_connection;
     cm->ops.get_master_connection = get_master_connection;
     cm->ops.get_readable_connection = get_readable_connection;
-
     cm->ops.release_connection = NULL;
     cm->ops.close_connection = close_connection;
     cm->ops.get_connection_params = get_connection_params;
