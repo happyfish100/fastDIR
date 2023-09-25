@@ -73,6 +73,7 @@ static char g_pid_filename[MAX_PATH_SIZE];
 
 int init_nio_task(struct fast_task_info *task)
 {
+    sf_proto_init_task_magic(task);
     task->connect_timeout = SF_G_CONNECT_TIMEOUT;
     task->network_timeout = SF_G_NETWORK_TIMEOUT;
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
@@ -284,7 +285,7 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, NULL, NULL, cluster_deal_task,
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
                 5000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), true, init_nio_task, NULL);
         if (result != 0) {
             break;
         }
@@ -334,7 +335,7 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, NULL, NULL, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), false, init_nio_task, NULL);
         if (result != 0) {
             break;
         }

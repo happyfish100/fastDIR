@@ -231,7 +231,7 @@ static int service_deal_generate_node_id(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoGenerateNodeIdResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoGenerateNodeIdResp *)SF_PROTO_SEND_BODY(task);
     int2buff(node_id, resp->node_id);
     long2buff(key, resp->key);
     RESPONSE.header.body_len = sizeof(FDIRProtoGenerateNodeIdResp);
@@ -299,7 +299,7 @@ static int service_deal_client_join(struct fast_task_info *task)
         SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_CHANNEL_USER;
     }
 
-    join_resp = (FDIRProtoClientJoinResp *)SF_PROTO_RESP_BODY(task);
+    join_resp = (FDIRProtoClientJoinResp *)SF_PROTO_SEND_BODY(task);
     int2buff(g_sf_global_vars.min_buff_size - 128,
             join_resp->buffer_size);
     RESPONSE.header.body_len = sizeof(FDIRProtoClientJoinResp);
@@ -319,7 +319,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     }
 
     data_thread_sum_counters(&counters);
-    stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_RESP_BODY(task);
+    stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_SEND_BODY(task);
 
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
     stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
@@ -384,7 +384,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
     }
 
     body_header = (FDIRProtoClusterStatRespBodyHeader *)
-        SF_PROTO_RESP_BODY(task);
+        SF_PROTO_SEND_BODY(task);
     body_part = (FDIRProtoClusterStatRespBodyPart *)(body_header + 1);
     int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
 
@@ -401,7 +401,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
                 body_part->port);
     }
 
-    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -453,7 +453,7 @@ static int service_deal_namespace_stat(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoNamespaceStatResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoNamespaceStatResp *)SF_PROTO_SEND_BODY(task);
     long2buff(inode_total, resp->inode_counters.total);
     long2buff(stat.used_inodes, resp->inode_counters.used);
     long2buff(inode_total - stat.used_inodes, resp->inode_counters.avail);
@@ -483,9 +483,9 @@ static int service_deal_namespace_list(struct fast_task_info *task)
         return ENOENT;
     }
 
-    last_body = (FDIRProtoNamespaceListRespBody *)((task->data + task->size)
+    last_body = (FDIRProtoNamespaceListRespBody *)(SF_SEND_BUFF_END(task) -
             - (sizeof(FDIRProtoNamespaceListRespBody) + NAME_MAX));
-    header = (FDIRProtoNamespaceListRespHeader *)SF_PROTO_RESP_BODY(task);
+    header = (FDIRProtoNamespaceListRespHeader *)SF_PROTO_SEND_BODY(task);
     body = (FDIRProtoNamespaceListRespBody *)(header + 1);
     end = ns_array->namespaces + ns_array->count;
     for (ns=ns_array->namespaces; ns<end; ns++) {
@@ -587,9 +587,9 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
         ns_subscribe_holding_to_sending_queue(NS_SUBSCRIBER);
     }
 
-    body_header = (FDIRProtoNSSFetchRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    body_header = (FDIRProtoNSSFetchRespBodyHeader *)SF_PROTO_SEND_BODY(task);
     p = (char *)(body_header + 1);
-    end = task->data + task->size;
+    end = SF_SEND_BUFF_END(task);
     count = 0;
 
     fc_queue_try_pop_to_queue(NS_SUBSCRIBER->queues +
@@ -629,7 +629,7 @@ static int service_deal_nss_fetch(struct fast_task_info *task)
     }
 
     int2buff(count, body_header->count);
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.body_len = p - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_NSS_FETCH_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -654,7 +654,7 @@ static int service_deal_get_master(struct fast_task_info *task)
         return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
-    resp = (FDIRProtoGetServerResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoGetServerResp *)SF_PROTO_SEND_BODY(task);
     addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 master->server), task->client_ip);
 
@@ -693,7 +693,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
         return EINVAL;
     }
 
-    body_header = (SFProtoGetGroupServersRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    body_header = (SFProtoGetGroupServersRespBodyHeader *)SF_PROTO_SEND_BODY(task);
     body_part = (SFProtoGetGroupServersRespBodyPart *)(body_header + 1);
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
@@ -704,7 +704,7 @@ int service_deal_get_group_servers(struct fast_task_info *task)
     }
     int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
 
-    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = SF_SERVICE_PROTO_GET_GROUP_SERVERS_RESP;
     TASK_CTX.common.response_done = true;
     return 0;
@@ -724,7 +724,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
         return result;
     }
 
-    body_header = (FDIRProtoGetSlavesRespBodyHeader *)SF_PROTO_RESP_BODY(task);
+    body_header = (FDIRProtoGetSlavesRespBodyHeader *)SF_PROTO_SEND_BODY(task);
     part_start = (FDIRProtoGetSlavesRespBodyPart *)(body_header + 1);
     body_part = part_start;
 
@@ -747,7 +747,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
     }
     int2buff(body_part - part_start, body_header->count);
 
-    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GET_SLAVES_RESP;
     TASK_CTX.common.response_done = true;
 
@@ -798,7 +798,7 @@ static int service_deal_get_readable_server(struct fast_task_info *task)
         return SF_RETRIABLE_ERROR_NO_SERVER;
     }
 
-    resp = (FDIRProtoGetServerResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoGetServerResp *)SF_PROTO_SEND_BODY(task);
     addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 cs->server), task->client_ip);
 
@@ -1153,7 +1153,7 @@ static inline void dstat_output(struct fast_task_info *task,
 {
     FDIRProtoStatDEntryResp *resp;
 
-    resp = (FDIRProtoStatDEntryResp *)(task->data + sizeof(FDIRProtoHeader));
+    resp = (FDIRProtoStatDEntryResp *)SF_PROTO_SEND_BODY(task);
     long2buff(inode, resp->inode);
     fdir_proto_pack_dentry_stat_ex(stat, &resp->stat, true);
     RESPONSE.header.body_len = sizeof(FDIRProtoStatDEntryResp);
@@ -1195,7 +1195,7 @@ static inline int readlink_output(struct fast_task_info *task,
     }
 
     RESPONSE.header.body_len = dentry->link.len;
-    memcpy(SF_PROTO_RESP_BODY(task), dentry->link.str, dentry->link.len);
+    memcpy(SF_PROTO_SEND_BODY(task), dentry->link.str, dentry->link.len);
     TASK_CTX.common.response_done = true;
     return 0;
 }
@@ -1205,7 +1205,7 @@ static inline void lookup_inode_output(struct fast_task_info *task,
 {
     FDIRProtoLookupInodeResp *resp;
 
-    resp = (FDIRProtoLookupInodeResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoLookupInodeResp *)SF_PROTO_SEND_BODY(task);
     long2buff(dentry->inode, resp->inode);
     RESPONSE.header.body_len = sizeof(FDIRProtoLookupInodeResp);
     TASK_CTX.common.response_done = true;
@@ -1244,11 +1244,11 @@ static void server_list_dentry_output(struct fast_task_info *task,
             sizeof(FDIRProtoListDEntryRespCompactPart) :
             sizeof(FDIRProtoListDEntryRespCompletePart));
 
-    buf_end = task->data + task->size;
+    buf_end = SF_SEND_BUFF_END(task);
     if (is_first) {
         special_count = (DENTRY_LIST_CACHE.output_special ? 2 : 0);
         first_header = (FDIRProtoListDEntryRespBodyFirstHeader *)
-            SF_PROTO_RESP_BODY(task);
+            SF_PROTO_SEND_BODY(task);
         int2buff(DENTRY_LIST_CACHE.array->count + special_count,
                 first_header->total_count);
 
@@ -1288,7 +1288,7 @@ static void server_list_dentry_output(struct fast_task_info *task,
     } else {
         special_count = 0;
         common_header = (FDIRProtoListDEntryRespBodyCommonHeader *)
-            SF_PROTO_RESP_BODY(task);
+            SF_PROTO_SEND_BODY(task);
         p = (char *)(common_header + 1);
     }
 
@@ -1320,7 +1320,7 @@ static void server_list_dentry_output(struct fast_task_info *task,
         p += part_fixed_size + (*pp)->name.len;
     }
     count = pp - start;
-    RESPONSE.header.body_len = p - SF_PROTO_RESP_BODY(task);
+    RESPONSE.header.body_len = p - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_LIST_DENTRY_RESP;
 
     int2buff(count + special_count, common_header->count);
@@ -1357,10 +1357,10 @@ static inline void service_getxattr_output(struct fast_task_info *task,
 {
     if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) {
         RESPONSE.header.body_len = 4;
-        int2buff(value->len, SF_PROTO_RESP_BODY(task));
+        int2buff(value->len, SF_PROTO_SEND_BODY(task));
     } else {
         RESPONSE.header.body_len = value->len;
-        memcpy(SF_PROTO_RESP_BODY(task), value->str, value->len);
+        memcpy(SF_PROTO_SEND_BODY(task), value->str, value->len);
     }
     TASK_CTX.common.response_done = true;
 }
@@ -1373,11 +1373,11 @@ static void service_do_listxattr(struct fast_task_info *task,
     char *p;
     int body_len;
 
-    p = SF_PROTO_RESP_BODY(task);
+    p = SF_PROTO_SEND_BODY(task);
     if (dentry->kv_array != NULL) {
         char *buff_end;
 
-        buff_end = task->data + task->size;
+        buff_end = SF_SEND_BUFF_END(task);
         kv_end = dentry->kv_array->elts + dentry->kv_array->count;
         for (kv=dentry->kv_array->elts; kv<kv_end; kv++) {
             if (buff_end - p <= kv->key.len) {
@@ -1397,10 +1397,10 @@ static void service_do_listxattr(struct fast_task_info *task,
         }
     }
 
-    body_len = p - SF_PROTO_RESP_BODY(task);
+    body_len = p - SF_PROTO_SEND_BODY(task);
     if ((flags & FDIR_FLAGS_XATTR_GET_SIZE)) {
         RESPONSE.header.body_len = 4;
-        int2buff(body_len, SF_PROTO_RESP_BODY(task));
+        int2buff(body_len, SF_PROTO_SEND_BODY(task));
     } else {
         RESPONSE.header.body_len = body_len;
     }
@@ -1701,7 +1701,7 @@ static void sys_lock_dentry_output(struct fast_task_info *task,
         const FDIRServerDentry *dentry)
 {
     FDIRProtoSysLockDEntryResp *resp;
-    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_RESP_BODY(task);
+    resp = (FDIRProtoSysLockDEntryResp *)SF_PROTO_SEND_BODY(task);
 
     long2buff(dentry->stat.size, resp->size);
     long2buff(dentry->stat.space_end, resp->space_end);
@@ -1813,8 +1813,8 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
 
     record->options.path_info.flags = BINLOG_OPTIONS_PATH_ENABLED;
     if (REQUEST.header.body_len > sizeof(FDIRProtoStatDEntryResp)) {
-        if ((REQUEST.header.body_len + record->ns.len +
-                    record->me.pname.name.len) < task->size)
+        if ((REQUEST.header.body_len + record->ns.len + record->
+                    me.pname.name.len) < task->recv.ptr->size)
         {
             p = REQUEST.body + REQUEST.header.body_len;
         } else {
@@ -1826,10 +1826,10 @@ int service_set_record_pname_info(FDIRBinlogRecord *record,
     }
 
     if (p + record->ns.len + record->me.pname.name.len >
-            task->data + task->size)
+            SF_RECV_BUFF_END(task))
     {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "task pkg size: %d is too small", task->size);
+                "task pkg size: %d is too small", task->recv.ptr->size);
         return EOVERFLOW;
     }
 
@@ -2347,9 +2347,10 @@ int service_set_record_link(FDIRBinlogRecord *record,
     char *link_str;
 
     link_str = record->me.pname.name.str + record->me.pname.name.len;
-    if (link_str + record->link.len > task->data + task->size) {
+    if (link_str + record->link.len > SF_RECV_BUFF_END(task)) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "task buffer size: %d is too small", task->size);
+                "task buffer size: %d is too small",
+                task->recv.ptr->size);
         return EOVERFLOW;
     }
 
@@ -3179,8 +3180,9 @@ static int deal_get_fname(struct fast_task_info *task, const int resp_cmd)
     RECORD->operation = SERVICE_OP_GET_FULLNAME_INT;
     RESPONSE.header.cmd = resp_cmd;
     RECORD->fullname.length = 0;
-    RECORD->fullname.alloc_size = task->size - sizeof(FDIRProtoHeader);
-    RECORD->fullname.buff = task->data + sizeof(FDIRProtoHeader);
+    RECORD->fullname.alloc_size = task->recv.
+        ptr->size - sizeof(FDIRProtoHeader);
+    RECORD->fullname.buff = SF_PROTO_RECV_BODY(task);
     return push_query_to_data_thread_queue(task);
 }
 
@@ -3644,7 +3646,7 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
     ftask.region = &region;  //for region compare
     result = inode_index_flock_getlk(RECORD->inode, &ftask);
     if (result == 0 || result == ENOENT) {
-        resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_RESP_BODY(task);
+        resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_SEND_BODY(task);
         int2buff(ftask.owner.node, resp->owner.node);
         int2buff(ftask.owner.pid, resp->owner.pid);
         long2buff(ftask.owner.id, resp->owner.id);

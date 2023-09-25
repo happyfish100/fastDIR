@@ -249,7 +249,8 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         return push_and_set_next_recv_buffer(ctx, rb);
     }
 
-    if (ctx->recv_rbuffer->buffer.length < ctx->task->size) { //flow control
+    /* for flow control */
+    if (ctx->recv_rbuffer->buffer.length < ctx->task->recv.ptr->size) {
         return 0;
     }
 
@@ -302,7 +303,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     char *p;
     int count;
 
-    if (!(ctx->task->offset == 0 && ctx->task->length == 0)) {
+    if (!sf_nio_task_is_idle(ctx->task)) {
         return 0;
     }
 
@@ -313,14 +314,15 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     }
 
     count = 0;
-    p = ctx->task->data + sizeof(FDIRProtoHeader) +
+    p = ctx->task->send.ptr->data + sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogRespBodyHeader);
 
     last = NULL;
     current = node;
     do {
-        if ((p - ctx->task->data) + sizeof(FDIRProtoPushBinlogRespBodyPart) >
-                ctx->task->size)
+        if ((p - ctx->task->send.ptr->data) +
+                sizeof(FDIRProtoPushBinlogRespBodyPart) >
+                ctx->task->send.ptr->size)
         {
             last->next = NULL;
             common_blocked_queue_return_nodes(
@@ -344,12 +346,12 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
 
     int2buff(count, ((FDIRProtoPushBinlogRespBodyHeader *)
-                (ctx->task->data + sizeof(FDIRProtoHeader)))->count);
+                SF_PROTO_SEND_BODY(ctx->task))->count);
 
-    ctx->task->length = p - ctx->task->data;
-    SF_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->data,
-            FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP,
-            ctx->task->length - sizeof(FDIRProtoHeader));
+    ctx->task->send.ptr->length = p - ctx->task->send.ptr->data;
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->send.ptr->data,
+            FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP, ctx->task->send.
+            ptr->length - sizeof(FDIRProtoHeader));
     sf_send_add_event(ctx->task);
     return 0;
 }

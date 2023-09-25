@@ -247,8 +247,7 @@ static int cluster_deal_get_server_status(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoGetServerStatusResp *)REQUEST.body;
-
+    resp = (FDIRProtoGetServerStatusResp *)SF_PROTO_SEND_BODY(task);
     resp->is_master = (CLUSTER_MYSELF_PTR ==
             CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
     resp->master_hint = MYSELF_IS_OLD_MASTER;
@@ -389,7 +388,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
         version_changed = false;
     }
 
-    resp_header = (FDIRProtoPingMasterRespHeader *)REQUEST.body;
+    resp_header = (FDIRProtoPingMasterRespHeader *)SF_PROTO_SEND_BODY(task);
     body_part = (FDIRProtoPingMasterRespBodyPart *)(resp_header + 1);
     long2buff(CURRENT_INODE_SN, resp_header->inode_sn);
 
@@ -415,7 +414,7 @@ static int cluster_deal_ping_master(struct fast_task_info *task)
 
     TASK_CTX.common.response_done = true;
     RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_PING_MASTER_RESP;
-    RESPONSE.header.body_len = (char *)body_part - REQUEST.body;
+    RESPONSE.header.body_len = (char *)body_part - SF_PROTO_SEND_BODY(task);
     return 0;
 }
 
@@ -503,8 +502,8 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
         return result;
     }
 
-    body_header = (FDIRProtoForwardRequestsBodyHeader *)(task->data +
-            sizeof(FDIRProtoHeader));
+    body_header = (FDIRProtoForwardRequestsBodyHeader *)
+        SF_PROTO_RECV_BODY(task);
     binlog_length = buff2int(body_header->binlog_length);
     count = buff2int(body_header->count);
     data_version.first = buff2long(body_header->data_version.first);
@@ -555,8 +554,8 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return result;
     }
 
-    body_header = (FDIRProtoPushBinlogReqBodyHeader *)(task->data +
-            sizeof(FDIRProtoHeader));
+    body_header = (FDIRProtoPushBinlogReqBodyHeader *)
+        SF_PROTO_RECV_BODY(task);
     binlog_length = buff2int(body_header->binlog_length);
     data_version.first = buff2long(body_header->data_version.first);
     data_version.last = buff2long(body_header->data_version.last);
@@ -667,11 +666,11 @@ static int fill_binlog_last_lines(struct fast_task_info *task,
 
     front_length = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoJoinSlaveResp);
-    buffer_size = task->size - front_length;
+    buffer_size = task->send.ptr->size - front_length;
     *binlog_count = SLAVE_BINLOG_CHECK_LAST_ROWS;
     return sf_binlog_writer_get_last_lines(DATA_PATH_STR,
             FDIR_BINLOG_SUBDIR_NAME, binlog_get_current_write_index(),
-            task->data + front_length, buffer_size,
+            task->send.ptr->data + front_length, buffer_size,
             binlog_count, binlog_length);
 }
 
@@ -725,11 +724,11 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
                 cluster_id, CLUSTER_ID);
         return EINVAL;
     }
-    if (buffer_size != task->size) {
+    if (buffer_size != task->send.ptr->size) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "peer task buffer size: %d != mine: %d",
-                buffer_size, task->size);
+                buffer_size, task->send.ptr->size);
         return EINVAL;
     }
 
@@ -801,7 +800,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
 
     binlog_get_current_write_position(&bf_position);
 
-    resp = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    resp = (FDIRProtoJoinSlaveResp *)SF_PROTO_SEND_BODY(task);
     long2buff(DATA_CURRENT_VERSION, resp->last_data_version);
     int2buff(bf_position.index, resp->binlog_pos_hint.index);
     long2buff(bf_position.offset, resp->binlog_pos_hint.offset);
@@ -874,7 +873,7 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
     int binlog_count;
     string_t binlog;
     SFBinlogFilePosition hint_pos;
-    FDIRProtoJoinSlaveResp *resp;
+    FDIRProtoJoinSlaveResp *req;
 
     if ((result=check_replication_master_task(task)) != 0) {
         return result;
@@ -903,9 +902,9 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoJoinSlaveResp *)REQUEST.body;
-    binlog_count = buff2int(resp->binlog_count);
-    binlog.len = buff2int(resp->binlog_length);
+    req = (FDIRProtoJoinSlaveResp *)REQUEST.body;
+    binlog_count = buff2int(req->binlog_count);
+    binlog.len = buff2int(req->binlog_length);
     if (REQUEST.header.body_len != sizeof(FDIRProtoJoinSlaveResp) +
             binlog.len)
     {
@@ -916,9 +915,9 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
         return EINVAL;
     }
 
-    hint_pos.index = buff2int(resp->binlog_pos_hint.index);
-    hint_pos.offset = buff2long(resp->binlog_pos_hint.offset);
-    binlog.str = resp->binlog;
+    hint_pos.index = buff2int(req->binlog_pos_hint.index);
+    hint_pos.offset = buff2long(req->binlog_pos_hint.offset);
+    binlog.str = req->binlog;
     if ((result=cluster_check_binlog_consistency(task,
                     binlog_count, &binlog, &hint_pos)) != 0)
     {
@@ -926,7 +925,7 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
     }
 
     CLUSTER_REPLICA->slave->last_data_version = buff2long(
-            resp->last_data_version);
+            req->last_data_version);
     CLUSTER_REPLICA->slave->binlog_pos_hint = hint_pos;
     return 0;
 }
@@ -1061,7 +1060,7 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
         return result;
     }
 
-    resp = (FDIRProtoReplicaQueryBinlogInfoResp *)REQUEST.body;
+    resp = (FDIRProtoReplicaQueryBinlogInfoResp *)SF_PROTO_SEND_BODY(task);
     if (binlog_start_index > 0) {
         int result1;
         int result2;
@@ -1114,9 +1113,9 @@ static inline int sync_binlog_output(struct fast_task_info *task)
     int size;
     int read_bytes;
 
-    size = task->size - sizeof(FDIRProtoHeader);
-    result = binlog_reader_read_to_buffer(REPLICA_READER, task->data +
-            sizeof(FDIRProtoHeader), size, &read_bytes);
+    size = task->send.ptr->size - sizeof(FDIRProtoHeader);
+    result = binlog_reader_read_to_buffer(REPLICA_READER,
+            SF_PROTO_SEND_BODY(task), size, &read_bytes);
     if (!(result == 0 || result == ENOENT)) {
         return result;
     }
@@ -1269,9 +1268,9 @@ static int replica_deal_sync_dump_mark(struct fast_task_info *task)
     }
     fdir_get_dump_mark_filename_ex(subdir_name,
             mark_filename, sizeof(mark_filename));
-    read_bytes = (task->size - sizeof(FDIRProtoHeader)) - 1;
-    result = getFileContentEx(mark_filename, task->data +
-            sizeof(FDIRProtoHeader), 0, &read_bytes);
+    read_bytes = (task->send.ptr->size - sizeof(FDIRProtoHeader)) - 1;
+    result = getFileContentEx(mark_filename, SF_PROTO_SEND_BODY(task),
+            0, &read_bytes);
     if (result != 0) {
         return result;
     }

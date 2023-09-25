@@ -139,7 +139,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
         return ENOMEM;
     }
 
-    alloc_size = 4 * task->size / FDIR_BINLOG_RECORD_MIN_SIZE;
+    alloc_size = 4 * task->send.ptr->size / FDIR_BINLOG_RECORD_MIN_SIZE;
     if ((result=push_result_ring_check_init(&replication->
                     context.push_result_ctx, alloc_size)) != 0)
     {
@@ -301,7 +301,7 @@ static int send_join_slave_package(FDIRSlaveReplication *replication)
     req = (FDIRProtoJoinSlaveReq *)(out_buff + sizeof(FDIRProtoHeader));
     int2buff(CLUSTER_ID, req->cluster_id);
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
-    int2buff(replication->task->size, req->buffer_size);
+    int2buff(replication->task->send.ptr->size, req->buffer_size);
     memcpy(req->key, replication->slave->key, FDIR_REPLICA_KEY_SIZE);
 
     if ((result=tcpsenddata_nb(replication->connection_info.conn.sock,
@@ -600,8 +600,8 @@ static int forward_requests(FDIRSlaveReplication *replication)
     if (head == NULL) {
         if (replication->connection_info.send_heartbeat) {
             replication->connection_info.send_heartbeat = false;
-            replication->task->length = sizeof(FDIRProtoHeader);
-            SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+            replication->task->send.ptr->length = sizeof(FDIRProtoHeader);
+            SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->send.ptr->data,
                     SF_PROTO_ACTIVE_TEST_REQ, 0);
             sf_send_add_event(replication->task);
         }
@@ -613,14 +613,14 @@ static int forward_requests(FDIRSlaveReplication *replication)
     replication->req_meta_array.count = 0;
     data_version.first = head->data_version.first;
     data_version.last = head->data_version.last;
-    replication->task->length = sizeof(FDIRProtoHeader) +
+    replication->task->send.ptr->length = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoForwardRequestsBodyHeader);
     while (head != NULL) {
         rb = head;
 
-        if (replication->task->length + rb->buffer.length + sizeof(
+        if (replication->task->send.ptr->length + rb->buffer.length + sizeof(
                     *pmeta) * (replication->req_meta_array.count + 1) >
-                replication->task->size)
+                replication->task->send.ptr->size)
         {
             break;
         }
@@ -628,9 +628,9 @@ static int forward_requests(FDIRSlaveReplication *replication)
         data_version.last = rb->data_version.last;
         replication->context.last_data_versions.by_queue =
             rb->data_version.last;
-        memcpy(replication->task->data + replication->task->length,
+        memcpy(replication->task->send.ptr->data + replication->task->send.ptr->length,
                 rb->buffer.data, rb->buffer.length);
-        replication->task->length += rb->buffer.length;
+        replication->task->send.ptr->length += rb->buffer.length;
 
         if ((result=push_result_ring_add(&replication->context.
                         push_result_ctx, &rb->data_version,
@@ -653,12 +653,12 @@ static int forward_requests(FDIRSlaveReplication *replication)
             break;
         }
     }
-    binlog_length = replication->task->length - (sizeof(FDIRProtoHeader)
+    binlog_length = replication->task->send.ptr->length - (sizeof(FDIRProtoHeader)
             + sizeof(FDIRProtoForwardRequestsBodyHeader));
 
     metaend = metadata;
     pmeta = (FDIRProtoForwardRequestMetadata *)(replication->
-            task->data + replication->task->length);
+            task->send.ptr->data + replication->task->send.ptr->length);
     for (metadata=replication->req_meta_array.elts;
             metadata<metaend; metadata++, pmeta++)
     {
@@ -666,12 +666,12 @@ static int forward_requests(FDIRSlaveReplication *replication)
         long2buff(metadata->data_version, pmeta->data_version);
     }
 
-    replication->task->length += sizeof(*pmeta) *
+    replication->task->send.ptr->length += sizeof(*pmeta) *
         replication->req_meta_array.count;
-    header = (FDIRProtoHeader *)replication->task->data;
+    header = (FDIRProtoHeader *)replication->task->send.ptr->data;
     bheader = (FDIRProtoForwardRequestsBodyHeader *)
-        (replication->task->data + sizeof(FDIRProtoHeader));
-    body_len = replication->task->length - sizeof(FDIRProtoHeader);
+        (replication->task->send.ptr->data + sizeof(FDIRProtoHeader));
+    body_len = replication->task->send.ptr->length - sizeof(FDIRProtoHeader);
     int2buff(binlog_length, bheader->binlog_length);
     int2buff(replication->req_meta_array.count, bheader->count);
     long2buff(data_version.first, bheader->data_version.first);
@@ -704,7 +704,9 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
             replication->slave->binlog_pos_hint.offset);
             */
 
-    if ((result=free_queue_realloc_max_buffer(replication->task)) != 0) {
+    if ((result=free_queue_realloc_send_max_buffer(replication->task)) != 0 ||
+            (result=free_queue_realloc_recv_max_buffer(replication->task)) != 0)
+    {
         free(replication->context.reader_ctx);
         replication->context.reader_ctx = NULL;
         return result;
@@ -712,7 +714,7 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
     if ((result=binlog_read_thread_init(replication->context.reader_ctx,
                     &replication->slave->binlog_pos_hint,
                     replication->slave->last_data_version,
-                    replication->task->size - (sizeof(FDIRProtoHeader) +
+                    replication->task->send.ptr->size - (sizeof(FDIRProtoHeader) +
                         sizeof(FDIRProtoPushBinlogReqBodyHeader)))) != 0)
     {
         free(replication->context.reader_ctx);
@@ -747,18 +749,18 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
     FDIRProtoPushBinlogReqBodyHeader *body_header;
 
     body_header = (FDIRProtoPushBinlogReqBodyHeader *)
-        (replication->task->data + sizeof(FDIRProtoHeader));
+        (replication->task->send.ptr->data + sizeof(FDIRProtoHeader));
     body_len = sizeof(FDIRProtoPushBinlogReqBodyHeader) + r->buffer.length;
-    SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->data,
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->send.ptr->data,
             FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ, body_len);
 
     int2buff(r->buffer.length, body_header->binlog_length);
     long2buff(r->data_version.first, body_header->data_version.first);
     long2buff(r->data_version.last, body_header->data_version.last);
-    memcpy(replication->task->data + sizeof(FDIRProtoHeader) +
+    memcpy(replication->task->send.ptr->data + sizeof(FDIRProtoHeader) +
             sizeof(FDIRProtoPushBinlogReqBodyHeader),
             r->buffer.buff, r->buffer.length);
-    replication->task->length = sizeof(FDIRProtoHeader) + body_len;
+    replication->task->send.ptr->length = sizeof(FDIRProtoHeader) + body_len;
     sf_send_add_event(replication->task);
 }
 
@@ -776,8 +778,8 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
     /*
     logInfo("r: %p, buffer length: %d, result: %d, last_data_version: %"PRId64
             ", task offset: %d, length: %d", r, r->buffer.length,
-            r->err_no, r->data_version.last, replication->task->offset,
-            replication->task->length);
+            r->err_no, r->data_version.last, replication->task->send.ptr->offset,
+            replication->task->send.ptr->length);
             */
 
     if (r->err_no == 0) {
@@ -862,7 +864,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         return result;
     }
 
-    if (!(replication->task->offset == 0 && replication->task->length == 0)) {
+    if (!sf_nio_task_is_idle(replication->task)) {
         return 0;
     }
 
