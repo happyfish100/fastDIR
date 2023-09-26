@@ -704,8 +704,8 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
             replication->slave->binlog_pos_hint.offset);
             */
 
-    if ((result=free_queue_realloc_send_max_buffer(replication->task)) != 0 ||
-            (result=free_queue_realloc_recv_max_buffer(replication->task)) != 0)
+    if ((result=sf_realloc_task_send_max_buffer(replication->task)) != 0 ||
+            (result=sf_realloc_task_recv_max_buffer(replication->task)) != 0)
     {
         free(replication->context.reader_ctx);
         replication->context.reader_ctx = NULL;
