@@ -303,7 +303,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     char *p;
     int count;
 
-    if (!sf_nio_task_is_idle(ctx->task)) {
+    if (!sf_nio_task_send_done(ctx->task)) {
         return 0;
     }
 

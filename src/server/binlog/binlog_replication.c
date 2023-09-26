@@ -864,7 +864,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         return result;
     }
 
-    if (!sf_nio_task_is_idle(replication->task)) {
+    if (!sf_nio_task_send_done(replication->task)) {
         return 0;
     }
 
