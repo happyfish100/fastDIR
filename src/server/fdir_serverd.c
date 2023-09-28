@@ -285,7 +285,7 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, NULL, NULL, cluster_deal_task,
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
                 5000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), true, init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), true, true, init_nio_task, NULL);
         if (result != 0) {
             break;
         }
@@ -335,7 +335,7 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, NULL, NULL, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), false, init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), false, false, init_nio_task, NULL);
         if (result != 0) {
             break;
         }
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
     } while (0);
 
     if (result != 0) {
-        lcrit("program exit abnomally");
+        lcrit("program exit abnormally");
         log_destroy();
         return result;
     }

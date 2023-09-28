@@ -1076,7 +1076,7 @@ static int do_readlink(FDIRClientContext *client_ctx,
 
         if (conn->comm_type == fc_comm_type_rdma) {
             memcpy(link->str, G_RDMA_CONNECTION_CALLBACKS.
-                    get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                    get_recv_buffer(conn)->buff + sizeof(FDIRProtoHeader),
                     response.header.body_len);
             link->len = response.header.body_len;
             *(link->str + link->len) = '\0';
@@ -1237,7 +1237,7 @@ static inline int do_get_fullname(FDIRClientContext *client_ctx,
 
         if (conn->comm_type == fc_comm_type_rdma) {
             memcpy(fullname->str, G_RDMA_CONNECTION_CALLBACKS.
-                    get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                    get_recv_buffer(conn)->buff + sizeof(FDIRProtoHeader),
                     response.header.body_len);
             fullname->len = response.header.body_len;
             *(fullname->str + fullname->len) = '\0';
@@ -2558,7 +2558,7 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
 
     if (conn->comm_type == fc_comm_type_rdma) {
         memcpy(array->buffer.buff, G_RDMA_CONNECTION_CALLBACKS.
-                get_buffer(conn)->buff + sizeof(FDIRProtoHeader),
+                get_recv_buffer(conn)->buff + sizeof(FDIRProtoHeader),
                 response->header.body_len);
     } else if ((result=tcprecvdata_nb(conn->sock, array->buffer.buff,
                     response->header.body_len, client_ctx->
@@ -2899,8 +2899,8 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
                     network_timeout, FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP)) == 0)
     {
         if (conn->comm_type == fc_comm_type_rdma) {
-            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_buffer(conn)->buff +
-                + sizeof(FDIRProtoHeader);
+            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_recv_buffer(conn)->
+                buff + sizeof(FDIRProtoHeader);
         } else {
             if (response.header.body_len > sizeof(fixed_buff)) {
                 in_buff = (char *)fc_malloc(response.header.body_len);
@@ -3057,8 +3057,8 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
                     network_timeout, FDIR_SERVICE_PROTO_GET_SLAVES_RESP)) == 0)
     {
         if (conn->comm_type == fc_comm_type_rdma) {
-            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_buffer(conn)->buff +
-                + sizeof(FDIRProtoHeader);
+            in_buff = G_RDMA_CONNECTION_CALLBACKS.get_recv_buffer(conn)->
+                buff + sizeof(FDIRProtoHeader);
         } else {
             if (response.header.body_len > sizeof(fixed_buff)) {
                 in_buff = (char *)fc_malloc(response.header.body_len);
