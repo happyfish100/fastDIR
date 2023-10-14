@@ -59,6 +59,7 @@
 #include "shared_thread_pool.h"
 #include "server_storage.h"
 #include "data_dumper.h"
+#include "binlog/binlog_replication.h"
 
 //#define FDIR_MBLOCK_CHECK  1
 
@@ -289,6 +290,9 @@ int main(int argc, char *argv[])
         if (result != 0) {
             break;
         }
+        sf_set_connect_done_callback_ex(&CLUSTER_SF_CTX,
+                binlog_replication_connect_done);
+        sf_service_set_connect_need_log_ex(&CLUSTER_SF_CTX, false);
         sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
         sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 

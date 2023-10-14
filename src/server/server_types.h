@@ -272,7 +272,6 @@ typedef struct fdir_slave_replication {
         int last_errno;
         int fail_count;
         volatile bool send_heartbeat;
-        ConnectionInfo conn;
     } connection_info;
 
     SFRequestMetadataArray req_meta_array;

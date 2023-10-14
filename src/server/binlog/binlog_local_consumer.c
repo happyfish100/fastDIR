@@ -73,7 +73,6 @@ static int init_binlog_local_consumer_array()
         server->replica = replication;
         replication->index = replication - slave_replication_array.replications;
         replication->slave = server++;
-        replication->connection_info.conn.sock = -1;
         if ((result=init_pthread_lock(&replication->context.queue.lock)) != 0) {
             logError("file: "__FILE__", line: %d, "
                     "init_pthread_lock fail, errno: %d, error info: %s",

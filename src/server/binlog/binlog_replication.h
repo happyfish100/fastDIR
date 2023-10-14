@@ -29,6 +29,10 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication);
 
 int binlog_replication_process(FDIRServerContext *server_ctx);
 
+void binlog_replication_connect_done(struct fast_task_info *task,
+        const int err_no);
+int binlog_replication_join_slave(struct fast_task_info *task);
+
 void clean_master_replications(FDIRServerContext *server_ctx);
 
 int binlog_replications_check_response_data_version(

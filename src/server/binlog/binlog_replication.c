@@ -132,24 +132,20 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
     int result;
     int alloc_size;
-    struct fast_task_info *task;
+    struct nio_thread_data *thread_data;
     FDIRServerContext *server_ctx;
 
-    if ((task=sf_alloc_init_task(CLUSTER_NET_HANDLER, -1)) == NULL) {
-        return ENOMEM;
-    }
-
-    alloc_size = 4 * task->send.ptr->size / FDIR_BINLOG_RECORD_MIN_SIZE;
+    alloc_size = 4 * g_sf_global_vars.max_buff_size /
+        FDIR_BINLOG_RECORD_MIN_SIZE;
     if ((result=push_result_ring_check_init(&replication->
                     context.push_result_ctx, alloc_size)) != 0)
     {
-        sf_release_task(task);
         return result;
     }
 
-    task->thread_data = CLUSTER_SF_CTX.thread_data +
-        replication->index % CLUSTER_SF_CTX.work_threads;
-    server_ctx = (FDIRServerContext *)task->thread_data->arg;
+    thread_data = CLUSTER_SF_CTX.thread_data + replication->
+        index % CLUSTER_SF_CTX.work_threads;
+    server_ctx = (FDIRServerContext *)thread_data->arg;
 
     set_replication_stage(replication, FDIR_REPLICATION_STAGE_IN_QUEUE);
     replication->context.last_data_versions.by_disk.previous = 0;
@@ -160,11 +156,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     replication->context.sync_by_disk_stat.start_time_ms = 0;
     replication->context.sync_by_disk_stat.binlog_size = 0;
     replication->context.sync_by_disk_stat.record_count = 0;
-
-    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_MASTER;
-    CLUSTER_REPLICA = replication;
-    replication->connection_info.conn.sock = -1;
-    replication->task = task;
+    replication->task = NULL;
 
     PTHREAD_MUTEX_LOCK(&server_ctx->cluster.queue.lock);
     replication->next = server_ctx->cluster.queue.head;
@@ -226,98 +218,111 @@ static void calc_next_connect_time(FDIRSlaveReplication *replication)
 
 static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
 {
-    int result;
-    int polled;
-    socklen_t len;
-    struct pollfd pollfds;
+    struct fast_task_info *task;
+    FCAddressPtrArray *addr_array;
+    FCAddressInfo *addr;
 
-    if (replication->connection_info.conn.sock < 0) {
-        FCAddressPtrArray *addr_array;
-        FCAddressInfo *addr;
-
-        if (replication->connection_info.next_connect_time > g_current_time) {
-            return EAGAIN;
-        }
-
-        addr_array = &CLUSTER_GROUP_ADDRESS_ARRAY(replication->slave->server);
-        addr = addr_array->addrs[addr_array->index++];
-        if (addr_array->index >= addr_array->count) {
-            addr_array->index = 0;
-        }
-
-        replication->connection_info.start_time = g_current_time;
-        replication->connection_info.conn = addr->conn;
-        calc_next_connect_time(replication);
-        if ((result=conn_pool_async_connect_server(&replication->
-                        connection_info.conn)) == 0)
-        {
-            return 0;
-        }
-        if (result != EINPROGRESS) {
-            return result;
-        }
+    if (FC_ATOMIC_GET(replication->stage) !=
+            FDIR_REPLICATION_STAGE_BEFORE_CONNECT)
+    {
+        return 0;
     }
 
-    pollfds.fd = replication->connection_info.conn.sock;
-    pollfds.events = POLLIN | POLLOUT;
-    polled = poll(&pollfds, 1, 0);
-    if (polled == 0) {  //timeout
-        if (g_current_time - replication->connection_info.start_time >
-                SF_G_CONNECT_TIMEOUT)
-        {
-            result = ETIMEDOUT;
-        } else {
-            result = EINPROGRESS;
-        }
-    } else if (polled < 0) {   //error
-        result = errno != 0 ? errno : EIO;
-    } else {
-        len = sizeof(result);
-        if (getsockopt(replication->connection_info.conn.sock, SOL_SOCKET,
-                    SO_ERROR, &result, &len) < 0)
-        {
-            result = errno != 0 ? errno : EACCES;
-        }
+    if (replication->connection_info.next_connect_time > g_current_time) {
+        return EAGAIN;
     }
 
-    if (!(result == 0 || result == EINPROGRESS)) {
-        close(replication->connection_info.conn.sock);
-        replication->connection_info.conn.sock = -1;
+    if ((task=sf_alloc_init_task(CLUSTER_NET_HANDLER, -1)) == NULL) {
+        return ENOMEM;
     }
-    return result;
+
+    task->thread_data = CLUSTER_SF_CTX.thread_data +
+        replication->index % CLUSTER_SF_CTX.work_threads;
+
+    addr_array = &CLUSTER_GROUP_ADDRESS_ARRAY(replication->slave->server);
+    addr = addr_array->addrs[addr_array->index++];
+    if (addr_array->index >= addr_array->count) {
+        addr_array->index = 0;
+    }
+
+    replication->connection_info.start_time = g_current_time;
+    calc_next_connect_time(replication);
+
+    SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_MASTER;
+    CLUSTER_REPLICA = replication;
+    replication->task = task;
+    snprintf(task->server_ip, sizeof(task->server_ip),
+            "%s", addr->conn.ip_addr);
+    task->port = addr->conn.port;
+    if (sf_nio_notify(task, SF_NIO_STAGE_CONNECT) == 0) {
+        set_replication_stage(replication, FDIR_REPLICATION_STAGE_CONNECTING);
+    }
+
+    return 0;
 }
 
-static int send_join_slave_package(FDIRSlaveReplication *replication)
+static void on_connect_success(FDIRSlaveReplication *replication)
 {
-	int result;
-	FDIRProtoHeader *header;
-    FDIRProtoJoinSlaveReq *req;
-	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoJoinSlaveReq)];
+    char prompt[128];
+    FDIRServerContext *server_ctx;
 
-    header = (FDIRProtoHeader *)out_buff;
-    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ,
-            sizeof(out_buff) - sizeof(FDIRProtoHeader));
+    server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
+    if (replication->connection_info.fail_count > 0) {
+        sprintf(prompt, " after %d retries",
+                replication->connection_info.fail_count);
+    } else {
+        *prompt = '\0';
+    }
+    logInfo("file: "__FILE__", line: %d, "
+            "cluster thread #%d, connect to slave id %d, %s:%u "
+            "successfully%s. current connected count: %d",
+            __LINE__, server_ctx->thread_index, replication->slave->
+            server->id, replication->task->server_ip, replication->
+            task->port, prompt, server_ctx->cluster.connected.count);
 
-    req = (FDIRProtoJoinSlaveReq *)(out_buff + sizeof(FDIRProtoHeader));
-    int2buff(CLUSTER_ID, req->cluster_id);
-    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
-    int2buff(replication->task->send.ptr->size, req->buffer_size);
-    memcpy(req->key, replication->slave->key, FDIR_REPLICA_KEY_SIZE);
-
-    if ((result=tcpsenddata_nb(replication->connection_info.conn.sock,
-                    out_buff, sizeof(out_buff), SF_G_NETWORK_TIMEOUT)) != 0)
+    if (remove_from_replication_ptr_array(&server_ctx->
+                cluster.connectings, replication) == 0)
     {
-        logError("file: "__FILE__", line: %d, "
-                "send data to server %s:%u fail, "
-                "errno: %d, error info: %s", __LINE__,
-                replication->connection_info.conn.ip_addr,
-                replication->connection_info.conn.port,
-                result, STRERROR(result));
-        close(replication->connection_info.conn.sock);
-        replication->connection_info.conn.sock = -1;
+        set_replication_stage(replication,
+                FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP);
+
+        replication->slave->last_data_version = -1;
+        replication->slave->binlog_pos_hint.index = -1;
+        replication->slave->binlog_pos_hint.offset = -1;
+        add_to_replication_ptr_array(&server_ctx->
+                cluster.connected, replication);
     }
 
-    return result;
+    replication->connection_info.fail_count = 0;
+}
+
+int binlog_replication_join_slave(struct fast_task_info *task)
+{
+    FDIRProtoJoinSlaveReq *req;
+    FDIRSlaveReplication *replication;
+
+    /* set magic number for the first request */
+    SF_PROTO_SET_MAGIC(((FDIRProtoHeader *)task->send.ptr->data)->magic);
+
+    RESPONSE.error.length = 0;
+    RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_REQ;
+    TASK_CTX.common.need_response = true;
+    TASK_CTX.common.log_level = LOG_ERR;
+    if ((replication=CLUSTER_REPLICA) == NULL) {
+        TASK_CTX.common.response_done = false;
+        return ENOENT;
+    }
+
+    req = (FDIRProtoJoinSlaveReq *)SF_PROTO_SEND_BODY(task);
+    int2buff(CLUSTER_ID, req->cluster_id);
+    int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
+    int2buff(task->send.ptr->size, req->buffer_size);
+    memcpy(req->key, replication->slave->key, FDIR_REPLICA_KEY_SIZE);
+
+    RESPONSE.header.body_len = sizeof(FDIRProtoJoinSlaveReq);
+    TASK_CTX.common.response_done = true;
+    on_connect_success(replication);
+    return 0;
 }
 
 static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
@@ -394,119 +399,56 @@ static void replication_queue_discard_synced(FDIRSlaveReplication *replication)
     }
 }
 
-static int deal_connecting_replication(FDIRSlaveReplication *replication)
+static inline int deal_connecting_replication(FDIRSlaveReplication *replication)
 {
-    int result;
-
     replication_queue_discard_all(replication);
-    result = check_and_make_replica_connection(replication);
-    if (result == 0) {
-        result = send_join_slave_package(replication);
+    return check_and_make_replica_connection(replication);
+}
+
+void binlog_replication_connect_done(struct fast_task_info *task,
+        const int err_no)
+{
+    FDIRSlaveReplication *replication;
+
+    if ((replication=CLUSTER_REPLICA) == NULL) {
+        return;
     }
 
-    return result;
+    if (err_no == 0) {
+        return;
+    }
+
+    set_replication_stage(replication, FDIR_REPLICATION_STAGE_IN_QUEUE);
+    if (err_no != replication->connection_info.last_errno
+            || replication->connection_info.fail_count % 10 == 0)
+    {
+        replication->connection_info.last_errno = err_no;
+        logError("file: "__FILE__", line: %d, "
+                "%dth connect to replication peer: %d, %s:%u fail, "
+                "time used: %ds, errno: %d, error info: %s",
+                __LINE__, replication->connection_info.fail_count + 1,
+                replication->slave->server->id, task->server_ip, task->port,
+                (int)(g_current_time - replication->connection_info.
+                    start_time), err_no, STRERROR(err_no));
+    }
+    replication->connection_info.fail_count++;
 }
 
 static int deal_replication_connectings(FDIRServerContext *server_ctx)
 {
-#define SUCCESS_ARRAY_ELEMENT_MAX  8
-
-    int result;
     int i;
-    char prompt[128];
-    struct {
-        int count;
-        FDIRSlaveReplication *replications[SUCCESS_ARRAY_ELEMENT_MAX];
-    } success_array;
     FDIRSlaveReplication *replication;
 
     if (server_ctx->cluster.connectings.count == 0) {
         return 0;
     }
 
-    success_array.count = 0;
     for (i=0; i<server_ctx->cluster.connectings.count; i++) {
         replication = server_ctx->cluster.connectings.replications[i];
-        result = deal_connecting_replication(replication);
-        if (result == 0) {
-            if (success_array.count < SUCCESS_ARRAY_ELEMENT_MAX) {
-                success_array.replications[success_array.count++] = replication;
-            }
-            set_replication_stage(replication,
-                    FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP);
-        } else if (result == EINPROGRESS) {
-            set_replication_stage(replication,
-                    FDIR_REPLICATION_STAGE_CONNECTING);
-        } else if (result != EAGAIN) {
-            if (result != replication->connection_info.last_errno
-                    || replication->connection_info.fail_count % 100 == 0)
-            {
-                replication->connection_info.last_errno = result;
-                logError("file: "__FILE__", line: %d, "
-                        "%dth connect to %s:%u fail, time used: %ds, "
-                        "errno: %d, error info: %s", __LINE__,
-                        replication->connection_info.fail_count + 1,
-                        replication->connection_info.conn.ip_addr,
-                        replication->connection_info.conn.port, (int)
-                        (g_current_time - replication->connection_info.start_time),
-                        result, STRERROR(result));
-            }
-            replication->connection_info.fail_count++;
-        }
+        deal_connecting_replication(replication);
     }
 
-    for (i=0; i<success_array.count; i++) {
-        replication = success_array.replications[i];
-
-        if (replication->connection_info.fail_count > 0) {
-            sprintf(prompt, " after %d retries",
-                    replication->connection_info.fail_count);
-        } else {
-            *prompt = '\0';
-        }
-
-        if (remove_from_replication_ptr_array(&server_ctx->
-                    cluster.connectings, replication) == 0)
-        {
-            replication->slave->last_data_version = -1;
-            replication->slave->binlog_pos_hint.index = -1;
-            replication->slave->binlog_pos_hint.offset = -1;
-
-            add_to_replication_ptr_array(&server_ctx->
-                    cluster.connected, replication);
-        }
-
-        if (replication->join_fail_count == 0) {
-            logInfo("file: "__FILE__", line: %d, "
-                    "cluster thread #%d, connect to slave %s:%u "
-                    "successfully%s. current connected count: %d",
-                    __LINE__, server_ctx->thread_index,
-                    replication->connection_info.conn.ip_addr,
-                    replication->connection_info.conn.port, prompt,
-                    server_ctx->cluster.connected.count);
-        }
-
-        replication->connection_info.fail_count = 0;
-        replication->task->event.fd = replication->
-            connection_info.conn.sock;
-        snprintf(replication->task->client_ip,
-                sizeof(replication->task->client_ip), "%s",
-                replication->connection_info.conn.ip_addr);
-        replication->task->port = replication->connection_info.conn.port;
-        sf_nio_notify(replication->task, SF_NIO_STAGE_INIT);
-    }
     return 0;
-}
-
-static void release_replication_task(FDIRSlaveReplication *replication)
-{
-    struct fast_task_info *task;
-
-    task = replication->task;
-    SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
-    CLUSTER_REPLICA = NULL;
-    set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
-    sf_release_task(task);
 }
 
 static void clean_connecting_replications(FDIRServerContext *server_ctx)
@@ -516,12 +458,9 @@ static void clean_connecting_replications(FDIRServerContext *server_ctx)
 
     for (i=0; i<server_ctx->cluster.connectings.count; i++) {
         replication = server_ctx->cluster.connectings.replications[i];
-        if (replication->connection_info.conn.sock >= 0) {
-            close(replication->connection_info.conn.sock);
-            replication->connection_info.conn.sock = -1;
+        if (replication->task != NULL) {
+            ioevent_add_to_deleted_list(replication->task);
         }
-
-        release_replication_task(replication);
     }
     server_ctx->cluster.connectings.count = 0;
 }
@@ -548,7 +487,7 @@ void clean_master_replications(FDIRServerContext *server_ctx)
         replication = server_ctx->cluster.queue.head;
         do {
             ++count;
-            release_replication_task(replication);
+            set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
         } while ((replication=replication->next) != NULL);
 
         server_ctx->cluster.queue.head = NULL;

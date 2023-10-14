@@ -533,6 +533,7 @@ static int load_binlog_shrink_config(IniContext *ini_context,
 
 int server_load_config(const char *filename)
 {
+    const bool double_buffers = true;
     const int task_buffer_extra_size = 0;
     IniFullContext ini_ctx;
     IniContext ini_context;
@@ -575,10 +576,10 @@ int server_load_config(const char *filename)
     }
     sf_service_set_smart_polling(&server_group->smart_polling);
 
-    server_group = fc_server_get_group_by_index(
+    CLUSTER_SERVER_GROUP = fc_server_get_group_by_index(
             &CLUSTER_SERVER_CONFIG, CLUSTER_GROUP_INDEX);
     if ((result=sf_load_context_from_config(&CLUSTER_SF_CTX,
-                    server_group->comm_type, filename,
+                    CLUSTER_SERVER_GROUP->comm_type, filename,
                     &ini_context, "cluster",
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT,
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
@@ -586,7 +587,7 @@ int server_load_config(const char *filename)
         return result;
     }
     sf_service_set_smart_polling_ex(&CLUSTER_SF_CTX,
-            &server_group->smart_polling);
+            &CLUSTER_SERVER_GROUP->smart_polling);
 
     if ((result=cluster_info_init(full_cluster_filename)) != 0) {
         return result;
@@ -760,6 +761,18 @@ int server_load_config(const char *filename)
     }
 
     if ((result=load_binlog_shrink_config(&ini_context, filename)) != 0) {
+        return result;
+    }
+
+    if (CLUSTER_SERVER_GROUP->comm_type != fc_comm_type_sock) {
+        if ((result=conn_pool_global_init_for_rdma()) != 0) {
+            return result;
+        }
+    }
+    if ((result=conn_pool_set_rdma_extra_params_ex(
+                    &CLUSTER_CONN_EXTRA_PARAMS, &CLUSTER_SERVER_CONFIG,
+                    CLUSTER_GROUP_INDEX, double_buffers)) != 0)
+    {
         return result;
     }
 

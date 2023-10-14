@@ -1326,7 +1326,9 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
 {
     int result;
 
-    if (stage == SF_NIO_STAGE_CONTINUE) {
+    if (stage == SF_NIO_STAGE_HANDSHAKE) {
+        result = binlog_replication_join_slave(task);
+    } else if (stage == SF_NIO_STAGE_CONTINUE) {
         if (task->continue_callback != NULL) {
             result = task->continue_callback(task);
         } else {
