@@ -157,6 +157,10 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
                         "CLUSTER_REPLICA is NULL", __LINE__, task,
                         SERVER_TASK_TYPE);
             }
+            if (task->handler->comm_type == fc_comm_type_rdma) {
+                REPLICA_RPC_CALL_INPROGRESS = false;
+                REPLICA_PUSH_BINLOG_INPROGRESS = false;
+            }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
         case FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE:
@@ -170,6 +174,9 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
                         "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
                         "CLUSTER_CONSUMER_CTX is NULL", __LINE__, task,
                         SERVER_TASK_TYPE);
+            }
+            if (task->handler->comm_type == fc_comm_type_rdma) {
+                REPLICA_PUSH_RESULT_INPROGRESS = false;
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
@@ -592,7 +599,7 @@ static inline int check_replication_master_task(struct fast_task_info *task)
     return 0;
 }
 
-static int cluster_deal_push_binlog_resp(struct fast_task_info *task)
+static int cluster_deal_push_result_req(struct fast_task_info *task)
 {
     int result;
     int r;
@@ -1375,23 +1382,62 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                     }
                 }
                 break;
-            case FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ:
-                if ((result=cluster_deal_forword_requests_req(task)) > 0) {
-                    result *= -1;  //force close connection
+            case FDIR_REPLICA_PROTO_RPC_CALL_REQ:
+                if ((result=cluster_deal_forword_requests_req(task)) == 0) {
+                    if (task->handler->comm_type == fc_comm_type_rdma) {
+                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_RPC_CALL_RESP;
+                    } else {
+                        TASK_CTX.common.need_response = false;
+                    }
+                } else {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                    TASK_CTX.common.need_response = false;
                 }
+                break;
+            case FDIR_REPLICA_PROTO_RPC_CALL_RESP:
+                result = 0;
                 TASK_CTX.common.need_response = false;
+                REPLICA_RPC_CALL_INPROGRESS = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
-                if ((result=cluster_deal_push_binlog_req(task)) > 0) {
-                    result *= -1;  //force close connection
+                if ((result=cluster_deal_push_binlog_req(task)) == 0) {
+                    if (task->handler->comm_type == fc_comm_type_rdma) {
+                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP;
+                    } else {
+                        TASK_CTX.common.need_response = false;
+                    }
+                } else {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                    TASK_CTX.common.need_response = false;
                 }
-                TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
-                if ((result=cluster_deal_push_binlog_resp(task)) > 0) {
-                    result *= -1;  //force close connection
-                }
+                result = 0;
                 TASK_CTX.common.need_response = false;
+                REPLICA_PUSH_BINLOG_INPROGRESS = false;
+                break;
+            case FDIR_REPLICA_PROTO_PUSH_RESULT_REQ:
+                if ((result=cluster_deal_push_result_req(task)) == 0) {
+                    if (task->handler->comm_type == fc_comm_type_rdma) {
+                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_PUSH_RESULT_RESP;
+                    } else {
+                        TASK_CTX.common.need_response = false;
+                    }
+                } else {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                    TASK_CTX.common.need_response = false;
+                }
+                break;
+            case FDIR_REPLICA_PROTO_PUSH_RESULT_RESP:
+                result = 0;
+                TASK_CTX.common.need_response = false;
+                REPLICA_PUSH_RESULT_INPROGRESS = false;
                 break;
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
                 result = cluster_deal_notify_slave_quit(task);

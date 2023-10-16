@@ -296,6 +296,7 @@ static inline int check_retry_push_request(ReplicaConsumerThreadContext *ctx)
 
 static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
 {
+    struct fast_task_info *task;
     struct common_blocked_node *node;
     struct common_blocked_node *current;
     struct common_blocked_node *last;
@@ -303,7 +304,8 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     char *p;
     int count;
 
-    if (!sf_nio_task_send_done(ctx->task)) {
+    task = ctx->task;
+    if (!sf_nio_task_send_done(task)) {
         return 0;
     }
 
@@ -313,16 +315,23 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
         return EAGAIN;
     }
 
+    if (task->handler->comm_type == fc_comm_type_rdma) {
+        if (REPLICA_PUSH_RESULT_INPROGRESS) {
+            return 0;
+        }
+        REPLICA_PUSH_RESULT_INPROGRESS = true;
+    }
+
     count = 0;
-    p = ctx->task->send.ptr->data + sizeof(FDIRProtoHeader) +
+    p = task->send.ptr->data + sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoPushBinlogRespBodyHeader);
 
     last = NULL;
     current = node;
     do {
-        if ((p - ctx->task->send.ptr->data) +
+        if ((p - task->send.ptr->data) +
                 sizeof(FDIRProtoPushBinlogRespBodyPart) >
-                ctx->task->send.ptr->size)
+                task->send.ptr->size)
         {
             last->next = NULL;
             common_blocked_queue_return_nodes(
@@ -346,13 +355,13 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
 
     int2buff(count, ((FDIRProtoPushBinlogRespBodyHeader *)
-                SF_PROTO_SEND_BODY(ctx->task))->count);
+                SF_PROTO_SEND_BODY(task))->count);
 
-    ctx->task->send.ptr->length = p - ctx->task->send.ptr->data;
-    SF_PROTO_SET_HEADER((FDIRProtoHeader *)ctx->task->send.ptr->data,
-            FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP, ctx->task->send.
+    task->send.ptr->length = p - task->send.ptr->data;
+    SF_PROTO_SET_HEADER((FDIRProtoHeader *)task->send.ptr->data,
+            FDIR_REPLICA_PROTO_RPC_CALL_REQ, task->send.
             ptr->length - sizeof(FDIRProtoHeader));
-    sf_send_add_event(ctx->task);
+    sf_send_add_event(task);
     return 0;
 }
 

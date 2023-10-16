@@ -294,12 +294,18 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "JOIN_SLAVE_REQ";
         case FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP:
             return "JOIN_SLAVE_RESP";
-        case FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ:
-            return "FORWORD_REQUESTS_REQ";
+        case FDIR_REPLICA_PROTO_RPC_CALL_REQ:
+            return "RPC_CALL_REQ";
+        case FDIR_REPLICA_PROTO_RPC_CALL_RESP:
+            return "RPC_CALL_RESP";
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
             return "PUSH_BINLOG_REQ";
         case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
             return "PUSH_BINLOG_RESP";
+        case FDIR_REPLICA_PROTO_PUSH_RESULT_REQ:
+            return "PUSH_RESULT_REQ";
+        case FDIR_REPLICA_PROTO_PUSH_RESULT_RESP:
+            return "PUSH_RESULT_RESP";
         case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
             return "NOTIFY_SLAVE_QUIT";
         default:

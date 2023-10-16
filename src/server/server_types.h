@@ -108,6 +108,13 @@
 #define NS_SUBSCRIBER        TASK_CTX.shared.service.subscriber
 #define IDEMPOTENCY_REQUEST  TASK_CTX.service.idempotency_request
 
+#define REPLICA_RPC_CALL_INPROGRESS     \
+    TASK_CTX.shared.cluster.rpc_call_inprogress
+#define REPLICA_PUSH_BINLOG_INPROGRESS  \
+    TASK_CTX.shared.cluster.push_binlog_inprogress
+#define REPLICA_PUSH_RESULT_INPROGRESS  \
+    TASK_CTX.shared.cluster.push_result_inprogress
+
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
 
 
@@ -358,11 +365,17 @@ typedef struct {
             FDIRNSSubscriber *subscriber;
         } service;
 
-        union {
-            FDIRClusterServerInfo *peer;   //the peer server in the cluster
-            FDIRSlaveReplication *replica; //master side
-            struct replica_consumer_thread_context *consumer_ctx;//slave side
-            struct server_binlog_reader *reader; //for fetch/sync binlog
+        struct {
+            bool rpc_call_inprogress;     //for RDMA
+            bool push_binlog_inprogress;  //for RDMA
+            bool push_result_inprogress;  //for RDMA
+
+            union {
+                FDIRClusterServerInfo *peer;   //the peer server in the cluster
+                FDIRSlaveReplication *replica; //master side
+                struct replica_consumer_thread_context *consumer_ctx;//slave side
+                struct server_binlog_reader *reader; //for fetch/sync binlog
+            };
         } cluster;
     } shared;
 

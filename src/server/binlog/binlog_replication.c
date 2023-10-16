@@ -515,6 +515,7 @@ static void repush_to_replication_queue(FDIRSlaveReplication *replication,
 
 static int forward_requests(FDIRSlaveReplication *replication)
 {
+    struct fast_task_info *task;
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
@@ -528,6 +529,13 @@ static int forward_requests(FDIRSlaveReplication *replication)
     int body_len;
     int result;
 
+    task = replication->task;
+    if (task->handler->comm_type == fc_comm_type_rdma) {
+        if (REPLICA_RPC_CALL_INPROGRESS) {
+            return 0;
+        }
+    }
+
     PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
     head = replication->context.queue.head;
     tail = replication->context.queue.tail;
@@ -539,27 +547,30 @@ static int forward_requests(FDIRSlaveReplication *replication)
     if (head == NULL) {
         if (replication->connection_info.send_heartbeat) {
             replication->connection_info.send_heartbeat = false;
-            replication->task->send.ptr->length = sizeof(FDIRProtoHeader);
-            SF_PROTO_SET_HEADER((FDIRProtoHeader *)replication->task->send.ptr->data,
+            task->send.ptr->length = sizeof(FDIRProtoHeader);
+            SF_PROTO_SET_HEADER((FDIRProtoHeader *)task->send.ptr->data,
                     SF_PROTO_ACTIVE_TEST_REQ, 0);
-            sf_send_add_event(replication->task);
+            sf_send_add_event(task);
         }
 
         return 0;
     }
 
+    if (task->handler->comm_type == fc_comm_type_rdma) {
+        REPLICA_RPC_CALL_INPROGRESS = true;
+    }
     metadata = replication->req_meta_array.elts;
     replication->req_meta_array.count = 0;
     data_version.first = head->data_version.first;
     data_version.last = head->data_version.last;
-    replication->task->send.ptr->length = sizeof(FDIRProtoHeader) +
+    task->send.ptr->length = sizeof(FDIRProtoHeader) +
         sizeof(FDIRProtoForwardRequestsBodyHeader);
     while (head != NULL) {
         rb = head;
 
-        if (replication->task->send.ptr->length + rb->buffer.length + sizeof(
+        if (task->send.ptr->length + rb->buffer.length + sizeof(
                     *pmeta) * (replication->req_meta_array.count + 1) >
-                replication->task->send.ptr->size)
+                task->send.ptr->size)
         {
             break;
         }
@@ -567,9 +578,9 @@ static int forward_requests(FDIRSlaveReplication *replication)
         data_version.last = rb->data_version.last;
         replication->context.last_data_versions.by_queue =
             rb->data_version.last;
-        memcpy(replication->task->send.ptr->data + replication->task->send.ptr->length,
+        memcpy(task->send.ptr->data + task->send.ptr->length,
                 rb->buffer.data, rb->buffer.length);
-        replication->task->send.ptr->length += rb->buffer.length;
+        task->send.ptr->length += rb->buffer.length;
 
         if ((result=push_result_ring_add(&replication->context.
                         push_result_ctx, &rb->data_version,
@@ -592,12 +603,12 @@ static int forward_requests(FDIRSlaveReplication *replication)
             break;
         }
     }
-    binlog_length = replication->task->send.ptr->length - (sizeof(FDIRProtoHeader)
+    binlog_length = task->send.ptr->length - (sizeof(FDIRProtoHeader)
             + sizeof(FDIRProtoForwardRequestsBodyHeader));
 
     metaend = metadata;
     pmeta = (FDIRProtoForwardRequestMetadata *)(replication->
-            task->send.ptr->data + replication->task->send.ptr->length);
+            task->send.ptr->data + task->send.ptr->length);
     for (metadata=replication->req_meta_array.elts;
             metadata<metaend; metadata++, pmeta++)
     {
@@ -605,20 +616,19 @@ static int forward_requests(FDIRSlaveReplication *replication)
         long2buff(metadata->data_version, pmeta->data_version);
     }
 
-    replication->task->send.ptr->length += sizeof(*pmeta) *
+    task->send.ptr->length += sizeof(*pmeta) *
         replication->req_meta_array.count;
-    header = (FDIRProtoHeader *)replication->task->send.ptr->data;
+    header = (FDIRProtoHeader *)task->send.ptr->data;
     bheader = (FDIRProtoForwardRequestsBodyHeader *)
-        (replication->task->send.ptr->data + sizeof(FDIRProtoHeader));
-    body_len = replication->task->send.ptr->length - sizeof(FDIRProtoHeader);
+        (task->send.ptr->data + sizeof(FDIRProtoHeader));
+    body_len = task->send.ptr->length - sizeof(FDIRProtoHeader);
     int2buff(binlog_length, bheader->binlog_length);
     int2buff(replication->req_meta_array.count, bheader->count);
     long2buff(data_version.first, bheader->data_version.first);
     long2buff(data_version.last, bheader->data_version.last);
 
-    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_FORWORD_REQUESTS_REQ,
-            body_len);
-    sf_send_add_event(replication->task);
+    SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_RPC_CALL_REQ, body_len);
+    sf_send_add_event(task);
 
     if (head != NULL) {
         repush_to_replication_queue(replication, head, tail);
@@ -705,8 +715,16 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
 
 static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
 {
+    struct fast_task_info *task;
     BinlogReadThreadResult *r;
     const bool block = false;
+
+    task = replication->task;
+    if (task->handler->comm_type == fc_comm_type_rdma) {
+        if (REPLICA_PUSH_BINLOG_INPROGRESS) {
+            return 0;
+        }
+    }
 
     r = binlog_read_thread_fetch_result_ex(replication->context.
             reader_ctx, block);
@@ -737,6 +755,9 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
                 r->data_version.last, r->buffer.length);
                 */
 
+        if (task->handler->comm_type == fc_comm_type_rdma) {
+            REPLICA_PUSH_BINLOG_INPROGRESS = true;
+        }
         replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
         sync_binlog_to_slave(replication, r);
     }
