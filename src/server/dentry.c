@@ -910,7 +910,8 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     }
 
     if (STORAGE_ENABLED) {
-        current->db_args->loaded_flags = FDIR_DENTRY_LOADED_FLAGS_ALL;
+        current->db_args->loaded_flags = (FDIR_DENTRY_LOADED_FLAGS_ALL
+                & (~FDIR_DENTRY_LOADED_FLAGS_CLIST));
         dentry_lru_add(current);
     }
 

@@ -180,7 +180,7 @@ static void push_to_slave_replica_queues(FDIRSlaveReplication *replication,
     replication->context.queue.tail = rbuffer;
     PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
-    if (notify) {
+    if (notify && replication->task != NULL) {
         ioevent_notify_thread(replication->task->thread_data);
     }
 }
