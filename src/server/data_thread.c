@@ -674,8 +674,8 @@ static int check_load_children(FDIRServerDentry *parent)
         GENERATE_DENTRY_MESSAGES(msg, dentry, da_binlog_op_type_update, 0)
 
 #define SET_ADD_TO_CLIST_FLAG(parent)  \
-    if (parent != NULL) parent->db_args->add_to_clist = ((parent->db_args-> \
-                loaded_flags & FDIR_DENTRY_LOADED_FLAGS_CLIST) != 0)
+    if (parent != NULL) parent->db_args->add_to_clist =  \
+       (parent->db_args->children.ptr != NULL)
 
 #define GENERATE_UPDATE_PARENT_MESSAGE(msg, parent) \
     if (parent != NULL) {  \

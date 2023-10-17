@@ -169,12 +169,18 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
 {
     int result;
+    int stage;
     FDIRServerContext *server_ctx;
 
     terminate_binlog_read_thread(replication);
     server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
+    stage = FC_ATOMIC_GET(replication->stage);
+    if (stage < FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP) {
+        return 0;
+    }
+
     if ((result=remove_from_replication_ptr_array(&server_ctx->
-                cluster.connected, replication)) == 0)
+                    cluster.connected, replication)) == 0)
     {
         replication_queue_discard_all(replication);
         push_result_ring_clear_all(&replication->context.push_result_ctx);
@@ -432,6 +438,7 @@ void binlog_replication_connect_done(struct fast_task_info *task,
                     start_time), err_no, STRERROR(err_no));
     }
     replication->connection_info.fail_count++;
+    FC_ATOMIC_SET(replication->stage, FDIR_REPLICATION_STAGE_BEFORE_CONNECT);
 }
 
 static int deal_replication_connectings(FDIRServerContext *server_ctx)

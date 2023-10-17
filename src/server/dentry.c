@@ -410,12 +410,12 @@ static inline void dentry_init_pool(FDIRDentryPool *pool,
     pool->count = 0;
 }
 
-static void dentry_free_child(UniqSkiplist *sl,
+static void dentry_free_db_child(UniqSkiplist *sl,
         id_name_pair_t *child, const int delay_seconds)
 {
     FDIRDentryContext *context;
     context = sl->factory->arg;
-    dentry_strfree(context, &child->name);
+    server_immediate_free_str(context, child->name.str);
     fast_mblock_free_object(&context->db_args.child_allocator, child);
 }
 
@@ -445,19 +445,22 @@ int dentry_init_context(FDIRDataThreadContext *thread_ctx)
     if (STORAGE_ENABLED && CHILDREN_CONTAINER ==
             fdir_children_container_skiplist)
     {
-        if ((result=uniq_skiplist_init_ex(&context->db_args.factory,
+        const bool bidirection = false;
+        const bool allocator_use_lock = true;
+        if ((result=uniq_skiplist_init_ex2(&context->db_args.factory,
                         SKIPLIST_MAX_LEVEL, (skiplist_compare_func)
                         array_compare_element_id_name,
-                        (uniq_skiplist_free_func)dentry_free_child,
+                        (uniq_skiplist_free_func)dentry_free_db_child,
                         16 * 1024, SKIPLIST_DEFAULT_MIN_ALLOC_ELEMENTS_ONCE,
-                        delay_free_seconds, context)) != 0)
+                        delay_free_seconds, bidirection, allocator_use_lock,
+                        context)) != 0)
         {
             return result;
         }
 
         if ((result=fast_mblock_init_ex1(&context->db_args.child_allocator,
                         "db-child", sizeof(id_name_pair_t), 16 * 1024, 0,
-                        NULL, NULL, false)) != 0)
+                        NULL, NULL, true)) != 0)
         {
             return result;
         }
