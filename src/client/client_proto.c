@@ -2823,6 +2823,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
         return EINVAL;
     }
 
+    stat->up_time = (uint32_t)buff2int(stat_resp.up_time);
     stat->server_id = buff2int(stat_resp.server_id);
     stat->is_master = stat_resp.is_master;
     stat->status = stat_resp.status;

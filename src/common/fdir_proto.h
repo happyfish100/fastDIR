@@ -652,6 +652,7 @@ typedef struct fdir_proto_namespace_list_resp_body {
 } FDIRProtoNamespaceListRespBody;
 
 typedef struct fdir_proto_service_stat_resp {
+    char up_time[4];
     char server_id[4];
     char is_master;
     char status;

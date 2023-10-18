@@ -171,17 +171,17 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     int result;
     int stage;
     FDIRServerContext *server_ctx;
+    FDIRSlaveReplicationPtrArray *parray;
 
     terminate_binlog_read_thread(replication);
     server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
     stage = FC_ATOMIC_GET(replication->stage);
     if (stage < FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP) {
-        return 0;
+        parray = &server_ctx->cluster.connectings;
+    } else {
+        parray = &server_ctx->cluster.connected;
     }
-
-    if ((result=remove_from_replication_ptr_array(&server_ctx->
-                    cluster.connected, replication)) == 0)
-    {
+    if ((result=remove_from_replication_ptr_array(parray, replication)) == 0) {
         replication_queue_discard_all(replication);
         push_result_ring_clear_all(&replication->context.push_result_ctx);
         if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
@@ -646,8 +646,8 @@ static int forward_requests(FDIRSlaveReplication *replication)
 static int start_binlog_read_thread(FDIRSlaveReplication *replication)
 {
     int result;
-    replication->context.reader_ctx = (BinlogReadThreadContext *)fc_malloc(
-            sizeof(BinlogReadThreadContext));
+    replication->context.reader_ctx = (BinlogReadThreadContext *)
+        fc_malloc(sizeof(BinlogReadThreadContext));
     if (replication->context.reader_ctx == NULL) {
         return ENOMEM;
     }
@@ -667,11 +667,13 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
         replication->context.reader_ctx = NULL;
         return result;
     }
+
     if ((result=binlog_read_thread_init(replication->context.reader_ctx,
                     &replication->slave->binlog_pos_hint,
                     replication->slave->last_data_version,
-                    replication->task->send.ptr->size - (sizeof(FDIRProtoHeader) +
-                        sizeof(FDIRProtoPushBinlogReqBodyHeader)))) != 0)
+                    replication->task->send.ptr->size -
+                    (sizeof(FDIRProtoHeader) +
+                     sizeof(FDIRProtoPushBinlogReqBodyHeader)))) != 0)
     {
         free(replication->context.reader_ctx);
         replication->context.reader_ctx = NULL;
@@ -789,15 +791,18 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         time_used = get_current_time_ms() - replication->context.
             sync_by_disk_stat.start_time_ms;
         logInfo("file: "__FILE__", line: %d, "
-                "sync to slave %s:%u by disk done, record count: %"PRId64", "
-                "binlog size: %s, time used: %s ms", __LINE__,
+                "sync to slave id %d, %s:%u by disk done, record count: "
+                "%"PRId64", binlog size: %s, last data version: %"PRId64","
+                "time used: %s ms", __LINE__, replication->slave->server->id,
                 CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->slave->server),
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(replication->slave->server),
                 replication->context.sync_by_disk_stat.record_count,
                 long_to_comma_str(replication->context.sync_by_disk_stat.
-                    binlog_size, size_buff),
+                    binlog_size, size_buff), replication->context.
+                last_data_versions.by_disk.current,
                 long_to_comma_str(time_used, time_buff));
     }
+
     return 0;
 }
 

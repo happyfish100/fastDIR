@@ -321,6 +321,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_SEND_BODY(task);
 
+    int2buff(SF_G_UP_TIME, stat_resp->up_time);
     int2buff(CLUSTER_MYSELF_PTR->server->id, stat_resp->server_id);
     stat_resp->is_master = (CLUSTER_MYSELF_PTR ==
         CLUSTER_MASTER_ATOM_PTR ? 1 : 0);

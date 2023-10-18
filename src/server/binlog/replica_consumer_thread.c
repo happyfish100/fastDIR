@@ -359,7 +359,7 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
 
     task->send.ptr->length = p - task->send.ptr->data;
     SF_PROTO_SET_HEADER((FDIRProtoHeader *)task->send.ptr->data,
-            FDIR_REPLICA_PROTO_RPC_CALL_REQ, task->send.
+            FDIR_REPLICA_PROTO_PUSH_RESULT_REQ, task->send.
             ptr->length - sizeof(FDIRProtoHeader));
     sf_send_add_event(task);
     return 0;

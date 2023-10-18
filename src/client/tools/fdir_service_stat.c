@@ -34,6 +34,7 @@ static void usage(char *argv[])
 static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
     char storage_engine_buff[128];
+    char up_time_buff[32];
     int len;
 
     len = sprintf(storage_engine_buff, "enabled: %s", stat->
@@ -42,6 +43,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
         sprintf(storage_engine_buff + len, ", current_version: %"PRId64,
                 stat->storage_engine.current_version);
     }
+    formatDatetime(stat->up_time, "%Y-%m-%d %H:%M:%S",
+            up_time_buff, sizeof(up_time_buff));
     printf( "\tserver_id: %d\n"
             "\thost: %s:%u\n"
             "\tversion: %.*s\n"
@@ -49,6 +52,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             "\tis_master: %s\n"
             "\tauth_enabled: %s\n"
             "\tstorage_engine: {%s}\n"
+            "\tup_time: %s\n"
             "\tconnection : {current: %d, max: %d}\n"
             "\tdata : {current_version: %"PRId64", "
             "confirmed_version: %"PRId64"}\n"
@@ -58,7 +62,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",
             stat->auth_enabled ? "true" : "false",
-            storage_engine_buff,
+            storage_engine_buff, up_time_buff,
             stat->connection.current_count,
             stat->connection.max_count,
             stat->data.current_version,

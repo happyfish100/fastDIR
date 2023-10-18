@@ -79,6 +79,7 @@ typedef struct fdir_client_compact_dentry_array {
 } FDIRClientCompactDentryArray;
 
 typedef struct fdir_client_service_stat {
+    time_t up_time;
     int server_id;
     bool is_master;
     char status;
