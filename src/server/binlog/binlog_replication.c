@@ -273,19 +273,6 @@ static void on_connect_success(FDIRSlaveReplication *replication)
     FDIRServerContext *server_ctx;
 
     server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
-    if (replication->connection_info.fail_count > 0) {
-        sprintf(prompt, " after %d retries",
-                replication->connection_info.fail_count);
-    } else {
-        *prompt = '\0';
-    }
-    logInfo("file: "__FILE__", line: %d, "
-            "cluster thread #%d, connect to slave id %d, %s:%u "
-            "successfully%s. current connected count: %d",
-            __LINE__, server_ctx->thread_index, replication->slave->
-            server->id, replication->task->server_ip, replication->
-            task->port, prompt, server_ctx->cluster.connected.count);
-
     if (remove_from_replication_ptr_array(&server_ctx->
                 cluster.connectings, replication) == 0)
     {
@@ -299,7 +286,20 @@ static void on_connect_success(FDIRSlaveReplication *replication)
                 cluster.connected, replication);
     }
 
+    if (replication->connection_info.fail_count > 0) {
+        sprintf(prompt, " after %d retries",
+                replication->connection_info.fail_count);
+    } else {
+        *prompt = '\0';
+    }
     replication->connection_info.fail_count = 0;
+
+    logInfo("file: "__FILE__", line: %d, "
+            "cluster thread #%d, connect to slave id %d, %s:%u "
+            "successfully%s. current connected count: %d",
+            __LINE__, server_ctx->thread_index, replication->slave->
+            server->id, replication->task->server_ip, replication->
+            task->port, prompt, server_ctx->cluster.connected.count);
 }
 
 int binlog_replication_join_slave(struct fast_task_info *task)
@@ -646,6 +646,8 @@ static int forward_requests(FDIRSlaveReplication *replication)
 static int start_binlog_read_thread(FDIRSlaveReplication *replication)
 {
     int result;
+    struct fast_task_info *task;
+
     replication->context.reader_ctx = (BinlogReadThreadContext *)
         fc_malloc(sizeof(BinlogReadThreadContext));
     if (replication->context.reader_ctx == NULL) {
@@ -660,12 +662,15 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
             replication->slave->binlog_pos_hint.offset);
             */
 
-    if ((result=sf_realloc_task_send_max_buffer(replication->task)) != 0 ||
-            (result=sf_realloc_task_recv_max_buffer(replication->task)) != 0)
-    {
-        free(replication->context.reader_ctx);
-        replication->context.reader_ctx = NULL;
-        return result;
+    task = replication->task;
+    if (SF_CTX->realloc_task_buffer) {
+        if ((result=sf_set_task_send_max_buffer_size(task)) != 0 ||
+                (result=sf_set_task_recv_max_buffer_size(task)) != 0)
+        {
+            free(replication->context.reader_ctx);
+            replication->context.reader_ctx = NULL;
+            return result;
+        }
     }
 
     if ((result=binlog_read_thread_init(replication->context.reader_ctx,
