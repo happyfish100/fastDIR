@@ -177,6 +177,7 @@ static int process_cmdline(int argc, char *argv[], bool *continue_flag)
 int main(int argc, char *argv[])
 {
     pthread_t schedule_tid;
+    bool double_buffers;
     int wait_count;
     int result;
     int64_t max_data_version;
@@ -280,13 +281,15 @@ int main(int argc, char *argv[])
         }
 
         common_handler_init();
+        double_buffers = CLUSTER_SERVER_GROUP->comm_type != fc_comm_type_sock;
         result = sf_service_init_ex2(&CLUSTER_SF_CTX, "cluster",
                 cluster_alloc_thread_extra_data,
                 cluster_thread_loop_callback, NULL,
                 sf_proto_set_body_length, NULL, NULL, cluster_deal_task,
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
                 5000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), true, true, init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), double_buffers, true,
+                init_nio_task, NULL);
         if (result != 0) {
             break;
         }
