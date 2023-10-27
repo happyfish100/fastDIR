@@ -189,7 +189,7 @@ int cluster_proto_get_server_status(ConnectionInfo *conn,
 
     if (conn->comm_type == fc_comm_type_rdma) {
         resp = (FDIRProtoGetServerStatusResp *)(G_RDMA_CONNECTION_CALLBACKS.
-                get_recv_buffer(conn) + sizeof(FDIRProtoHeader));
+                get_recv_buffer(conn)->buff + sizeof(FDIRProtoHeader));
     } else {
         if ((result=tcprecvdata_nb(conn->sock, in_body, response.
                         header.body_len, network_timeout)) != 0)
@@ -282,8 +282,8 @@ static int proto_ping_master(ConnectionInfo *conn, const int network_timeout)
         } else {
             if (conn->comm_type == fc_comm_type_rdma) {
                 body_header = (FDIRProtoPingMasterRespHeader *)
-                    (G_RDMA_CONNECTION_CALLBACKS.get_recv_buffer(conn) +
-                     sizeof(FDIRProtoHeader));
+                    (G_RDMA_CONNECTION_CALLBACKS.get_recv_buffer(conn)->
+                     buff + sizeof(FDIRProtoHeader));
             } else {
                 result = tcprecvdata_nb(conn->sock, in_buff,
                         response.header.body_len, network_timeout);
