@@ -309,6 +309,12 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
         return 0;
     }
 
+    if (task->handler->comm_type == fc_comm_type_rdma) {
+        if (REPLICA_PUSH_RESULT_INPROGRESS) {
+            return 0;
+        }
+    }
+
     if ((node=common_blocked_queue_try_pop_all_nodes(
                     &ctx->queues.result)) == NULL)
     {
@@ -316,9 +322,6 @@ static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
     }
 
     if (task->handler->comm_type == fc_comm_type_rdma) {
-        if (REPLICA_PUSH_RESULT_INPROGRESS) {
-            return 0;
-        }
         REPLICA_PUSH_RESULT_INPROGRESS = true;
     }
 
