@@ -147,7 +147,8 @@
 //cluster commands
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ    201
 #define FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP   202
-#define FDIR_CLUSTER_PROTO_JOIN_MASTER              203  //slave  -> master
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ          203  //slave  -> master
+#define FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP         204
 #define FDIR_CLUSTER_PROTO_PING_MASTER_REQ          205
 #define FDIR_CLUSTER_PROTO_PING_MASTER_RESP         206
 #define FDIR_CLUSTER_PROTO_PRE_SET_NEXT_MASTER      207  //notify next leader to other servers

@@ -1361,7 +1361,8 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
             case FDIR_CLUSTER_PROTO_COMMIT_NEXT_MASTER:
                 result = cluster_deal_next_master(task);
                 break;
-            case FDIR_CLUSTER_PROTO_JOIN_MASTER:
+            case FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ:
+                RESPONSE.header.cmd = FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP;
                 result = cluster_deal_join_master(task);
                 break;
             case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:

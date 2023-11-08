@@ -263,8 +263,10 @@ const char *fdir_get_cmd_caption(const int cmd)
             return "GET_SERVER_STATUS_REQ";
         case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_RESP:
             return "GET_SERVER_STATUS_RESP";
-        case FDIR_CLUSTER_PROTO_JOIN_MASTER:
-            return "JOIN_MASTER";
+        case FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ:
+            return "JOIN_MASTER_REQ";
+        case FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP:
+            return "JOIN_MASTER_RESP";
         case FDIR_CLUSTER_PROTO_PING_MASTER_REQ:
             return "PING_MASTER_REQ";
         case FDIR_CLUSTER_PROTO_PING_MASTER_RESP:

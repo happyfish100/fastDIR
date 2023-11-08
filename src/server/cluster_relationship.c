@@ -48,9 +48,9 @@ typedef struct fdir_cluster_relationship_context {
     FDIRClusterServerPtrArray detect_server_parray; //for deactive detect
 } FDIRClusterRelationshipContext;
 
-#define VOTE_CONNECTION      relationship_ctx.vote_connection
-#define MASTER_ELECTED_TIME  relationship_ctx.master_elected_time
-#define DETECT_SERVER_PARRAY relationship_ctx.detect_server_parray
+#define VOTE_CONNECTION        relationship_ctx.vote_connection
+#define MASTER_ELECTED_TIME    relationship_ctx.master_elected_time
+#define DETECT_SERVER_PARRAY   relationship_ctx.detect_server_parray
 
 static FDIRClusterRelationshipContext relationship_ctx = {
     {-1, 0}, 0
@@ -230,7 +230,7 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
     generate_replica_key();
     header = (FDIRProtoHeader *)out_buff;
     req = (FDIRProtoJoinMasterReq *)(header + 1);
-    SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER,
+    SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_JOIN_MASTER_REQ,
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
 
     SERVER_PROTO_PACK_IDENTITY(req->si);
@@ -238,7 +238,7 @@ static int proto_join_master(ConnectionInfo *conn, const int network_timeout)
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
                     sizeof(out_buff), &response, network_timeout,
-                    SF_PROTO_ACK)) != 0)
+                    FDIR_CLUSTER_PROTO_JOIN_MASTER_RESP)) != 0)
     {
         fdir_log_network_error(&response, conn, result);
     }
@@ -1378,6 +1378,7 @@ static void *cluster_thread_entrance(void* arg)
     int ping_remain_time;
     bool is_ping;
     time_t ping_start_time;
+    FDIRClusterServerInfo *last_master;
     FDIRClusterServerInfo *master;
     ConnectionInfo *mconn;  //master connection
 
@@ -1391,6 +1392,7 @@ static void *cluster_thread_entrance(void* arg)
         return NULL;
     }
 
+    last_master = NULL;
     fail_count = 0;
     sleep_seconds = 1;
     ping_start_time = g_current_time;
@@ -1401,11 +1403,15 @@ static void *cluster_thread_entrance(void* arg)
                 sleep_seconds = 1 + (int)((double)rand()
                         * (double)MAX_SLEEP_SECONDS / RAND_MAX);
             } else {
-                fc_server_close_connection(mconn);
-                ping_start_time = g_current_time;
                 sleep_seconds = 1;
             }
         } else {
+            if (master != last_master) {
+                fc_server_close_connection(mconn);
+                ping_start_time = g_current_time;
+                last_master = master;
+            }
+
             ping_remain_time = ELECTION_MASTER_LOST_TIMEOUT -
                 (g_current_time - ping_start_time);
             if (ping_remain_time < 2) {
