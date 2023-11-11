@@ -101,8 +101,8 @@ static inline int binlog_get_indexes(int *start_index, int *last_index)
             writer, start_index, last_index);
 }
 
-static inline int push_to_binlog_write_queue(
-        ServerBinlogRecordBuffer *rbuffer,
+static inline int push_to_binlog_write_queue_ex(char *binlog_buff,
+        const int binlog_len, const SFVersionRange *data_version,
         const int record_count)
 {
     SFBinlogWriterBuffer *wbuffer;
@@ -113,12 +113,12 @@ static inline int push_to_binlog_write_queue(
         return ENOMEM;
     }
 
-    if (wbuffer->bf.alloc_size < rbuffer->buffer.length) {
+    if (wbuffer->bf.alloc_size < binlog_len) {
         char *new_buff;
         int alloc_size;
 
         alloc_size = wbuffer->bf.alloc_size * 2;
-        while (alloc_size < rbuffer->buffer.length) {
+        while (alloc_size < binlog_len) {
             alloc_size *= 2;
         }
         new_buff = (char *)fc_malloc(alloc_size);
@@ -131,12 +131,19 @@ static inline int push_to_binlog_write_queue(
         wbuffer->bf.alloc_size = alloc_size;
     }
 
-    memcpy(wbuffer->bf.buff, rbuffer->buffer.data, rbuffer->buffer.length);
-    wbuffer->bf.length = rbuffer->buffer.length;
-    wbuffer->version = rbuffer->data_version;
+    memcpy(wbuffer->bf.buff, binlog_buff, binlog_len);
+    wbuffer->bf.length = binlog_len;
+    wbuffer->version = *data_version;
     sf_push_to_binlog_write_queue(&g_binlog_writer_ctx.writer, wbuffer);
     __sync_add_and_fetch(&BINLOG_RECORD_COUNT, record_count);
     return 0;
+}
+
+static inline int push_to_binlog_write_queue(ServerBinlogRecordBuffer
+        *rbuffer, const int record_count)
+{
+    return push_to_binlog_write_queue_ex(rbuffer->buffer.data, rbuffer->
+            buffer.length, &rbuffer->data_version, record_count);
 }
 
 #ifdef __cplusplus

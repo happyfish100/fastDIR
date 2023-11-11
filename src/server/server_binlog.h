@@ -27,7 +27,6 @@
 #include "binlog/binlog_pack.h"
 #include "binlog/binlog_replay.h"
 #include "binlog/binlog_replay_mt.h"
-#include "binlog/push_result_ring.h"
 #include "binlog/binlog_dump.h"
 #include "binlog/binlog_sort.h"
 #include "binlog/binlog_dedup.h"

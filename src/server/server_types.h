@@ -81,6 +81,7 @@
 #define FDIR_FORCE_ELECTION_LONG_OPTION_LEN  (sizeof(  \
             FDIR_FORCE_ELECTION_LONG_OPTION_STR) - 1)
 
+#define TASK_PENDING_SEND_COUNT task->pending_send_count
 #define TASK_ARG          ((FDIRServerTaskArg *)task->arg)
 #define TASK_CTX          TASK_ARG->context
 #define REQUEST           TASK_CTX.common.request
@@ -108,15 +109,7 @@
 #define NS_SUBSCRIBER        TASK_CTX.shared.service.subscriber
 #define IDEMPOTENCY_REQUEST  TASK_CTX.service.idempotency_request
 
-#define REPLICA_RPC_CALL_INPROGRESS     \
-    TASK_CTX.shared.cluster.rpc_call_inprogress
-#define REPLICA_PUSH_BINLOG_INPROGRESS  \
-    TASK_CTX.shared.cluster.push_binlog_inprogress
-#define REPLICA_PUSH_RESULT_INPROGRESS  \
-    TASK_CTX.shared.cluster.push_result_inprogress
-
 #define SERVER_CTX        ((FDIRServerContext *)task->thread_data->arg)
-
 
 typedef void (*server_free_func)(void *ptr);
 typedef void (*server_free_func_ex)(void *ctx, void *ptr);
@@ -222,35 +215,22 @@ typedef struct fdir_record_buffer_queue {
     pthread_mutex_t lock;
 } FDIRRecordBufferQueue;
 
-typedef struct fdir_binlog_push_result_entry {
+typedef struct fdir_replica_rpc_result_entry {
     uint64_t data_version;
-    time_t expires;
     struct fast_task_info *waiting_task;
-    struct fdir_binlog_push_result_entry *next;
-} FDIRBinlogPushResultEntry;
+} FDIRReplicaRPCResultEntry;
 
-typedef struct fdir_binlog_push_result_context {
-    struct {
-        FDIRBinlogPushResultEntry *entries;
-        FDIRBinlogPushResultEntry *start; //for consumer
-        FDIRBinlogPushResultEntry *end;   //for producer
-        int size;
-    } ring;
-
-    struct {
-        FDIRBinlogPushResultEntry *head;
-        FDIRBinlogPushResultEntry *tail;
-        struct fast_mblock_man rentry_allocator;
-    } queue;   //for overflow exceptions
-
-    time_t last_check_timeout_time;
-} FDIRBinlogPushResultContext;
+typedef struct fdir_replica_rpc_result_array {
+    FDIRReplicaRPCResultEntry *results;
+    int alloc;
+    int count;
+} FDIRReplicaRPCResultArray;
 
 struct binlog_read_thread_context;
 typedef struct fdir_replication_context {
     FDIRRecordBufferQueue queue;  //push to the slave
     struct binlog_read_thread_context *reader_ctx; //read from binlog file
-    FDIRBinlogPushResultContext push_result_ctx;   //push result recv from the slave
+    FDIRReplicaRPCResultArray rpc_result_array;
     struct {
         int64_t by_queue;
         struct {
@@ -276,6 +256,7 @@ typedef struct fdir_slave_replication {
     struct {
         int start_time;
         int next_connect_time;
+        time_t last_net_comm_time;
         int last_errno;
         int fail_count;
         volatile bool send_heartbeat;
@@ -366,10 +347,6 @@ typedef struct {
         } service;
 
         struct {
-            bool rpc_call_inprogress;     //for RDMA
-            bool push_binlog_inprogress;  //for RDMA
-            bool push_result_inprogress;  //for RDMA
-
             union {
                 FDIRClusterServerInfo *peer;   //the peer server in the cluster
                 FDIRSlaveReplication *replica; //master side

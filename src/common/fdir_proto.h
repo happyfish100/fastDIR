@@ -172,8 +172,6 @@
 #define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_REQ       227
 #define FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP      228
 #define FDIR_REPLICA_PROTO_SYNC_BINLOG_REPORT       229
-#define FDIR_REPLICA_PROTO_PUSH_RESULT_REQ          231
-#define FDIR_REPLICA_PROTO_PUSH_RESULT_RESP         232
 
 #define FDIR_PROTO_FILE_TYPE_DUMP      'd'
 #define FDIR_PROTO_FILE_TYPE_BINLOG    'b'
@@ -858,17 +856,6 @@ typedef struct fdir_proto_push_binlog_req_body_header {
         char last[8];
     } data_version;
 } FDIRProtoPushBinlogReqBodyHeader;
-
-typedef struct fdir_proto_push_binlog_resp_body_header {
-    char count[4];
-    char padding[4];
-} FDIRProtoPushBinlogRespBodyHeader;
-
-typedef struct fdir_proto_push_binlog_resp_body_part {
-    char data_version[8];
-    char err_no[2];
-    char padding[6];
-} FDIRProtoPushBinlogRespBodyPart;
 
 typedef struct fdir_proto_replia_query_binlog_info_req {
     char server_id[4];

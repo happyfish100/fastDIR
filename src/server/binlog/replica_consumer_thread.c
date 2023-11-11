@@ -294,80 +294,6 @@ static inline int check_retry_push_request(ReplicaConsumerThreadContext *ctx)
     return 0;
 }
 
-static int deal_replica_push_result(ReplicaConsumerThreadContext *ctx)
-{
-    struct fast_task_info *task;
-    struct common_blocked_node *node;
-    struct common_blocked_node *current;
-    struct common_blocked_node *last;
-    RecordProcessResult *r;
-    char *p;
-    int count;
-
-    task = ctx->task;
-    if (!sf_nio_task_send_done(task)) {
-        return 0;
-    }
-
-    if (task->handler->comm_type == fc_comm_type_rdma) {
-        if (REPLICA_PUSH_RESULT_INPROGRESS) {
-            return 0;
-        }
-    }
-
-    if ((node=common_blocked_queue_try_pop_all_nodes(
-                    &ctx->queues.result)) == NULL)
-    {
-        return EAGAIN;
-    }
-
-    if (task->handler->comm_type == fc_comm_type_rdma) {
-        REPLICA_PUSH_RESULT_INPROGRESS = true;
-    }
-
-    count = 0;
-    p = task->send.ptr->data + sizeof(FDIRProtoHeader) +
-        sizeof(FDIRProtoPushBinlogRespBodyHeader);
-
-    last = NULL;
-    current = node;
-    do {
-        if ((p - task->send.ptr->data) +
-                sizeof(FDIRProtoPushBinlogRespBodyPart) >
-                task->send.ptr->size)
-        {
-            last->next = NULL;
-            common_blocked_queue_return_nodes(
-                    &ctx->queues.result, current);
-            break;
-        }
-
-        r = (RecordProcessResult *)current->data;
-        long2buff(r->data_version, ((FDIRProtoPushBinlogRespBodyPart *)
-                    p)->data_version);
-        short2buff(r->err_no, ((FDIRProtoPushBinlogRespBodyPart *)p)->
-                err_no);
-        p += sizeof(FDIRProtoPushBinlogRespBodyPart);
-
-        fast_mblock_free_object(&ctx->result_allocator, r);
-        ++count;
-
-        last = current;
-        current = current->next;
-    } while (current != NULL);
-    common_blocked_queue_free_all_nodes(&ctx->queues.result, node);
-
-    int2buff(count, ((FDIRProtoPushBinlogRespBodyHeader *)
-                SF_PROTO_SEND_BODY(task))->count);
-
-    task->send.ptr->length = p - task->send.ptr->data;
-    SF_PROTO_SET_HEADER((FDIRProtoHeader *)task->send.ptr->data,
-            FDIR_REPLICA_PROTO_PUSH_RESULT_REQ, task->send.
-            ptr->length - sizeof(FDIRProtoHeader));
-    sf_send_add_event(task);
-    return 0;
-}
-
 int deal_replica_push_task(ReplicaConsumerThreadContext *ctx)
 {
     int result;
@@ -375,7 +301,7 @@ int deal_replica_push_task(ReplicaConsumerThreadContext *ctx)
     if ((result=check_retry_push_request(ctx)) != 0) {
         return result;
     }
-    return deal_replica_push_result(ctx);
+    return 0;
 }
 
 static void *deal_binlog_thread_func(void *arg)

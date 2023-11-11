@@ -116,14 +116,59 @@ static inline void replica_release_reader(struct fast_task_info *task,
     SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
 }
 
+static inline void desc_task_waiting_rpc_count(
+        FDIRReplicaRPCResultEntry *rentry, const int err_no)
+{
+    FDIRServerTaskArg *task_arg;
+
+    task_arg = (FDIRServerTaskArg *)rentry->waiting_task->arg;
+    if (err_no == 0 && REPLICA_QUORUM_NEED_MAJORITY) {
+        FC_ATOMIC_INC(task_arg->context.service.rpc.success_count);
+    }
+
+    if (__sync_sub_and_fetch(&task_arg->context.service.
+                rpc.waiting_count, 1) == 0)
+    {
+        sf_nio_notify(rentry->waiting_task, SF_NIO_STAGE_CONTINUE);
+    }
+}
+
+static inline void desc_replication_waiting_rpc_count(
+        FDIRSlaveReplication *replication, const int err_no)
+{
+    FDIRReplicaRPCResultEntry *rentry;
+    FDIRReplicaRPCResultEntry *rend;
+
+    if (replication->context.rpc_result_array.count == 0) {
+        return;
+    }
+
+    rend = replication->context.rpc_result_array.results +
+        replication->context.rpc_result_array.count;
+    for (rentry=replication->context.rpc_result_array.results;
+            rentry<rend; rentry++)
+    {
+        desc_task_waiting_rpc_count(rentry, err_no);
+    }
+    replication->context.rpc_result_array.count = 0;
+}
+
 int cluster_recv_timeout_callback(struct fast_task_info *task)
 {
     if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_RELATIONSHIP &&
             CLUSTER_PEER != NULL)
     {
         logError("file: "__FILE__", line: %d, "
-                "cluster client ip: %s, server id: %d, recv timeout",
-                __LINE__, task->client_ip, CLUSTER_PEER->server->id);
+                "cluster server id: %d, ip: %s, recv timeout",
+                __LINE__, CLUSTER_PEER->server->id, task->client_ip);
+        return ETIMEDOUT;
+    } else if (SERVER_TASK_TYPE == FDIR_SERVER_TASK_TYPE_REPLICA_MASTER &&
+            CLUSTER_REPLICA != NULL)
+    {
+        logError("file: "__FILE__", line: %d, "
+                "slave server id: %d, ip: %s, recv timeout",
+                __LINE__, CLUSTER_REPLICA->slave->server->id, task->client_ip);
+        desc_replication_waiting_rpc_count(CLUSTER_REPLICA, ETIMEDOUT);
         return ETIMEDOUT;
     }
 
@@ -149,6 +194,7 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             break;
         case FDIR_SERVER_TASK_TYPE_REPLICA_MASTER:
             if (CLUSTER_REPLICA != NULL) {
+                desc_replication_waiting_rpc_count(CLUSTER_REPLICA, ENOTCONN);
                 binlog_replication_rebind_thread(CLUSTER_REPLICA);
                 CLUSTER_REPLICA = NULL;
             } else {
@@ -157,9 +203,8 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
                         "CLUSTER_REPLICA is NULL", __LINE__, task,
                         SERVER_TASK_TYPE);
             }
-            if (task->handler->comm_type == fc_comm_type_rdma) {
-                REPLICA_RPC_CALL_INPROGRESS = false;
-                REPLICA_PUSH_BINLOG_INPROGRESS = false;
+            if (TASK_PENDING_SEND_COUNT != 0) {
+                TASK_PENDING_SEND_COUNT = 0;
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
@@ -174,9 +219,6 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
                         "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
                         "CLUSTER_CONSUMER_CTX is NULL", __LINE__, task,
                         SERVER_TASK_TYPE);
-            }
-            if (task->handler->comm_type == fc_comm_type_rdma) {
-                REPLICA_PUSH_RESULT_INPROGRESS = false;
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
@@ -543,6 +585,60 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
             binlog, binlog_length, &data_version);
 }
 
+static inline int check_replication_master_task(struct fast_task_info *task)
+{
+    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_MASTER) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "invalid task type: %d != %d", SERVER_TASK_TYPE,
+                FDIR_SERVER_TASK_TYPE_REPLICA_MASTER);
+        return EINVAL;
+    }
+
+    if (CLUSTER_REPLICA == NULL) {
+        RESPONSE.error.length = sprintf(
+                RESPONSE.error.message,
+                "cluster replication ptr is null");
+        return EINVAL;
+    }
+    return 0;
+}
+
+static inline int replica_check_replication_client(struct fast_task_info *task)
+{
+    int result;
+
+    if ((result=check_replication_master_task(task)) != 0) {
+        return result;
+    }
+
+    if (CLUSTER_REPLICA->connection_info.last_net_comm_time != g_current_time) {
+        CLUSTER_REPLICA->connection_info.last_net_comm_time = g_current_time;
+    }
+
+    --TASK_PENDING_SEND_COUNT;
+    return 0;
+}
+
+static int replica_deal_rpc_resp(struct fast_task_info *task)
+{
+    int result;
+
+    if (REQUEST.header.status != 0) {
+        sf_proto_deal_ack(task, &REQUEST, &RESPONSE);
+    } else if ((result=server_expect_body_length(0)) != 0) {
+        return result;
+    }
+
+    if ((result=replica_check_replication_client(task)) != 0) {
+        return result;
+    }
+
+    desc_replication_waiting_rpc_count(CLUSTER_REPLICA,
+            REQUEST.header.status);
+    return REQUEST.header.status;
+}
+
 static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 {
     int result;
@@ -578,86 +674,6 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 
     return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
             (body_header + 1), binlog_length, &data_version);
-}
-
-static inline int check_replication_master_task(struct fast_task_info *task)
-{
-    if (SERVER_TASK_TYPE != FDIR_SERVER_TASK_TYPE_REPLICA_MASTER) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "invalid task type: %d != %d", SERVER_TASK_TYPE,
-                FDIR_SERVER_TASK_TYPE_REPLICA_MASTER);
-        return EINVAL;
-    }
-
-    if (CLUSTER_REPLICA == NULL) {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
-                "cluster replication ptr is null");
-        return EINVAL;
-    }
-    return 0;
-}
-
-static int cluster_deal_push_result_req(struct fast_task_info *task)
-{
-    int result;
-    int r;
-    int count;
-    int expect_body_len;
-    int64_t data_version;
-    short err_no;
-    FDIRProtoPushBinlogRespBodyHeader *body_header;
-    FDIRProtoPushBinlogRespBodyPart *body_part;
-    FDIRProtoPushBinlogRespBodyPart *bp_end;
-
-    if ((result=check_replication_master_task(task)) != 0) {
-        return result;
-    }
-
-    if ((result=server_check_min_body_length(
-                    sizeof(FDIRProtoPushBinlogRespBodyHeader) +
-                    sizeof(FDIRProtoPushBinlogRespBodyPart))) != 0)
-    {
-        return result;
-    }
-
-    body_header = (FDIRProtoPushBinlogRespBodyHeader *)REQUEST.body;
-    count = buff2int(body_header->count);
-
-    expect_body_len = sizeof(FDIRProtoPushBinlogRespBodyHeader) +
-        sizeof(FDIRProtoPushBinlogRespBodyPart) * count;
-    if (REQUEST.header.body_len != expect_body_len) {
-        RESPONSE.error.length = sprintf(RESPONSE.error.message,
-                "body length: %d != expected: %d, results count: %d",
-                REQUEST.header.body_len, expect_body_len, count);
-        return EINVAL;
-    }
-
-    body_part = (FDIRProtoPushBinlogRespBodyPart *)(REQUEST.body +
-            sizeof(FDIRProtoPushBinlogRespBodyHeader));
-    bp_end = body_part + count;
-    for (; body_part<bp_end; body_part++) {
-        data_version = buff2long(body_part->data_version);
-        err_no = buff2short(body_part->err_no);
-        if (err_no != 0) {
-            result = err_no;
-            logError("file: "__FILE__", line: %d, "
-                    "replica fail, data_version: %"PRId64", result: %d",
-                    __LINE__, data_version, err_no);
-        }
-
-        if ((r=binlog_replications_check_response_data_version(
-                        CLUSTER_REPLICA, data_version, err_no)) != 0)
-        {
-            result = r;
-            logError("file: "__FILE__", line: %d, "
-                    "push_result_ring_remove fail, data_version: %"PRId64
-                    ", result: %d", __LINE__, data_version, result);
-        }
-    }
-
-    return result;
 }
 
 static int fill_binlog_last_lines(struct fast_task_info *task,
@@ -1354,6 +1370,14 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 RESPONSE.header.cmd = SF_PROTO_ACTIVE_TEST_RESP;
                 result = sf_proto_deal_active_test(task, &REQUEST, &RESPONSE);
                 break;
+            case SF_PROTO_ACTIVE_TEST_RESP:
+                if ((result=replica_check_replication_client(task)) != 0) {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                }
+                TASK_CTX.common.need_response = false;
+                break;
             case FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ:
                 result = cluster_deal_get_server_status(task);
                 break;
@@ -1384,61 +1408,34 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 }
                 break;
             case FDIR_REPLICA_PROTO_RPC_CALL_REQ:
-                if ((result=cluster_deal_forword_requests_req(task)) == 0) {
-                    if (task->handler->comm_type == fc_comm_type_rdma) {
-                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_RPC_CALL_RESP;
-                    } else {
-                        TASK_CTX.common.need_response = false;
-                    }
-                } else {
+                result = cluster_deal_forword_requests_req(task);
+                RESPONSE.header.cmd = FDIR_REPLICA_PROTO_RPC_CALL_RESP;
+                if (!(result == 0 || result == TASK_STATUS_CONTINUE)) {
                     if (result > 0) {
                         result *= -1;  //force close connection
                     }
-                    TASK_CTX.common.need_response = false;
                 }
                 break;
             case FDIR_REPLICA_PROTO_RPC_CALL_RESP:
-                result = 0;
-                TASK_CTX.common.need_response = false;
-                REPLICA_RPC_CALL_INPROGRESS = false;
-                break;
-            case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
-                if ((result=cluster_deal_push_binlog_req(task)) == 0) {
-                    if (task->handler->comm_type == fc_comm_type_rdma) {
-                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP;
-                    } else {
-                        TASK_CTX.common.need_response = false;
-                    }
-                } else {
+                if ((result=replica_deal_rpc_resp(task)) != 0) {
                     if (result > 0) {
                         result *= -1;  //force close connection
                     }
-                    TASK_CTX.common.need_response = false;
+                }
+                TASK_CTX.common.need_response = false;
+                break;
+            case FDIR_REPLICA_PROTO_PUSH_BINLOG_REQ:
+                result = cluster_deal_push_binlog_req(task);
+                RESPONSE.header.cmd = FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP;
+                if (!(result == 0 || result == TASK_STATUS_CONTINUE)) {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
                 }
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
                 result = 0;
                 TASK_CTX.common.need_response = false;
-                REPLICA_PUSH_BINLOG_INPROGRESS = false;
-                break;
-            case FDIR_REPLICA_PROTO_PUSH_RESULT_REQ:
-                if ((result=cluster_deal_push_result_req(task)) == 0) {
-                    if (task->handler->comm_type == fc_comm_type_rdma) {
-                        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_PUSH_RESULT_RESP;
-                    } else {
-                        TASK_CTX.common.need_response = false;
-                    }
-                } else {
-                    if (result > 0) {
-                        result *= -1;  //force close connection
-                    }
-                    TASK_CTX.common.need_response = false;
-                }
-                break;
-            case FDIR_REPLICA_PROTO_PUSH_RESULT_RESP:
-                result = 0;
-                TASK_CTX.common.need_response = false;
-                REPLICA_PUSH_RESULT_INPROGRESS = false;
                 break;
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:
                 result = cluster_deal_notify_slave_quit(task);
@@ -1520,7 +1517,6 @@ void *cluster_alloc_thread_extra_data(const int thread_index)
 int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 {
     FDIRServerContext *server_ctx;
-    int result;
     //static int count = 0;
 
     server_ctx = (FDIRServerContext *)thread_data->arg;
@@ -1536,10 +1532,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
         return binlog_replication_process(server_ctx);
     } else {
-        if (server_ctx->cluster.consumer_ctx != NULL) {
-            result = deal_replica_push_task(server_ctx->cluster.consumer_ctx);
-            return result == EAGAIN ? 0 : result;
-        } else if (FC_ATOMIC_GET(server_ctx->cluster.clean_replications)) {
+        if (FC_ATOMIC_GET(server_ctx->cluster.clean_replications)) {
             logWarning("file: "__FILE__", line: %d, "
                     "cluster thread #%d, will clean %d connected "
                     "replications because i am no longer master",

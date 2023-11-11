@@ -39,7 +39,6 @@
 #include "../cluster_info.h"
 #include "binlog_func.h"
 #include "binlog_pack.h"
-#include "push_result_ring.h"
 #include "binlog_producer.h"
 #include "binlog_read_thread.h"
 #include "binlog_replication.h"
@@ -130,18 +129,20 @@ static inline void set_replication_stage(FDIRSlaveReplication *
 
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
-    int result;
     int alloc_size;
+    int bytes;
     struct nio_thread_data *thread_data;
     FDIRServerContext *server_ctx;
 
     alloc_size = 4 * g_sf_global_vars.max_buff_size /
         FDIR_BINLOG_RECORD_MIN_SIZE;
-    if ((result=push_result_ring_check_init(&replication->
-                    context.push_result_ctx, alloc_size)) != 0)
+    bytes = sizeof(FDIRReplicaRPCResultEntry) * alloc_size;
+    if ((replication->context.rpc_result_array.results=
+                fc_malloc(bytes)) == NULL)
     {
-        return result;
+        return ENOMEM;
     }
+    replication->context.rpc_result_array.alloc = alloc_size;
 
     thread_data = CLUSTER_SF_CTX.thread_data + replication->
         index % CLUSTER_SF_CTX.work_threads;
@@ -183,7 +184,6 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     }
     if ((result=remove_from_replication_ptr_array(parray, replication)) == 0) {
         replication_queue_discard_all(replication);
-        push_result_ring_clear_all(&replication->context.push_result_ctx);
         if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
             result = binlog_replication_bind_thread(replication);
         } else {
@@ -526,6 +526,7 @@ static int forward_requests(FDIRSlaveReplication *replication)
     ServerBinlogRecordBuffer *rb;
     ServerBinlogRecordBuffer *head;
     ServerBinlogRecordBuffer *tail;
+    FDIRReplicaRPCResultEntry *rentry;
     FDIRProtoHeader *header;
     FDIRProtoForwardRequestsBodyHeader *bheader;
     SFRequestMetadata *metadata;
@@ -534,13 +535,10 @@ static int forward_requests(FDIRSlaveReplication *replication)
     SFVersionRange data_version;
     int binlog_length;
     int body_len;
-    int result;
 
     task = replication->task;
-    if (task->handler->comm_type == fc_comm_type_rdma) {
-        if (REPLICA_RPC_CALL_INPROGRESS) {
-            return 0;
-        }
+    if (TASK_PENDING_SEND_COUNT > 0) {
+        return 0;
     }
 
     PTHREAD_MUTEX_LOCK(&replication->context.queue.lock);
@@ -563,9 +561,8 @@ static int forward_requests(FDIRSlaveReplication *replication)
         return 0;
     }
 
-    if (task->handler->comm_type == fc_comm_type_rdma) {
-        REPLICA_RPC_CALL_INPROGRESS = true;
-    }
+    ++TASK_PENDING_SEND_COUNT;
+    rentry = replication->context.rpc_result_array.results;
     metadata = replication->req_meta_array.elts;
     replication->req_meta_array.count = 0;
     data_version.first = head->data_version.first;
@@ -577,7 +574,9 @@ static int forward_requests(FDIRSlaveReplication *replication)
 
         if (task->send.ptr->length + rb->buffer.length + sizeof(
                     *pmeta) * (replication->req_meta_array.count + 1) >
-                task->send.ptr->size)
+                task->send.ptr->size || rentry - replication->context.
+                rpc_result_array.results == replication->context.
+                rpc_result_array.alloc)
         {
             break;
         }
@@ -589,13 +588,9 @@ static int forward_requests(FDIRSlaveReplication *replication)
                 rb->buffer.data, rb->buffer.length);
         task->send.ptr->length += rb->buffer.length;
 
-        if ((result=push_result_ring_add(&replication->context.
-                        push_result_ctx, &rb->data_version,
-                        rb->args)) != 0)
-        {
-            sf_terminate_myself();
-            return result;
-        }
+        rentry->data_version = rb->data_version.last;
+        rentry->waiting_task = rb->args;
+        ++rentry;
 
         metadata->req_id = rb->req_id;
         metadata->data_version = rb->data_version.last;
@@ -610,6 +605,9 @@ static int forward_requests(FDIRSlaveReplication *replication)
             break;
         }
     }
+
+    replication->context.rpc_result_array.count = rentry -
+        replication->context.rpc_result_array.results;
     binlog_length = task->send.ptr->length - (sizeof(FDIRProtoHeader)
             + sizeof(FDIRProtoForwardRequestsBodyHeader));
 
@@ -687,24 +685,6 @@ static int start_binlog_read_thread(FDIRSlaveReplication *replication)
     return result;
 }
 
-int binlog_replications_check_response_data_version(
-        FDIRSlaveReplication *replication,
-        const int64_t data_version, const int err_no)
-{
-    if (data_version > replication->context.last_data_versions.by_resp) {
-        replication->context.last_data_versions.by_resp = data_version;
-    }
-
-    if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
-        return push_result_ring_remove(&replication->context.
-                push_result_ctx, data_version, err_no);
-    } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
-        replication->context.sync_by_disk_stat.record_count++;
-    }
-
-    return 0;
-}
-
 static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
         BinlogReadThreadResult *r)
 {
@@ -734,10 +714,8 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
     const bool block = false;
 
     task = replication->task;
-    if (task->handler->comm_type == fc_comm_type_rdma) {
-        if (REPLICA_PUSH_BINLOG_INPROGRESS) {
-            return 0;
-        }
+    if (TASK_PENDING_SEND_COUNT > 0) {
+        return 0;
     }
 
     r = binlog_read_thread_fetch_result_ex(replication->context.
@@ -769,9 +747,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
                 r->data_version.last, r->buffer.length);
                 */
 
-        if (task->handler->comm_type == fc_comm_type_rdma) {
-            REPLICA_PUSH_BINLOG_INPROGRESS = true;
-        }
+        ++TASK_PENDING_SEND_COUNT;
         replication->context.sync_by_disk_stat.binlog_size += r->buffer.length;
         sync_binlog_to_slave(replication, r);
     }
@@ -841,10 +817,6 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
         return result;
     }
 
-    if (!sf_nio_task_send_done(replication->task)) {
-        return 0;
-    }
-
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
         if (replication->context.last_data_versions.by_resp >=
                 replication->context.last_data_versions.by_disk.previous) //flow control
@@ -852,7 +824,6 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
             return sync_binlog_from_disk(replication);
         }
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
-        push_result_ring_clear_timeouts(&replication->context.push_result_ctx);
         return forward_requests(replication);
     }
 
