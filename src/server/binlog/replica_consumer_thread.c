@@ -62,25 +62,6 @@ static int alloc_record_buffer(ServerBinlogRecordBuffer *rb,
     return fast_buffer_init_ex(&rb->buffer, buffer_size);
 }
 
-static void replay_done_callback(const int result,
-        FDIRBinlogRecord *record, void *args)
-{
-    ReplicaConsumerThreadContext *ctx;
-    RecordProcessResult *r;
-    bool notify;
-
-    ctx = (ReplicaConsumerThreadContext *)args;
-    r = fast_mblock_alloc_object(&ctx->result_allocator);
-    if (r != NULL) {
-        r->err_no = result;
-        r->data_version = record->data_version;
-        common_blocked_queue_push_ex(&ctx->queues.result, r, &notify);
-        if (notify) {
-            ioevent_notify_thread(ctx->task->thread_data);
-        }
-    }
-}
-   
 ReplicaConsumerThreadContext *replica_consumer_thread_init(
         struct fast_task_info *task, const int buffer_size, int *err_no)
 {
@@ -97,22 +78,14 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
         *err_no = ENOMEM;
         return NULL;
     }
-
     memset(ctx, 0, sizeof(ReplicaConsumerThreadContext));
-    if ((*err_no=fast_mblock_init_ex1(&ctx->result_allocator,
-                    "process_result", sizeof(RecordProcessResult),
-                    8192, 0, NULL, NULL, true)) != 0)
-    {
-        return NULL;
-    }
 
     ctx->running = false;
     ctx->continue_flag = true;
     ctx->task = task;
 
-    if ((*err_no=binlog_replay_init_ex(&ctx->replay_ctx,
-                    replay_done_callback, ctx,
-                    BINLOG_REPLAY_BATCH_SIZE)) != 0)
+    if ((*err_no=binlog_replay_init_ex(&ctx->replay_ctx, NULL,
+                    ctx, BINLOG_REPLAY_BATCH_SIZE)) != 0)
     {
         return NULL;
     }
@@ -128,11 +101,6 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     {
         return NULL;
     }
-    if ((*err_no=common_blocked_queue_init_ex(
-                    &ctx->queues.result, 8192)) != 0)
-    {
-        return NULL;
-    }
 
     rbuffer = ctx->binlog_buffers;
     for (i=0; i<REPLICA_CONSUMER_THREAD_INPUT_BUFFER_COUNT; i++, rbuffer++) {
@@ -144,9 +112,9 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     }
 
     ctx->recv_rbuffer = (ServerBinlogRecordBuffer *)common_blocked_queue_pop(
-                &ctx->queues.free);
+            &ctx->queues.free);
     if ((*err_no=fc_create_thread(&ctx->tid, deal_binlog_thread_func,
-        ctx, SF_G_THREAD_STACK_SIZE)) != 0)
+                    ctx, SF_G_THREAD_STACK_SIZE)) != 0)
     {
         return NULL;
     }
@@ -162,10 +130,9 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
     ctx->continue_flag = false;
     common_blocked_queue_terminate(&ctx->queues.free);
     common_blocked_queue_terminate(&ctx->queues.input);
-    common_blocked_queue_terminate(&ctx->queues.result);
 
     count = 0;
-    while (ctx->running && count++ < 300) {
+    while (ctx->running && count++ < 1000) {
         fc_sleep_ms(10);
     }
 
@@ -173,16 +140,15 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
         logWarning("file: "__FILE__", line: %d, "
                 "wait thread exit timeout", __LINE__);
     }
+
     for (i=0; i<REPLICA_CONSUMER_THREAD_BUFFER_COUNT; i++) {
         fast_buffer_destroy(&ctx->binlog_buffers[i].buffer);
     }
 
     common_blocked_queue_destroy(&ctx->queues.free);
     common_blocked_queue_destroy(&ctx->queues.input);
-    common_blocked_queue_destroy(&ctx->queues.result);
 
     binlog_replay_destroy(&ctx->replay_ctx);
-    fast_mblock_destroy(&ctx->result_allocator);
 
     free(ctx);
     logDebug("file: "__FILE__", line: %d, "
@@ -223,7 +189,7 @@ static inline int push_and_set_next_recv_buffer(
 }
 
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
-        char *binlog_buff, const int length,
+        char *binlog_buff, const int binlog_len,
         const SFVersionRange *data_version)
 {
     ServerBinlogRecordBuffer *rb;
@@ -233,15 +199,15 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
 
     ctx->recv_rbuffer->data_version = *data_version;
     if ((result=fast_buffer_check(&ctx->recv_rbuffer->buffer,
-                    length)) != 0)
+                    binlog_len)) != 0)
     {
         return result;
     }
 
     memcpy(ctx->recv_rbuffer->buffer.data +
             ctx->recv_rbuffer->buffer.length,
-            binlog_buff, length);
-    ctx->recv_rbuffer->buffer.length += length;
+            binlog_buff, binlog_len);
+    ctx->recv_rbuffer->buffer.length += binlog_len;
 
     rb = (ServerBinlogRecordBuffer *)common_blocked_queue_pop_ex(
                 &ctx->queues.free, false);
@@ -270,7 +236,7 @@ int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         max_waiting_count = waiting_count;
         logWarning("file: "__FILE__", line: %d, "
                 "alloc record buffer reachs max waiting count: %d, "
-                "buffer length: %d", __LINE__, max_waiting_count, length);
+                "buffer length: %d", __LINE__, max_waiting_count, binlog_len);
     }
     if (rb == NULL) {
         return EAGAIN;
@@ -353,6 +319,7 @@ static void *deal_binlog_thread_func(void *arg)
                 }
 
                 FC_ATOMIC_SET(MY_CONFIRMED_VERSION, rb->data_version.last);
+                sf_nio_notify(ctx->task, SF_NIO_STAGE_CONTINUE);
             } else {
                 logCrit("file: "__FILE__", line: %d, "
                         "binlog replay deal buffer fail, "

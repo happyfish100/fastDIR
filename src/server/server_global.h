@@ -122,6 +122,8 @@ typedef struct server_global_vars {
         /* cached result of SF_REPLICATION_QUORUM_NEED_DETECT */
         bool quorum_need_detect;
 
+        int active_test_interval;
+
         IdempotencyRequestMetadataContext req_meta_ctx;
     } replication;
 

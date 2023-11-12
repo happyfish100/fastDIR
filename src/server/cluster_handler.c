@@ -77,6 +77,8 @@ int cluster_handler_init()
     const int master_side_timeout = 600;
     int result;
 
+    g_server_global_vars->replication.active_test_interval =
+        (SF_G_NETWORK_TIMEOUT + 1) / 2;
     if ((result=idempotency_request_metadata_init(&REPLICA_REQ_META_CTX,
                     fdir_is_master_callback, NULL)) != 0)
     {
@@ -181,7 +183,6 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
     switch (SERVER_TASK_TYPE) {
         case FDIR_SERVER_TASK_TYPE_RELATIONSHIP:
             if (CLUSTER_PEER != NULL) {
-                CLUSTER_PEER->replica->connection_info.send_heartbeat = true;
                 cluster_relationship_master_quorum_check();
                 CLUSTER_PEER = NULL;
             } else {
@@ -527,6 +528,16 @@ static inline int check_replication_slave_task(struct fast_task_info *task)
     return 0;
 }
 
+static inline int cluster_deal_push_request(ReplicaConsumerThreadContext *ctx,
+        char *binlog_buff, const int binlog_len,
+        const SFVersionRange *data_version)
+{
+    int result;
+    result = deal_replica_push_request(ctx, binlog_buff,
+            binlog_len, data_version);
+    return (result == 0 ? TASK_STATUS_CONTINUE : result);
+}
+
 static int cluster_deal_forword_requests_req(struct fast_task_info *task)
 {
     int result;
@@ -581,7 +592,7 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
         }
     }
 
-    return deal_replica_push_request(CLUSTER_CONSUMER_CTX,
+    return cluster_deal_push_request(CLUSTER_CONSUMER_CTX,
             binlog, binlog_length, &data_version);
 }
 
@@ -672,7 +683,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return EINVAL;
     }
 
-    return deal_replica_push_request(CLUSTER_CONSUMER_CTX, (char *)
+    return cluster_deal_push_request(CLUSTER_CONSUMER_CTX, (char *)
             (body_header + 1), binlog_length, &data_version);
 }
 
@@ -1434,7 +1445,11 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 }
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
-                result = 0;
+                if ((result=replica_check_replication_client(task)) != 0) {
+                    if (result > 0) {
+                        result *= -1;  //force close connection
+                    }
+                }
                 TASK_CTX.common.need_response = false;
                 break;
             case FDIR_REPLICA_PROTO_NOTIFY_SLAVE_QUIT:

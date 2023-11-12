@@ -115,7 +115,6 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             break;
 
         case FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE:
-            replication->connection_info.send_heartbeat = false;
             cluster_info_set_status(replication->slave,
                     FDIR_SERVER_STATUS_ACTIVE);
             break;
@@ -550,8 +549,11 @@ static int forward_requests(FDIRSlaveReplication *replication)
     PTHREAD_MUTEX_UNLOCK(&replication->context.queue.lock);
 
     if (head == NULL) {
-        if (replication->connection_info.send_heartbeat) {
-            replication->connection_info.send_heartbeat = false;
+        if (g_current_time - replication->connection_info.last_net_comm_time >=
+                g_server_global_vars->replication.active_test_interval)
+        {
+            ++TASK_PENDING_SEND_COUNT;
+            replication->connection_info.last_net_comm_time = g_current_time;
             task->send.ptr->length = sizeof(FDIRProtoHeader);
             SF_PROTO_SET_HEADER((FDIRProtoHeader *)task->send.ptr->data,
                     SF_PROTO_ACTIVE_TEST_REQ, 0);
@@ -631,6 +633,10 @@ static int forward_requests(FDIRSlaveReplication *replication)
     int2buff(replication->req_meta_array.count, bheader->count);
     long2buff(data_version.first, bheader->data_version.first);
     long2buff(data_version.last, bheader->data_version.last);
+
+    if (replication->connection_info.last_net_comm_time != g_current_time) {
+        replication->connection_info.last_net_comm_time = g_current_time;
+    }
 
     SF_PROTO_SET_HEADER(header, FDIR_REPLICA_PROTO_RPC_CALL_REQ, body_len);
     sf_send_add_event(task);
@@ -768,6 +774,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         }
         set_replication_stage(replication,
                 FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE);
+        replication->connection_info.last_net_comm_time = g_current_time;
 
         time_used = get_current_time_ms() - replication->context.
             sync_by_disk_stat.start_time_ms;
