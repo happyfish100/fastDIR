@@ -1355,6 +1355,12 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
             return result;
         }
 
+        /*
+        logInfo("file: "__FILE__", line: %d, "
+                "connect to master id: %d, %s:%u successfully", __LINE__,
+                master->server->id, conn->ip_addr, conn->port);
+                */
+
         if ((result=proto_join_master(conn, network_timeout)) != 0) {
             fc_server_close_connection(conn);
             return result;

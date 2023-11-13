@@ -99,6 +99,7 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_OFFLINE);
+                FC_ATOMIC_DEC(ONLINE_SLAVE_SERVERS);
             }
             break;
 
@@ -111,6 +112,7 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_SYNCING);
+                FC_ATOMIC_INC(ONLINE_SLAVE_SERVERS);
             }
             break;
 
@@ -186,7 +188,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
         if (CLUSTER_MYSELF_PTR == CLUSTER_MASTER_ATOM_PTR) {
             result = binlog_replication_bind_thread(replication);
         } else {
-            FC_ATOMIC_SET(replication->stage, FDIR_REPLICATION_STAGE_NONE);
+            set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
         }
     }
 
@@ -330,7 +332,8 @@ int binlog_replication_join_slave(struct fast_task_info *task)
     return 0;
 }
 
-static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
+static inline void decrease_task_waiting_rpc_count(
+        ServerBinlogRecordBuffer *rb)
 {
     struct fast_task_info *task;
     task = (struct fast_task_info *)rb->args;
@@ -341,10 +344,11 @@ static void decrease_task_waiting_rpc_count(ServerBinlogRecordBuffer *rb)
     }
 }
 
-static void discard_queue(FDIRSlaveReplication *replication,
+static inline void discard_queue(FDIRSlaveReplication *replication,
         ServerBinlogRecordBuffer *head, ServerBinlogRecordBuffer *tail)
 {
     ServerBinlogRecordBuffer *rb;
+
     while (head != tail) {
         rb = head;
         head = head->nexts[replication->index];
@@ -462,10 +466,16 @@ static void clean_connecting_replications(FDIRServerContext *server_ctx)
     FDIRSlaveReplication *replication;
     int i;
 
+    if (server_ctx->cluster.connectings.count == 0) {
+        return;
+    }
+
     for (i=0; i<server_ctx->cluster.connectings.count; i++) {
         replication = server_ctx->cluster.connectings.replications[i];
         if (replication->task != NULL) {
             ioevent_add_to_deleted_list(replication->task);
+        } else {
+            set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
         }
     }
     server_ctx->cluster.connectings.count = 0;

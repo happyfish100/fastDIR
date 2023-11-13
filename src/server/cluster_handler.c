@@ -390,6 +390,13 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     memcpy(peer->key, req->key, FDIR_REPLICA_KEY_SIZE);
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_RELATIONSHIP;
     CLUSTER_PEER = peer;
+
+    /*
+    logInfo("file: "__FILE__", line: %d, "
+                "slave id: %d, %s:%u joined", __LINE__, peer->server->id,
+                CLUSTER_GROUP_ADDRESS_FIRST_IP(peer->server),
+                CLUSTER_GROUP_ADDRESS_FIRST_PORT(peer->server));
+                */
     return 0;
 }
 
@@ -1538,8 +1545,8 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
 
     /*
     if (count++ % 100 == 0) {
-        logInfo("%d. is_master: %d, consumer_ctx: %p, connected.count: %d",
-                count, MYSELF_IS_OLD_MASTER, server_ctx->cluster.consumer_ctx,
+        logInfo("%d. is_master: %d, server_ctx: %p, consumer_ctx: %p, connected.count: %d",
+                count, MYSELF_IS_OLD_MASTER, server_ctx, server_ctx->cluster.consumer_ctx,
                 server_ctx->cluster.connected.count);
     }
     */
@@ -1549,9 +1556,11 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     } else {
         if (FC_ATOMIC_GET(server_ctx->cluster.clean_replications)) {
             logWarning("file: "__FILE__", line: %d, "
-                    "cluster thread #%d, will clean %d connected "
-                    "replications because i am no longer master",
-                    __LINE__, server_ctx->thread_index,
+                    "cluster thread #%d, will clean %d connecting "
+                    "replications and %d connected replications "
+                    "because i am no longer master", __LINE__,
+                    server_ctx->thread_index,
+                    server_ctx->cluster.connectings.count,
                     server_ctx->cluster.connected.count);
 
             __sync_bool_compare_and_swap(&server_ctx->cluster.

@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
                 cluster_thread_loop_callback, NULL,
                 sf_proto_set_body_length, NULL, NULL, cluster_deal_task,
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
-                5000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
+                1000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
                 sizeof(FDIRServerTaskArg), double_buffers, true,
                 init_nio_task, NULL);
         if (result != 0) {
