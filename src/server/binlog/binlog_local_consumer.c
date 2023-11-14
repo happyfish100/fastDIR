@@ -31,6 +31,7 @@
 #include "fastcommon/pthread_func.h"
 #include "fastcommon/ioevent_loop.h"
 #include "sf/sf_global.h"
+#include "sf/sf_nio.h"
 #include "../server_global.h"
 #include "binlog_write.h"
 #include "binlog_replication.h"
@@ -190,22 +191,51 @@ int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer)
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
     struct fast_task_info *task;
+    int skip_count;
+    int status;
 
     __sync_add_and_fetch(&rbuffer->reffer_count,
             slave_replication_array.count);
-
     task = (struct fast_task_info *)rbuffer->args;
     __sync_add_and_fetch(&((FDIRServerTaskArg *)task->arg)->context.
             service.rpc.waiting_count, slave_replication_array.count);
-    if (REPLICA_QUORUM_NEED_MAJORITY) {
-        FC_ATOMIC_SET(((FDIRServerTaskArg *)task->arg)->context.
-                service.rpc.success_count, 0);
+
+    if (REPLICA_QUORUM_NEED_MAJORITY || REPLICA_QUORUM_NEED_DETECT) {
+        int success_count;
+        success_count = FC_ATOMIC_GET(((FDIRServerTaskArg *)task->arg)->
+                context.service.rpc.success_count);
+        if (success_count != 0) {
+            __sync_bool_compare_and_swap(&((FDIRServerTaskArg *)
+                        task->arg)->context.service.rpc.
+                    success_count, success_count, 0);
+        }
     }
 
+    skip_count = 0;
     end = slave_replication_array.replications + slave_replication_array.count;
-    for (replication=slave_replication_array.replications; replication<end;
-            replication++) {
-        push_to_slave_replica_queues(replication, rbuffer);
+    for (replication=slave_replication_array.replications;
+            replication<end; replication++)
+    {
+        status = FC_ATOMIC_GET(replication->slave->status);
+        if (status == FDIR_SERVER_STATUS_SYNCING ||
+                status == FDIR_SERVER_STATUS_ACTIVE)
+        {
+            push_to_slave_replica_queues(replication, rbuffer);
+        } else {
+            ++skip_count;
+        }
+    }
+
+    if (skip_count > 0) {
+        if (__sync_sub_and_fetch(&rbuffer->reffer_count, skip_count) == 0) {
+            rbuffer->release_func(rbuffer, skip_count);
+        }
+
+        if (__sync_sub_and_fetch(&((FDIRServerTaskArg *)task->arg)->context.
+                    service.rpc.waiting_count, skip_count) == 0)
+        {
+            sf_nio_notify(task, SF_NIO_STAGE_CONTINUE);
+        }
     }
 
     return 0;

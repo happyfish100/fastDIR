@@ -30,11 +30,16 @@ void binlog_producer_destroy();
 
 ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer();
 
-void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer);
+void server_binlog_release_rbuffer_ex(ServerBinlogRecordBuffer *rbuffer,
+        const int reffer_count);
 
-void server_binlog_free_rbuffer(ServerBinlogRecordBuffer *rbuffer);
+static inline void server_binlog_release_rbuffer(
+        ServerBinlogRecordBuffer *rbuffer)
+{
+    const int reffer_count = 1;
+    server_binlog_release_rbuffer_ex(rbuffer, reffer_count);
+}
 
-//int server_binlog_dispatch(ServerBinlogRecordBuffer *rbuffer);
 void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer);
 
 #ifdef __cplusplus

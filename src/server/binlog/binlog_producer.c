@@ -72,7 +72,7 @@ int record_buffer_alloc_init_func(void *element, void *args)
 
     buffer = &((ServerBinlogRecordBuffer *)element)->buffer;
     ((ServerBinlogRecordBuffer *)element)->release_func =
-        server_binlog_release_rbuffer;
+        server_binlog_release_rbuffer_ex;
     return fast_buffer_init_ex(buffer, proceduer_ctx.rb_init_capacity);
 }
 
@@ -188,13 +188,14 @@ ServerBinlogRecordBuffer *server_binlog_alloc_hold_rbuffer()
     return rbuffer;
 }
 
-void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
+void server_binlog_release_rbuffer_ex(ServerBinlogRecordBuffer *rbuffer,
+        const int reffer_count)
 {
-    if (__sync_sub_and_fetch(&rbuffer->reffer_count, 1) == 0) {
+    if (__sync_sub_and_fetch(&rbuffer->reffer_count, reffer_count) == 0) {
         /*
            logInfo("file: "__FILE__", line: %d, "
-           "free record buffer: %p", __LINE__, rbuffer);
-         */
+                   "free record buffer: %p", __LINE__, rbuffer);
+                   */
         fast_buffer_reset(&rbuffer->buffer);
         if (rbuffer->buffer.alloc_size >= 2 * proceduer_ctx.rb_init_capacity) {
             fast_buffer_set_capacity(&rbuffer->buffer,
@@ -202,11 +203,6 @@ void server_binlog_release_rbuffer(ServerBinlogRecordBuffer *rbuffer)
         }
         fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
     }
-}
-
-void server_binlog_free_rbuffer(ServerBinlogRecordBuffer *rbuffer)
-{
-    fast_mblock_free_object(&proceduer_ctx.rb_allocator, rbuffer);
 }
 
 void binlog_push_to_producer_queue(ServerBinlogRecordBuffer *rbuffer)

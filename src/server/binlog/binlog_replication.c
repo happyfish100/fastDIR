@@ -99,7 +99,6 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_OFFLINE);
-                FC_ATOMIC_DEC(ONLINE_SLAVE_SERVERS);
             }
             break;
 
@@ -112,7 +111,6 @@ static inline void set_replication_stage(FDIRSlaveReplication *
             {
                 cluster_info_set_status(replication->slave,
                         FDIR_SERVER_STATUS_SYNCING);
-                FC_ATOMIC_INC(ONLINE_SLAVE_SERVERS);
             }
             break;
 
@@ -356,7 +354,7 @@ static inline void discard_queue(FDIRSlaveReplication *replication,
         replication->context.last_data_versions.by_queue =
             rb->data_version.last;
         decrease_task_waiting_rpc_count(rb);
-        rb->release_func(rb);
+        rb->release_func(rb, 1);
     }
 }
 
@@ -608,7 +606,7 @@ static int forward_requests(FDIRSlaveReplication *replication)
         metadata->data_version = rb->data_version.last;
 
         head = head->nexts[replication->index];
-        rb->release_func(rb);
+        rb->release_func(rb, 1);
 
         ++metadata;
         if (++replication->req_meta_array.count ==

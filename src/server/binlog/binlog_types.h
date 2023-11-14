@@ -86,7 +86,8 @@ typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
         const int result, const bool is_error);
 
 typedef void (*release_binlog_rbuffer_func)(
-        struct server_binlog_record_buffer *rbuffer);
+        struct server_binlog_record_buffer *rbuffer,
+        const int reffer_count);
 
 typedef struct {
     FDIRDEntryFullName fullname;

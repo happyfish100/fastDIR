@@ -122,8 +122,6 @@ typedef struct server_global_vars {
         /* cached result of SF_REPLICATION_QUORUM_NEED_DETECT */
         bool quorum_need_detect;
 
-        volatile char online_slave_servers;
-
         int active_test_interval;
 
         IdempotencyRequestMetadataContext req_meta_ctx;
@@ -303,8 +301,6 @@ typedef struct server_global_vars {
 #define DENTRY_PARRAY_ALLOCATOR g_server_global_vars->dentry_parray_allocator
 
 #define SLAVE_SERVER_COUNT      (FC_SID_SERVER_COUNT(CLUSTER_SERVER_CONFIG) - 1)
-#define ONLINE_SLAVE_SERVERS    g_server_global_vars->replication.online_slave_servers
-
 #define REPLICA_KEY_BUFF        CLUSTER_MYSELF_PTR->key
 
 #define CLUSTER_GROUP_INDEX     g_server_global_vars->cluster.config.cluster_group_index

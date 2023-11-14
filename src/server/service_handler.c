@@ -1111,7 +1111,6 @@ static inline int do_binlog_produce(struct fast_task_info *task,
 {
     rbuffer->args = task;
     RBUFFER = rbuffer;
-    //if (FC_ATOMIC_GET(ONLINE_SLAVE_SERVERS) > 0) {
     if (SLAVE_SERVER_COUNT > 0) {
         task->continue_callback = handle_replica_done;
         rbuffer->req_id = (IDEMPOTENCY_REQUEST != NULL ?
@@ -1119,16 +1118,6 @@ static inline int do_binlog_produce(struct fast_task_info *task,
         binlog_push_to_producer_queue(rbuffer);
         return TASK_STATUS_CONTINUE;
     } else {
-        if (REPLICA_QUORUM_NEED_MAJORITY && SLAVE_SERVER_COUNT > 0) {
-            int success_count;
-            success_count = FC_ATOMIC_GET(((FDIRServerTaskArg *)task->arg)->
-                    context.service.rpc.success_count);
-            if (success_count != 0) {
-                __sync_bool_compare_and_swap(&((FDIRServerTaskArg *)
-                            task->arg)->context.service.rpc.
-                        success_count, success_count, 0);
-            }
-        }
         return handle_replica_done(task);
     }
 }
@@ -1153,7 +1142,7 @@ static int server_binlog_produce(struct fast_task_info *task)
     if (result == 0) {
         return do_binlog_produce(task, rbuffer);
     } else {
-        server_binlog_free_rbuffer(rbuffer);
+        server_binlog_release_rbuffer(rbuffer);
         service_idempotency_request_finish(task, result);
         sf_release_task(task);
         return result;
@@ -1664,7 +1653,7 @@ static int batch_set_dsize_binlog_produce(FDIRBinlogRecord *record,
         result = do_binlog_produce(task, rbuffer);
         *need_release = false;
     } else {
-        server_binlog_free_rbuffer(rbuffer);
+        server_binlog_release_rbuffer(rbuffer);
         *need_release = true;
     }
 

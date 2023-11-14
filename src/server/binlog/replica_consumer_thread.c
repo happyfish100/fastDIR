@@ -43,7 +43,8 @@
 
 static void *deal_binlog_thread_func(void *arg);
 
-static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer)
+static void release_record_buffer(ServerBinlogRecordBuffer *rbuffer,
+        const int reffer_count)
 {
     ReplicaConsumerThreadContext *ctx;
     bool notify;
@@ -329,7 +330,7 @@ static void *deal_binlog_thread_func(void *arg)
                 break;
             }
 
-            rb->release_func(rb);
+            rb->release_func(rb, 1);
             current = current->next;
         } while (current != NULL);
         common_blocked_queue_free_all_nodes(&ctx->queues.input, node);
