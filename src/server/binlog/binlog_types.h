@@ -76,7 +76,6 @@
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
-#define BINLOG_BUFFER_INIT_SIZE      4096
 #define BINLOG_BUFFER_LENGTH(buffer) ((buffer).end - (buffer).buff)
 #define BINLOG_BUFFER_REMAIN(buffer) ((buffer).end - (buffer).current)
 

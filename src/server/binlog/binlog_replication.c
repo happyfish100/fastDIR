@@ -151,7 +151,6 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     replication->context.last_data_versions.by_disk.previous = 0;
     replication->context.last_data_versions.by_disk.current = 0;
     replication->context.last_data_versions.by_queue = 0;
-    replication->context.last_data_versions.by_resp = 0;
 
     replication->context.sync_by_disk_stat.start_time_ms = 0;
     replication->context.sync_by_disk_stat.binlog_size = 0;
@@ -739,9 +738,10 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
     }
 
     /*
-    logInfo("r: %p, buffer length: %d, result: %d, last_data_version: %"PRId64
-            ", task offset: %d, length: %d", r, r->buffer.length,
-            r->err_no, r->data_version.last, replication->task->send.ptr->offset,
+    logInfo("slave id: %d, buffer length: %d, result: %d, last_data_version: "
+            "%"PRId64", task offset: %d, length: %d", replication->slave->
+            server->id, r->buffer.length, r->err_no, r->data_version.last,
+            replication->task->send.ptr->offset,
             replication->task->send.ptr->length);
             */
 
@@ -756,8 +756,9 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
         }
 
         /*
-        logInfo("first data_version: %"PRId64", last data_version: %"PRId64
-                ", buffer length: %d", r->data_version.first,
+        logInfo("slave id: %d, first data_version: %"PRId64", "
+                "last data_version: %"PRId64", buffer length: %d",
+                replication->slave->server->id, r->data_version.first,
                 r->data_version.last, r->buffer.length);
                 */
 
@@ -769,8 +770,7 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
 
     if ((r->err_no == ENOENT) && (replication->context.last_data_versions.
             by_queue <= replication->context.last_data_versions.by_disk.current)
-            && (replication->context.last_data_versions.by_resp >=
-            replication->context.last_data_versions.by_disk.current))
+            && (TASK_PENDING_SEND_COUNT == 0))
     {
         int64_t time_used;
         char time_buff[32];
@@ -833,11 +833,7 @@ static int deal_connected_replication(FDIRSlaveReplication *replication)
     }
 
     if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_DISK) {
-        if (replication->context.last_data_versions.by_resp >=
-                replication->context.last_data_versions.by_disk.previous) //flow control
-        {
-            return sync_binlog_from_disk(replication);
-        }
+        return sync_binlog_from_disk(replication);
     } else if (replication->stage == FDIR_REPLICATION_STAGE_SYNC_FROM_QUEUE) {
         return forward_requests(replication);
     }

@@ -37,8 +37,6 @@ typedef struct replica_consumer_thread_context {
     } queues;
 
     struct fast_task_info *task;
-    ServerBinlogRecordBuffer *recv_rbuffer;
-
     BinlogReplayContext replay_ctx;
 } ReplicaConsumerThreadContext;
 
@@ -47,13 +45,11 @@ extern "C" {
 #endif
 
 ReplicaConsumerThreadContext *replica_consumer_thread_init(
-        struct fast_task_info *task, const int buffer_size, int *err_no);
+        struct fast_task_info *task, int *err_no);
 
 int deal_replica_push_request(ReplicaConsumerThreadContext *ctx,
         char *binlog_buff, const int binlog_len,
         const SFVersionRange *data_version);
-
-int deal_replica_push_task(ReplicaConsumerThreadContext *ctx);
 
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx);
 

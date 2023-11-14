@@ -237,7 +237,6 @@ typedef struct fdir_replication_context {
             int64_t previous;
             int64_t current;
         } by_disk;
-        int64_t by_resp;  //for flow control
     } last_data_versions;
 
     struct {

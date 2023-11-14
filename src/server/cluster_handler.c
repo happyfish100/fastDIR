@@ -644,7 +644,9 @@ static int replica_deal_rpc_resp(struct fast_task_info *task)
 
     if (REQUEST.header.status != 0) {
         sf_proto_deal_ack(task, &REQUEST, &RESPONSE);
-    } else if ((result=server_expect_body_length(0)) != 0) {
+    } else if ((result=server_expect_body_length(sizeof(
+                        FDIRProtoForwardRequestsResp))) != 0)
+    {
         return result;
     }
 
@@ -692,6 +694,30 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
 
     return cluster_deal_push_request(CLUSTER_CONSUMER_CTX, (char *)
             (body_header + 1), binlog_length, &data_version);
+}
+
+static int replica_deal_push_binlog_resp(struct fast_task_info *task)
+{
+    int result;
+    FDIRProtoPushBinlogResp *resp;
+
+    if (REQUEST.header.status != 0) {
+        sf_proto_deal_ack(task, &REQUEST, &RESPONSE);
+        return REQUEST.header.status;
+    }
+
+    if ((result=server_expect_body_length(sizeof(*resp))) != 0) {
+        return result;
+    }
+
+    if ((result=replica_check_replication_client(task)) != 0) {
+        return result;
+    }
+
+    resp = (FDIRProtoPushBinlogResp *)REQUEST.body;
+    CLUSTER_REPLICA->context.sync_by_disk_stat.record_count +=
+        buff2int(resp->record_count);
+    return 0;
 }
 
 static int fill_binlog_last_lines(struct fast_task_info *task,
@@ -831,8 +857,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return result;
     }
 
-    CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task,
-         BINLOG_BUFFER_INIT_SIZE, &result);
+    CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task, &result);
     if (CLUSTER_CONSUMER_CTX == NULL) {
         return result;
     }
@@ -1452,7 +1477,7 @@ int cluster_deal_task(struct fast_task_info *task, const int stage)
                 }
                 break;
             case FDIR_REPLICA_PROTO_PUSH_BINLOG_RESP:
-                if ((result=replica_check_replication_client(task)) != 0) {
+                if ((result=replica_deal_push_binlog_resp(task)) != 0) {
                     if (result > 0) {
                         result *= -1;  //force close connection
                     }

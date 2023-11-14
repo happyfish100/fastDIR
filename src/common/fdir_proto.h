@@ -857,6 +857,13 @@ typedef struct fdir_proto_push_binlog_req_body_header {
     } data_version;
 } FDIRProtoPushBinlogReqBodyHeader;
 
+typedef struct fdir_proto_push_binlog_resp {
+    char record_count[4];
+    char padding[4];
+} FDIRProtoPushBinlogResp;
+
+typedef FDIRProtoPushBinlogResp FDIRProtoForwardRequestsResp;
+
 typedef struct fdir_proto_replia_query_binlog_info_req {
     char server_id[4];
     char padding[4];
