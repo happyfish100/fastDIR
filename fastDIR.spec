@@ -5,7 +5,7 @@
 %define CommitVersion %(echo $COMMIT_VERSION)
 
 Name: fastDIR
-Version: 4.3.0
+Version: 5.0.0
 Release: 1%{?dist}
 Summary: high performance distributed directory service
 License: AGPL v3.0
@@ -15,7 +15,7 @@ Source: http://github.com/happyfish100/fastDIR/%{name}-%{version}.tar.gz
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n) 
 
-BuildRequires: libserverframe-devel >= 1.1.29
+BuildRequires: libserverframe-devel >= 1.2.0
 BuildRequires: FastCFS-vote-devel >= 3.7.2
 BuildRequires: FastCFS-auth-devel >= 3.7.2
 Requires: %__cp %__mv %__chmod %__grep %__mkdir %__install %__id
@@ -27,8 +27,9 @@ high performance distributed directory service
 commit version: %{CommitVersion}
 
 %package -n %{FastDIRServer}
-Requires: libserverframe >= 1.1.29
-Requires: libfdirstorage >= 1.1.3
+Requires: libserverframe >= 1.2.0
+Requires: libfastrdma >= 1.0.0
+Requires: libfdirstorage >= 1.1.4
 Requires: FastCFS-auth-client >= 3.7.2
 Requires: FastCFS-vote-client >= 3.7.2
 Requires: FastCFS-auth-config >= 2.0.0
@@ -37,7 +38,8 @@ Requires: %{FastDIRConfig} >= 1.0.0
 Summary: FastDIR server
 
 %package -n %{FastDIRClient}
-Requires: libserverframe >= 1.1.29
+Requires: libserverframe >= 1.2.0
+Requires: libfastrdma >= 1.0.0
 Requires: FastCFS-auth-client >= 3.7.2
 Requires: FastCFS-auth-config >= 2.0.0
 Requires: %{FastDIRConfig} >= 1.0.0
