@@ -437,14 +437,15 @@ static int setup_server_env(const char *config_filename)
 {
     int result;
 
-    sf_set_current_time();
+    if ((result=sf_global_init("fdir_serverd")) != 0) {
+        return result;
+    }
+    if (daemon_mode) {
+        daemon_init(false);
+    }
 
     if ((result=server_load_config(config_filename)) != 0) {
         return result;
-    }
-
-    if (daemon_mode) {
-        daemon_init(false);
     }
     umask(0);
 

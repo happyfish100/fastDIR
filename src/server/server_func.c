@@ -565,8 +565,8 @@ int server_load_config(const char *filename)
 
     server_group = fc_server_get_group_by_index(
             &CLUSTER_SERVER_CONFIG, SERVICE_GROUP_INDEX);
-    if ((result=sf_load_config("fdir_serverd", server_group->
-                    comm_type, filename, &ini_context, "service",
+    if ((result=sf_load_config(NULL, server_group->comm_type,
+                    filename, &ini_context, "service",
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     CLUSTER_SERVER_CONFIG.buffer_size,
