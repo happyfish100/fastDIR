@@ -398,7 +398,7 @@ static void server_log_configs()
     sf_slow_log_config_to_string(&SLOW_LOG_CFG, "slow-log",
             sz_slowlog_config, sizeof(sz_slowlog_config));
 
-    sf_context_config_to_string(&g_sf_context,
+    sf_context_config_to_string(&SERVICE_SF_CTX,
             sz_service_config, sizeof(sz_service_config));
     sf_context_config_to_string(&CLUSTER_SF_CTX,
             sz_cluster_config, sizeof(sz_cluster_config));
@@ -593,11 +593,16 @@ int server_load_config(const char *filename)
         return result;
     }
 
+    sf_set_address_family_by_ip(&SERVICE_SF_CTX, &SERVICE_GROUP_ADDRESS_ARRAY(
+                CLUSTER_MYSELF_PTR->server));
+    sf_set_address_family_by_ip(&CLUSTER_SF_CTX, &CLUSTER_GROUP_ADDRESS_ARRAY(
+                CLUSTER_MYSELF_PTR->server));
+
     CLUSTER_NET_HANDLER = sf_get_first_network_handler_ex(&CLUSTER_SF_CTX);
-    if ((rdma_handler=sf_get_rdma_network_handler2(&g_sf_context,
+    if ((rdma_handler=sf_get_rdma_network_handler2(&SERVICE_SF_CTX,
                     &CLUSTER_SF_CTX)) != NULL)
     {
-        if ((result=sf_alloc_rdma_pd(&g_sf_context,
+        if ((result=sf_alloc_rdma_pd(&SERVICE_SF_CTX,
                         &SERVICE_GROUP_ADDRESS_ARRAY(
                             CLUSTER_MYSELF_PTR->server))) != 0)
         {

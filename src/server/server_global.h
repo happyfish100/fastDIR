@@ -215,6 +215,7 @@ typedef struct server_global_vars {
 #define CLUSTER_MY_SERVER_ID    CLUSTER_MYSELF_PTR->server->id
 #define MY_CONFIRMED_VERSION    CLUSTER_MYSELF_PTR->confirmed_data_version
 
+#define SERVICE_SF_CTX          g_sf_context
 #define CLUSTER_SF_CTX          g_server_global_vars->cluster.sf_context
 #define CLUSTER_SERVER_GROUP    g_server_global_vars->cluster.server_group
 #define CLUSTER_NET_HANDLER     g_server_global_vars->cluster.network_handler
