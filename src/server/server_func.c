@@ -314,8 +314,8 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
             DEFAULT_BATCH_STORE_INTERVAL);
 
     INDEX_DUMP_INTERVAL = iniGetIntCorrectValue(ini_ctx,
-            "index_dump_interval", 1, 86400,
-            DEFAULT_INDEX_DUMP_INTERVAL);
+            "index_dump_interval", DEFAULT_INDEX_DUMP_INTERVAL,
+            1, 86400);
 
     if ((result=get_time_item_from_conf_ex(ini_ctx,
                     "index_dump_base_time",
