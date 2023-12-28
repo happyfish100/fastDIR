@@ -42,8 +42,8 @@
 #define INODE_BINLOG_MAX_SUBDIRS              256
 #define DEFAULT_BATCH_STORE_ON_MODIFIES    102400
 #define DEFAULT_BATCH_STORE_INTERVAL           60
-#define DEFAULT_INDEX_DUMP_INTERVAL     600
-#define DEFAULT_ELIMINATE_INTERVAL        1
+#define DEFAULT_INDEX_DUMP_INTERVAL         86400
+#define DEFAULT_ELIMINATE_INTERVAL              1
 
 static void log_cluster_server_config()
 {
@@ -313,14 +313,14 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
             "batch_store_interval", ini_ctx->context,
             DEFAULT_BATCH_STORE_INTERVAL);
 
-    INDEX_DUMP_INTERVAL = iniGetIntValue(ini_ctx->section_name,
-            "index_dump_interval", ini_ctx->context,
+    INDEX_DUMP_INTERVAL = iniGetIntCorrectValue(ini_ctx,
+            "index_dump_interval", 1, 86400,
             DEFAULT_INDEX_DUMP_INTERVAL);
 
     if ((result=get_time_item_from_conf_ex(ini_ctx,
                     "index_dump_base_time",
                     &INDEX_DUMP_BASE_TIME,
-                    0, 0, false)) != 0)
+                    0, 30, false)) != 0)
     {
         return result;
     }
