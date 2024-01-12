@@ -122,6 +122,8 @@ void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
 
     count = 0;
     while (ctx->running && count++ < 1000) {
+        common_blocked_queue_terminate(&ctx->queues.free);
+        common_blocked_queue_terminate(&ctx->queues.input);
         fc_sleep_ms(10);
     }
 

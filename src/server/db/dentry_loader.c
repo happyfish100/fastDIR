@@ -127,7 +127,8 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
 
         {
             int count = 0;
-            logError("line: %d, parent inode: %"PRId64", %.*s", __LINE__,
+            logError("file: "__FILE__", line: %d, "
+                    "parent inode: %"PRId64", %.*s", __LINE__,
                     parent->inode, parent->name.len, parent->name.str);
             uniq_skiplist_iterator(parent->children, &it);
             while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
