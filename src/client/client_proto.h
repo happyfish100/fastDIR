@@ -87,6 +87,7 @@ typedef struct fdir_client_service_stat {
     struct {
         bool enabled;
         int64_t current_version;
+        SFSpaceStat space;
     } storage_engine;
     char version_holder[12];
     string_t version;

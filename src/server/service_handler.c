@@ -310,9 +310,11 @@ static int service_deal_client_join(struct fast_task_info *task)
 
 static int service_deal_service_stat(struct fast_task_info *task)
 {
+    const bool include_indexes = true;
     int result;
     FDIRDentryCounters counters;
     FDIRProtoServiceStatResp *stat_resp;
+    SFSpaceStat space_stat;
 
     if ((result=server_expect_body_length(0)) != 0) {
         return result;
@@ -331,10 +333,17 @@ static int service_deal_service_stat(struct fast_task_info *task)
         stat_resp->storage_engine.enabled = 1;
         long2buff(event_dealer_get_last_data_version(),
                 stat_resp->storage_engine.current_version);
+        STORAGE_ENGINE_SPACES_STAT_API(&space_stat, include_indexes);
     } else {
         stat_resp->storage_engine.enabled = 0;
         long2buff(0, stat_resp->storage_engine.current_version);
+        space_stat.total = 0;
+        space_stat.used = 0;
+        space_stat.avail = 0;
     }
+    long2buff(space_stat.total, stat_resp->storage_engine.space.total);
+    long2buff(space_stat.used, stat_resp->storage_engine.space.used);
+    long2buff(space_stat.avail, stat_resp->storage_engine.space.avail);
 
     stat_resp->version.len = sprintf(stat_resp->version.str, "%d.%d.%d",
             g_fdir_global_vars.version.major, g_fdir_global_vars.

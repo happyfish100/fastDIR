@@ -33,18 +33,47 @@ static void usage(char *argv[])
 
 static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
-    char storage_engine_buff[128];
+    char storage_engine_buff[256];
     char up_time_buff[32];
+    struct {
+        char total[32];
+        char used[32];
+        char avail[32];
+    } space_buffs;
     int len;
+    int unit_value;
+    char *unit_caption;
 
     len = sprintf(storage_engine_buff, "enabled: %s", stat->
             storage_engine.enabled ? "true" : "false");
     if (stat->storage_engine.enabled) {
-        sprintf(storage_engine_buff + len, ", current_version: %"PRId64,
-                stat->storage_engine.current_version);
+        if (stat->storage_engine.space.used > 0 && stat->storage_engine.
+                space.used < 1024 * 1024 * 1024)
+        {
+            unit_value = 1024 * 1024;
+            unit_caption = "MB";
+        } else {
+            unit_value = 1024 * 1024 * 1024;
+            unit_caption = "GB";
+        }
+
+        long_to_comma_str(stat->storage_engine.space.total /
+                unit_value, space_buffs.total);
+        long_to_comma_str(stat->storage_engine.space.used /
+                unit_value, space_buffs.used);
+        long_to_comma_str((stat->storage_engine.space.total -
+                    stat->storage_engine.space.used) /
+                unit_value, space_buffs.avail);
+
+        sprintf(storage_engine_buff + len, ", current_version: %"PRId64",\n"
+                "\t\tspace : {total: %s %s, used: %s %s, avail: %s %s}",
+                stat->storage_engine.current_version, space_buffs.total,
+                unit_caption, space_buffs.used, unit_caption,
+                space_buffs.avail, unit_caption);
     }
     formatDatetime(stat->up_time, "%Y-%m-%d %H:%M:%S",
             up_time_buff, sizeof(up_time_buff));
+
     printf( "\tserver_id: %d\n"
             "\thost: %s:%u\n"
             "\tversion: %.*s\n"

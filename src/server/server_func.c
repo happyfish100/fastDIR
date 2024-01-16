@@ -253,6 +253,7 @@ static int load_storage_engine_apis()
     LOAD_API(STORAGE_ENGINE_STORE_API, fdir_storage_engine_store);
     LOAD_API(STORAGE_ENGINE_REDO_API, fdir_storage_engine_redo);
     LOAD_API(STORAGE_ENGINE_FETCH_API, fdir_storage_engine_fetch);
+    LOAD_API(STORAGE_ENGINE_SPACES_STAT_API, fdir_storage_engine_spaces_stat);
 
     return 0;
 }

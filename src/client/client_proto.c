@@ -2828,12 +2828,19 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     stat->is_master = stat_resp.is_master;
     stat->status = stat_resp.status;
     stat->auth_enabled = stat_resp.auth_enabled;
+
     stat->storage_engine.enabled = stat_resp.storage_engine.enabled;
     stat->storage_engine.current_version = buff2long(
             stat_resp.storage_engine.current_version);
+    stat->storage_engine.space.total = buff2long(
+            stat_resp.storage_engine.space.total);
+    stat->storage_engine.space.used = buff2long(
+            stat_resp.storage_engine.space.used);
+    stat->storage_engine.space.avail = buff2long(
+            stat_resp.storage_engine.space.avail);
+
     memcpy(stat->version.str, stat_resp.version.str, stat->version.len);
     *(stat->version.str + stat->version.len) = '\0';
-
     stat->connection.current_count = buff2int(
             stat_resp.connection.current_count);
     stat->connection.max_count = buff2int(stat_resp.connection.max_count);

@@ -43,6 +43,9 @@ typedef int (*fdir_storage_engine_redo_func)(const FDIRDBUpdateFieldArray *array
 typedef int (*fdir_storage_engine_fetch_func)(const int64_t inode,
         const int field_index, DASynchronizedReadContext *rctx);
 
+typedef void (*fdir_storage_engine_spaces_stat_func)(SFSpaceStat *ss,
+        const bool include_indexes);
+
 typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_init_func init;
     fdir_storage_engine_start_func start;
@@ -53,6 +56,7 @@ typedef struct fdir_storage_engine_interface {
     fdir_storage_engine_store_func store;
     fdir_storage_engine_redo_func redo;
     fdir_storage_engine_fetch_func fetch;
+    fdir_storage_engine_spaces_stat_func spaces_stat;
 } FDIRStorageEngineInterface;
 
 #endif

@@ -280,6 +280,8 @@ typedef struct server_global_vars {
 #define STORAGE_ENGINE_STORE_API     g_server_global_vars->storage.api.store
 #define STORAGE_ENGINE_REDO_API      g_server_global_vars->storage.api.redo
 #define STORAGE_ENGINE_FETCH_API     g_server_global_vars->storage.api.fetch
+#define STORAGE_ENGINE_SPACES_STAT_API     \
+    g_server_global_vars->storage.api.spaces_stat
 
 #define FULL_DUMPING           g_server_global_vars->full_dump.dumping
 #define DUMP_INODE_ADD_STATUS  g_server_global_vars->full_dump.inode_add_status
