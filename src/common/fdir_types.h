@@ -103,6 +103,8 @@
 #define FDIR_LIST_DENTRY_FLAGS_COMPACT_OUTPUT  (1 << 1) //for POSIX readdir
 #define FDIR_LIST_DENTRY_FLAGS_OUTPUT_SPECIAL  (1 << 2) //output . and ..
 
+#define FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE  (1 << 1)
+
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')
 

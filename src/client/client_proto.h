@@ -87,7 +87,11 @@ typedef struct fdir_client_service_stat {
     struct {
         bool enabled;
         int64_t current_version;
-        SFSpaceStat space;
+        struct {
+            int64_t disk_avail;
+            int64_t inode_used_space;
+            SFSpaceStat trunk;
+        } space;
     } storage_engine;
     char version_holder[12];
     string_t version;
@@ -439,7 +443,8 @@ void fdir_client_namespace_array_free(FDIRClientNamespaceArray *array);
 
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
-        const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat);
+        const ConnectionInfo *spec_conn, const bool include_inode_space,
+        FDIRClientServiceStat *stat);
 
 int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count);

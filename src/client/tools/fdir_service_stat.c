@@ -24,31 +24,47 @@
 #include "fastcommon/logger.h"
 #include "fastdir/client/fdir_client.h"
 
+static bool include_inode_space = false;
+
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename=%s] "
-            "server_id|host[:port]|all\n", argv[0],
-            FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
+    fprintf(stderr, "Usage: %s [options] <server_id|host[:port]|all>\n"
+            "    options:\n"
+            "\t-c <client config filename>: default %s\n"
+            "\t-I: used space include spaces occupied by "
+            "inodes when storage engine enabled\n"
+            "\t-h: help for usage\n\n"
+            "    eg: %s -c %s all\n\n",
+            argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME,
+            argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
 static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
+    SFSpaceStat space;
     char storage_engine_buff[256];
     char up_time_buff[32];
     struct {
         char total[32];
         char used[32];
         char avail[32];
-    } space_buffs;
+    } space_buffs, trunk_buffs;
+    double space_used_ratio;
+    double trunk_used_ratio;
+    string_t padding_strings[6];
+    char tmp_buff[32];
     int len;
     int unit_value;
+    int max_len;
+    int padding_len;
+    int i;
     char *unit_caption;
 
     len = sprintf(storage_engine_buff, "enabled: %s", stat->
             storage_engine.enabled ? "true" : "false");
     if (stat->storage_engine.enabled) {
-        if (stat->storage_engine.space.used > 0 && stat->storage_engine.
-                space.used < 1024 * 1024 * 1024)
+        if (stat->storage_engine.space.trunk.used > 0 && stat->storage_engine.
+                space.trunk.used < 1024 * 1024 * 1024)
         {
             unit_value = 1024 * 1024;
             unit_caption = "MB";
@@ -57,19 +73,71 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             unit_caption = "GB";
         }
 
-        long_to_comma_str(stat->storage_engine.space.total /
-                unit_value, space_buffs.total);
-        long_to_comma_str(stat->storage_engine.space.used /
-                unit_value, space_buffs.used);
-        long_to_comma_str((stat->storage_engine.space.total -
-                    stat->storage_engine.space.used) /
-                unit_value, space_buffs.avail);
+        space.total = stat->storage_engine.space.trunk.total +
+            stat->storage_engine.space.disk_avail;
+        space.used = stat->storage_engine.space.trunk.used +
+            stat->storage_engine.space.inode_used_space;
+        if (space.total <= 0) {
+            space.total = 0;
+            space_used_ratio = 0.00;
+        } else {
+            space_used_ratio = (double)space.used / (double)space.total;
+        }
+        space.avail = space.total - space.used;
+        if (space.avail < 0) {
+            space.avail = 0;
+        }
+        long_to_comma_str(space.total / unit_value, space_buffs.total);
+        long_to_comma_str(space.used / unit_value, space_buffs.used);
+        long_to_comma_str(space.avail / unit_value, space_buffs.avail);
+
+        long_to_comma_str(stat->storage_engine.space.trunk.total /
+                unit_value, trunk_buffs.total);
+        long_to_comma_str(stat->storage_engine.space.trunk.used /
+                unit_value, trunk_buffs.used);
+        long_to_comma_str((stat->storage_engine.space.trunk.total -
+                    stat->storage_engine.space.trunk.used) /
+                unit_value, trunk_buffs.avail);
+        if (stat->storage_engine.space.trunk.total <= 0) {
+            trunk_used_ratio = 0.00;
+        } else {
+            trunk_used_ratio = (double)stat->storage_engine.space.trunk.
+                used / (double)stat->storage_engine.space.trunk.total;
+        }
+
+        FC_SET_STRING(padding_strings[0], space_buffs.total);
+        FC_SET_STRING(padding_strings[1], space_buffs.used);
+        FC_SET_STRING(padding_strings[2], space_buffs.avail);
+        FC_SET_STRING(padding_strings[3], trunk_buffs.total);
+        FC_SET_STRING(padding_strings[4], trunk_buffs.used);
+        FC_SET_STRING(padding_strings[5], trunk_buffs.avail);
+        max_len = padding_strings[0].len;
+        for (i=1; i<6; i++) {
+            if (padding_strings[i].len > max_len) {
+                max_len = padding_strings[i].len;
+            }
+        }
+        for (i=0; i<6; i++) {
+            padding_len = max_len - padding_strings[i].len;
+            if (padding_len > 0) {
+                memcpy(tmp_buff, padding_strings[i].str,
+                        padding_strings[i].len + 1);
+                memset(padding_strings[i].str, ' ', padding_len);
+                memcpy(padding_strings[i].str + padding_len,
+                        tmp_buff, padding_strings[i].len + 1);
+            }
+        }
 
         sprintf(storage_engine_buff + len, ", current_version: %"PRId64",\n"
-                "\t\tspace : {total: %s %s, used: %s %s, avail: %s %s}",
+                "\t\tspace summary: {total: %s %s, used: %s %s (%.2f%%), "
+                "avail: %s %s},\n\t\t  trunk space: {total: %s %s, "
+                "used: %s %s (%.2f%%), avail: %s %s}",
                 stat->storage_engine.current_version, space_buffs.total,
                 unit_caption, space_buffs.used, unit_caption,
-                space_buffs.avail, unit_caption);
+                space_used_ratio * 100.00, space_buffs.avail,
+                unit_caption, trunk_buffs.total, unit_caption,
+                trunk_buffs.used, unit_caption, trunk_used_ratio * 100.00,
+                trunk_buffs.avail, unit_caption);
     }
     formatDatetime(stat->up_time, "%Y-%m-%d %H:%M:%S",
             up_time_buff, sizeof(up_time_buff));
@@ -135,8 +203,8 @@ static int service_stat_all()
         conn = server->group_addrs[g_fdir_client_vars.client_ctx.cluster.
             service_group_index].address_array.addrs[0]->conn;
         conn.sock = -1;
-        if ((result=fdir_client_service_stat(&g_fdir_client_vars.
-                        client_ctx, &conn, &stat)) != 0)
+        if ((result=fdir_client_service_stat(&g_fdir_client_vars.client_ctx,
+                        &conn, include_inode_space, &stat)) != 0)
         {
             return result;
         }
@@ -186,8 +254,8 @@ static int service_stat(char *host)
         conn.comm_type = server_group->comm_type;
     }
 
-    if ((result=fdir_client_service_stat(&g_fdir_client_vars.
-                    client_ctx, &conn, &stat)) != 0)
+    if ((result=fdir_client_service_stat(&g_fdir_client_vars.client_ctx,
+                    &conn, include_inode_space, &stat)) != 0)
     {
         return result;
     }
@@ -209,13 +277,16 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    while ((ch=getopt(argc, argv, "hc:")) != -1) {
+    while ((ch=getopt(argc, argv, "hc:I")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
                 return 0;
             case 'c':
                 config_filename = optarg;
+                break;
+            case 'I':
+                include_inode_space = true;
                 break;
             default:
                 usage(argv);

@@ -310,11 +310,12 @@ static int service_deal_client_join(struct fast_task_info *task)
 
 static int service_deal_service_stat(struct fast_task_info *task)
 {
-    const bool include_indexes = true;
+    bool include_indexes;
     int result;
     FDIRDentryCounters counters;
     FDIRProtoServiceStatResp *stat_resp;
-    SFSpaceStat space_stat;
+    DASpaceStat space_stat;
+    int64_t inode_used_space;
 
     if ((result=server_expect_body_length(0)) != 0) {
         return result;
@@ -333,17 +334,31 @@ static int service_deal_service_stat(struct fast_task_info *task)
         stat_resp->storage_engine.enabled = 1;
         long2buff(event_dealer_get_last_data_version(),
                 stat_resp->storage_engine.current_version);
-        STORAGE_ENGINE_SPACES_STAT_API(&space_stat, include_indexes);
+        include_indexes = (REQUEST.header.flags &
+                FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE) != 0;
+        STORAGE_ENGINE_SPACES_STAT_API(&space_stat,
+                &inode_used_space, include_indexes);
     } else {
         stat_resp->storage_engine.enabled = 0;
         long2buff(0, stat_resp->storage_engine.current_version);
-        space_stat.total = 0;
-        space_stat.used = 0;
-        space_stat.avail = 0;
+        space_stat.disk.total = 0;
+        space_stat.disk.used = 0;
+        space_stat.disk.avail = 0;
+        space_stat.trunk.total = 0;
+        space_stat.trunk.used = 0;
+        space_stat.trunk.avail = 0;
+        inode_used_space = 0;
     }
-    long2buff(space_stat.total, stat_resp->storage_engine.space.total);
-    long2buff(space_stat.used, stat_resp->storage_engine.space.used);
-    long2buff(space_stat.avail, stat_resp->storage_engine.space.avail);
+    long2buff(space_stat.disk.avail, stat_resp->
+            storage_engine.space.disk_avail);
+    long2buff(inode_used_space, stat_resp->
+            storage_engine.space.inode_used_space);
+    long2buff(space_stat.trunk.total, stat_resp->
+            storage_engine.space.trunk.total);
+    long2buff(space_stat.trunk.used, stat_resp->
+            storage_engine.space.trunk.used);
+    long2buff(space_stat.trunk.avail, stat_resp->
+            storage_engine.space.trunk.avail);
 
     stat_resp->version.len = sprintf(stat_resp->version.str, "%d.%d.%d",
             g_fdir_global_vars.version.major, g_fdir_global_vars.

@@ -2777,7 +2777,8 @@ int fdir_client_proto_list_compact_dentry_by_inode(FDIRClientContext
 }
 
 int fdir_client_service_stat(FDIRClientContext *client_ctx,
-        const ConnectionInfo *spec_conn, FDIRClientServiceStat *stat)
+        const ConnectionInfo *spec_conn, const bool include_inode_space,
+        FDIRClientServiceStat *stat)
 {
     FDIRProtoHeader *header;
     SFProtoEmptyBodyReq *req;
@@ -2795,8 +2796,9 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
-    SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
-            out_bytes - sizeof(FDIRProtoHeader));
+    SF_PROTO_SET_HEADER_EX(header, FDIR_SERVICE_PROTO_SERVICE_STAT_REQ,
+            (include_inode_space ? FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE
+             : 0), out_bytes - sizeof(FDIRProtoHeader));
     response.error.length = 0;
     if ((result=sf_send_and_recv_response(conn, out_buff, out_bytes,
                     &response, client_ctx->common_cfg.network_timeout,
@@ -2832,12 +2834,16 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     stat->storage_engine.enabled = stat_resp.storage_engine.enabled;
     stat->storage_engine.current_version = buff2long(
             stat_resp.storage_engine.current_version);
-    stat->storage_engine.space.total = buff2long(
-            stat_resp.storage_engine.space.total);
-    stat->storage_engine.space.used = buff2long(
-            stat_resp.storage_engine.space.used);
-    stat->storage_engine.space.avail = buff2long(
-            stat_resp.storage_engine.space.avail);
+    stat->storage_engine.space.disk_avail = buff2long(
+            stat_resp.storage_engine.space.disk_avail);
+    stat->storage_engine.space.inode_used_space = buff2long(
+            stat_resp.storage_engine.space.inode_used_space);
+    stat->storage_engine.space.trunk.total = buff2long(
+            stat_resp.storage_engine.space.trunk.total);
+    stat->storage_engine.space.trunk.used = buff2long(
+            stat_resp.storage_engine.space.trunk.used);
+    stat->storage_engine.space.trunk.avail = buff2long(
+            stat_resp.storage_engine.space.trunk.avail);
 
     memcpy(stat->version.str, stat_resp.version.str, stat->version.len);
     *(stat->version.str + stat->version.len) = '\0';

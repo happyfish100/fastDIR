@@ -660,9 +660,13 @@ typedef struct fdir_proto_service_stat_resp {
         char enabled;
         char current_version[8];
         struct {
-            char total[8];
-            char used[8];
-            char avail[8];
+            char disk_avail[8];
+            char inode_used_space[8];
+            struct {
+                char total[8];
+                char used[8];
+                char avail[8];
+            } trunk;
         } space;
     } storage_engine;
 
