@@ -79,8 +79,8 @@ static int deal_data_buffer(DumpDataSortContext *ctx)
                 }
             }
 
-            ctx->extract_inode.writer->buffer.current += sprintf(
-                    ctx->extract_inode.writer->buffer.current,
+            ctx->extract_inode.writer->buffer.data_end += sprintf(
+                    ctx->extract_inode.writer->buffer.data_end,
                     "%"PRId64"\n", inode);
         }
 

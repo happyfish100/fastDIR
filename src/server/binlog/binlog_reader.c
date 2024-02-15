@@ -88,7 +88,7 @@ static int open_readable_binlog(ServerBinlogReader *reader)
         }
     }
 
-    reader->binlog_buffer.current = reader->binlog_buffer.end =
+    reader->binlog_buffer.current = reader->binlog_buffer.data_end =
         reader->binlog_buffer.buff;
     return 0;
 }
@@ -122,28 +122,27 @@ static int do_binlog_read(ServerBinlogReader *reader)
     int read_bytes;
 
     if (reader->binlog_buffer.current != reader->binlog_buffer.buff) {
-        remain = BINLOG_BUFFER_REMAIN(reader->binlog_buffer);
+        remain = SF_BINLOG_BUFFER_CONSUMER_DATA_REMAIN(reader->binlog_buffer);
         if (remain > 0) {
-            memmove(reader->binlog_buffer.buff, reader->binlog_buffer.current,
-                    remain);
+            memmove(reader->binlog_buffer.buff, reader->
+                    binlog_buffer.current, remain);
         }
 
         reader->binlog_buffer.current = reader->binlog_buffer.buff;
-        reader->binlog_buffer.end = reader->binlog_buffer.buff + remain;
+        reader->binlog_buffer.data_end = reader->binlog_buffer.buff + remain;
     }
 
-    read_bytes = reader->binlog_buffer.size -
-        BINLOG_BUFFER_LENGTH(reader->binlog_buffer);
+    read_bytes = SF_BINLOG_BUFFER_PRODUCER_BUFF_REMAIN(reader->binlog_buffer);
     if (read_bytes == 0) {
         return ENOSPC;
     }
-    if ((result=do_read_to_buffer(reader, reader->binlog_buffer.end,
-                    read_bytes, &read_bytes)) != 0)
+    if ((result=do_read_to_buffer(reader, reader->binlog_buffer.
+                    data_end, read_bytes, &read_bytes)) != 0)
     {
         return result;
     }
 
-    reader->binlog_buffer.end += read_bytes;
+    reader->binlog_buffer.data_end += read_bytes;
     return 0;
 }
 
@@ -290,7 +289,7 @@ static int find_data_version(ServerBinlogReader *reader,
                     */
 
         while ((result=binlog_detect_record(reader->binlog_buffer.current,
-                        BINLOG_BUFFER_REMAIN(reader->binlog_buffer),
+                        SF_BINLOG_BUFFER_CONSUMER_DATA_REMAIN(reader->binlog_buffer),
                         &data_version, (const char **)&rec_end,
                         error_info, sizeof(error_info))) == 0)
         {
@@ -300,7 +299,8 @@ static int find_data_version(ServerBinlogReader *reader,
                     */
 
             if (last_data_version == data_version) {
-                reader->position.offset -= reader->binlog_buffer.end - rec_end;
+                reader->position.offset -= reader->
+                    binlog_buffer.data_end - rec_end;
                 found = true;
                 break;
             } else if (last_data_version < data_version) {
@@ -308,7 +308,7 @@ static int find_data_version(ServerBinlogReader *reader,
                         "can't found data version %"PRId64", "
                         "skip to next data version %"PRId64,
                         __LINE__, last_data_version, data_version);
-                reader->position.offset -= BINLOG_BUFFER_REMAIN(
+                reader->position.offset -= SF_BINLOG_BUFFER_CONSUMER_DATA_REMAIN(
                         reader->binlog_buffer);
                 found = true;
                 break;

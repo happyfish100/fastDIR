@@ -1439,7 +1439,7 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     char client_ip_buff[64];
     char ns_buff[256];
     char xattr_name_buff[256];
-    char extra_buff[512];
+    char extra_buff[1024];
     int extra_len;
     int log_level;
 
@@ -1525,6 +1525,14 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
             extra_len += snprintf(extra_buff + extra_len,
                     sizeof(extra_buff) - extra_len,
                     ", access mask: %o", record->mask);
+            if (record->me.dentry != NULL) {
+                extra_len += snprintf(extra_buff + extra_len,
+                        sizeof(extra_buff) - extra_len,
+                        ", owner {uid: %d, gid: %d}, mode: %o",
+                        record->me.dentry->stat.uid,
+                        record->me.dentry->stat.gid,
+                        (record->me.dentry->stat.mode & ACCESSPERMS));
+            }
         }
     }
 

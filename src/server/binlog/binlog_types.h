@@ -76,9 +76,6 @@
 
 #define BINLOG_OPTIONS_PATH_ENABLED  (1 | (1 << 1))
 
-#define BINLOG_BUFFER_LENGTH(buffer) ((buffer).end - (buffer).buff)
-#define BINLOG_BUFFER_REMAIN(buffer) ((buffer).end - (buffer).current)
-
 struct server_binlog_record_buffer;
 
 typedef void (*data_thread_notify_func)(struct fdir_binlog_record *record,
