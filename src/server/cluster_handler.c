@@ -78,7 +78,7 @@ int cluster_handler_init()
     int result;
 
     g_server_global_vars->replication.active_test_interval =
-        (SF_G_NETWORK_TIMEOUT + 1) / 2;
+        (CLUSTER_NETWORK_TIMEOUT + 1) / 2;
     if ((result=idempotency_request_metadata_init(&REPLICA_REQ_META_CTX,
                     fdir_is_master_callback, NULL)) != 0)
     {

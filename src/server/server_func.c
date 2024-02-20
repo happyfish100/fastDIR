@@ -469,8 +469,8 @@ static void server_log_configs()
     binlog_shrink_config_to_string(sz_binlog_shrink_config,
             sizeof(sz_binlog_shrink_config));
 
-    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, cluster: {%s}",
-            g_fdir_global_vars.version.major,
+    logInfo("fastDIR Enterprise Edition V%d.%d.%d, %s, %s, service: {%s}, "
+            "cluster: {%s}", g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch, sz_global_config,
             sz_slowlog_config, sz_service_config, sz_cluster_config);
@@ -583,7 +583,9 @@ int server_load_config(const char *filename)
                     CLUSTER_SERVER_GROUP->comm_type, filename,
                     &ini_context, "cluster",
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    FDIR_SERVER_DEFAULT_CLUSTER_PORT)) != 0)
+                    FDIR_SERVER_DEFAULT_CLUSTER_PORT,
+                    CLUSTER_SERVER_CONFIG.buffer_size,
+                    task_buffer_extra_size)) != 0)
     {
         return result;
     }

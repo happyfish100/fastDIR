@@ -75,8 +75,6 @@ static char g_pid_filename[MAX_PATH_SIZE];
 int init_nio_task(struct fast_task_info *task)
 {
     sf_proto_init_task_magic(task);
-    task->connect_timeout = SF_G_CONNECT_TIMEOUT;
-    task->network_timeout = SF_G_NETWORK_TIMEOUT;
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
 
     if (RDMA_INIT_CONNECTION != NULL) {

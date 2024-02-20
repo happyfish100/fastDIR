@@ -638,7 +638,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     int result;
 
     if ((conn=cluster_make_connection(cs->server,
-                    SF_G_CONNECT_TIMEOUT, &result)) == NULL)
+                    CLUSTER_CONNECT_TIMEOUT, &result)) == NULL)
     {
         *bConnectFail = true;
         return result;
@@ -651,7 +651,7 @@ static int do_notify_master_changed(FDIRClusterServerInfo *cs,
     int2buff(master->server->id, out_buff + sizeof(FDIRProtoHeader));
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(conn, out_buff,
-                    sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+                    sizeof(out_buff), &response, CLUSTER_NETWORK_TIMEOUT,
                     SF_PROTO_ACK)) != 0)
     {
         fdir_log_network_error(&response, conn, result);
@@ -1344,10 +1344,10 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
         return cluster_relationship_master_quorum_check();
     }
 
-    network_timeout = FC_MIN(SF_G_NETWORK_TIMEOUT, timeout);
+    network_timeout = FC_MIN(CLUSTER_NETWORK_TIMEOUT, timeout);
     *is_ping = true;
     if (!G_COMMON_CONNECTION_CALLBACKS[conn->comm_type].is_connected(conn)) {
-        connect_timeout = FC_MIN(SF_G_CONNECT_TIMEOUT, timeout);
+        connect_timeout = FC_MIN(CLUSTER_CONNECT_TIMEOUT, timeout);
         if ((result=fc_server_make_connection(&CLUSTER_GROUP_ADDRESS_ARRAY(
                             master->server), conn, "fdir",
                         connect_timeout)) != 0)

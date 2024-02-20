@@ -74,7 +74,7 @@ static int query_binlog_info(BinlogSyncContext *sync_ctx)
             sizeof(out_buff) - sizeof(FDIRProtoHeader));
     response.error.length = 0;
     if ((result=sf_send_and_recv_response(sync_ctx->conn, out_buff,
-            sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+            sizeof(out_buff), &response, CLUSTER_NETWORK_TIMEOUT,
             FDIR_REPLICA_PROTO_QUERY_BINLOG_INFO_RESP,
             (char *)&resp, sizeof(resp))) != 0)
     {
@@ -109,7 +109,7 @@ static int sync_binlog_report(BinlogSyncContext *sync_ctx, const char stage)
     response.error.length = 0;
     if ((result=sf_send_and_recv_none_body_response(sync_ctx->conn,
                     out_buff, sizeof(out_buff), &response,
-                    SF_G_NETWORK_TIMEOUT, SF_PROTO_ACK)) != 0)
+                    CLUSTER_NETWORK_TIMEOUT, SF_PROTO_ACK)) != 0)
     {
         fdir_log_network_error_ex(&response,
                 sync_ctx->conn, result, LOG_ERR);
@@ -139,7 +139,7 @@ static int sync_binlog_to_local(BinlogSyncContext *sync_ctx,
     while (SF_G_CONTINUE_FLAG) {
         response.error.length = 0;
         result = sf_send_and_check_response_header(sync_ctx->conn,
-                out_buff, out_bytes, &response, SF_G_NETWORK_TIMEOUT,
+                out_buff, out_bytes, &response, CLUSTER_NETWORK_TIMEOUT,
                 FDIR_REPLICA_PROTO_SYNC_BINLOG_RESP);
         if (result != 0) {
             if (req_cmd == FDIR_REPLICA_PROTO_SYNC_BINLOG_FIRST_REQ
@@ -196,7 +196,7 @@ static int sync_binlog_to_local(BinlogSyncContext *sync_ctx,
         }
 
         if ((result=tcprecvdata_nb(sync_ctx->conn->sock, sync_ctx->buffer.buff,
-                        response.header.body_len, SF_G_NETWORK_TIMEOUT)) != 0)
+                        response.header.body_len, CLUSTER_NETWORK_TIMEOUT)) != 0)
         {
             response.error.length = snprintf(response.error.message,
                     sizeof(response.error.message),
@@ -309,7 +309,7 @@ static int proto_sync_mark_file(BinlogSyncContext *sync_ctx)
     int2buff(CLUSTER_MY_SERVER_ID, req->server_id);
     response.error.length = 0;
     result = sf_send_and_check_response_header(sync_ctx->conn, out_buff,
-            sizeof(out_buff), &response, SF_G_NETWORK_TIMEOUT,
+            sizeof(out_buff), &response, CLUSTER_NETWORK_TIMEOUT,
             FDIR_REPLICA_PROTO_SYNC_DUMP_MARK_RESP);
     if (result != 0) {
         fdir_log_network_error_ex(&response,
@@ -330,7 +330,7 @@ static int proto_sync_mark_file(BinlogSyncContext *sync_ctx)
         }
 
         if ((result=tcprecvdata_nb(sync_ctx->conn->sock, sync_ctx->buffer.buff,
-                        response.header.body_len, SF_G_NETWORK_TIMEOUT)) != 0)
+                        response.header.body_len, CLUSTER_NETWORK_TIMEOUT)) != 0)
         {
             response.error.length = snprintf(response.error.message,
                     sizeof(response.error.message),
@@ -413,14 +413,14 @@ static int get_master_connection(ConnectionInfo *conn, int *master_id)
 
         if ((result=fc_server_make_connection_ex(
                         &CLUSTER_GROUP_ADDRESS_ARRAY(cs->server), conn,
-                        "fdir", SF_G_CONNECT_TIMEOUT, NULL, true)) != 0)
+                        "fdir", CLUSTER_CONNECT_TIMEOUT, NULL, true)) != 0)
         {
             continue;
         }
 
         ps->cs = cs;
         if ((result=cluster_proto_get_server_status(conn,
-                        SF_G_NETWORK_TIMEOUT, ps)) == 0)
+                        CLUSTER_NETWORK_TIMEOUT, ps)) == 0)
         {
             ps++;
         }
@@ -446,7 +446,7 @@ static int get_master_connection(ConnectionInfo *conn, int *master_id)
                 *master_id = last->cs->server->id;
                 result = fc_server_make_connection_ex(
                         &CLUSTER_GROUP_ADDRESS_ARRAY(last->cs->server),
-                        conn, "fdir", SF_G_CONNECT_TIMEOUT, NULL, true);
+                        conn, "fdir", CLUSTER_CONNECT_TIMEOUT, NULL, true);
             } else {
                 result = EAGAIN;
             }

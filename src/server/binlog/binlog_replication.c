@@ -133,7 +133,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     struct nio_thread_data *thread_data;
     FDIRServerContext *server_ctx;
 
-    alloc_size = 4 * g_sf_global_vars.max_buff_size /
+    alloc_size = 4 * CLUSTER_SF_CTX.net_buffer_cfg.max_buff_size /
         FDIR_BINLOG_RECORD_MIN_SIZE;
     bytes = sizeof(FDIRReplicaRPCResultEntry) * alloc_size;
     if ((replication->context.rpc_result_array.results=

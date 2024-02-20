@@ -221,6 +221,10 @@ typedef struct server_global_vars {
 #define CLUSTER_NET_HANDLER     g_server_global_vars->cluster.network_handler
 #define CLUSTER_CONN_EXTRA_PARAMS g_server_global_vars->cluster.conn_extra_params
 
+#define SERVICE_NETWORK_TIMEOUT  SERVICE_SF_CTX.net_buffer_cfg.connect_timeout
+#define CLUSTER_CONNECT_TIMEOUT  CLUSTER_SF_CTX.net_buffer_cfg.connect_timeout
+#define CLUSTER_NETWORK_TIMEOUT  CLUSTER_SF_CTX.net_buffer_cfg.network_timeout
+
 #define REPLICATION_QUORUM           g_server_global_vars->replication.quorum
 #define REPLICA_QUORUM_NEED_MAJORITY g_server_global_vars-> \
     replication.quorum_need_majority

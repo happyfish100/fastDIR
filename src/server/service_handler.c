@@ -300,7 +300,7 @@ static int service_deal_client_join(struct fast_task_info *task)
     }
 
     join_resp = (FDIRProtoClientJoinResp *)SF_PROTO_SEND_BODY(task);
-    int2buff(g_sf_global_vars.min_buff_size - 128,
+    int2buff(SF_CTX->net_buffer_cfg.min_buff_size - 128,
             join_resp->buffer_size);
     RESPONSE.header.body_len = sizeof(FDIRProtoClientJoinResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLIENT_JOIN_RESP;
@@ -1359,7 +1359,7 @@ static void server_list_dentry_output(struct fast_task_info *task,
         }
 
         DENTRY_LIST_CACHE.offset += count;
-        DENTRY_LIST_CACHE.expires = g_current_time + SF_G_NETWORK_TIMEOUT;
+        DENTRY_LIST_CACHE.expires = g_current_time + SERVICE_NETWORK_TIMEOUT;
         DENTRY_LIST_CACHE.token = __sync_add_and_fetch(&next_token, 1);
 
         common_header->is_last = 0;
