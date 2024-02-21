@@ -570,7 +570,7 @@ int server_load_config(const char *filename)
                     filename, &ini_context, "service",
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
                     FDIR_SERVER_DEFAULT_SERVICE_PORT,
-                    CLUSTER_SERVER_CONFIG.buffer_size,
+                    server_group->buffer_size,
                     task_buffer_extra_size)) != 0)
     {
         return result;
@@ -584,7 +584,7 @@ int server_load_config(const char *filename)
                     &ini_context, "cluster",
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT,
                     FDIR_SERVER_DEFAULT_CLUSTER_PORT,
-                    CLUSTER_SERVER_CONFIG.buffer_size,
+                    CLUSTER_SERVER_GROUP->buffer_size,
                     task_buffer_extra_size)) != 0)
     {
         return result;
