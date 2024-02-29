@@ -180,8 +180,9 @@ static int init_dump_ctx(FDIRBinlogDumpContext *dump_ctx,
     ring_size = DATA_THREAD_COUNT * 4 * 1024;
     if ((result=sf_binlog_writer_init_by_version_ex(&dump_ctx->
                     bwctx.writer, DATA_PATH_STR, subdir_name,
-                    DUMP_FILE_PREFIX_NAME, next_version, buffer_size,
-                    ring_size, SF_BINLOG_NEVER_ROTATE_FILE, false)) != 0)
+                    DUMP_FILE_PREFIX_NAME, FDIR_BINLOG_RECORD_MAX_SIZE,
+                    next_version, buffer_size, ring_size,
+                    SF_BINLOG_NEVER_ROTATE_FILE, false)) != 0)
     {
         return result;
     }

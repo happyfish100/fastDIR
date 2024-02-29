@@ -32,6 +32,7 @@
 #include "fastcommon/sched_thread.h"
 #include "sf/sf_global.h"
 #include "../server_global.h"
+#include "binlog_pack.h"
 #include "binlog_write.h"
 
 SFBinlogWriterContext g_binlog_writer_ctx;
@@ -46,8 +47,8 @@ int binlog_write_init()
 
     if ((result=sf_binlog_writer_init_by_version(&g_binlog_writer_ctx.
                     writer, DATA_PATH_STR, FDIR_BINLOG_SUBDIR_NAME,
-                    DATA_CURRENT_VERSION + 1, BINLOG_BUFFER_SIZE,
-                    4096)) != 0)
+                    FDIR_BINLOG_RECORD_MAX_SIZE, DATA_CURRENT_VERSION + 1,
+                    BINLOG_BUFFER_SIZE, 4096)) != 0)
     {
         return result;
     }
