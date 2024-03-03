@@ -659,6 +659,7 @@ typedef struct fdir_proto_service_stat_resp {
     struct {
         char enabled;
         char current_version[8];
+        char version_delay[8];
         struct {
             char disk_avail[8];
             char inode_used_space[8];

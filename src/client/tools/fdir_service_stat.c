@@ -128,11 +128,13 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             }
         }
 
-        sprintf(storage_engine_buff + len, ", current_version: %"PRId64",\n"
+        sprintf(storage_engine_buff + len, ", data version "
+                "{current: %"PRId64", delay: %"PRId64"},\n"
                 "\t\tspace summary: {total: %s %s, used: %s %s (%.2f%%), "
                 "avail: %s %s},\n\t\t  trunk space: {total: %s %s, "
                 "used: %s %s (%.2f%%), avail: %s %s}",
-                stat->storage_engine.current_version, space_buffs.total,
+                stat->storage_engine.current_version,
+                stat->storage_engine.version_delay, space_buffs.total,
                 unit_caption, space_buffs.used, unit_caption,
                 space_used_ratio * 100.00, space_buffs.avail,
                 unit_caption, trunk_buffs.total, unit_caption,

@@ -87,6 +87,7 @@ typedef struct fdir_client_service_stat {
     struct {
         bool enabled;
         int64_t current_version;
+        int64_t version_delay;
         struct {
             int64_t disk_avail;
             int64_t inode_used_space;

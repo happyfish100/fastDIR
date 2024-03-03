@@ -312,6 +312,8 @@ static int service_deal_service_stat(struct fast_task_info *task)
 {
     bool include_indexes;
     int result;
+    int64_t data_current_version;
+    int64_t db_last_version;
     FDIRDentryCounters counters;
     FDIRProtoServiceStatResp *stat_resp;
     DASpaceStat space_stat;
@@ -321,6 +323,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
         return result;
     }
 
+    data_current_version = FC_ATOMIC_GET(DATA_CURRENT_VERSION);
     data_thread_sum_counters(&counters);
     stat_resp = (FDIRProtoServiceStatResp *)SF_PROTO_SEND_BODY(task);
 
@@ -331,9 +334,11 @@ static int service_deal_service_stat(struct fast_task_info *task)
     stat_resp->status = FC_ATOMIC_GET(CLUSTER_MYSELF_PTR->status);
     stat_resp->auth_enabled = AUTH_ENABLED ? 1 : 0;
     if (STORAGE_ENABLED) {
+        db_last_version = event_dealer_get_last_data_version();
         stat_resp->storage_engine.enabled = 1;
-        long2buff(event_dealer_get_last_data_version(),
-                stat_resp->storage_engine.current_version);
+        long2buff(db_last_version, stat_resp->storage_engine.current_version);
+        long2buff(data_current_version - db_last_version,
+                stat_resp->storage_engine.version_delay);
         include_indexes = (REQUEST.header.flags &
                 FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE) != 0;
         STORAGE_ENGINE_SPACES_STAT_API(&space_stat,
@@ -341,6 +346,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     } else {
         stat_resp->storage_engine.enabled = 0;
         long2buff(0, stat_resp->storage_engine.current_version);
+        long2buff(0, stat_resp->storage_engine.version_delay);
         space_stat.disk.total = 0;
         space_stat.disk.used = 0;
         space_stat.disk.avail = 0;
@@ -367,8 +373,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);
 
-    long2buff(FC_ATOMIC_GET(DATA_CURRENT_VERSION),
-            stat_resp->data.current_version);
+    long2buff(data_current_version, stat_resp->data.current_version);
     long2buff(FC_ATOMIC_GET(MY_CONFIRMED_VERSION),
             stat_resp->data.confirmed_version);
 

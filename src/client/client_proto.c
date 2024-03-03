@@ -2834,6 +2834,8 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     stat->storage_engine.enabled = stat_resp.storage_engine.enabled;
     stat->storage_engine.current_version = buff2long(
             stat_resp.storage_engine.current_version);
+    stat->storage_engine.version_delay = buff2long(
+            stat_resp.storage_engine.version_delay);
     stat->storage_engine.space.disk_avail = buff2long(
             stat_resp.storage_engine.space.disk_avail);
     stat->storage_engine.space.inode_used_space = buff2long(
