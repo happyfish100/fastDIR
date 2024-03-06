@@ -53,6 +53,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
     double trunk_used_ratio;
     string_t padding_strings[6];
     char tmp_buff[32];
+    char formatted_ip[FORMATTED_IP_SIZE];
     int len;
     int unit_value;
     int max_len;
@@ -144,6 +145,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
     formatDatetime(stat->up_time, "%Y-%m-%d %H:%M:%S",
             up_time_buff, sizeof(up_time_buff));
 
+    format_ip_address(conn->ip_addr, formatted_ip);
     printf( "\tserver_id: %d\n"
             "\thost: %s:%u\n"
             "\tversion: %.*s\n"
@@ -156,7 +158,7 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             "\tdata : {current_version: %"PRId64", "
             "confirmed_version: %"PRId64"}\n"
             "\tbinlog : {current_version: %"PRId64,
-            stat->server_id, conn->ip_addr, conn->port,
+            stat->server_id, formatted_ip, conn->port,
             stat->version.len, stat->version.str, stat->status,
             fdir_get_server_status_caption(stat->status),
             stat->is_master ? "true" : "false",

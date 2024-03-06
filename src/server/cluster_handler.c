@@ -392,11 +392,16 @@ static int cluster_deal_join_master(struct fast_task_info *task)
     CLUSTER_PEER = peer;
 
     /*
+    {
+    char formatted_ip[FORMATTED_IP_SIZE];
+    format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                peer->server), formatted_ip);
     logInfo("file: "__FILE__", line: %d, "
                 "slave id: %d, %s:%u joined", __LINE__, peer->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(peer->server),
-                CLUSTER_GROUP_ADDRESS_FIRST_PORT(peer->server));
-                */
+                formatted_ip, CLUSTER_GROUP_ADDRESS_FIRST_PORT(peer->server));
+    }
+    */
+
     return 0;
 }
 

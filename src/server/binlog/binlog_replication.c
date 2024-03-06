@@ -268,6 +268,7 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
 static void on_connect_success(FDIRSlaveReplication *replication)
 {
     char prompt[128];
+    char formatted_ip[FORMATTED_IP_SIZE];
     FDIRServerContext *server_ctx;
 
     server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
@@ -292,12 +293,13 @@ static void on_connect_success(FDIRSlaveReplication *replication)
     }
     replication->connection_info.fail_count = 0;
 
+    format_ip_address(replication->task->server_ip, formatted_ip);
     logInfo("file: "__FILE__", line: %d, "
             "cluster thread #%d, connect to slave id %d, %s:%u "
             "successfully%s. current connected count: %d",
             __LINE__, server_ctx->thread_index, replication->slave->
-            server->id, replication->task->server_ip, replication->
-            task->port, prompt, server_ctx->cluster.connected.count);
+            server->id, formatted_ip, replication->task->port,
+            prompt, server_ctx->cluster.connected.count);
 }
 
 int binlog_replication_join_slave(struct fast_task_info *task)
@@ -415,6 +417,7 @@ void binlog_replication_connect_done(struct fast_task_info *task,
         const int err_no)
 {
     FDIRSlaveReplication *replication;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     if ((replication=CLUSTER_REPLICA) == NULL) {
         return;
@@ -429,11 +432,12 @@ void binlog_replication_connect_done(struct fast_task_info *task,
             || replication->connection_info.fail_count % 10 == 0)
     {
         replication->connection_info.last_errno = err_no;
+        format_ip_address(task->server_ip, formatted_ip);
         logError("file: "__FILE__", line: %d, "
                 "%dth connect to replication peer: %d, %s:%u fail, "
                 "time used: %ds, errno: %d, error info: %s",
                 __LINE__, replication->connection_info.fail_count + 1,
-                replication->slave->server->id, task->server_ip, task->port,
+                replication->slave->server->id, formatted_ip, task->port,
                 (int)(g_current_time - replication->connection_info.
                     start_time), err_no, STRERROR(err_no));
     }
@@ -722,9 +726,10 @@ static void sync_binlog_to_slave(FDIRSlaveReplication *replication,
 
 static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
 {
+    const bool block = false;
     struct fast_task_info *task;
     BinlogReadThreadResult *r;
-    const bool block = false;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     task = replication->task;
     if (TASK_PENDING_SEND_COUNT > 0) {
@@ -786,11 +791,13 @@ static int sync_binlog_from_disk(FDIRSlaveReplication *replication)
 
         time_used = get_current_time_ms() - replication->context.
             sync_by_disk_stat.start_time_ms;
+        format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->
+                    slave->server), formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
                 "sync to slave id %d, %s:%u by disk done, record count: "
                 "%"PRId64", binlog size: %s, last data version: %"PRId64","
-                "time used: %s ms", __LINE__, replication->slave->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(replication->slave->server),
+                "time used: %s ms", __LINE__, replication->
+                slave->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(replication->slave->server),
                 replication->context.sync_by_disk_stat.record_count,
                 long_to_comma_str(replication->context.sync_by_disk_stat.

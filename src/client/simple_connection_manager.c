@@ -308,11 +308,14 @@ static int copy_to_server_group_array(FDIRClientContext *client_ctx,
 
     /*
     {
-        printf("dir_server count: %d\n", server_group->count);
-        for (conn=server_group->servers; conn<server_group->servers+
-                server_group->count; conn++)
+        ConnectionInfo **conn;
+        char formatted_ip[FORMATTED_IP_SIZE];
+        printf("dir_server count: %d\n", extra->cluster_sarray->count);
+        for (conn=extra->cluster_sarray->servers; conn<extra->cluster_sarray->
+                servers + extra->cluster_sarray->count; conn++)
         {
-            printf("dir_server=%s:%u\n", conn->ip_addr, conn->port);
+            format_ip_address((*conn)->ip_addr, formatted_ip);
+            printf("dir_server=%s:%u\n", formatted_ip, (*conn)->port);
         }
     }
     */

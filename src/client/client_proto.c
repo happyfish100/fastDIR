@@ -2551,6 +2551,7 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
         string_t *next_token, const bool is_first)
 {
     int result;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     if ((result=check_realloc_client_buffer(response, &array->buffer)) != 0) {
         return result;
@@ -2564,11 +2565,12 @@ static int deal_list_dentry_response_body(FDIRClientContext *client_ctx,
                     response->header.body_len, client_ctx->
                     common_cfg.network_timeout)) != 0)
     {
+        format_ip_address(conn->ip_addr, formatted_ip);
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
                 "recv from server %s:%u fail, "
                 "errno: %d, error info: %s",
-                conn->ip_addr, conn->port,
+                formatted_ip, conn->port,
                 result, STRERROR(result));
         return result;
     }
@@ -3255,6 +3257,7 @@ static int parse_nss_fetch_response_body(ConnectionInfo *conn,
     FDIRProtoNSSFetchRespBodyPart *part;
     FDIRClientNamespaceStatEntry *current;
     FDIRClientNamespaceStatEntry *end;
+    char formatted_ip[FORMATTED_IP_SIZE];
     char *p;
     int result;
     int entry_len;
@@ -3275,10 +3278,11 @@ static int parse_nss_fetch_response_body(ConnectionInfo *conn,
         part = (FDIRProtoNSSFetchRespBodyPart *)p;
         entry_len = sizeof(FDIRProtoNSSFetchRespBodyPart) + part->ns_name.len;
         if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
+            format_ip_address(conn->ip_addr, formatted_ip);
             response->error.length = snprintf(response->error.message,
                     sizeof(response->error.message),
                     "server %s:%u response body length exceeds header's %d",
-                    conn->ip_addr, conn->port, response->header.body_len);
+                    formatted_ip, conn->port, response->header.body_len);
             return EINVAL;
         }
 
@@ -3290,10 +3294,11 @@ static int parse_nss_fetch_response_body(ConnectionInfo *conn,
     }
 
     if ((int)(p - array->buffer.buff) != response->header.body_len) {
+        format_ip_address(conn->ip_addr, formatted_ip);
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
                 "server %s:%u response body length: %d != header's %d",
-                conn->ip_addr, conn->port, (int)(p - array->buffer.buff),
+                formatted_ip, conn->port, (int)(p - array->buffer.buff),
                 response->header.body_len);
         return EINVAL;
     }
@@ -3371,6 +3376,7 @@ static int parse_ns_list_response_body(ConnectionInfo *conn,
     FDIRProtoNamespaceListRespBody *body;
     FDIRClientNamespaceEntry *current;
     FDIRClientNamespaceEntry *end;
+    char formatted_ip[FORMATTED_IP_SIZE];
     char *p;
     int result;
     int entry_len;
@@ -3389,10 +3395,11 @@ static int parse_ns_list_response_body(ConnectionInfo *conn,
         body = (FDIRProtoNamespaceListRespBody *)p;
         entry_len = sizeof(FDIRProtoNamespaceListRespBody) + body->name_len;
         if ((p - array->buffer.buff) + entry_len > response->header.body_len) {
+            format_ip_address(conn->ip_addr, formatted_ip);
             response->error.length = snprintf(response->error.message,
                     sizeof(response->error.message),
                     "server %s:%u response body length exceeds header's %d",
-                    conn->ip_addr, conn->port, response->header.body_len);
+                    formatted_ip, conn->port, response->header.body_len);
             return EINVAL;
         }
 
@@ -3404,10 +3411,11 @@ static int parse_ns_list_response_body(ConnectionInfo *conn,
     }
 
     if ((int)(p - array->buffer.buff) != response->header.body_len) {
+        format_ip_address(conn->ip_addr, formatted_ip);
         response->error.length = snprintf(response->error.message,
                 sizeof(response->error.message),
                 "server %s:%u response body length: %d != header's %d",
-                conn->ip_addr, conn->port, (int)(p - array->buffer.buff),
+                formatted_ip, conn->port, (int)(p - array->buffer.buff),
                 response->header.body_len);
         return EINVAL;
     }

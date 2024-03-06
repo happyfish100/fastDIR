@@ -570,6 +570,7 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
     int master_id;
     int64_t start_time_ms;
     char time_buff[32];
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     master_id = -1;
     sleep_seconds = 1;
@@ -608,10 +609,10 @@ static int do_sync_binlogs(BinlogSyncContext *sync_ctx)
         return result;
     }
 
+    format_ip_address(sync_ctx->conn->ip_addr, formatted_ip);
     logInfo("file: "__FILE__", line: %d, "
             "fetch binlogs from master server id: %d, %s:%u ...",
-            __LINE__, master_id, sync_ctx->conn->ip_addr,
-            sync_ctx->conn->port);
+            __LINE__, master_id, formatted_ip, sync_ctx->conn->port);
 
     if ((result=query_binlog_info(sync_ctx)) != 0) {
         return result;

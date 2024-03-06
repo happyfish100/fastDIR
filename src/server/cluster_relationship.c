@@ -159,6 +159,7 @@ int cluster_proto_get_server_status(ConnectionInfo *conn,
     SFResponseInfo response;
 	char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoGetServerStatusReq)];
 	char in_body[sizeof(FDIRProtoGetServerStatusResp)];
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     header = (FDIRProtoHeader *)out_buff;
     SF_PROTO_SET_HEADER(header, FDIR_CLUSTER_PROTO_GET_SERVER_STATUS_REQ,
@@ -179,11 +180,12 @@ int cluster_proto_get_server_status(ConnectionInfo *conn,
     }
 
     if (response.header.body_len != sizeof(FDIRProtoGetServerStatusResp)) {
+        format_ip_address(conn->ip_addr, formatted_ip);
         logError("file: "__FILE__", line: %d, "
                 "server %s:%u, recv body length: %d != %d",
-                __LINE__, conn->ip_addr, conn->port,
-                response.header.body_len,
-                (int)sizeof(FDIRProtoGetServerStatusResp));
+                __LINE__, formatted_ip, conn->port,
+                response.header.body_len, (int)sizeof(
+                    FDIRProtoGetServerStatusResp));
         return EINVAL;
     }
 
@@ -194,10 +196,11 @@ int cluster_proto_get_server_status(ConnectionInfo *conn,
         if ((result=tcprecvdata_nb(conn->sock, in_body, response.
                         header.body_len, network_timeout)) != 0)
         {
+            format_ip_address(conn->ip_addr, formatted_ip);
             logError("file: "__FILE__", line: %d, "
                     "recv from server %s:%u fail, "
                     "errno: %d, error info: %s",
-                    __LINE__, conn->ip_addr, conn->port,
+                    __LINE__, formatted_ip, conn->port,
                     result, STRERROR(result));
             return result;
         }
@@ -546,6 +549,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
 	FDIRClusterServerStatus *current_status;
 	FDIRClusterServerStatus *cs_status;
 	FDIRClusterServerStatus status_array[STATUS_ARRAY_FIXED_COUNT];
+    char formatted_ip[FORMATTED_IP_SIZE];
 	int result;
 	int r;
 	int i;
@@ -604,12 +608,14 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
         } else {
             restart_interval = cs_status[i].up_time -
                 cs_status[i].last_shutdown_time;
+            format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                        cs_status[i].cs->server), formatted_ip);
             logDebug("file: "__FILE__", line: %d, "
                     "server_id: %d, ip addr %s:%u, is_master: %d, "
                     "status: %d(%s), data_version: %"PRId64", "
                     "last_heartbeat_time: %d, up_time: %d, "
-                    "restart interval: %d", __LINE__, cs_status[i].server_id,
-                    CLUSTER_GROUP_ADDRESS_FIRST_IP(cs_status[i].cs->server),
+                    "restart interval: %d", __LINE__,
+                    cs_status[i].server_id, formatted_ip,
                     CLUSTER_GROUP_ADDRESS_FIRST_PORT(cs_status[i].cs->server),
                     cs_status[i].is_master, cs_status[i].status,
                     fdir_get_server_status_caption(cs_status[i].status),
@@ -731,13 +737,15 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
     int result;
     int old_status;
     FDIRClusterServerInfo *old_master;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
     old_master = CLUSTER_MASTER_ATOM_PTR;
     if (new_master == old_master) {
+        format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                    new_master->server), formatted_ip);
         logDebug("file: "__FILE__", line: %d, "
                 "the server id: %d, ip %s:%u already is master",
-                __LINE__, new_master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
+                __LINE__, new_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
         return 0;
     }
@@ -780,10 +788,11 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
             *time_used = '\0';
         }
 
+        format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                    new_master->server), formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
                 "the master server id: %d, ip %s:%u%s",
-                __LINE__, new_master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(new_master->server),
+                __LINE__, new_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server),
                 time_used);
     }
@@ -1180,6 +1189,7 @@ static int cluster_select_master()
     char prompt[512];
 	FDIRClusterServerStatus server_status;
     FDIRClusterServerInfo *next_master;
+    char formatted_ip[FORMATTED_IP_SIZE];
 
 	logInfo("file: "__FILE__", line: %d, "
 		"selecting master...", __LINE__);
@@ -1291,11 +1301,12 @@ static int cluster_select_master()
 
     next_master = CLUSTER_MASTER_ATOM_PTR;
     if (next_master != NULL) {
+        format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                    next_master->server), formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
                 "abort election because the master exists, "
                 "master id: %d, ip %s:%u, election time used: %ds",
-                __LINE__, next_master->server->id,
-                CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+                __LINE__, next_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
                 (int)(g_current_time - start_time));
         return 0;
@@ -1309,22 +1320,25 @@ static int cluster_select_master()
 			return result;
 		}
 
+        format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                    next_master->server), formatted_ip);
 		logInfo("file: "__FILE__", line: %d, "
-			"I am the new master, id: %d, ip %s:%u, election "
-            "time used: %ds", __LINE__, next_master->server->id,
-            CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
+			"I am the new master, id: %d, ip %s:%u, election time used: "
+            "%ds", __LINE__, next_master->server->id, formatted_ip,
             CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
             (int)(g_current_time - start_time));
     } else {
         if (server_status.is_master) {
             cluster_relationship_set_master(next_master, start_time);
         } else if (CLUSTER_MASTER_ATOM_PTR == NULL) {
+            format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                        next_master->server), formatted_ip);
             logInfo("file: "__FILE__", line: %d, "
                     "election time used: %ds, waiting for the candidate "
                     "master server id: %d, ip %s:%u notify ...", __LINE__,
                     (int)(g_current_time - start_time), next_master->server->id,
-                    CLUSTER_GROUP_ADDRESS_FIRST_IP(next_master->server),
-                    CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server));
+                    formatted_ip, CLUSTER_GROUP_ADDRESS_FIRST_PORT(
+                        next_master->server));
             return ENOENT;
         }
     }
@@ -1338,6 +1352,7 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
     int result;
     int connect_timeout;
     int network_timeout;
+    //char formatted_ip[FORMATTED_IP_SIZE];
 
     if (CLUSTER_MYSELF_PTR == master) {
         *is_ping = false;
@@ -1356,9 +1371,10 @@ static int cluster_ping_master(FDIRClusterServerInfo *master,
         }
 
         /*
+        format_ip_address(conn->ip_addr, formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
                 "connect to master id: %d, %s:%u successfully", __LINE__,
-                master->server->id, conn->ip_addr, conn->port);
+                master->server->id, formatted_ip, conn->port);
                 */
 
         if ((result=proto_join_master(conn, network_timeout)) != 0) {
@@ -1387,6 +1403,7 @@ static void *cluster_thread_entrance(void* arg)
     FDIRClusterServerInfo *last_master;
     FDIRClusterServerInfo *master;
     ConnectionInfo *mconn;  //master connection
+    char formatted_ip[FORMATTED_IP_SIZE];
 
 #ifdef OS_LINUX
     prctl(PR_SET_NAME, "relationship");
@@ -1432,11 +1449,13 @@ static void *cluster_thread_entrance(void* arg)
                 sleep_seconds = 1;
             } else if (is_ping) {
                 ++fail_count;
+                format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
+                            master->server), formatted_ip);
                 logError("file: "__FILE__", line: %d, "
                         "%dth ping master id: %d, ip %s:%u fail",
                         __LINE__, fail_count, master->server->id,
-                        CLUSTER_GROUP_ADDRESS_FIRST_IP(master->server),
-                        CLUSTER_GROUP_ADDRESS_FIRST_PORT(master->server));
+                        formatted_ip, CLUSTER_GROUP_ADDRESS_FIRST_PORT(
+                            master->server));
 
                 if (g_current_time - ping_start_time >
                         ELECTION_MASTER_LOST_TIMEOUT)
