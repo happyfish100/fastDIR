@@ -611,7 +611,7 @@ static int cluster_get_master(FDIRClusterServerStatus *server_status,
             format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
                         cs_status[i].cs->server), formatted_ip);
             logDebug("file: "__FILE__", line: %d, "
-                    "server_id: %d, ip addr %s:%u, is_master: %d, "
+                    "server_id: %d, ip and port %s:%u, is_master: %d, "
                     "status: %d(%s), data_version: %"PRId64", "
                     "last_heartbeat_time: %d, up_time: %d, "
                     "restart interval: %d", __LINE__,
@@ -744,7 +744,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
                     new_master->server), formatted_ip);
         logDebug("file: "__FILE__", line: %d, "
-                "the server id: %d, ip %s:%u already is master",
+                "the server id: %d, %s:%u already is master",
                 __LINE__, new_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server));
         return 0;
@@ -791,7 +791,7 @@ static int cluster_relationship_set_master(FDIRClusterServerInfo *new_master,
         format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
                     new_master->server), formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
-                "the master server id: %d, ip %s:%u%s",
+                "the master server id: %d, %s:%u%s",
                 __LINE__, new_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(new_master->server),
                 time_used);
@@ -1305,7 +1305,7 @@ static int cluster_select_master()
                     next_master->server), formatted_ip);
         logInfo("file: "__FILE__", line: %d, "
                 "abort election because the master exists, "
-                "master id: %d, ip %s:%u, election time used: %ds",
+                "master id: %d, %s:%u, election time used: %ds",
                 __LINE__, next_master->server->id, formatted_ip,
                 CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
                 (int)(g_current_time - start_time));
@@ -1323,7 +1323,7 @@ static int cluster_select_master()
         format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
                     next_master->server), formatted_ip);
 		logInfo("file: "__FILE__", line: %d, "
-			"I am the new master, id: %d, ip %s:%u, election time used: "
+			"I am the new master, id: %d, %s:%u, election time used: "
             "%ds", __LINE__, next_master->server->id, formatted_ip,
             CLUSTER_GROUP_ADDRESS_FIRST_PORT(next_master->server),
             (int)(g_current_time - start_time));
@@ -1335,7 +1335,7 @@ static int cluster_select_master()
                         next_master->server), formatted_ip);
             logInfo("file: "__FILE__", line: %d, "
                     "election time used: %ds, waiting for the candidate "
-                    "master server id: %d, ip %s:%u notify ...", __LINE__,
+                    "master server id: %d, %s:%u notify ...", __LINE__,
                     (int)(g_current_time - start_time), next_master->server->id,
                     formatted_ip, CLUSTER_GROUP_ADDRESS_FIRST_PORT(
                         next_master->server));
@@ -1452,7 +1452,7 @@ static void *cluster_thread_entrance(void* arg)
                 format_ip_address(CLUSTER_GROUP_ADDRESS_FIRST_IP(
                             master->server), formatted_ip);
                 logError("file: "__FILE__", line: %d, "
-                        "%dth ping master id: %d, ip %s:%u fail",
+                        "%dth ping master id: %d, %s:%u fail",
                         __LINE__, fail_count, master->server->id,
                         formatted_ip, CLUSTER_GROUP_ADDRESS_FIRST_PORT(
                             master->server));
