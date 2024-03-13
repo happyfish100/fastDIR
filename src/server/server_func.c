@@ -469,7 +469,7 @@ static void server_log_configs()
     binlog_shrink_config_to_string(sz_binlog_shrink_config,
             sizeof(sz_binlog_shrink_config));
 
-    logInfo("fastDIR Enterprise Edition V%d.%d.%d, %s, %s, service: {%s}, "
+    logInfo("fastDIR V%d.%d.%d, %s, %s, service: {%s}, "
             "cluster: {%s}", g_fdir_global_vars.version.major,
             g_fdir_global_vars.version.minor,
             g_fdir_global_vars.version.patch, sz_global_config,
