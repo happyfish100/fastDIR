@@ -126,11 +126,19 @@ static inline void set_replication_stage(FDIRSlaveReplication *
     FC_ATOMIC_SET(replication->stage, stage);
 }
 
+static inline FDIRServerContext *replication_get_server_ctx(
+        FDIRSlaveReplication *replication)
+{
+    struct nio_thread_data *thread_data;
+    thread_data = CLUSTER_SF_CTX.thread_data + replication->
+        index % CLUSTER_SF_CTX.work_threads;
+    return (FDIRServerContext *)thread_data->arg;
+}
+
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
     int alloc_size;
     int bytes;
-    struct nio_thread_data *thread_data;
     FDIRServerContext *server_ctx;
 
     alloc_size = 4 * CLUSTER_SF_CTX.net_buffer_cfg.max_buff_size /
@@ -143,10 +151,6 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     }
     replication->context.rpc_result_array.alloc = alloc_size;
 
-    thread_data = CLUSTER_SF_CTX.thread_data + replication->
-        index % CLUSTER_SF_CTX.work_threads;
-    server_ctx = (FDIRServerContext *)thread_data->arg;
-
     set_replication_stage(replication, FDIR_REPLICATION_STAGE_IN_QUEUE);
     replication->context.last_data_versions.by_disk.previous = 0;
     replication->context.last_data_versions.by_disk.current = 0;
@@ -157,6 +161,7 @@ int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
     replication->context.sync_by_disk_stat.record_count = 0;
     replication->task = NULL;
 
+    server_ctx = replication_get_server_ctx(replication);
     PTHREAD_MUTEX_LOCK(&server_ctx->cluster.queue.lock);
     replication->next = server_ctx->cluster.queue.head;
     server_ctx->cluster.queue.head = replication;
@@ -173,7 +178,7 @@ int binlog_replication_rebind_thread(FDIRSlaveReplication *replication)
     FDIRSlaveReplicationPtrArray *parray;
 
     terminate_binlog_read_thread(replication);
-    server_ctx = (FDIRServerContext *)replication->task->thread_data->arg;
+    server_ctx = replication_get_server_ctx(replication);
     stage = FC_ATOMIC_GET(replication->stage);
     if (stage < FDIR_REPLICATION_STAGE_WAITING_JOIN_RESP) {
         parray = &server_ctx->cluster.connectings;
