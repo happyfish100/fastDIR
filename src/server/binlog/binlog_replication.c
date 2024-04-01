@@ -137,19 +137,7 @@ static inline FDIRServerContext *replication_get_server_ctx(
 
 int binlog_replication_bind_thread(FDIRSlaveReplication *replication)
 {
-    int alloc_size;
-    int bytes;
     FDIRServerContext *server_ctx;
-
-    alloc_size = 4 * CLUSTER_SF_CTX.net_buffer_cfg.max_buff_size /
-        FDIR_BINLOG_RECORD_MIN_SIZE;
-    bytes = sizeof(FDIRReplicaRPCResultEntry) * alloc_size;
-    if ((replication->context.rpc_result_array.results=
-                fc_malloc(bytes)) == NULL)
-    {
-        return ENOMEM;
-    }
-    replication->context.rpc_result_array.alloc = alloc_size;
 
     set_replication_stage(replication, FDIR_REPLICATION_STAGE_IN_QUEUE);
     replication->context.last_data_versions.by_disk.previous = 0;

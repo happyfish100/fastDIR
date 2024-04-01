@@ -13,18 +13,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <fcntl.h>
-#include <pthread.h>
 #include "fastcommon/logger.h"
 #include "fastcommon/sockopt.h"
 #include "fastcommon/shared_func.h"
@@ -34,6 +22,7 @@
 #include "sf/sf_nio.h"
 #include "../server_global.h"
 #include "binlog_write.h"
+#include "binlog_pack.h"
 #include "binlog_replication.h"
 #include "binlog_producer.h"
 #include "binlog_local_consumer.h"
@@ -45,6 +34,8 @@ static int init_binlog_local_consumer_array()
     int result;
     int count;
     int bytes;
+    int results_bytes;
+    int alloc_size;
     FDIRClusterServerInfo *server;
     FDIRSlaveReplication *replication;
     FDIRSlaveReplication *end;
@@ -61,6 +52,10 @@ static int init_binlog_local_consumer_array()
         return ENOMEM;
     }
     memset(slave_replication_array.replications, 0, bytes);
+
+    alloc_size = 4 * CLUSTER_SF_CTX.net_buffer_cfg.max_buff_size /
+        FDIR_BINLOG_RECORD_MIN_SIZE;
+    results_bytes = sizeof(FDIRReplicaRPCResultEntry) * alloc_size;
 
     server = CLUSTER_SERVER_ARRAY.servers;
     end = slave_replication_array.replications + count;
@@ -88,6 +83,13 @@ static int init_binlog_local_consumer_array()
         {
             return ENOMEM;
         }
+
+        if ((replication->context.rpc_result_array.results=
+                    fc_malloc(results_bytes)) == NULL)
+        {
+            return ENOMEM;
+        }
+        replication->context.rpc_result_array.alloc = alloc_size;
     }
 
     slave_replication_array.count = count;
