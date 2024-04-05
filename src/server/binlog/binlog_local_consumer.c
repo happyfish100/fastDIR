@@ -120,9 +120,7 @@ int binlog_local_consumer_replication_start()
         if (FC_ATOMIC_GET(replication->stage) ==
                 FDIR_REPLICATION_STAGE_NONE)
         {
-            if ((result=binlog_replication_bind_thread(
-                            replication)) != 0)
-            {
+            if ((result=binlog_replication_bind_thread(replication)) != 0) {
                 return result;
             }
         }

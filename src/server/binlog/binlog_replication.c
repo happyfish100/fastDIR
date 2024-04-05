@@ -232,7 +232,6 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
     if ((task=sf_alloc_init_task(CLUSTER_NET_HANDLER, -1)) == NULL) {
         return ENOMEM;
     }
-
     task->thread_data = CLUSTER_SF_CTX.thread_data +
         replication->index % CLUSTER_SF_CTX.work_threads;
 
@@ -241,16 +240,16 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
     if (addr_array->index >= addr_array->count) {
         addr_array->index = 0;
     }
+    snprintf(task->server_ip, sizeof(task->server_ip),
+            "%s", addr->conn.ip_addr);
+    task->port = addr->conn.port;
+    replication->task = task;
 
     replication->connection_info.start_time = g_current_time;
     calc_next_connect_time(replication);
 
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_MASTER;
     CLUSTER_REPLICA = replication;
-    replication->task = task;
-    snprintf(task->server_ip, sizeof(task->server_ip),
-            "%s", addr->conn.ip_addr);
-    task->port = addr->conn.port;
     if (sf_nio_notify(task, SF_NIO_STAGE_CONNECT) == 0) {
         set_replication_stage(replication, FDIR_REPLICATION_STAGE_CONNECTING);
     }
@@ -458,21 +457,42 @@ static int deal_replication_connectings(FDIRServerContext *server_ctx)
 static void clean_connecting_replications(FDIRServerContext *server_ctx)
 {
     FDIRSlaveReplication *replication;
+    FDIRSlaveReplication **pp;
+    int keep_count;
+    int remove_count;
     int i;
 
     if (server_ctx->cluster.connectings.count == 0) {
         return;
     }
 
+    keep_count = 0;
+    remove_count = 0;
     for (i=0; i<server_ctx->cluster.connectings.count; i++) {
         replication = server_ctx->cluster.connectings.replications[i];
         if (replication->task != NULL) {
             ioevent_add_to_deleted_list(replication->task);
+            ++keep_count;
         } else {
             set_replication_stage(replication, FDIR_REPLICATION_STAGE_NONE);
+            ++remove_count;
         }
     }
-    server_ctx->cluster.connectings.count = 0;
+
+    if (keep_count == 0) {
+        server_ctx->cluster.connectings.count = 0;
+    } else if (remove_count > 0) {
+        pp = server_ctx->cluster.connectings.replications;
+        for (i=0; i<server_ctx->cluster.connectings.count; i++) {
+            replication = server_ctx->cluster.connectings.replications[i];
+            if (replication->task != NULL) {
+                *pp++ = replication;
+            }
+        }
+
+        server_ctx->cluster.connectings.count = pp - server_ctx->
+            cluster.connectings.replications;
+    }
 }
 
 static void clean_connected_replications(FDIRServerContext *server_ctx)
