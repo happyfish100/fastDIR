@@ -1562,7 +1562,9 @@ static void record_deal_done_notify(FDIRBinlogRecord *record,
             case BINLOG_OP_CREATE_DENTRY_INT:
             case BINLOG_OP_REMOVE_DENTRY_INT:
             case BINLOG_OP_UPDATE_DENTRY_INT:
-                set_update_result_and_output(task, record->me.dentry);
+                if (REQUEST.header.cmd != FDIR_SERVICE_PROTO_SYS_UNLOCK_DENTRY_REQ) {
+                    set_update_result_and_output(task, record->me.dentry);
+                }
                 break;
             case BINLOG_OP_RENAME_DENTRY_INT:
                 if (RECORD->rename.overwritten != NULL) {
