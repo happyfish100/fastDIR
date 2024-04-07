@@ -28,6 +28,7 @@ int binlog_local_consumer_init();
 void binlog_local_consumer_destroy();
 void binlog_local_consumer_terminate();
 
+void binlog_local_consumer_waiting_replication_finish();
 int binlog_local_consumer_replication_start();
 int binlog_local_consumer_push_to_queues(ServerBinlogRecordBuffer *rbuffer);
 

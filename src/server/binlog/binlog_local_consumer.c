@@ -106,6 +106,56 @@ int binlog_local_consumer_init()
     return binlog_write_init();
 }
 
+static int get_busy_replication_count()
+{
+    FDIRSlaveReplication *replication;
+    FDIRSlaveReplication *end;
+    int count;
+
+    count = 0;
+    end = slave_replication_array.replications +
+        slave_replication_array.count;
+    for (replication=slave_replication_array.replications;
+            replication<end; replication++)
+    {
+        if (FC_ATOMIC_GET(replication->stage) !=
+                FDIR_REPLICATION_STAGE_NONE)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
+void binlog_local_consumer_waiting_replication_finish()
+{
+    int64_t start_time_us;
+    char time_used[32];
+    int count;
+
+    count = get_busy_replication_count();
+    if (count == 0) {
+        return;
+    }
+
+    start_time_us = get_current_time_us();
+    logInfo("file: "__FILE__", line: %d, "
+            "waiting %d replications finish ...",
+            __LINE__, count);
+
+    do {
+        fc_sleep_ms(1000);
+    } while (SF_G_CONTINUE_FLAG && get_busy_replication_count() > 0);
+
+    if (SF_G_CONTINUE_FLAG) {
+        long_to_comma_str((get_current_time_us() -
+                    start_time_us) / 1000, time_used);
+        logInfo("file: "__FILE__", line: %d, "
+                "waiting %d replications finish done, time used: %s ms",
+                __LINE__, count, time_used);
+    }
+}
+
 int binlog_local_consumer_replication_start()
 {
     int result;

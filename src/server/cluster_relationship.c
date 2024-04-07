@@ -893,6 +893,7 @@ void cluster_relationship_trigger_reselect_master()
         __sync_bool_compare_and_swap(&((FDIRServerContext *)thread_data->
                     arg)->cluster.clean_replications, 0, 1);
     }
+
     binlog_producer_destroy();
 }
 
@@ -1422,6 +1423,7 @@ static void *cluster_thread_entrance(void* arg)
     while (SF_G_CONTINUE_FLAG) {
         master = CLUSTER_MASTER_ATOM_PTR;
         if (master == NULL) {
+            binlog_local_consumer_waiting_replication_finish();
             if (cluster_select_master() != 0) {
                 sleep_seconds = 1 + (int)((double)rand()
                         * (double)MAX_SLEEP_SECONDS / RAND_MAX);
