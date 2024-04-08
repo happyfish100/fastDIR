@@ -1475,7 +1475,17 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
                 ", xattr name: %.*s", record->xattr.key.len,
                 record->xattr.key.str);
     } else {
-        log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+        if (record->operation == BINLOG_OP_UPDATE_DENTRY_INT) {
+            if (is_error) {
+                log_level = ((record->dentry_type == fdir_dentry_type_inode
+                            && result == ENOENT) ? LOG_LEVEL_FOR_ENOENT :
+                        LOG_WARNING);
+            } else {
+                log_level = LOG_DEBUG;
+            }
+        } else {
+            log_level = is_error ? LOG_WARNING : LOG_DEBUG;
+        }
         *xattr_name_buff = '\0';
     }
 

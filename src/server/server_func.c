@@ -358,6 +358,10 @@ static int load_storage_engine_parames(IniFullContext *ini_ctx)
         CHILDREN_CONTAINER = fdir_children_container_sortedarray;
     }
 
+    STORAGE_LOG_LEVEL_FOR_ENOENT = get_log_level(iniGetStrValue(
+                ini_ctx->section_name, "log_level_for_enoent",
+                ini_ctx->context), LOG_WARNING);
+
     return 0;
 }
 
@@ -386,7 +390,7 @@ static void binlog_shrink_config_to_string(char *buff, const int size)
 
 static void server_log_configs()
 {
-    char sz_server_config[1024];
+    char sz_server_config[2048];
     char sz_global_config[512];
     char sz_slowlog_config[256];
     char sz_binlog_shrink_config[128];
@@ -416,6 +420,7 @@ static void server_log_configs()
             "slave_binlog_check_last_rows = %d, "
             "reload_interval_ms = %d ms, "
             "check_alive_interval = %d s, "
+            "log_level_for_enoent = %s, "
             "namespace_hashtable_capacity = %d, "
             "node_hashtable_capacity = %d, "
             "inode_hashtable_capacity = %"PRId64", "
@@ -435,6 +440,7 @@ static void server_log_configs()
             SLAVE_BINLOG_CHECK_LAST_ROWS,
             g_server_global_vars->reload_interval_ms,
             g_server_global_vars->check_alive_interval,
+            get_log_level_caption(LOG_LEVEL_FOR_ENOENT),
             g_server_global_vars->namespace_hashtable_capacity,
             g_server_global_vars->node_hashtable_capacity,
             INODE_HASHTABLE_CAPACITY, INODE_SHARED_LOCKS_COUNT,
@@ -454,14 +460,15 @@ static void server_log_configs()
                 ", index_dump_interval: %d s"
                 ", index_dump_base_time: %02d:%02d"
                 ", eliminate_interval: %d s, memory_limit: %.2f%%"
-                ", children_container: %s}",
+                ", children_container: %s, log_level_for_enoent: %s}",
                 STORAGE_ENGINE_LIBRARY, STORAGE_PATH_STR,
                 INODE_BINLOG_SUBDIRS, BATCH_STORE_ON_MODIFIES,
                 BATCH_STORE_INTERVAL, INDEX_DUMP_INTERVAL,
                 INDEX_DUMP_BASE_TIME.hour, INDEX_DUMP_BASE_TIME.minute,
                 DENTRY_ELIMINATE_INTERVAL, STORAGE_MEMORY_LIMIT * 100,
                 CHILDREN_CONTAINER == fdir_children_container_sortedarray ?
-                "sortedarray" : "skiplist");
+                "sortedarray" : "skiplist", get_log_level_caption(
+                    STORAGE_LOG_LEVEL_FOR_ENOENT));
     } else {
         snprintf(sz_server_config + len, sizeof(sz_server_config) - len, "}");
     }
@@ -707,6 +714,9 @@ int server_load_config(const char *filename)
     {
         return result;
     }
+
+    LOG_LEVEL_FOR_ENOENT = get_log_level(iniGetStrValue(NULL,
+                "log_level_for_enoent", &ini_context), LOG_WARNING);
 
     fcfs_auth_client_init_full_ctx(&AUTH_CTX);
     if ((result=fcfs_auth_for_server_init(&AUTH_CTX, &ini_ctx,

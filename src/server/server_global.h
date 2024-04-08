@@ -146,6 +146,7 @@ typedef struct server_global_vars {
 
     struct {
         bool enabled;
+        int log_level_for_enoent;
         int batch_store_on_modifies;
         int batch_store_interval;
         int eliminate_interval;
@@ -156,6 +157,7 @@ typedef struct server_global_vars {
         FDIRStorageEngineInterface api;
     } storage;
 
+    int log_level_for_enoent;
     SFSlowLogContext slow_log;
 
     FCThreadPool thread_pool;
@@ -272,6 +274,7 @@ typedef struct server_global_vars {
 #define DENTRY_ELIMINATE_INTERVAL g_server_global_vars->storage.eliminate_interval
 #define STORAGE_MEMORY_LIMIT      g_server_global_vars->storage.memory_limit
 #define CHILDREN_CONTAINER        g_server_global_vars->storage.children_container
+#define STORAGE_LOG_LEVEL_FOR_ENOENT g_server_global_vars->storage.log_level_for_enoent
 
 #define STORAGE_ENGINE_INIT_API      g_server_global_vars->storage.api.init
 #define STORAGE_ENGINE_START_API     g_server_global_vars->storage.api.start
@@ -300,6 +303,7 @@ typedef struct server_global_vars {
 #define BINLOG_KEEP_DAYS     g_server_global_vars->binlog.keep_days
 #define BINLOG_DELETE_TIME   g_server_global_vars->binlog.delete_time
 
+#define LOG_LEVEL_FOR_ENOENT    g_server_global_vars->log_level_for_enoent
 #define SLOW_LOG                g_server_global_vars->slow_log
 #define SLOW_LOG_CFG            SLOW_LOG.cfg
 #define SLOW_LOG_CTX            SLOW_LOG.ctx

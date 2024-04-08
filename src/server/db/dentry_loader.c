@@ -427,6 +427,7 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry **dentry)
 {
     int result;
+    int log_level;
     int64_t parent_inode;
     string_t content;
     FDIRDBFetchContext *db_fetch_ctx;
@@ -450,9 +451,14 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
                         FDIR_PIECE_FIELD_INDEX_BASIC,
                         &db_fetch_ctx->read_ctx)) != 0)
         {
-            logError("file: "__FILE__", line: %d, "
+            if (result == ENOENT) {
+                log_level = STORAGE_LOG_LEVEL_FOR_ENOENT;
+            } else {
+                log_level = LOG_ERR;
+            }
+            log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
                     "inode: %"PRId64", load basic fail, result: %d",
-                    __LINE__, pair->current.inode, result);
+                    __FILE__, __LINE__, pair->current.inode, result);
             break;
         }
 
