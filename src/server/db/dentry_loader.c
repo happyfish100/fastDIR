@@ -457,8 +457,9 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
                 log_level = LOG_ERR;
             }
             log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
-                    "inode: %"PRId64", load basic fail, result: %d",
-                    __FILE__, __LINE__, pair->current.inode, result);
+                    "inode: %"PRId64", load basic fail, "
+                    "errno: %d, error info: %s", __FILE__, __LINE__,
+                    pair->current.inode, result, STRERROR(result));
             break;
         }
 

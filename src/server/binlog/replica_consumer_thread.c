@@ -115,21 +115,36 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
 void replica_consumer_thread_terminate(ReplicaConsumerThreadContext *ctx)
 {
     int count;
+    int sleep_ms;
+    int64_t start_time;
+    int64_t time_used;
+    char time_buff[32];
 
+    start_time = get_current_time_ms();
     ctx->continue_flag = false;
     common_blocked_queue_terminate(&ctx->queues.free);
     common_blocked_queue_terminate(&ctx->queues.input);
 
     count = 0;
-    while (ctx->running && count++ < 1000) {
+    sleep_ms = 1;
+    while (ctx->running && count++ < 1800) {
         common_blocked_queue_terminate(&ctx->queues.free);
         common_blocked_queue_terminate(&ctx->queues.input);
-        fc_sleep_ms(10);
+        if (sleep_ms < 1000) {
+            sleep_ms *= 2;
+        }
+        fc_sleep_ms(sleep_ms);
     }
 
     if (ctx->running) {
         logWarning("file: "__FILE__", line: %d, "
-                "wait thread exit timeout", __LINE__);
+                "wait replica consumer thread exit timeout", __LINE__);
+    } else {
+        time_used = get_current_time_ms() - start_time;
+        long_to_comma_str(time_used, time_buff);
+        logInfo("file: "__FILE__", line: %d, "
+                "wait replica consumer thread exit, time used: %s ms",
+                __LINE__, time_buff);
     }
 
     common_blocked_queue_destroy(&ctx->queues.free);
