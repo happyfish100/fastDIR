@@ -74,7 +74,7 @@ ReplicaConsumerThreadContext *replica_consumer_thread_init(
     }
     memset(ctx, 0, sizeof(ReplicaConsumerThreadContext));
 
-    ctx->running = false;
+    ctx->running = true;
     ctx->continue_flag = true;
     ctx->task = task;
 
@@ -232,7 +232,6 @@ static void *deal_binlog_thread_func(void *arg)
 #endif
 
     ctx = (ReplicaConsumerThreadContext *)arg;
-    ctx->running = true;
     task = ctx->task;
     while (ctx->continue_flag) {
         node = common_blocked_queue_pop_all_nodes(&ctx->queues.input);
