@@ -125,6 +125,9 @@ typedef struct server_global_vars {
         int active_test_interval;
 
         IdempotencyRequestMetadataContext req_meta_ctx;
+
+        /* slave side only */
+        volatile struct replica_consumer_thread_context *consumer_ctx;
     } replication;
 
     struct {
@@ -236,6 +239,7 @@ typedef struct server_global_vars {
     replication.deactive_on_failures
 #define REPLICA_REQ_META_CTX         g_server_global_vars-> \
     replication.req_meta_ctx
+#define REPLICA_CONSUMER_CTX    g_server_global_vars->replication.consumer_ctx
 
 #define DENTRY_MAX_DATA_SIZE    g_server_global_vars->dentry_max_data_size
 #define SKIPLIST_MAX_LEVEL      g_server_global_vars->skiplist_max_level

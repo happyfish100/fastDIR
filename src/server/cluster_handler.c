@@ -210,15 +210,15 @@ void cluster_task_finish_cleanup(struct fast_task_info *task)
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
             break;
         case FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE:
-            if (CLUSTER_CONSUMER_CTX != NULL) {
-                replica_consumer_thread_terminate(CLUSTER_CONSUMER_CTX);
-                CLUSTER_CONSUMER_CTX = NULL;
-                ((FDIRServerContext *)task->thread_data->arg)->
-                    cluster.consumer_ctx = NULL;
+            if (TASK_CONSUMER_CTX != NULL) {
+                replica_consumer_thread_terminate(TASK_CONSUMER_CTX);
+                __sync_bool_compare_and_swap(&REPLICA_CONSUMER_CTX,
+                        TASK_CONSUMER_CTX, NULL);
+                TASK_CONSUMER_CTX = NULL;
             } else {
                 logError("file: "__FILE__", line: %d, "
                         "mistake happen! task: %p, SERVER_TASK_TYPE: %d, "
-                        "CLUSTER_CONSUMER_CTX is NULL", __LINE__, task,
+                        "TASK_CONSUMER_CTX is NULL", __LINE__, task,
                         SERVER_TASK_TYPE);
             }
             SERVER_TASK_TYPE = SF_SERVER_TASK_TYPE_NONE;
@@ -523,7 +523,7 @@ static inline int check_replication_slave_task(struct fast_task_info *task)
                 FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE);
         return -EINVAL;
     }
-    if (CLUSTER_CONSUMER_CTX == NULL) {
+    if (TASK_CONSUMER_CTX == NULL) {
         RESPONSE.error.length = sprintf(
                 RESPONSE.error.message,
                 "please join first");
@@ -604,7 +604,7 @@ static int cluster_deal_forword_requests_req(struct fast_task_info *task)
         }
     }
 
-    return cluster_deal_push_request(CLUSTER_CONSUMER_CTX,
+    return cluster_deal_push_request(TASK_CONSUMER_CTX,
             binlog, binlog_length, &data_version);
 }
 
@@ -697,7 +697,7 @@ static int cluster_deal_push_binlog_req(struct fast_task_info *task)
         return EINVAL;
     }
 
-    return cluster_deal_push_request(CLUSTER_CONSUMER_CTX, (char *)
+    return cluster_deal_push_request(TASK_CONSUMER_CTX, (char *)
             (body_header + 1), binlog_length, &data_version);
 }
 
@@ -755,6 +755,7 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int binlog_count;
     int binlog_length;
     FDIRServerContext *server_ctx;
+    ReplicaConsumerThreadContext *consumer_ctx;
     SFBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
     FDIRClusterServerInfo *peer;
@@ -841,19 +842,24 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EPERM;
     }
 
-    if (CLUSTER_CONSUMER_CTX != NULL) {
+    if (TASK_CONSUMER_CTX != NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "master server id: %d already joined", server_id);
         return EEXIST;
     }
 
     server_ctx = (FDIRServerContext *)task->thread_data->arg;
-    if (server_ctx->cluster.consumer_ctx != NULL) {
+    consumer_ctx = (ReplicaConsumerThreadContext *)
+        FC_ATOMIC_GET(REPLICA_CONSUMER_CTX);
+    if (consumer_ctx != NULL) {
         RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "replica consumer thread already exist");
-        sf_nio_add_to_deleted_list(task->thread_data,
-                server_ctx->cluster.consumer_ctx->task);
-        return EEXIST;
+        if (!FC_ATOMIC_GET(consumer_ctx->task->canceled)) {
+            sf_nio_add_to_deleted_list(task->thread_data,
+                    consumer_ctx->task);
+        }
+        RESPONSE.header.cmd = FDIR_REPLICA_PROTO_JOIN_SLAVE_RESP;
+        return EBUSY;
     }
 
     if ((result=fill_binlog_last_lines(task, &binlog_count,
@@ -862,12 +868,19 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return result;
     }
 
-    CLUSTER_CONSUMER_CTX = replica_consumer_thread_init(task, &result);
-    if (CLUSTER_CONSUMER_CTX == NULL) {
+    consumer_ctx = replica_consumer_thread_init(task, &result);
+    if (consumer_ctx == NULL) {
         return result;
     }
+    if (!__sync_bool_compare_and_swap(&REPLICA_CONSUMER_CTX,
+                NULL, consumer_ctx))
+    {
+        replica_consumer_thread_terminate(consumer_ctx);
+        return EEXIST;
+    }
+
+    TASK_CONSUMER_CTX = consumer_ctx;
     SERVER_TASK_TYPE = FDIR_SERVER_TASK_TYPE_REPLICA_SLAVE;
-    server_ctx->cluster.consumer_ctx = CLUSTER_CONSUMER_CTX;
 
     binlog_get_current_write_position(&bf_position);
 
@@ -962,7 +975,18 @@ static int cluster_deal_join_slave_resp(struct fast_task_info *task)
 
         CLUSTER_REPLICA->connection_info.next_connect_time =
             g_current_time + connect_interval;
-        return REQUEST.header.status;
+
+        result = sf_localize_errno(REQUEST.header.status);
+        if (REQUEST.header.body_len > 0 && REQUEST.header.body_len <
+                sizeof(RESPONSE.error.message))
+        {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "%.*s", REQUEST.header.body_len, REQUEST.body);
+        } else {
+            RESPONSE.error.length = sprintf(RESPONSE.error.message,
+                    "errno: %d, error info: %s", result, STRERROR(result));
+        }
+        return result;
     } else {
         CLUSTER_REPLICA->join_fail_count = 0;
     }
@@ -1576,7 +1600,7 @@ int cluster_thread_loop_callback(struct nio_thread_data *thread_data)
     /*
     if (count++ % 100 == 0) {
         logInfo("%d. is_master: %d, server_ctx: %p, consumer_ctx: %p, connected.count: %d",
-                count, MYSELF_IS_OLD_MASTER, server_ctx, server_ctx->cluster.consumer_ctx,
+                count, MYSELF_IS_OLD_MASTER, server_ctx, REPLICA_CONSUMER_CTX,
                 server_ctx->cluster.connected.count);
     }
     */

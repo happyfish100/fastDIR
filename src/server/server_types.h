@@ -103,7 +103,7 @@
 #define SERVER_TASK_VERSION  TASK_CTX.task_version
 #define CLUSTER_PEER         TASK_CTX.shared.cluster.peer
 #define CLUSTER_REPLICA      TASK_CTX.shared.cluster.replica
-#define CLUSTER_CONSUMER_CTX TASK_CTX.shared.cluster.consumer_ctx
+#define TASK_CONSUMER_CTX    TASK_CTX.shared.cluster.consumer_ctx
 #define REPLICA_READER       TASK_CTX.shared.cluster.reader
 #define IDEMPOTENCY_CHANNEL  TASK_CTX.shared.service.idempotency_channel
 #define NS_SUBSCRIBER        TASK_CTX.shared.service.subscriber
@@ -407,8 +407,6 @@ typedef struct fdir_server_context {
             } queue;  //waiting to add to connecting array
             FDIRSlaveReplicationPtrArray connectings;  //master side
             FDIRSlaveReplicationPtrArray connected;    //master side
-
-            struct replica_consumer_thread_context *consumer_ctx;//slave side
         } cluster;
     };
 } FDIRServerContext;
