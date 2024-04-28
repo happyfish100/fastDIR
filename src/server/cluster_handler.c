@@ -754,7 +754,6 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
     int buffer_size;
     int binlog_count;
     int binlog_length;
-    FDIRServerContext *server_ctx;
     ReplicaConsumerThreadContext *consumer_ctx;
     SFBinlogFilePosition bf_position;
     FDIRProtoJoinSlaveReq *req;
@@ -848,7 +847,6 @@ static int cluster_deal_join_slave_req(struct fast_task_info *task)
         return EEXIST;
     }
 
-    server_ctx = (FDIRServerContext *)task->thread_data->arg;
     consumer_ctx = (ReplicaConsumerThreadContext *)
         FC_ATOMIC_GET(REPLICA_CONSUMER_CTX);
     if (consumer_ctx != NULL) {
