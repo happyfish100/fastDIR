@@ -125,17 +125,19 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
             }
         }
 
+        /*
         {
             int count = 0;
-            logError("file: "__FILE__", line: %d, "
-                    "parent inode: %"PRId64", %.*s", __LINE__,
+            logWarning("file: "__FILE__", line: %d, "
+                    "parent inode: %"PRId64", name: %.*s", __LINE__,
                     parent->inode, parent->name.len, parent->name.str);
             uniq_skiplist_iterator(parent->children, &it);
             while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
-                logError("%d. %"PRId64" => %.*s", ++count, child->inode,
+                logWarning("%d. %"PRId64" => %.*s", ++count, child->inode,
                         child->name.len, child->name.str);
             }
         }
+        */
 
         return ENOENT;
     }
@@ -189,17 +191,18 @@ static int dentry_load_children_ex(FDIRServerDentry *parent,
     if (current_pair->inode == 0) {
         return 0;
     } else {
-
+        /*
         if (current_pair->dentry == NULL) {
             int count = 0;
-            logError("line: %d, parent inode: %"PRId64", %.*s", __LINE__,
+            logWarning("line: %d, parent inode: %"PRId64", name: %.*s", __LINE__,
                     parent->inode, parent->name.len, parent->name.str);
             uniq_skiplist_iterator(parent->children, &it);
             while ((child=(FDIRServerDentry *)uniq_skiplist_next(&it)) != NULL) {
-                logError("%d. %"PRId64" => %.*s", ++count, child->inode,
+                logWarning("%d. %"PRId64" => %.*s", ++count, child->inode,
                         child->name.len, child->name.str);
             }
         }
+        */
 
         return current_pair->dentry != NULL ? 0 : ENOENT;
     }
@@ -217,6 +220,7 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
+    int log_level;
     string_t content;
     int64_t src_inode;
 
@@ -224,9 +228,15 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
                     FDIR_PIECE_FIELD_INDEX_BASIC, &thread_ctx->
                     db_fetch_ctx.read_ctx)) != 0)
     {
-        logError("file: "__FILE__", line: %d, "
-                "inode: %"PRId64", load basic fail, result: %d",
-                __LINE__, dentry->inode, result);
+        if (result == ENOENT) {
+            log_level = STORAGE_LOG_LEVEL_FOR_ENOENT;
+        } else {
+            log_level = LOG_WARNING;
+        }
+        log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
+                "inode: %"PRId64", load basic fail, errno: %d, "
+                "error info: %s", __FILE__, __LINE__, dentry->inode,
+                result, STRERROR(result));
         return result;
     }
 
@@ -242,8 +252,6 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
         sf_terminate_myself();
         return result;
     }
-    dentry->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
-    dentry_lru_add(dentry);
 
     if (S_ISDIR(dentry->stat.mode)) {
         dentry->stat.nlink = 1;   //reset nlink for directory
@@ -263,6 +271,8 @@ static int dentry_load_basic(FDIRDataThreadContext *thread_ctx,
         }
     }
 
+    dentry->db_args->loaded_flags |= FDIR_DENTRY_LOADED_FLAGS_BASIC;
+    dentry_lru_add(dentry);
     return result;
 }
 
@@ -365,18 +375,6 @@ int dentry_load_root(FDIRNamespaceEntry *ns_entry,
     return dentry_load_basic(ns_entry->thread_ctx, *dentry);
 }
 
-static inline int dentry_load_child(FDIRServerDentry *parent,
-        DentryPair *child_pair)
-{
-    int result;
-
-    if ((result=dentry_load_children_ex(parent, child_pair)) != 0) {
-        return result;
-    }
-    return dentry_load_basic(parent->ns_entry->
-            thread_ctx, child_pair->dentry);
-}
-
 static inline int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         FDIRServerDentry *parent, DentryPair *child_pair)
 {
@@ -390,7 +388,18 @@ static inline int dentry_load_one(FDIRNamespaceEntry *ns_entry,
         }
         return dentry_load_basic(ns_entry->thread_ctx, child_pair->dentry);
     } else {
-        return dentry_load_child(parent, child_pair);
+        if ((result=dentry_load_children_ex(parent, child_pair)) != 0) {
+            if (result == ENOENT) {
+                log_it_ex(&g_log_context, STORAGE_LOG_LEVEL_FOR_ENOENT,
+                        "file: "__FILE__", line: %d, "
+                        "load child fail, errno: %d, error info: %s, "
+                        "parent inode: %"PRId64", child inode: %"PRId64,
+                        __LINE__, result, STRERROR(result),
+                        parent->inode, child_pair->inode);
+            }
+            return result;
+        }
+        return dentry_load_basic(ns_entry->thread_ctx, child_pair->dentry);
     }
 }
 
@@ -402,8 +411,23 @@ static int dentry_load_all(DentryParentChildArray *parray)
 
     last = parray->pairs + parray->count - 1;
     for (pair = last; pair >= parray->pairs; pair--) {
-        if ((result=dentry_load_child(pair->parent.dentry,
+        if ((result=dentry_load_children_ex(pair->parent.dentry,
                         &pair->current)) != 0)
+        {
+            if (result == ENOENT) {
+                log_it_ex(&g_log_context, STORAGE_LOG_LEVEL_FOR_ENOENT,
+                        "file: "__FILE__", line: %d, "
+                        "load child fail, errno: %d, error info: %s, "
+                        "parent inode: %"PRId64", child inode: %"PRId64", "
+                        "total loop count: %d, current loop count: %d",
+                        __LINE__, result, STRERROR(result),
+                        pair->parent.dentry->inode, pair->current.inode,
+                        parray->count, (int)(last - pair + 1));
+            }
+            return result;
+        }
+        if ((result=dentry_load_basic(pair->parent.dentry->ns_entry->
+                        thread_ctx, pair->current.dentry)) != 0)
         {
             return result;
         }
@@ -454,11 +478,11 @@ int dentry_load_inode(FDIRDataThreadContext *thread_ctx,
             if (result == ENOENT) {
                 log_level = STORAGE_LOG_LEVEL_FOR_ENOENT;
             } else {
-                log_level = LOG_ERR;
+                log_level = LOG_WARNING;
             }
             log_it_ex(&g_log_context, log_level, "file: %s, line: %d, "
-                    "inode: %"PRId64", load basic fail, "
-                    "errno: %d, error info: %s", __FILE__, __LINE__,
+                    "inode: %"PRId64", load basic fail, errno: %d, "
+                    "error info: %s", __FILE__, __LINE__,
                     pair->current.inode, result, STRERROR(result));
             break;
         }

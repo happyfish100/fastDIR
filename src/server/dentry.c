@@ -195,24 +195,18 @@ static void dentry_free_xattrs(FDIRServerDentry *dentry)
     key_value_pair_t *end;
     struct fast_mblock_man *allocator;
 
-    if (dentry->kv_array == NULL) {
-        return;
-    }
-
     end = dentry->kv_array->elts + dentry->kv_array->count;
     for (kv=dentry->kv_array->elts; kv<end; kv++) {
         fast_allocator_free(&dentry->context->name_acontext, kv->key.str);
         fast_allocator_free(&dentry->context->name_acontext, kv->value.str);
     }
-
     dentry->kv_array->count = 0;
-    if ((allocator=dentry_get_kvarray_allocator_by_capacity(
-                    dentry->context, dentry->kv_array->alloc)) != NULL)
+
+    if ((allocator=dentry_get_kvarray_allocator_by_capacity(dentry->
+                    context, dentry->kv_array->alloc)) != NULL)
     {
         fast_mblock_free_object(allocator, dentry->kv_array);
     }
-
-    dentry->kv_array = NULL;
 }
 
 void dentry_free_for_elimination(FDIRServerDentry *dentry)
@@ -224,7 +218,11 @@ void dentry_free_for_elimination(FDIRServerDentry *dentry)
                 name_acontext, dentry->link.str);
         FC_SET_STRING_NULL(dentry->link);
     }
-    dentry_free_xattrs(dentry);
+
+    if (dentry->kv_array != NULL) {
+        dentry_free_xattrs(dentry);
+        dentry->kv_array = NULL;
+    }
 
     if (dentry->flock_entry != NULL) {
         inode_index_free_flock_entry(dentry);
