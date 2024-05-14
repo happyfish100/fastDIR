@@ -4529,12 +4529,12 @@ static void deal_ftask_events(FDIRServerContext *server_ctx,
             } else { //remove
                 if (!fc_list_empty(&event->ftask->clink)) {
                     fc_list_del_init(&event->ftask->clink);
-                    flock_release_ftask(event->ftask);
+                    inode_index_release_ftask(event->ftask);
                 }
             }
         }
 
-        flock_release_ftask(event->ftask);
+        inode_index_release_ftask(event->ftask);
         fast_mblock_free_object(&server_ctx->service.
                 event_allocator, event);
     } while (head != NULL);

@@ -622,6 +622,14 @@ void inode_index_flock_release(FDIRFLockTask *ftask)
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 }
 
+void inode_index_release_ftask(FDIRFLockTask *ftask)
+{
+    SET_INODE_HASHTABLE_CTX(ftask->dentry->inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    flock_release_ftask(ftask);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+}
+
 FDIRSysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
         const int64_t inode, const bool block,
         struct fast_task_info *task, int *result)

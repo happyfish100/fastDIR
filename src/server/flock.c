@@ -92,6 +92,8 @@ void flock_destroy(FLockContext *ctx)
 {
     fast_mblock_destroy(&ctx->allocators.entry);
     fast_mblock_destroy(&ctx->allocators.region);
+    fast_mblock_destroy(&ctx->allocators.ftask);
+    fast_mblock_destroy(&ctx->allocators.sys_task);
 }
 
 FDIRFLockTask *flock_alloc_ftask(FLockContext *ctx, FDIRServerDentry *dentry)

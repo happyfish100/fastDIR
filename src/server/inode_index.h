@@ -68,6 +68,8 @@ extern "C" {
 
     void inode_index_flock_release(FDIRFLockTask *ftask);
 
+    void inode_index_release_ftask(FDIRFLockTask *ftask);
+
     int inode_index_flock_getlk(const int64_t inode, FDIRFLockTask *ftask);
 
     FDIRSysLockTask *inode_index_sys_lock_apply(FDIRDataThreadContext *thread_ctx,
