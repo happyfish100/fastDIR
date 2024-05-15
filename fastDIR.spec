@@ -98,6 +98,7 @@ rm -rf %{buildroot}
 
 %post -n %{FastDIRServer}
 mkdir -p /opt/fastcfs/fdir
+systemctl enable fastdir
 
 %files -n %{FastDIRServer}
 /usr/bin/fdir_serverd
