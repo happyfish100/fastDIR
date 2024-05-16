@@ -1508,6 +1508,10 @@ static int deal_query_record(FDIRDataThreadContext *thread_ctx,
         case SERVICE_OP_SYS_LOCK_APPLY_INT:
             result = deal_sys_lock_apply(thread_ctx, record);
             break;
+        case SERVICE_OP_FLOCK_GETLK_INT:
+            result = inode_index_flock_getlk(thread_ctx,
+                    record->inode, record->flock->ftask);
+            break;
         case SERVER_OP_DUMP_DATA_INT:
             result = binlog_dump_data(thread_ctx, record->notify.args);
             break;

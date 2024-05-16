@@ -1767,14 +1767,45 @@ static int handle_sys_lock_done(struct fast_task_info *task)
     return handle_record_query_done(task);
 }
 
+static int flock_getlk_output(struct fast_task_info *task, const int result)
+{
+    FDIRProtoGetlkDEntryResp *resp;
+
+    if (result == 0 || result == ENOENT) {
+        resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_SEND_BODY(task);
+        int2buff(SERVICE_FTASK->owner.node, resp->owner.node);
+        int2buff(SERVICE_FTASK->owner.pid, resp->owner.pid);
+        long2buff(SERVICE_FTASK->owner.id, resp->owner.id);
+        if (result == 0) {
+            int2buff(SERVICE_FTASK->type, resp->type);
+            long2buff(SERVICE_FTASK->region->offset, resp->offset);
+            long2buff(SERVICE_FTASK->region->length, resp->length);
+        } else {
+            int2buff(LOCK_UN, resp->type);
+            long2buff(SERVICE_FTASK->region->offset, resp->offset);
+            long2buff(SERVICE_FTASK->region->length, resp->length);
+        }
+
+        RESPONSE.header.body_len = sizeof(FDIRProtoGetlkDEntryResp);
+        TASK_CTX.common.response_done = true;
+        return 0;
+    } else {
+        return result;
+    }
+}
+
 static int handle_flock_done(struct fast_task_info *task)
 {
     int result;
 
     result = RESPONSE_STATUS;
     if (SERVICE_FTYPE == LOCK_UN) {
+        //do nothing
     } else if (SERVICE_FTASK == NULL) {
         //error
+    } else if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_GETLK_DENTRY_REQ) {
+        RESPONSE_STATUS = flock_getlk_output(task, result);
+        inode_index_free_ftask_and_region(RECORD->inode, SERVICE_FTASK);
     } else if (!ioevent_is_canceled(task)) {
         if (REQUEST.header.cmd == FDIR_SERVICE_PROTO_SYS_LOCK_DENTRY_REQ) {
             SYS_LOCK_TASK = SERVICE_STASK;
@@ -3645,13 +3676,8 @@ static int service_deal_flock_dentry(struct fast_task_info *task)
 static int service_deal_getlk_dentry(struct fast_task_info *task)
 {
     FDIRProtoGetlkDEntryFront *front;
-    FDIRProtoGetlkDEntryResp *resp;
-    FDIRFLockTask ftask;
-    int64_t offset;
-    int64_t length;
     short operation;
     int result;
-    FDIRFLockRegion region;
 
     SERVICE_SET_FRONT_SIZE(FDIRProtoGetlkDEntryFront);
     if ((result=server_check_and_parse_inode(task,
@@ -3660,63 +3686,48 @@ static int service_deal_getlk_dentry(struct fast_task_info *task)
         return result;
     }
 
+    if ((SERVICE_FTASK=inode_index_alloc_ftask_and_region(
+                    RECORD->inode)) == NULL)
+    {
+        return ENOMEM;
+    }
+    memset(SERVICE_FTASK->region, 0, sizeof(FDIRFLockRegion));
+
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_GETLK_DENTRY_RESP;
     front = (FDIRProtoGetlkDEntryFront *)REQUEST.body;
-    offset = buff2long(front->offset);
-    length = buff2long(front->length);
+    SERVICE_FTASK->region->offset = buff2long(front->offset);
+    SERVICE_FTASK->region->length = buff2long(front->length);
     operation = buff2int(front->operation);
-    ftask.owner.node = buff2int(front->owner.node);
-    ftask.owner.pid = buff2int(front->owner.pid);
-    ftask.owner.id = buff2long(front->owner.id);
+    SERVICE_FTASK->owner.node = buff2int(front->owner.node);
+    SERVICE_FTASK->owner.pid = buff2int(front->owner.pid);
+    SERVICE_FTASK->owner.id = buff2long(front->owner.id);
 
     /*
     logInfo("file: "__FILE__", line: %d, func: %s, "
             "sock: %d, operation: %d, inode: %"PRId64", "
             "offset: %"PRId64", length: %"PRId64", owner.node: %u, "
-            "owner.id: %"PRId64", owner.pid: %d", __LINE__, __FUNCTION__,
-            task->event.fd, operation, RECORD->inode, offset, length,
-            ftask.owner.node, ftask.owner.id, ftask.owner.pid);
+            "owner.id: %"PRIu64", owner.pid: %d", __LINE__, __FUNCTION__,
+            task->event.fd, operation, RECORD->inode, SERVICE_FTASK->region->
+            offset, SERVICE_FTASK->region->length, SERVICE_FTASK->owner.node,
+            SERVICE_FTASK->owner.id, SERVICE_FTASK->owner.pid);
             */
 
     if (operation & LOCK_EX) {
-        ftask.type = LOCK_EX;
+        SERVICE_FTASK->type = LOCK_EX;
     } else if (operation & LOCK_SH) {
-        ftask.type = LOCK_SH;
+        SERVICE_FTASK->type = LOCK_SH;
     } else {
-        RESPONSE.error.length = sprintf(
-                RESPONSE.error.message,
+        RESPONSE.error.length = sprintf(RESPONSE.error.message,
                 "invalid operation: %d", operation);
+        inode_index_free_ftask_and_region(RECORD->inode, SERVICE_FTASK);
         free_record_object(task);
         return EINVAL;
     }
 
-    memset(&region, 0, sizeof(region));
-    region.offset = offset;
-    region.length = length;
-    ftask.region = &region;  //for region compare
-    result = inode_index_flock_getlk(RECORD->inode, &ftask);
-    if (result == 0 || result == ENOENT) {
-        resp = (FDIRProtoGetlkDEntryResp *)SF_PROTO_SEND_BODY(task);
-        int2buff(ftask.owner.node, resp->owner.node);
-        int2buff(ftask.owner.pid, resp->owner.pid);
-        long2buff(ftask.owner.id, resp->owner.id);
-        if (result == 0) {
-            int2buff(ftask.type, resp->type);
-            long2buff(ftask.region->offset, resp->offset);
-            long2buff(ftask.region->length, resp->length);
-        } else {
-            int2buff(LOCK_UN, resp->type);
-            long2buff(offset, resp->offset);
-            long2buff(length, resp->length);
-            result = 0;
-        }
-
-        RESPONSE.header.body_len = sizeof(FDIRProtoGetlkDEntryResp);
-        TASK_CTX.common.response_done = true;
-    }
-
-    free_record_object(task);
-    return result;
+    SERVICE_FTYPE = SERVICE_FTASK->type;
+    RECORD->flock = &SERVICE_FLOCK;
+    RECORD->operation = SERVICE_OP_FLOCK_GETLK_INT;
+    return push_flock_to_data_thread_queue(task);
 }
 
 static int service_deal_sys_lock_dentry(struct fast_task_info *task)

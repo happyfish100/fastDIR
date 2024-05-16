@@ -514,6 +514,41 @@ int inode_index_get_xattr(FDIRServerDentry *dentry,
     return result;
 }
 
+FDIRFLockTask *inode_index_alloc_ftask_and_region(const int64_t inode)
+{
+    FDIRFLockTask *ftask;
+
+    SET_INODE_HASHTABLE_CTX(inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    if ((ftask=fast_mblock_alloc_object(&ctx->flock_ctx.
+                    allocators.ftask)) != NULL)
+    {
+        if ((ftask->region=fast_mblock_alloc_object(&ctx->flock_ctx.
+                        allocators.region)) == NULL)
+        {
+            fast_mblock_free_object(&ctx->flock_ctx.allocators.ftask, ftask);
+            ftask = NULL;
+        }
+    }
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+
+    return ftask;
+}
+
+void inode_index_free_ftask_and_region(const int64_t inode,
+        FDIRFLockTask *ftask)
+{
+    SET_INODE_HASHTABLE_CTX(inode);
+    PTHREAD_MUTEX_LOCK(&ctx->lock);
+    if (ftask->region != NULL) {
+        fast_mblock_free_object(&ctx->flock_ctx.
+                allocators.region, ftask->region);
+        ftask->region = NULL;
+    }
+    fast_mblock_free_object(&ctx->flock_ctx.allocators.ftask, ftask);
+    PTHREAD_MUTEX_UNLOCK(&ctx->lock);
+}
+
 FDIRFLockTask *inode_index_flock_apply(FDIRDataThreadContext *thread_ctx,
         const int64_t inode, const FDIRFlockParams *params, const bool block,
         struct fast_task_info *task, int *result)
@@ -589,12 +624,15 @@ int inode_index_flock_unlock(FDIRDataThreadContext *thread_ctx,
     return result;
 }
 
-int inode_index_flock_getlk(const int64_t inode, FDIRFLockTask *ftask)
+int inode_index_flock_getlk(FDIRDataThreadContext *thread_ctx,
+        const int64_t inode, FDIRFLockTask *ftask)
 {
     int result;
 
-    if ((ftask->dentry=inode_index_find_dentry(inode)) == NULL) {
-        return ENOENT;
+    if ((result=inode_index_get_dentry(thread_ctx,
+                    inode, &ftask->dentry)) != 0)
+    {
+        return result;
     }
 
     {
