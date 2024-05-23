@@ -2877,6 +2877,13 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     stat->dentry.counters.dir = buff2long(stat_resp.dentry.counters.dir);
     stat->dentry.counters.file = buff2long(stat_resp.dentry.counters.file);
 
+    stat->storage_engine.reclaim.total_count = buff2long(
+            stat_resp.storage_engine.reclaim.total_count);
+    stat->storage_engine.reclaim.success_count = buff2long(
+            stat_resp.storage_engine.reclaim.success_count);
+    stat->storage_engine.reclaim.reclaimed_count = buff2long(
+            stat_resp.storage_engine.reclaim.reclaimed_count);
+
     return 0;
 }
 

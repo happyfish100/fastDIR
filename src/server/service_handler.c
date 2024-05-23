@@ -315,6 +315,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     int64_t data_current_version;
     int64_t db_last_version;
     FDIRDentryCounters counters;
+    FDIRDentryReclaimCounters reclaim_counters;
     FDIRProtoServiceStatResp *stat_resp;
     DASpaceStat space_stat;
     int64_t inode_used_space;
@@ -343,6 +344,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
                 FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE) != 0;
         STORAGE_ENGINE_SPACES_STAT_API(&space_stat,
                 &inode_used_space, include_indexes);
+        data_thread_sum_reclaim_counters(&reclaim_counters);
     } else {
         stat_resp->storage_engine.enabled = 0;
         long2buff(0, stat_resp->storage_engine.current_version);
@@ -354,6 +356,10 @@ static int service_deal_service_stat(struct fast_task_info *task)
         space_stat.trunk.used = 0;
         space_stat.trunk.avail = 0;
         inode_used_space = 0;
+
+        reclaim_counters.total_count = 0;
+        reclaim_counters.success_count = 0;
+        reclaim_counters.reclaimed_count = 0;
     }
     long2buff(space_stat.disk.avail, stat_resp->
             storage_engine.space.disk_avail);
@@ -393,6 +399,13 @@ static int service_deal_service_stat(struct fast_task_info *task)
     long2buff(counters.ns, stat_resp->dentry.counters.ns);
     long2buff(counters.dir, stat_resp->dentry.counters.dir);
     long2buff(counters.file, stat_resp->dentry.counters.file);
+
+    long2buff(reclaim_counters.total_count, stat_resp->
+            storage_engine.reclaim.total_count);
+    long2buff(reclaim_counters.success_count, stat_resp->
+            storage_engine.reclaim.success_count);
+    long2buff(reclaim_counters.reclaimed_count, stat_resp->
+            storage_engine.reclaim.reclaimed_count);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoServiceStatResp);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_SERVICE_STAT_RESP;

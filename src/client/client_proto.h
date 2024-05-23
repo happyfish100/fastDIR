@@ -93,6 +93,13 @@ typedef struct fdir_client_service_stat {
             int64_t inode_used_space;
             SFSpaceStat trunk;
         } space;
+
+        struct {
+            int64_t total_count;
+            int64_t success_count;
+            int64_t reclaimed_count;
+        } reclaim;
+
     } storage_engine;
     char version_holder[12];
     string_t version;

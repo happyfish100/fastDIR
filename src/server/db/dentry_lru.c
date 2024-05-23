@@ -121,18 +121,18 @@ static int dentry_reclaim(FDIRServerDentry *dentry)
     {
         fc_list_move_tail(&dentry->db_args->lru_dlink,
                 &dentry->context->thread_ctx->lru_ctx.head);
-        return 0;
+        return -1;
     }
 
     /* hardlink source dentry */
     if (!S_ISDIR(dentry->stat.mode) && dentry->stat.nlink > 1) {
         fc_list_move_tail(&dentry->db_args->lru_dlink,
                 &dentry->context->thread_ctx->lru_ctx.head);
-        return 0;
+        return -1;
     }
 
-    if (__sync_add_and_fetch(&dentry->reffer_count, 0) > 1) {
-        return 0;
+    if (FC_ATOMIC_GET(dentry->reffer_count) > 1) {
+        return -1;
     }
 
     if (!FDIR_IS_DENTRY_HARD_LINK(dentry->stat.mode)) {
@@ -162,12 +162,13 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
     int64_t total_count;
     int64_t eliminate_count;
     int64_t loop_count;
+    int64_t reclaim_count;
     int count;
     FDIRServerDentryDBArgs *db_args;
     FDIRServerDentryDBArgs *tmp_args;
     FDIRServerDentry *dentry;
 
-    thread_ctx->lru_ctx.reclaim_count = 0;
+    reclaim_count = 0;
     eliminate_count = thread_ctx->lru_ctx.total_count -
         dentry_lru_ctx.thread_limit;
     if (eliminate_count <= 0) {
@@ -187,6 +188,7 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
             break;
         }
 
+        thread_ctx->lru_ctx.counters.total_count++;
         dentry = fc_list_entry(db_args, FDIRServerDentry, db_args);
         if (S_ISDIR(dentry->stat.mode)) {
             if ((dentry->db_args->loaded_count != 0) ||
@@ -198,12 +200,19 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
             }
         }
 
-        if ((count=dentry_reclaim(dentry)) > 0) {
-            thread_ctx->lru_ctx.reclaim_count += count;
-            if (thread_ctx->lru_ctx.reclaim_count >= eliminate_count) {
-                break;
+        if ((count=dentry_reclaim(dentry)) >= 0) {
+            thread_ctx->lru_ctx.counters.success_count++;
+            if (count > 0) {
+                reclaim_count += count;
+                if (reclaim_count >= eliminate_count) {
+                    break;
+                }
             }
         }
+    }
+
+    if (reclaim_count > 0) {
+        thread_ctx->lru_ctx.counters.reclaimed_count += reclaim_count;
     }
 
     logDebug("file: "__FILE__", line: %d, thread index: %d, "
@@ -211,5 +220,5 @@ void dentry_lru_eliminate(struct fdir_data_thread_context *thread_ctx,
             "loop_count: %"PRId64", target_reclaims: %"PRId64", "
             "reclaim_count: %"PRId64, __LINE__, thread_ctx->index,
             total_count, thread_ctx->lru_ctx.total_count, loop_count,
-            eliminate_count, thread_ctx->lru_ctx.reclaim_count);
+            eliminate_count, reclaim_count);
 }

@@ -52,6 +52,22 @@ void data_thread_sum_counters(FDIRDentryCounters *counters)
     }
 }
 
+void data_thread_sum_reclaim_counters(FDIRDentryReclaimCounters *counters)
+{
+    FDIRDataThreadContext *context;
+
+    counters->total_count = 0;
+    counters->success_count = 0;
+    counters->reclaimed_count = 0;
+    for (context=g_data_thread_vars.thread_array.contexts;
+            context<DATA_THREAD_END; context++)
+    {
+        counters->total_count += context->lru_ctx.counters.total_count;
+        counters->success_count += context->lru_ctx.counters.success_count;
+        counters->reclaimed_count += context->lru_ctx.counters.reclaimed_count;
+    }
+}
+
 int server_add_to_immediate_free_queue_ex(ServerFreeContext *free_ctx,
         void *ctx, void *ptr, server_free_func_ex free_func_ex)
 {

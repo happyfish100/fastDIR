@@ -40,6 +40,12 @@ typedef struct fdir_dentry_counters {
     int64_t file;
 } FDIRDentryCounters;
 
+typedef struct fdir_dentry_reclaim_counters {
+    int64_t total_count;
+    int64_t success_count;
+    int64_t reclaimed_count;
+} FDIRDentryReclaimCounters;
+
 struct fdir_server_dentry;
 struct fdir_data_thread_context;
 
@@ -92,7 +98,7 @@ typedef struct fdir_db_fetch_context {
 typedef struct fdir_db_lru_context {
     volatile int64_t total_count;
     volatile int64_t target_reclaims;
-    int64_t reclaim_count;
+    volatile FDIRDentryReclaimCounters counters;
     struct fc_list_head head;  //for dentry LRU elimination
 } FDIRDBLRUContext;
 
@@ -178,6 +184,8 @@ extern "C" {
     void data_thread_terminate();
 
     void data_thread_sum_counters(FDIRDentryCounters *counters);
+
+    void data_thread_sum_reclaim_counters(FDIRDentryReclaimCounters *counters);
 
     static inline int64_t data_thread_get_total_dentry_count()
     {

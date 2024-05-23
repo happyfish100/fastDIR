@@ -42,7 +42,7 @@ static void usage(char *argv[])
 static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
 {
     SFSpaceStat space;
-    char storage_engine_buff[256];
+    char storage_engine_buff[512];
     char up_time_buff[32];
     struct {
         char total[32];
@@ -51,6 +51,8 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
     } space_buffs, trunk_buffs;
     double space_used_ratio;
     double trunk_used_ratio;
+    double success_ratio;
+    double avg_reclaimed;
     string_t padding_strings[6];
     char tmp_buff[32];
     char formatted_ip[FORMATTED_IP_SIZE];
@@ -129,18 +131,40 @@ static void output(FDIRClientServiceStat *stat, const ConnectionInfo *conn)
             }
         }
 
+        if (stat->storage_engine.reclaim.total_count > 0) {
+            success_ratio = (double)stat->storage_engine.reclaim.success_count
+                / (double)stat->storage_engine.reclaim.total_count;
+            if (stat->storage_engine.reclaim.success_count > 0) {
+                    avg_reclaimed = (double)stat->storage_engine.reclaim.
+                        reclaimed_count / (double)stat->storage_engine.
+                        reclaim.success_count;
+            } else {
+                avg_reclaimed = 0.00;
+            }
+        } else {
+            success_ratio = 0.00;
+            avg_reclaimed = 0.00;
+        }
+
         sprintf(storage_engine_buff + len, ", data version "
                 "{current: %"PRId64", delay: %"PRId64"},\n"
                 "\t\tspace summary: {total: %s %s, used: %s %s (%.2f%%), "
                 "avail: %s %s},\n\t\t  trunk space: {total: %s %s, "
-                "used: %s %s (%.2f%%), avail: %s %s}",
+                "used: %s %s (%.2f%%), avail: %s %s},\n"
+                "\t\trelcaim stat:  {total: %"PRId64", "
+                "success: {value: %"PRId64", ratio: %.2f%%},"
+                "\n\t\t\t\treclaimed: {sum: %"PRId64", avg: %.2f}",
                 stat->storage_engine.current_version,
                 stat->storage_engine.version_delay, space_buffs.total,
                 unit_caption, space_buffs.used, unit_caption,
                 space_used_ratio * 100.00, space_buffs.avail,
                 unit_caption, trunk_buffs.total, unit_caption,
                 trunk_buffs.used, unit_caption, trunk_used_ratio * 100.00,
-                trunk_buffs.avail, unit_caption);
+                trunk_buffs.avail, unit_caption,
+                stat->storage_engine.reclaim.total_count,
+                stat->storage_engine.reclaim.success_count,
+                success_ratio * 100.00, stat->storage_engine.
+                reclaim.reclaimed_count, avg_reclaimed);
     }
     formatDatetime(stat->up_time, "%Y-%m-%d %H:%M:%S",
             up_time_buff, sizeof(up_time_buff));

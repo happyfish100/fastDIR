@@ -669,6 +669,13 @@ typedef struct fdir_proto_service_stat_resp {
                 char avail[8];
             } trunk;
         } space;
+
+        struct {
+            char total_count[8];
+            char success_count[8];
+            char reclaimed_count[8];
+        } reclaim;
+
     } storage_engine;
 
     char padding[5];
