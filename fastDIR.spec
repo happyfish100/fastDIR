@@ -29,7 +29,7 @@ commit version: %{CommitVersion}
 %package -n %{FastDIRServer}
 Requires: libserverframe >= 1.2.4
 Requires: libfastrdma >= 1.0.2
-Requires: libfdirstorage >= 1.1.7
+Requires: libfdirstorage >= 1.1.8
 Requires: FastCFS-auth-client >= 5.0.0
 Requires: FastCFS-vote-client >= 5.0.0
 Requires: FastCFS-auth-config >= 2.0.0
