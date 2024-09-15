@@ -627,7 +627,10 @@ int server_load_config(const char *filename)
 
         TASK_PADDING_SIZE = rdma_handler->get_connection_size();
         RDMA_INIT_CONNECTION = rdma_handler->init_connection;
-        RDMA_PD = rdma_handler->pd;
+        CLUSTER_RDMA_PD = CLUSTER_NET_HANDLER->pd;
+
+        rdma_handler = sf_get_first_network_handler_ex(&SERVICE_SF_CTX);
+        SERVICE_RDMA_PD = rdma_handler->pd;
     }
 
     if ((result=load_dentry_max_data_size(&ini_ctx)) != 0) {

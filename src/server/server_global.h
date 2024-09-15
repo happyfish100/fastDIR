@@ -57,7 +57,8 @@ typedef struct server_global_vars {
     struct {
         int task_padding_size;
         sf_init_connection_callback init_connection;
-        struct ibv_pd *pd;
+        struct ibv_pd *cluster_pd;
+        struct ibv_pd *service_pd;
     } rdma;
 
     struct {
@@ -177,7 +178,8 @@ typedef struct server_global_vars {
 
 #define TASK_PADDING_SIZE        g_server_global_vars->rdma.task_padding_size
 #define RDMA_INIT_CONNECTION     g_server_global_vars->rdma.init_connection
-#define RDMA_PD                  g_server_global_vars->rdma.pd
+#define CLUSTER_RDMA_PD          g_server_global_vars->rdma.cluster_pd
+#define SERVICE_RDMA_PD          g_server_global_vars->rdma.service_pd
 
 #define MASTER_ELECTION_QUORUM g_server_global_vars->cluster. \
     master_election.quorum

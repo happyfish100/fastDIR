@@ -72,13 +72,13 @@ static int setup_mblock_stat_task();
 static bool daemon_mode = true;
 static char g_pid_filename[MAX_PATH_SIZE];
 
-int init_nio_task(struct fast_task_info *task)
+int init_nio_task(struct fast_task_info *task, void *arg)
 {
     sf_proto_init_task_magic(task);
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
 
-    if (RDMA_INIT_CONNECTION != NULL) {
-        return RDMA_INIT_CONNECTION(task, RDMA_PD);
+    if (RDMA_INIT_CONNECTION != NULL && arg != NULL) {
+        return RDMA_INIT_CONNECTION(task, arg);
     } else {
         return 0;
     }
@@ -287,7 +287,7 @@ int main(int argc, char *argv[])
                 cluster_task_finish_cleanup, cluster_recv_timeout_callback,
                 1000, sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
                 sizeof(FDIRServerTaskArg), double_buffers, true,
-                init_nio_task, NULL);
+                init_nio_task, CLUSTER_RDMA_PD, NULL);
         if (result != 0) {
             break;
         }
@@ -340,7 +340,8 @@ int main(int argc, char *argv[])
                 sf_proto_set_body_length, NULL, NULL, service_deal_task,
                 service_task_finish_cleanup, NULL, 5000,
                 sizeof(FDIRProtoHeader), TASK_PADDING_SIZE,
-                sizeof(FDIRServerTaskArg), false, false, init_nio_task, NULL);
+                sizeof(FDIRServerTaskArg), false, false,
+                init_nio_task, SERVICE_RDMA_PD, NULL);
         if (result != 0) {
             break;
         }
