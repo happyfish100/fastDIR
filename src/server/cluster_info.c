@@ -25,6 +25,7 @@
 #include "fastcommon/shared_func.h"
 #include "fastcommon/sched_thread.h"
 #include "fastcommon/local_ip_func.h"
+#include "sf/sf_service.h"
 #include "server_global.h"
 #include "cluster_relationship.h"
 #include "cluster_info.h"
@@ -106,6 +107,59 @@ static int init_cluster_server_array()
     return 0;
 }
 
+static int is_same_port(const char *caption, const int my_inner_port,
+        const int my_outer_port, const int cluster_port, const char *filename)
+{
+    if (my_inner_port == my_outer_port) {
+        if (my_inner_port != cluster_port) {
+            logError("file: "__FILE__", line: %d, "
+                    "%s listen port %d != port %d in the cluster "
+                    "config file: %s", __LINE__, caption, my_inner_port,
+                    cluster_port, filename);
+            return EINVAL;
+        }
+    } else {
+        if (my_inner_port != cluster_port && my_outer_port != cluster_port) {
+            logError("file: "__FILE__", line: %d, "
+                    "%s listen inner port %d and outer port %d NOT contain "
+                    "port %d in the cluster config file: %s", __LINE__,
+                    caption, my_inner_port, my_outer_port, cluster_port,
+                    filename);
+            return EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+static int check_ports(FCServerInfo *server, const char *filename)
+{
+    SFNetworkHandler *cluster_handler;
+    SFNetworkHandler *service_handler;
+    int result;
+
+    cluster_handler = sf_get_first_network_handler_ex(&CLUSTER_SF_CTX);
+    service_handler = sf_get_first_network_handler_ex(&SERVICE_SF_CTX);
+
+    if ((result=is_same_port("cluster", cluster_handler->inner.port,
+                    cluster_handler->outer.port,
+                    CLUSTER_GROUP_ADDRESS_FIRST_PTR(server)->conn.port,
+                    filename)) != 0)
+    {
+        return result;
+    }
+
+    if ((result=is_same_port("service", service_handler->inner.port,
+                    service_handler->outer.port,
+                    SERVICE_GROUP_ADDRESS_FIRST_PTR(server)->conn.port,
+                    filename)) != 0)
+    {
+        return result;
+    }
+
+    return 0;
+}
+
 static int find_myself_in_cluster_config(const char *filename)
 {
     const char *local_ip;
@@ -177,7 +231,7 @@ static int find_myself_in_cluster_config(const char *filename)
         return ENOENT;
     }
 
-    return 0;
+    return check_ports(CLUSTER_MYSELF_PTR->server, filename);
 }
 
 FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
