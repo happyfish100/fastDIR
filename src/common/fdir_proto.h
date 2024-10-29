@@ -951,7 +951,8 @@ static inline void fdir_log_network_error_ex1(SFResponseInfo *response,
 
 static inline void fdir_log_network_error_for_update_ex(
         SFResponseInfo *response, const ConnectionInfo *conn,
-        const int result, const char *file, const int line)
+        const int result, const int enoent_log_level,
+        const char *file, const int line)
 {
     if (result == EPERM || result == EACCES) {
         fdir_log_network_error_ex1(response, conn,
@@ -959,13 +960,14 @@ static inline void fdir_log_network_error_for_update_ex(
         return;
     }
 
-    sf_log_network_error_for_update_ex(response,
-            conn, "fdir", result, file, line);
+    sf_log_network_error_for_update_ex(response, conn,
+            "fdir", result, enoent_log_level, file, line);
 }
 
-#define fdir_log_network_error_for_update(response, conn, result) \
-    fdir_log_network_error_for_update_ex(response, conn, result,  \
-            __FILE__, __LINE__)
+#define fdir_log_network_error_for_update(response, \
+        conn, result, enoent_log_level) \
+    fdir_log_network_error_for_update_ex(response, conn, \
+            result, enoent_log_level, __FILE__, __LINE__)
 
 
 static inline void fdir_log_network_error_for_delete_ex(

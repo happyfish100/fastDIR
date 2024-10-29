@@ -384,7 +384,7 @@ static inline void proto_unpack_dentry(FDIRProtoStatDEntryResp *proto_stat,
 static inline int do_update_dentry_ex(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, char *out_buff, const int out_bytes,
         const int expect_cmd, FDIRDEntryInfo *dentry,
-        const char *file, const int line)
+        const int enoent_log_level, const char *file, const int line)
 {
     SFResponseInfo response;
     FDIRProtoStatDEntryResp proto_stat;
@@ -398,17 +398,17 @@ static inline int do_update_dentry_ex(FDIRClientContext *client_ctx,
     {
         proto_unpack_dentry(&proto_stat, dentry);
     } else {
-        fdir_log_network_error_for_update_ex(&response,
-                conn, result, file, line);
+        fdir_log_network_error_for_update_ex(&response, conn,
+                result, enoent_log_level, file, line);
     }
 
     return result;
 }
 
-#define do_update_dentry(client_ctx, conn, out_buff, \
-        out_bytes, expect_cmd, dentry) \
+#define do_update_dentry(client_ctx, conn, out_buff, out_bytes, \
+        expect_cmd, dentry, enoent_log_level) \
         do_update_dentry_ex(client_ctx, conn, out_buff, out_bytes, \
-                expect_cmd, dentry, __FILE__, __LINE__)
+                expect_cmd, dentry, enoent_log_level, __FILE__, __LINE__)
 
 #define CLIENT_PROTO_SET_OMP(_oper, _mode, _front) \
     int2buff(_mode, _front.mode); \
@@ -452,7 +452,7 @@ int fdir_client_proto_create_dentry(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP, dentry);
+            FDIR_SERVICE_PROTO_CREATE_DENTRY_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
@@ -495,7 +495,7 @@ int fdir_client_proto_symlink_dentry(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP, dentry);
+            FDIR_SERVICE_PROTO_SYMLINK_DENTRY_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
@@ -528,7 +528,7 @@ int fdir_client_proto_remove_dentry_ex(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP, dentry);
+            FDIR_SERVICE_PROTO_REMOVE_DENTRY_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
@@ -567,7 +567,7 @@ int fdir_client_proto_link_dentry(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP, dentry);
+            FDIR_SERVICE_PROTO_HDLINK_DENTRY_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
@@ -601,7 +601,7 @@ int fdir_client_proto_link_dentry_by_pname(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP, dentry);
+            FDIR_SERVICE_PROTO_HDLINK_BY_PNAME_RESP, dentry, LOG_ERR);
 }
 
 static int do_rename_dentry(FDIRClientContext *client_ctx,
@@ -628,7 +628,7 @@ static int do_rename_dentry(FDIRClientContext *client_ctx,
             *dentry = NULL;
         }
     } else {
-        fdir_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result, LOG_ERR);
     }
 
     return result;
@@ -1346,7 +1346,7 @@ int fdir_client_proto_create_dentry_by_pname(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP, dentry);
+            FDIR_SERVICE_PROTO_CREATE_BY_PNAME_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
@@ -1391,7 +1391,7 @@ int fdir_client_proto_symlink_dentry_by_pname(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP, dentry);
+            FDIR_SERVICE_PROTO_SYMLINK_BY_PNAME_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
@@ -1424,7 +1424,7 @@ int fdir_client_proto_remove_dentry_by_pname_ex(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP, dentry);
+            FDIR_SERVICE_PROTO_REMOVE_BY_PNAME_RESP, dentry, LOG_ERR);
 }
 
 #define FDIR_CLIENT_PROTO_PACK_DENTRY_SIZE(dsize, req) \
@@ -1466,7 +1466,7 @@ int fdir_client_proto_set_dentry_size(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP, dentry);
+            FDIR_SERVICE_PROTO_SET_DENTRY_SIZE_RESP, dentry, LOG_DEBUG);
 }
 
 int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
@@ -1519,7 +1519,7 @@ int fdir_client_proto_batch_set_dentry_size(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_BATCH_SET_DENTRY_SIZE_RESP)) != 0)
     {
-        fdir_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result, LOG_DEBUG);
     }
 
     return result;
@@ -1559,7 +1559,7 @@ int fdir_client_proto_modify_stat_by_inode(FDIRClientContext *client_ctx,
             out_bytes - sizeof(FDIRProtoHeader));
 
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry);
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_INODE_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
@@ -1591,7 +1591,7 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
     return do_update_dentry(client_ctx, conn, out_buff, out_bytes,
-            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP, dentry);
+            FDIR_SERVICE_PROTO_MODIFY_STAT_BY_PATH_RESP, dentry, LOG_ERR);
 }
 
 int fdir_client_init_session(FDIRClientContext *client_ctx,
@@ -1905,7 +1905,7 @@ int fdir_client_proto_set_xattr_by_path(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SET_XATTR_BY_PATH_RESP)) != 0)
     {
-        fdir_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result, LOG_ERR);
     }
 
     return result;
@@ -1953,7 +1953,7 @@ int fdir_client_proto_set_xattr_by_inode(FDIRClientContext *client_ctx,
                     &response, client_ctx->common_cfg.network_timeout,
                     FDIR_SERVICE_PROTO_SET_XATTR_BY_INODE_RESP)) != 0)
     {
-        fdir_log_network_error_for_update(&response, conn, result);
+        fdir_log_network_error_for_update(&response, conn, result, LOG_ERR);
     }
 
     return result;
