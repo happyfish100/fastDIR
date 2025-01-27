@@ -1597,9 +1597,10 @@ int fdir_client_proto_modify_stat_by_path(FDIRClientContext *client_ctx,
 int fdir_client_init_session(FDIRClientContext *client_ctx,
     FDIRClientSession *session)
 {
+    const bool shared = false;
     int result;
     if ((session->mconn=client_ctx->cm.ops.get_master_connection(
-                    &client_ctx->cm, 0, &result)) == NULL)
+                    &client_ctx->cm, 0, shared, &result)) == NULL)
     {
         return result;
     }
@@ -2782,6 +2783,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
         const ConnectionInfo *spec_conn, const bool include_inode_space,
         FDIRClientServiceStat *stat)
 {
+    const bool shared = false;
     FDIRProtoHeader *header;
     SFProtoEmptyBodyReq *req;
     ConnectionInfo *conn;
@@ -2791,8 +2793,8 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
     int out_bytes;
     int result;
 
-    if ((conn=client_ctx->cm.ops.get_spec_connection(
-                    &client_ctx->cm, spec_conn, &result)) == NULL)
+    if ((conn=client_ctx->cm.ops.get_spec_connection(&client_ctx->cm,
+                    spec_conn, shared, &result)) == NULL)
     {
         return result;
     }
@@ -2890,6 +2892,7 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
 int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
         FDIRClientClusterStatEntry *stats, const int size, int *count)
 {
+    const bool shared = false;
     FDIRProtoHeader *header;
     SFProtoEmptyBodyReq *req;
     FDIRProtoClusterStatRespBodyHeader *body_header;
@@ -2906,8 +2909,8 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     int calc_size;
     bool need_free;
 
-    if ((conn=client_ctx->cm.ops.get_master_connection(
-                    &client_ctx->cm, 0, &result)) == NULL)
+    if ((conn=client_ctx->cm.ops.get_master_connection(&client_ctx->cm,
+                    0, shared, &result)) == NULL)
     {
         return result;
     }
@@ -2996,10 +2999,12 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
 int fdir_client_get_master(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *master)
 {
+    const bool shared = false;
     int result;
     ConnectionInfo *conn;
 
-    conn = client_ctx->cm.ops.get_connection(&client_ctx->cm, 0, &result);
+    conn = client_ctx->cm.ops.get_connection(&client_ctx->cm,
+            0, shared, &result);
     if (conn == NULL) {
         return result;
     }
@@ -3013,6 +3018,7 @@ int fdir_client_get_master(FDIRClientContext *client_ctx,
 int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *server)
 {
+    const bool shared = false;
     int result;
     ConnectionInfo *conn;
     FDIRProtoHeader *header;
@@ -3020,7 +3026,8 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
     FDIRProtoGetServerResp server_resp;
     char out_buff[sizeof(FDIRProtoHeader)];
 
-    conn = client_ctx->cm.ops.get_connection(&client_ctx->cm, 0, &result);
+    conn = client_ctx->cm.ops.get_connection(&client_ctx->cm,
+            0, shared, &result);
     if (conn == NULL) {
         return result;
     }
@@ -3050,6 +3057,7 @@ int fdir_client_get_readable_server(FDIRClientContext *client_ctx,
 int fdir_client_get_slaves(FDIRClientContext *client_ctx,
         FDIRClientServerEntry *slaves, const int size, int *count)
 {
+    const bool shared = false;
     FDIRProtoHeader *header;
     FDIRProtoGetSlavesRespBodyHeader *body_header;
     FDIRProtoGetSlavesRespBodyPart *body_part;
@@ -3064,8 +3072,8 @@ int fdir_client_get_slaves(FDIRClientContext *client_ctx,
     int calc_size;
     bool need_free;
 
-    if ((conn=client_ctx->cm.ops.get_connection(
-                    &client_ctx->cm, 0, &result)) == NULL)
+    if ((conn=client_ctx->cm.ops.get_connection(&client_ctx->cm,
+                    0, shared, &result)) == NULL)
     {
         return result;
     }

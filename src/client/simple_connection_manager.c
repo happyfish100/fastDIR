@@ -114,7 +114,7 @@ static ConnectionInfo **add_to_server_list(FDIRCMSimpleExtra *extra,
 }
 
 static ConnectionInfo *get_spec_connection(SFConnectionManager *cm,
-        const ConnectionInfo *target, int *err_no)
+        const ConnectionInfo *target, const bool shared, int *err_no)
 {
     FDIRServerGroup *cluster_sarray;
     ConnectionInfo **conn;
@@ -148,7 +148,7 @@ static ConnectionInfo *get_spec_connection(SFConnectionManager *cm,
 }
 
 static ConnectionInfo *get_connection(SFConnectionManager *cm,
-        const int group_index, int *err_no)
+        const int group_index, const bool shared, int *err_no)
 {
     int index;
     int i;
@@ -159,14 +159,14 @@ static ConnectionInfo *get_connection(SFConnectionManager *cm,
     cluster_sarray = ((FDIRCMSimpleExtra *)cm->extra)->cluster_sarray;
     index = rand() % cluster_sarray->count;
     server = cluster_sarray->servers + index;
-    if ((conn=get_spec_connection(cm, *server, err_no)) != NULL) {
+    if ((conn=get_spec_connection(cm, *server, shared, err_no)) != NULL) {
         return conn;
     }
 
     i = (index + 1) % cluster_sarray->count;
     while (i != index) {
         server = cluster_sarray->servers + i;
-        if ((conn=get_spec_connection(cm, *server, err_no)) != NULL) {
+        if ((conn=get_spec_connection(cm, *server, shared, err_no)) != NULL) {
             return conn;
         }
 
@@ -180,7 +180,7 @@ static ConnectionInfo *get_connection(SFConnectionManager *cm,
 }
 
 static ConnectionInfo *get_master_connection(SFConnectionManager *cm,
-        const int group_index, int *err_no)
+        const int group_index, const bool shared, int *err_no)
 {
     FDIRCMSimpleExtra *extra;
     ConnectionInfo *conn; 
@@ -208,7 +208,7 @@ static ConnectionInfo *get_master_connection(SFConnectionManager *cm,
         }
 
         if ((conn=get_spec_connection(cm, &master.conn,
-                        err_no)) == NULL)
+                        shared, err_no)) == NULL)
         {
             break;
         }
@@ -224,7 +224,7 @@ static ConnectionInfo *get_master_connection(SFConnectionManager *cm,
 }
 
 static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
-        const int group_index, int *err_no)
+        const int group_index, const bool shared, int *err_no)
 {
     FDIRClientContext *client_ctx;
     ConnectionInfo *conn; 
@@ -234,7 +234,7 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
 
     client_ctx = ((FDIRCMSimpleExtra *)cm->extra)->client_ctx;
     if (cm->common_cfg->read_rule == sf_data_read_rule_master_only) {
-        return get_master_connection(cm, group_index, err_no);
+        return get_master_connection(cm, group_index, shared, err_no);
     }
 
     sf_init_net_retry_interval_context(&net_retry_ctx,
@@ -252,7 +252,7 @@ static ConnectionInfo *get_readable_connection(SFConnectionManager *cm,
         }
 
         if ((conn=get_spec_connection(cm, &server.conn,
-                        err_no)) == NULL)
+                        shared, err_no)) == NULL)
         {
             break;
         }

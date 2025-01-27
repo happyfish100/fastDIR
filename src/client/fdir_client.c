@@ -19,10 +19,10 @@
 #include "fdir_client.h"
 
 #define GET_MASTER_CONNECTION(cm, arg1, result)   \
-    (cm)->ops.get_master_connection(cm, arg1, result)
+    (cm)->ops.get_master_connection(cm, arg1, true, result)
 
 #define GET_READABLE_CONNECTION(cm, arg1, result) \
-    (cm)->ops.get_readable_connection(cm, arg1, result)
+    (cm)->ops.get_readable_connection(cm, arg1, true, result)
 
 int fdir_client_generate_node_id(FDIRClientContext *client_ctx,
         uint32_t *node_id, int64_t *key)
