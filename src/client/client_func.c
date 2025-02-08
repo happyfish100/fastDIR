@@ -99,6 +99,7 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
     {
         return result;
     }
+    client_ctx->trash_bin_enabled = false;
 
     return 0;
 }

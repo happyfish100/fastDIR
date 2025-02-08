@@ -188,7 +188,8 @@ typedef struct fdir_proto_client_join_req {
         char key[4];
     } idempotency;
     char auth_enabled;
-    char padding[3];
+    char trash_bin_enabled;
+    char padding[2];
     char config_sign[SF_CLUSTER_CONFIG_SIGN_LEN];
 } FDIRProtoClientJoinReq;
 

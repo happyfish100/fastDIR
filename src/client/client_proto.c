@@ -355,6 +355,7 @@ int fdir_client_proto_join_server(FDIRClientContext *client_ctx,
     }
     int2buff(flags, req->flags);
     req->auth_enabled = (client_ctx->auth.enabled ? 1 : 0);
+    req->trash_bin_enabled = (client_ctx->trash_bin_enabled ? 1 : 0);
     memcpy(&req->config_sign, &client_ctx->cluster.md5_digest,
             SF_CLUSTER_CONFIG_SIGN_LEN);
 
