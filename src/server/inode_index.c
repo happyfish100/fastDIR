@@ -231,11 +231,6 @@ int inode_index_del_dentry(FDIRServerDentry *dentry)
     }
     PTHREAD_MUTEX_UNLOCK(&ctx->lock);
 
-    if (deleted != NULL && deleted->stat.alloc > 0) {
-        fdir_namespace_inc_alloc_bytes(deleted->ns_entry,
-                -1 * deleted->stat.alloc);
-    }
-
     return result;
 }
 

@@ -959,12 +959,28 @@ int dentry_create(FDIRDataThreadContext *thread_ctx, FDIRBinlogRecord *record)
     return 0;
 }
 
+static inline int remove_dentry(FDIRServerDentry *dentry)
+{
+    int result;
+
+    if ((result=inode_index_del_dentry(dentry)) != 0) {
+        return result;
+    }
+
+    if (dentry->stat.alloc > 0) {
+        fdir_namespace_inc_alloc_bytes(dentry->ns_entry,
+                -1 * dentry->stat.alloc);
+    }
+
+    return 0;
+}
+
 static inline int remove_src_dentry(FDIRDataThreadContext *thread_ctx,
         FDIRServerDentry *dentry)
 {
     int result;
 
-    if ((result=inode_index_del_dentry(dentry)) != 0) {
+    if ((result=remove_dentry(dentry)) != 0) {
         return result;
     }
 
@@ -1013,7 +1029,7 @@ static int do_remove_dentry(FDIRDataThreadContext *thread_ctx,
         *free_dentry = true;
     } else {
         if (--(dentry->stat.nlink) == 0) {
-            if ((result=inode_index_del_dentry(dentry)) != 0) {
+            if ((result=remove_dentry(dentry)) != 0) {
                 return result;
             }
 
