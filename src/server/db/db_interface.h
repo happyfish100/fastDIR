@@ -36,7 +36,7 @@ typedef int (*fdir_storage_engine_save_segment_index_func)();
 typedef int (*fdir_storage_engine_dump_inode_binlogs_func)();
 
 typedef int (*fdir_storage_engine_store_func)(const FDIRDBUpdateFieldArray *array,
-        const bool add_inode);
+        const int add_inode_flags);
 
 typedef int (*fdir_storage_engine_redo_func)(const FDIRDBUpdateFieldArray *array);
 

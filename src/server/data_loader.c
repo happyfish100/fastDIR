@@ -229,6 +229,10 @@ static int load_full_dump_data(const int parse_threads,
     SFBinlogFilePosition hint_pos;
     char mark_filename[PATH_MAX];
 
+    logInfo("file: "__FILE__", line: %d, "
+            "load full dump data ..., start data version: %"PRId64,
+            __LINE__, params[0].last_data_version);
+
     if (params[0].last_data_version > 0) {
         if (DUMP_INODE_ADD_STATUS != inode_add_mark_status_done) {
             logError("file: "__FILE__", line: %d, "
@@ -246,6 +250,8 @@ static int load_full_dump_data(const int parse_threads,
         {
             return result;
         }
+
+        ADD_INODE_FLAGS = FDIR_DB_ADD_INODE_FLAGS_UNORDERED;
     } else {
         params[0].hint_pos.index = 0;
         params[0].hint_pos.offset = 0;
@@ -278,6 +284,8 @@ static int load_full_dump_data(const int parse_threads,
                 return result;
             }
         }
+
+        ADD_INODE_FLAGS = FDIR_DB_ADD_INODE_FLAGS_NONE;
     }
 
     get_check_dump_inode_binlogs_mark_filename(
@@ -293,6 +301,10 @@ static int load_full_dump_data(const int parse_threads,
     while (event_dealer_get_last_data_version() < DUMP_DENTRY_COUNT) {
         change_notify_load_done_signal();
     }
+
+    logInfo("file: "__FILE__", line: %d, "
+            "load full dump data done, current data version: %"PRId64,
+            __LINE__, FC_ATOMIC_GET(DATA_CURRENT_VERSION));
 
     fc_sleep_ms(100);
     return check_dump_inode_binlogs();
@@ -368,7 +380,7 @@ int server_load_data()
         }
     }
 
-    LOAD_DUMP_DONE = true;
+    ADD_INODE_FLAGS = FDIR_DB_ADD_INODE_FLAGS_IN_ORDER;
     show_prompt = (replay_count == 0);
     if ((result=load_data(parse_threads, params, stats +
                     replay_count++, show_prompt)) != 0)

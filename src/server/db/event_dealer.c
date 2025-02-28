@@ -312,6 +312,7 @@ static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
     merged->inc_alloc = 0;
     merged->mode = (*start)->dentry->stat.mode;
     merged->namespace_id = (*start)->dentry->ns_entry->id;
+    merged->flags = 0;
 
     if ((*last)->field_index == FDIR_PIECE_FIELD_INDEX_CHILDREN) {
         merged->op_type = da_binlog_op_type_update;

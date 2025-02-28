@@ -108,7 +108,7 @@ typedef struct server_global_vars {
         int binlog_buffer_size;
         int slave_binlog_check_last_rows;
         int thread_count;
-        volatile bool load_dump_done; //for store engine to load dump data
+        volatile int add_inode_flags; //for store engine to load dump data
         volatile bool load_done;
         struct fdir_namespace_manager *ns_manager;
     } data;
@@ -261,7 +261,7 @@ typedef struct server_global_vars {
 #define DATA_CURRENT_VERSION    g_server_global_vars->data.current_version
 #define DATA_THREAD_COUNT       g_server_global_vars->data.thread_count
 #define DATA_LOAD_DONE          g_server_global_vars->data.load_done
-#define LOAD_DUMP_DONE          g_server_global_vars->data.load_dump_done
+#define ADD_INODE_FLAGS         g_server_global_vars->data.add_inode_flags
 #define DATA_PATH               g_server_global_vars->data.path
 #define DATA_PATH_STR           DATA_PATH.str
 #define DATA_PATH_LEN           DATA_PATH.len

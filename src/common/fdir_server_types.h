@@ -27,6 +27,12 @@
 //virtual field index for sort and check
 #define FDIR_PIECE_FIELD_INDEX_FOR_REMOVE 10
 
+#define FDIR_DB_UPDATE_FLAG_INODE_REUSED   1  //for trash restore
+
+#define FDIR_DB_ADD_INODE_FLAGS_NONE       0
+#define FDIR_DB_ADD_INODE_FLAGS_IN_ORDER   1
+#define FDIR_DB_ADD_INODE_FLAGS_UNORDERED  2
+
 #define FDIR_PIECE_FIELD_CLEAR(fields) \
     DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_BASIC]);    \
     DA_PIECE_FIELD_DELETE(fields[FDIR_PIECE_FIELD_INDEX_CHILDREN]); \
@@ -40,7 +46,8 @@ typedef struct fdir_db_update_field_info {
     mode_t mode;       //for dump namespaces
     DABinlogOpType op_type;
     int merge_count;
-    int field_index;
+    short field_index;
+    short flags;
     FastBuffer *buffer;
     void *args;   //dentry
     struct fdir_db_update_field_info *next;  //for queue
