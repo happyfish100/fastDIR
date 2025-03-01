@@ -36,6 +36,7 @@ typedef struct fdir_event_dealer_context {
 
 static FDIREventDealerContext event_dealer_ctx;
 
+#define UPDATER_CTX         event_dealer_ctx.updater_ctx
 #define MSG_PTR_ARRAY       event_dealer_ctx.msg_ptr_array
 #define MERGED_DENTRY_ARRAY event_dealer_ctx.updater_ctx.array
 #define BUFFER_PTR_ARRAY    event_dealer_ctx.buffer_ptr_array
@@ -44,18 +45,16 @@ int event_dealer_init()
 {
     int result;
 
-    if ((result=fast_buffer_init_ex(&event_dealer_ctx.
-                    updater_ctx.buffer, 1024)) != 0)
-    {
+    if ((result=fast_buffer_init_ex(&UPDATER_CTX.buffer, 1024)) != 0) {
         return result;
     }
 
-    return db_updater_init(&event_dealer_ctx.updater_ctx);
+    return db_updater_init(&UPDATER_CTX);
 }
 
 int64_t event_dealer_get_last_data_version()
 {
-    return event_dealer_ctx.updater_ctx.last_versions.dentry.commit;
+    return UPDATER_CTX.last_versions.dentry.commit;
 }
 
 static int realloc_msg_ptr_array(FDIRChangeNotifyMessagePtrArray *array)
@@ -304,7 +303,7 @@ static int merge_one_field_messages(FDIRChangeNotifyMessage **start,
 
     last = end - 1;
     merged = MERGED_DENTRY_ARRAY.entries + MERGED_DENTRY_ARRAY.count++;
-    merged->version = ++event_dealer_ctx.updater_ctx.last_versions.field;
+    merged->version = ++UPDATER_CTX.last_versions.field;
     merged->inode = (*start)->dentry->inode;
     merged->field_index = (*last)->field_index;
     merged->args = (*start)->dentry;
@@ -422,7 +421,7 @@ static int deal_merged_entries()
     FDIRDBUpdateFieldInfo *entry;
     FDIRDBUpdateFieldInfo *end;
 
-    if ((result=db_updater_deal(&event_dealer_ctx.updater_ctx)) != 0) {
+    if ((result=db_updater_deal(&UPDATER_CTX)) != 0) {
         return result;
     }
 
@@ -441,12 +440,18 @@ int event_dealer_do(struct fc_list_head *head, int *count)
     FDIRChangeNotifyEvent *event;
     FDIRChangeNotifyEvent *last;
 
+    last = fc_list_entry(head->prev, FDIRChangeNotifyEvent, dlink);
+    UPDATER_CTX.last_versions.dentry.prepare = last->version;
     MSG_PTR_ARRAY.count = 0;
     *count = 0;
     fc_list_for_each_entry (event, head, dlink) {
         ++(*count);
         if ((result=add_to_msg_ptr_array(event)) != 0) {
             return result;
+        }
+
+        if (event->version > UPDATER_CTX.last_versions.dentry.prepare) {
+            UPDATER_CTX.last_versions.dentry.prepare = event->version;
         }
     }
 
@@ -460,13 +465,11 @@ int event_dealer_do(struct fc_list_head *head, int *count)
         return result;
     }
 
-    last = fc_list_entry(head->prev, FDIRChangeNotifyEvent, dlink);
-    event_dealer_ctx.updater_ctx.last_versions.dentry.prepare = last->version;
     if ((result=deal_merged_entries()) != 0) {
         return result;
     }
-    event_dealer_ctx.updater_ctx.last_versions.dentry.commit =
-        event_dealer_ctx.updater_ctx.last_versions.dentry.prepare;
+    UPDATER_CTX.last_versions.dentry.commit =
+        UPDATER_CTX.last_versions.dentry.prepare;
 
     return result;
 }
