@@ -440,18 +440,12 @@ int event_dealer_do(struct fc_list_head *head, int *count)
     FDIRChangeNotifyEvent *event;
     FDIRChangeNotifyEvent *last;
 
-    last = fc_list_entry(head->prev, FDIRChangeNotifyEvent, dlink);
-    UPDATER_CTX.last_versions.dentry.prepare = last->version;
     MSG_PTR_ARRAY.count = 0;
     *count = 0;
     fc_list_for_each_entry (event, head, dlink) {
         ++(*count);
         if ((result=add_to_msg_ptr_array(event)) != 0) {
             return result;
-        }
-
-        if (event->version > UPDATER_CTX.last_versions.dentry.prepare) {
-            UPDATER_CTX.last_versions.dentry.prepare = event->version;
         }
     }
 
@@ -465,6 +459,8 @@ int event_dealer_do(struct fc_list_head *head, int *count)
         return result;
     }
 
+    last = fc_list_entry(head->prev, FDIRChangeNotifyEvent, dlink);
+    UPDATER_CTX.last_versions.dentry.prepare = last->version;
     if ((result=deal_merged_entries()) != 0) {
         return result;
     }

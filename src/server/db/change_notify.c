@@ -133,10 +133,12 @@ static void *change_notify_func(void *arg)
                     __LINE__, less_equal.version);
                     */
             if (deal_events(&head) != 0) {
-                logCrit("file: "__FILE__", line: %d, "
-                        "deal notify events fail, "
-                        "program exit!", __LINE__);
-                sf_terminate_myself();
+                if (SF_G_CONTINUE_FLAG) {
+                    logCrit("file: "__FILE__", line: %d, "
+                            "deal notify events fail, "
+                            "program exit!", __LINE__);
+                    sf_terminate_myself();
+                }
             }
         }
     }

@@ -1345,10 +1345,6 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
     }
 
     if (result == 0 && STORAGE_ENABLED && record->data_version > 0) {
-        if (record->data_version > thread_ctx->DATA_THREAD_LAST_VERSION) {
-            thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
-        }
-
         if (record->operation != BINLOG_OP_NO_OP_INT) {
             if (record->operation == SERVICE_OP_BATCH_SET_DSIZE_INT) {
                 result = push_batch_set_dsize_to_db_update_queue(
@@ -1362,6 +1358,10 @@ static int deal_update_record(FDIRDataThreadContext *thread_ctx,
                         "program exit!", __LINE__);
                 sf_terminate_myself();
             }
+        }
+
+        if (record->data_version > thread_ctx->DATA_THREAD_LAST_VERSION) {
+            thread_ctx->DATA_THREAD_LAST_VERSION = record->data_version;
         }
     }
 

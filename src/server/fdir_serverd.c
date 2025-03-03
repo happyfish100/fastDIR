@@ -176,6 +176,7 @@ int main(int argc, char *argv[])
 {
     pthread_t schedule_tid;
     bool double_buffers;
+    bool init_done;
     int wait_count;
     int result;
     int64_t max_data_version;
@@ -187,7 +188,6 @@ int main(int argc, char *argv[])
         return ENOMEM;
     }
     memset(g_server_global_vars, 0, sizeof(FDIRServerGlobalVars));
-
 
     result = process_cmdline(argc, argv, (bool *)&SF_G_CONTINUE_FLAG);
     if (!SF_G_CONTINUE_FLAG) {
@@ -201,6 +201,7 @@ int main(int argc, char *argv[])
     fast_mblock_manager_init();
 #endif
 
+    init_done = false;
     sched_set_delay_params(300, 1024);
     do {
         if ((result=setup_server_env(CMDLINE_CONFIG_FILENAME)) != 0) {
@@ -312,6 +313,7 @@ int main(int argc, char *argv[])
             return result;
         }
 
+        init_done = true;
         if ((result=server_load_data()) != 0) {
             break;
         }
@@ -362,6 +364,9 @@ int main(int argc, char *argv[])
     } while (0);
 
     if (result != 0) {
+        if (STORAGE_ENABLED && init_done) {
+            STORAGE_ENGINE_TERMINATE_API();  //close cached fds
+        }
         lcrit("program exit abnormally");
         log_destroy();
         return result;
@@ -397,7 +402,7 @@ int main(int argc, char *argv[])
     sf_service_destroy();
 
     if (STORAGE_ENABLED) {
-        STORAGE_ENGINE_TERMINATE_API();
+        STORAGE_ENGINE_TERMINATE_API();  //close cached fds
     }
 
     delete_pid_file(g_pid_filename);
