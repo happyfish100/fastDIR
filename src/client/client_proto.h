@@ -455,7 +455,9 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
         FDIRClientServiceStat *stat);
 
 int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
-        FDIRClientClusterStatEntry *stats, const int size, int *count);
+        const FDIRClusterStatFilter *filter,
+        FDIRClientClusterStatEntry *stats,
+        const int size, int *count);
 
 int fdir_client_proto_namespace_stat(FDIRClientContext *client_ctx,
         ConnectionInfo *conn, const string_t *ns,

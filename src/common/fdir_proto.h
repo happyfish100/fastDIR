@@ -715,6 +715,13 @@ typedef struct fdir_proto_service_stat_resp {
     } dentry;
 } FDIRProtoServiceStatResp;
 
+typedef struct fdir_proto_cluster_stat_req {
+    char filter_by;
+    char op_type;  //including = and !
+    char status;
+    char is_master;
+} FDIRProtoClusterStatReq;
+
 typedef struct fdir_proto_cluster_stat_resp_body_header {
     char count[4];
     char padding[4];

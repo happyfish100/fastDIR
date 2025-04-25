@@ -2891,17 +2891,20 @@ int fdir_client_service_stat(FDIRClientContext *client_ctx,
 }
 
 int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
-        FDIRClientClusterStatEntry *stats, const int size, int *count)
+        const FDIRClusterStatFilter *filter,
+        FDIRClientClusterStatEntry *stats,
+        const int size, int *count)
 {
     const bool shared = false;
     FDIRProtoHeader *header;
-    SFProtoEmptyBodyReq *req;
+    FDIRProtoClusterStatReq *req;
     FDIRProtoClusterStatRespBodyHeader *body_header;
     FDIRProtoClusterStatRespBodyPart *body_part;
     FDIRProtoClusterStatRespBodyPart *body_end;
     FDIRClientClusterStatEntry *stat;
     ConnectionInfo *conn;
-    char out_buff[sizeof(FDIRProtoHeader) + FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE];
+    char out_buff[sizeof(FDIRProtoHeader) + sizeof(FDIRProtoClusterStatReq) +
+        FDIR_CLIENT_QUERY_EXTRA_BODY_SIZE];
     char fixed_buff[8 * 1024];
     char *in_buff;
     SFResponseInfo response;
@@ -2917,6 +2920,10 @@ int fdir_client_cluster_stat(FDIRClientContext *client_ctx,
     }
 
     SF_PROTO_CLIENT_SET_REQ(client_ctx, out_buff, header, req, 0, out_bytes);
+    req->filter_by = filter->filter_by;
+    req->op_type = filter->op_type;
+    req->status = filter->status;
+    req->is_master = filter->is_master;
     SF_PROTO_SET_HEADER(header, FDIR_SERVICE_PROTO_CLUSTER_STAT_REQ,
             out_bytes - sizeof(FDIRProtoHeader));
 

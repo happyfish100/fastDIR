@@ -105,6 +105,9 @@
 
 #define FDIR_SERVICE_STAT_FLAGS_INCLUDE_INODE_SPACE  (1 << 1)
 
+#define FDIR_CLUSTER_STAT_FILTER_BY_STATUS          1
+#define FDIR_CLUSTER_STAT_FILTER_BY_IS_MASTER       2
+
 #define FDIR_IS_ROOT_PATH(path) \
     ((path).len == 1 && (path).str[0] == '/')
 
@@ -215,5 +218,12 @@ typedef struct fdir_client_server_entry {
     ConnectionInfo conn;
     char status;
 } FDIRClientServerEntry;
+
+typedef struct {
+    char filter_by;
+    char op_type;
+    char status;
+    char is_master;
+} FDIRClusterStatFilter;
 
 #endif

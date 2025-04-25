@@ -26,7 +26,11 @@
 
 static void usage(char *argv[])
 {
-    fprintf(stderr, "Usage: %s [-c config_filename=%s]\n",
+    fprintf(stderr, "Usage: %s [-c config_filename=%s]\n"
+            "\t[-A] for ACTIVE status only\n"
+            "\t[-N] for None ACTIVE status\n"
+            "\t[-M] for master only\n"
+            "\t[-S] for slave only\n\n",
             argv[0], FDIR_CLIENT_DEFAULT_CONFIG_FILENAME);
 }
 
@@ -50,7 +54,9 @@ static void output(FDIRClientClusterStatEntry *stats, const int count)
                 stat->is_master, stat->confirmed_data_version
               );
     }
-    printf("\nserver count: %d\n\n", count);
+    if (count > 0) {
+        printf("\nserver count: %d\n\n", count);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -60,10 +66,15 @@ int main(int argc, char *argv[])
 	int ch;
     const char *config_filename = FDIR_CLIENT_DEFAULT_CONFIG_FILENAME;
     int count;
+    FDIRClusterStatFilter filter;
     FDIRClientClusterStatEntry stats[CLUSTER_MAX_SERVER_COUNT];
 	int result;
 
-    while ((ch=getopt(argc, argv, "hc:")) != -1) {
+    log_init();
+    //g_log_context.log_level = LOG_DEBUG;
+
+    memset(&filter, 0, sizeof(filter));
+    while ((ch=getopt(argc, argv, "hc:ANMS")) != -1) {
         switch (ch) {
             case 'h':
                 usage(argv);
@@ -71,14 +82,22 @@ int main(int argc, char *argv[])
             case 'c':
                 config_filename = optarg;
                 break;
+            case 'A':
+            case 'N':
+                filter.filter_by |= FDIR_CLUSTER_STAT_FILTER_BY_STATUS;
+                filter.op_type = (ch == 'A' ? '=' : '!');
+                filter.status = FDIR_SERVER_STATUS_ACTIVE;
+                break;
+            case 'M':
+            case 'S':
+                filter.filter_by |= FDIR_CLUSTER_STAT_FILTER_BY_IS_MASTER;
+                filter.is_master = (ch == 'M');
+                break;
             default:
                 usage(argv);
                 return 1;
         }
     }
-
-    log_init();
-    //g_log_context.log_level = LOG_DEBUG;
 
     if ((result=fdir_client_simple_init_with_auth(
                     config_filename, publish)) != 0)
@@ -87,7 +106,7 @@ int main(int argc, char *argv[])
     }
 
     if ((result=fdir_client_cluster_stat(&g_fdir_client_vars.client_ctx,
-                    stats, CLUSTER_MAX_SERVER_COUNT, &count)) != 0)
+                    &filter, stats, CLUSTER_MAX_SERVER_COUNT, &count)) != 0)
     {
         fprintf(stderr, "fdir_client_cluster_stat fail, "
                 "errno: %d, error info: %s\n", result, STRERROR(result));

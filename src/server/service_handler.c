@@ -417,22 +417,59 @@ static int service_deal_service_stat(struct fast_task_info *task)
 static int service_deal_cluster_stat(struct fast_task_info *task)
 {
     int result;
+    int status;
+    bool is_master;
+    FDIRClusterStatFilter filter;
+    FDIRProtoClusterStatReq *req;
     FDIRProtoClusterStatRespBodyHeader *body_header;
+    FDIRProtoClusterStatRespBodyPart *part_start;
     FDIRProtoClusterStatRespBodyPart *body_part;
     FDIRClusterServerInfo *cs;
     FDIRClusterServerInfo *send;
 
-    if ((result=server_expect_body_length(0)) != 0) {
+    if ((result=server_expect_body_length(sizeof(*req))) != 0) {
         return result;
     }
+
+    req = (FDIRProtoClusterStatReq *)REQUEST.body;
+    filter.filter_by = req->filter_by;
+    filter.op_type = req->op_type;
+    filter.status = req->status;
+    filter.is_master = req->is_master;
 
     body_header = (FDIRProtoClusterStatRespBodyHeader *)
         SF_PROTO_SEND_BODY(task);
     body_part = (FDIRProtoClusterStatRespBodyPart *)(body_header + 1);
-    int2buff(CLUSTER_SERVER_ARRAY.count, body_header->count);
-
+    part_start = body_part;
     send = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
-    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++, body_part++) {
+    for (cs=CLUSTER_SERVER_ARRAY.servers; cs<send; cs++) {
+        status = FC_ATOMIC_GET(cs->status);
+        is_master = FC_ATOMIC_GET(cs->is_master);
+        if (filter.filter_by > 0) {
+            if ((filter.filter_by & FDIR_CLUSTER_STAT_FILTER_BY_IS_MASTER)) {
+                if (is_master != filter.is_master) {
+                    continue;
+                }
+            }
+
+            if ((filter.filter_by & FDIR_CLUSTER_STAT_FILTER_BY_STATUS)) {
+                if (filter.op_type == '=') {
+                    if (status != filter.status) {
+                        continue;
+                    }
+                } else if (filter.op_type == '!') {
+                    if (status == filter.status) {
+                        continue;
+                    }
+                } else {
+                    RESPONSE.error.length = sprintf(
+                            RESPONSE.error.message,
+                            "unkown op_type: %d", filter.op_type);
+                    return EINVAL;
+                }
+            }
+        }
+
         int2buff(cs->server->id, body_part->server_id);
         body_part->is_master = (cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0);
         body_part->status = FC_ATOMIC_GET(cs->status);
@@ -442,7 +479,9 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
                 SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
         short2buff(SERVICE_GROUP_ADDRESS_FIRST_PORT(cs->server),
                 body_part->port);
+        body_part++;
     }
+    int2buff(body_part - part_start, body_header->count);
 
     RESPONSE.header.body_len = (char *)body_part - SF_PROTO_SEND_BODY(task);
     RESPONSE.header.cmd = FDIR_SERVICE_PROTO_CLUSTER_STAT_RESP;
