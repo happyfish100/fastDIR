@@ -45,7 +45,7 @@ int event_dealer_init()
 {
     int result;
 
-    if ((result=fast_buffer_init_ex(&UPDATER_CTX.buffer, 1024)) != 0) {
+    if ((result=fast_buffer_init1(&UPDATER_CTX.buffer, 1024)) != 0) {
         return result;
     }
 

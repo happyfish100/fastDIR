@@ -30,11 +30,17 @@
 #include "cluster_relationship.h"
 #include "cluster_info.h"
 
-#define CLUSTER_INFO_FILENAME                "cluster.info"
+#define CLUSTER_INFO_FILENAME_STR     "cluster.info"
+#define CLUSTER_INFO_FILENAME_LEN     (sizeof(CLUSTER_INFO_FILENAME_STR) - 1)
 
-#define SERVER_SECTION_PREFIX_STR            "server-"
-#define CLUSTER_INFO_ITEM_IS_MASTER          "is_master"
-#define CLUSTER_INFO_ITEM_STATUS             "status"
+#define SERVER_SECTION_PREFIX_STR      "server-"
+#define SERVER_SECTION_PREFIX_LEN      (sizeof(SERVER_SECTION_PREFIX_STR) - 1)
+
+#define CLUSTER_INFO_ITEM_IS_MASTER_STR "is_master"
+#define CLUSTER_INFO_ITEM_IS_MASTER_LEN (sizeof(CLUSTER_INFO_ITEM_IS_MASTER_STR) - 1)
+
+#define CLUSTER_INFO_ITEM_STATUS_STR    "status"
+#define CLUSTER_INFO_ITEM_STATUS_LEN    (sizeof(CLUSTER_INFO_ITEM_STATUS_STR) - 1)
 
 static int last_synced_version = 0;
 static int last_refresh_file_time = 0;
@@ -249,8 +255,19 @@ FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 static inline void get_cluster_info_filename(
         char *full_filename, const int size)
 {
-    snprintf(full_filename, size, "%s/%s",
-            DATA_PATH_STR, CLUSTER_INFO_FILENAME);
+    char *p;
+
+    if (DATA_PATH_LEN + 1 + CLUSTER_INFO_FILENAME_LEN >= size) {
+        snprintf(full_filename, size, "%s/%s", DATA_PATH_STR,
+                CLUSTER_INFO_FILENAME_STR);
+        return;
+    }
+
+    memcpy(full_filename, DATA_PATH_STR, DATA_PATH_LEN);
+    p = full_filename + DATA_PATH_LEN;
+    *p++ = '/';
+    memcpy(p, CLUSTER_INFO_FILENAME_STR, CLUSTER_INFO_FILENAME_LEN);
+    *(p + CLUSTER_INFO_FILENAME_LEN) = '\0';
 }
 
 static int load_servers_from_ini_ctx(IniContext *ini_context)
@@ -265,9 +282,9 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
                 SERVER_SECTION_PREFIX_STR,
                 cs->server->id);
         cs->is_old_master = iniGetBoolValue(section_name,
-                CLUSTER_INFO_ITEM_IS_MASTER, ini_context, false);
+                CLUSTER_INFO_ITEM_IS_MASTER_STR, ini_context, false);
         cs->status = iniGetIntValue(section_name,
-                CLUSTER_INFO_ITEM_STATUS, ini_context,
+                CLUSTER_INFO_ITEM_STATUS_STR, ini_context,
                 FDIR_SERVER_STATUS_INIT);
 
         if (cs->status == FDIR_SERVER_STATUS_SYNCING ||
@@ -391,25 +408,34 @@ static int cluster_info_write_to_file()
     int result;
     int len;
 
-    snprintf(full_filename, sizeof(full_filename),
-            "%s/%s", DATA_PATH_STR, CLUSTER_INFO_FILENAME);
-
     p = buff;
     end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
-        p += sprintf(p,
-                "[%s%d]\n"
-                "%s=%d\n"
-                "%s=%d\n\n",
-                SERVER_SECTION_PREFIX_STR, cs->server->id,
-                CLUSTER_INFO_ITEM_IS_MASTER,
-                cs == CLUSTER_MASTER_ATOM_PTR ? 1 : 0,
-                CLUSTER_INFO_ITEM_STATUS,
-                __sync_fetch_and_add(&cs->status, 0)
-                );
+        *p++ = '[';
+        memcpy(p, SERVER_SECTION_PREFIX_STR, SERVER_SECTION_PREFIX_LEN);
+        p += SERVER_SECTION_PREFIX_LEN;
+        p += fc_itoa(cs->server->id, p);
+        *p++ = ']';
+        *p++ = '\n';
+
+        memcpy(p, CLUSTER_INFO_ITEM_IS_MASTER_STR,
+                CLUSTER_INFO_ITEM_IS_MASTER_LEN);
+        p += CLUSTER_INFO_ITEM_IS_MASTER_LEN;
+        *p++ = '=';
+        *p++ = (cs == CLUSTER_MASTER_ATOM_PTR ? '1' : '0');
+        *p++ = '\n';
+
+        memcpy(p, CLUSTER_INFO_ITEM_STATUS_STR,
+                CLUSTER_INFO_ITEM_STATUS_LEN);
+        p += CLUSTER_INFO_ITEM_STATUS_LEN;
+        *p++ = '=';
+        p += fc_itoa(FC_ATOMIC_GET(cs->status), p);
+        *p++ = '\n';
+        *p++ = '\n';
     }
 
     len = p - buff;
+    get_cluster_info_filename(full_filename, sizeof(full_filename));
     if ((result=safeWriteToFile(full_filename, buff, len)) != 0) {
         logError("file: "__FILE__", line: %d, "
             "write to file \"%s\" fail, "

@@ -73,7 +73,7 @@ int record_buffer_alloc_init_func(void *element, void *args)
     buffer = &((ServerBinlogRecordBuffer *)element)->buffer;
     ((ServerBinlogRecordBuffer *)element)->release_func =
         server_binlog_release_rbuffer_ex;
-    return fast_buffer_init_ex(buffer, proceduer_ctx.rb_init_capacity);
+    return fast_buffer_init1(buffer, proceduer_ctx.rb_init_capacity);
 }
 
 static int binlog_producer_init_queue()

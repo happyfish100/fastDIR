@@ -234,7 +234,7 @@ static int binlog_padding(FDIRBinlogDumpContext *dump_ctx)
         return ENOMEM;
     }
 
-    if ((result=fast_buffer_init_ex(&buffer, 256)) != 0) {
+    if ((result=fast_buffer_init1(&buffer, 256)) != 0) {
         return result;
     }
 
@@ -696,7 +696,7 @@ static int init_versioned_buffer_array(VersionedBufferArray *array)
     end = array->buffers + array->count;
     for (vb=array->buffers; vb<end; vb++) {
         vb->version = 0;
-        if ((result=fast_buffer_init_ex(&vb->buffer, 4 * 1024)) != 0) {
+        if ((result=fast_buffer_init1(&vb->buffer, 4 * 1024)) != 0) {
             return result;
         }
     }
