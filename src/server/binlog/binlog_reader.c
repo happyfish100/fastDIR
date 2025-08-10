@@ -479,8 +479,7 @@ static int binlog_reader_detect_open(ServerBinlogReader *reader,
 static inline int init_reader(ServerBinlogReader *reader,
         const char *subdir_name)
 {
-    snprintf(reader->subdir_name, sizeof(reader->subdir_name),
-            "%s", subdir_name);
+    fc_safe_strcpy(reader->subdir_name, subdir_name);
     reader->fd = -1;
     return binlog_buffer_init(&reader->binlog_buffer);
 }

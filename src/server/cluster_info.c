@@ -255,19 +255,9 @@ FDIRClusterServerInfo *fdir_get_server_by_id(const int server_id)
 static inline void get_cluster_info_filename(
         char *full_filename, const int size)
 {
-    char *p;
-
-    if (DATA_PATH_LEN + 1 + CLUSTER_INFO_FILENAME_LEN >= size) {
-        snprintf(full_filename, size, "%s/%s", DATA_PATH_STR,
-                CLUSTER_INFO_FILENAME_STR);
-        return;
-    }
-
-    memcpy(full_filename, DATA_PATH_STR, DATA_PATH_LEN);
-    p = full_filename + DATA_PATH_LEN;
-    *p++ = '/';
-    memcpy(p, CLUSTER_INFO_FILENAME_STR, CLUSTER_INFO_FILENAME_LEN);
-    *(p + CLUSTER_INFO_FILENAME_LEN) = '\0';
+    fc_get_full_filename_ex(DATA_PATH_STR, DATA_PATH_LEN,
+            CLUSTER_INFO_FILENAME_STR, CLUSTER_INFO_FILENAME_LEN,
+            full_filename, size);
 }
 
 static int load_servers_from_ini_ctx(IniContext *ini_context)
@@ -278,9 +268,9 @@ static int load_servers_from_ini_ctx(IniContext *ini_context)
 
     end = CLUSTER_SERVER_ARRAY.servers + CLUSTER_SERVER_ARRAY.count;
     for (cs=CLUSTER_SERVER_ARRAY.servers; cs<end; cs++) {
-        sprintf(section_name, "%s%d",
-                SERVER_SECTION_PREFIX_STR,
-                cs->server->id);
+        memcpy(section_name, SERVER_SECTION_PREFIX_STR,
+                SERVER_SECTION_PREFIX_LEN);
+        fc_ltostr(cs->server->id, section_name + SERVER_SECTION_PREFIX_LEN);
         cs->is_old_master = iniGetBoolValue(section_name,
                 CLUSTER_INFO_ITEM_IS_MASTER_STR, ini_context, false);
         cs->status = iniGetIntValue(section_name,

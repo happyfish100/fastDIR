@@ -79,9 +79,9 @@ static int deal_data_buffer(DumpDataSortContext *ctx)
                 }
             }
 
-            ctx->extract_inode.writer->buffer.data_end += sprintf(
-                    ctx->extract_inode.writer->buffer.data_end,
-                    "%"PRId64"\n", inode);
+            ctx->extract_inode.writer->buffer.data_end += fc_itoa(inode,
+                    ctx->extract_inode.writer->buffer.data_end);
+            *ctx->extract_inode.writer->buffer.data_end++ = '\n';
         }
 
         p = rec_end;
@@ -99,8 +99,9 @@ static int sort_inode_file(DumpDataSortContext *context,
     char buffer_size_str[32];
     char tmp_path[PATH_MAX];
     char cmd_line[2 * PATH_MAX];
+    char *p;
 
-    snprintf(tmp_path, sizeof(tmp_path), "%s/tmp", DATA_PATH_STR);
+    fc_get_full_filepath(DATA_PATH_STR, DATA_PATH_LEN, "tmp", 3, tmp_path);
     if ((result=fc_check_mkdir(tmp_path, 0755)) != 0) {
         return result;
     }
@@ -109,11 +110,15 @@ static int sort_inode_file(DumpDataSortContext *context,
         return result;
     }
     buffer_size_mb = (mem_size * 0.25) / (1024 * 1024);
+    p = buffer_size_str;
     if (buffer_size_mb < 1024) {
-        sprintf(buffer_size_str, "%"PRId64"M", buffer_size_mb);
+        p += fc_itoa(buffer_size_mb, p);
+        *p++ = 'M';
     } else {
-        sprintf(buffer_size_str, "%"PRId64"G", buffer_size_mb / 1024);
+        p += fc_itoa(buffer_size_mb / 1024, p);
+        *p++ = 'G';
     }
+    *p = '\0';
 
     snprintf(cmd_line, sizeof(cmd_line), "/usr/bin/sort -n -k1,1 -S %s "
             "-T %s -o %s %s", buffer_size_str, tmp_path, context->
@@ -145,15 +150,14 @@ static int generate_sorted_inode_file()
     hint_pos.index = 0;
     hint_pos.offset = 0;
     if ((result=binlog_read_thread_init_ex(&reader_ctx,
-                    FDIR_DATA_DUMP_SUBDIR_NAME, &hint_pos,
+                    FDIR_DATA_DUMP_SUBDIR_NAME_STR, &hint_pos,
                     last_data_version, buffer_size,
                     buffer_count)) != 0)
     {
         return result;
     }
 
-    snprintf(tmp_filename, sizeof(tmp_filename),
-            "%s.tmp", context.inode_fp.filename);
+    fc_combine_two_strings(context.inode_fp.filename, "tmp", '.', tmp_filename);
     if ((result=sf_buffered_writer_init_ex(&inode_writer,
                     tmp_filename, buffer_size)) != 0)
     {

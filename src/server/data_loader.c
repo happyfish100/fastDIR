@@ -181,11 +181,19 @@ static int add_sorted_inodes()
 }
 
 static inline const char *get_check_dump_inode_binlogs_mark_filename(
-        char *filename, const int size)
+        char *full_filename, const int size)
 {
-    snprintf(filename, size, "%s/%s/.dump_inode_binlogs.flags",
-            DATA_PATH_STR, FDIR_DATA_DUMP_SUBDIR_NAME);
-    return filename;
+#define DUMP_FLAGS_FILENAME_STR  ".dump_inode_binlogs.flags"
+#define DUMP_FLAGS_FILENAME_LEN  (sizeof(DUMP_FLAGS_FILENAME_STR) - 1)
+    char filename[256];
+    int name_len;
+
+    name_len = fc_get_full_filename(FDIR_DATA_DUMP_SUBDIR_NAME_STR,
+            FDIR_DATA_DUMP_SUBDIR_NAME_LEN, DUMP_FLAGS_FILENAME_STR,
+            DUMP_FLAGS_FILENAME_LEN, filename);
+    fc_get_full_filename_ex(DATA_PATH_STR, DATA_PATH_LEN, filename,
+            name_len, full_filename, size);
+    return full_filename;
 }
 
 static int check_dump_inode_binlogs()
@@ -244,7 +252,7 @@ static int load_full_dump_data(const int parse_threads,
 
         hint_pos.index = 0;
         hint_pos.offset = 0;
-        if ((result=binlog_find_position_ex(FDIR_DATA_DUMP_SUBDIR_NAME,
+        if ((result=binlog_find_position_ex(FDIR_DATA_DUMP_SUBDIR_NAME_STR,
                         &hint_pos, params[0].last_data_version,
                         &params[0].hint_pos)) != 0)
         {
@@ -348,7 +356,7 @@ int server_load_data()
         } else {
             params[1].subdir_name = NULL;
             if (params[0].last_data_version < DUMP_DENTRY_COUNT) {
-                params[0].subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME;
+                params[0].subdir_name = FDIR_DATA_DUMP_SUBDIR_NAME_STR;
                 if ((result=load_full_dump_data(parse_threads, params,
                                 stats + replay_count++)) != 0)
                 {
@@ -370,7 +378,7 @@ int server_load_data()
         if (DUMP_LAST_DATA_VERSION > 0) {
             hint_pos.index = 0;
             hint_pos.offset = 0;
-            BINLOG_READER_SET_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME,
+            BINLOG_READER_SET_PARAMS(params[0], FDIR_DATA_DUMP_SUBDIR_NAME_STR,
                     hint_pos, params[0].last_data_version);
             BINLOG_READER_SET_PARAMS(params[1], FDIR_BINLOG_SUBDIR_NAME,
                     DUMP_NEXT_POSITION, DUMP_LAST_DATA_VERSION);

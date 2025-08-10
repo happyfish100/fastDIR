@@ -26,7 +26,7 @@ static inline int check_make_subdir()
     char path[PATH_MAX];
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
-            FDIR_DATA_DUMP_SUBDIR_NAME, path, sizeof(path));
+            FDIR_DATA_DUMP_SUBDIR_NAME_STR, path, sizeof(path));
     return fc_check_mkdir(path, 0755);
 }
 

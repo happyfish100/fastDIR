@@ -33,8 +33,11 @@
 #include "db/dentry_loader.h"
 #include "ns_manager.h"
 
-#define NAMESPACE_DUMP_FILENAME    "namespaces.dump"
-#define NAMESPACE_BINLOG_FILENAME  "namespaces.binlog"
+#define NAMESPACE_DUMP_FILENAME_STR     "namespaces.dump"
+#define NAMESPACE_DUMP_FILENAME_LEN     (sizeof(NAMESPACE_DUMP_FILENAME_STR) - 1)
+
+#define NAMESPACE_BINLOG_FILENAME_STR   "namespaces.binlog"
+#define NAMESPACE_BINLOG_FILENAME_LEN   (sizeof(NAMESPACE_BINLOG_FILENAME_STR) - 1)
 
 #define NAMESPACE_FIELD_MAX               8
 #define NAMESPACE_FIELD_COUNT             5
@@ -79,8 +82,16 @@ static int ns_alloc_init_func(FDIRNamespaceEntry *ns_entry, void *args)
 
 static inline void get_binlog_filename(char *filename, const int size)
 {
-    snprintf(filename, size, "%s/%s", STORAGE_PATH_STR,
-            NAMESPACE_BINLOG_FILENAME);
+    fc_get_full_filename_ex(STORAGE_PATH_STR, STORAGE_PATH_LEN,
+            NAMESPACE_BINLOG_FILENAME_STR, NAMESPACE_BINLOG_FILENAME_LEN,
+            filename, size);
+}
+
+static inline void get_dump_filename(char *filename, const int size)
+{
+    fc_get_full_filename_ex(STORAGE_PATH_STR, STORAGE_PATH_LEN,
+            NAMESPACE_DUMP_FILENAME_STR, NAMESPACE_DUMP_FILENAME_LEN,
+            filename, size);
 }
 
 int ns_manager_init()
@@ -172,6 +183,7 @@ static int write_binlog(const FDIRNamespaceEntry *entry)
     char filename[PATH_MAX];
     char buff[2 * NAME_MAX + 64];
     char escaped[2 * NAME_MAX];
+    char *p;
     string_t name;
     int len;
     int result;
@@ -183,7 +195,13 @@ static int write_binlog(const FDIRNamespaceEntry *entry)
     name.str = escaped;
     fast_char_escape(&FDIR_NS_MANAGER->char_converter,  entry->name.str,
             entry->name.len, name.str, &name.len, sizeof(escaped));
-    len = sprintf(buff, "%d %.*s\n", entry->id, name.len, name.str);
+
+    p = buff + fc_itoa(entry->id, buff);
+    *p++ = ' ';
+    memcpy(p, name.str, name.len);
+    p += name.len;
+    *p++ = '\n';
+    len = p - buff;
     if (fc_safe_write(FDIR_NS_MANAGER->fd, buff, len) != len) {
         result = errno != 0 ? errno : EIO;
         get_binlog_filename(filename, sizeof(filename));
@@ -469,19 +487,27 @@ static int dump_namespaces(FDIRNamespaceDumpContext *ctx)
     }
 
     p = ctx->buffer.buff;
-    p += sprintf(p, "%d %"PRId64"\n", ctx->count, ctx->last_version);
+    p += fc_itoa(ctx->count, p);
+    *p++ = ' ';
+    p += fc_itoa(ctx->last_version, p);
+    *p++ = '\n';
 
     end = ctx->entries + ctx->count;
     for (entry=ctx->entries; entry<end; entry++) {
-        p += sprintf(p, "%d %"PRId64" %"PRId64" %"PRId64" %"PRId64"\n",
-                (*entry)->id, (*entry)->delay.root.inode,
-                (*entry)->delay.counts.dir, (*entry)->delay.counts.file,
-                (*entry)->delay.used_bytes);
+        p += fc_itoa((*entry)->id, p);
+        *p++ = ' ';
+        p += fc_itoa((*entry)->delay.root.inode, p);
+        *p++ = ' ';
+        p += fc_itoa((*entry)->delay.counts.dir, p);
+        *p++ = ' ';
+        p += fc_itoa((*entry)->delay.counts.file, p);
+        *p++ = ' ';
+        p += fc_itoa((*entry)->delay.used_bytes, p);
+        *p++ = '\n';
     }
     ctx->buffer.length = p - ctx->buffer.buff;
 
-    snprintf(filename, sizeof(filename), "%s/%s",
-            STORAGE_PATH_STR, NAMESPACE_DUMP_FILENAME);
+    get_dump_filename(filename, sizeof(filename));
     return safeWriteToFile(filename, ctx->buffer.buff, ctx->buffer.length);
 }
 
@@ -709,8 +735,7 @@ int fdir_namespace_load(int64_t *last_version)
         return result;
     }
 
-    snprintf(filename, sizeof(filename), "%s/%s",
-            STORAGE_PATH_STR, NAMESPACE_DUMP_FILENAME);
+    get_dump_filename(filename, sizeof(filename));
     if (access(filename, F_OK) != 0) {
         if (errno == ENOENT) {
             return 0;

@@ -240,8 +240,7 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
     if (addr_array->index >= addr_array->count) {
         addr_array->index = 0;
     }
-    snprintf(task->server_ip, sizeof(task->server_ip),
-            "%s", addr->conn.ip_addr);
+    fc_safe_strcpy(task->server_ip, addr->conn.ip_addr);
     task->port = addr->conn.port;
     replication->task = task;
 

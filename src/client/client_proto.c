@@ -2468,6 +2468,7 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
     char *p;
     int result;
     int entry_len;
+    int name_len;
     int count;
     int mode;
     bool is_last;
@@ -2496,12 +2497,17 @@ static int parse_list_compact_dentry_rbody(SFResponseInfo *response,
 
         mode = buff2int(part->mode);
         cd->d_ino = buff2long(part->common.inode);
+        if ((int)part->common.name_len < sizeof(cd->d_name)) {
+            name_len = part->common.name_len;
+        } else {
+            name_len = sizeof(cd->d_name) - 1;
+        }
+        memcpy(cd->d_name, part->common.name_str, name_len);
+        *(cd->d_name + name_len) = '\0';
 
 #ifdef HAVE_DIRENT_D_NAMLEN
-        cd->d_namlen =
+        cd->d_namlen = name_len;
 #endif
-        snprintf(cd->d_name, sizeof(cd->d_name), "%.*s",
-                part->common.name_len, part->common.name_str);
 
 #ifdef HAVE_DIRENT_D_TYPE
         if (S_ISBLK(mode)) {

@@ -32,10 +32,15 @@
 #include "server_global.h"
 #include "inode_generator.h"
 
-#define INODE_SN_FILENAME  ".inode.sn"
+#define INODE_SN_FILENAME_STR  ".inode.sn"
+#define INODE_SN_FILENAME_LEN  (sizeof(INODE_SN_FILENAME_STR) - 1)
 
-#define GET_INODE_SN_FILENAME(filename, size) \
-    snprintf(filename, size, "%s/%s", DATA_PATH_STR, INODE_SN_FILENAME)
+static inline void get_inode_sn_filename(char *filename, const int size)
+{
+    fc_get_full_filename_ex(DATA_PATH_STR, DATA_PATH_LEN,
+            INODE_SN_FILENAME_STR, INODE_SN_FILENAME_LEN,
+            filename, size);
+}
 
 #define write_to_inode_sn_file()  write_to_inode_sn_file_func(NULL)
 
@@ -51,8 +56,8 @@ static int write_to_inode_sn_file_func(void *args)
     }
 
     last_sn = __sync_add_and_fetch(&CURRENT_INODE_SN, 0);
-    len = sprintf(buff, "%"PRId64, last_sn);
-    GET_INODE_SN_FILENAME(filename, sizeof(filename));
+    len = fc_itoa(last_sn, buff);
+    get_inode_sn_filename(filename, sizeof(filename));
     return safeWriteToFile(filename, buff, len);
 }
 
@@ -74,7 +79,7 @@ int inode_generator_init()
     char filename[PATH_MAX];
     int result;
 
-    GET_INODE_SN_FILENAME(filename, sizeof(filename));
+    get_inode_sn_filename(filename, sizeof(filename));
     if (access(filename, F_OK) == 0) {
         char content[32];
         char *endptr;

@@ -24,7 +24,9 @@
 #include "replication_quorum.h"
 
 #define VERSION_CONFIRMED_FILE_COUNT     2  //double files for safty
-#define REPLICATION_QUORUM_DAT_FILENAME  ".repl_quorum.dat"
+#define REPLICATION_QUORUM_DAT_FILENAME_STR  ".repl_quorum.dat"
+#define REPLICATION_QUORUM_DAT_FILENAME_LEN  \
+    (sizeof(REPLICATION_QUORUM_DAT_FILENAME_STR) - 1)
 
 typedef struct fdir_replication_quorum_entry {
     int64_t data_version;
@@ -95,15 +97,40 @@ static FDIRReplicationQuorumContext fdir_replication_quorum;
 static inline const char *get_quorum_dat_filename(
         char *filename, const int size)
 {
-    snprintf(filename, size, "%s/%s", DATA_PATH_STR,
-            REPLICATION_QUORUM_DAT_FILENAME);
+    fc_get_full_filename_ex(DATA_PATH_STR, DATA_PATH_LEN,
+            REPLICATION_QUORUM_DAT_FILENAME_STR,
+            REPLICATION_QUORUM_DAT_FILENAME_LEN,
+            filename, size);
     return filename;
 }
 
 static inline const char *get_confirmed_filename(
         const int index, char *filename, const int size)
 {
-    snprintf(filename, size, "%s/version-confirmed.%d", DATA_PATH_STR, index);
+#define VERSION_CONFIRMED_PREFIX_STR  "/version-confirmed."
+#define VERSION_CONFIRMED_PREFIX_LEN (sizeof(VERSION_CONFIRMED_PREFIX_STR) - 1)
+    char *p;
+
+    if (DATA_PATH_LEN + VERSION_CONFIRMED_PREFIX_LEN + 2 > size) {
+        *filename = '\0';
+        return filename;
+    }
+
+    p = filename;
+    memcpy(p, DATA_PATH_STR, DATA_PATH_LEN);
+    p += DATA_PATH_LEN;
+    memcpy(p, VERSION_CONFIRMED_PREFIX_STR,
+            VERSION_CONFIRMED_PREFIX_LEN);
+    p += VERSION_CONFIRMED_PREFIX_LEN;
+    if (index == 0) {
+        *p++ = '0';
+    } else if (index == 1) {
+        *p++ = '1';
+    } else {
+        p += fc_itoa(index, p);
+    }
+    *p = '\0';
+
     return filename;
 }
 
@@ -299,8 +326,6 @@ static int rollback_binlog(const int64_t my_confirmed_version)
 int replication_quorum_init()
 {
     char quorum_filename[PATH_MAX];
-    char buff[64];
-    int len;
     int result;
 
     get_quorum_dat_filename(quorum_filename, sizeof(quorum_filename));
@@ -386,8 +411,10 @@ int replication_quorum_init()
     if (access(quorum_filename, F_OK) == 0) {
         return 0;
     } else {
-        len = sprintf(buff, "enabled=%d\n", 1);
-        return writeToFile(quorum_filename, buff, len);
+#define ENABLED_CONTENT_STR "enabled=1\n"
+#define ENABLED_CONTENT_LEN (sizeof(ENABLED_CONTENT_STR) - 1)
+        return writeToFile(quorum_filename, ENABLED_CONTENT_STR,
+                ENABLED_CONTENT_LEN);
     }
 }
 
@@ -463,13 +490,17 @@ static int write_to_confirmed_file(const int index,
     const int flags = O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC;
     FilenameFDPair pair;
     char buff[32];
+    char *p;
     int crc32;
     int len;
     int result;
 
-    len = sprintf(buff, "%"PRId64, confirmed_version);
+    len = fc_itoa(confirmed_version, buff);
     crc32 = CRC32(buff, len);
-    len += sprintf(buff + len, " %08x", crc32);
+    p = buff + len;
+    *p++ = ' ';
+    p += int2hex(crc32, p, 8);
+    len = p - buff;
 
     get_confirmed_filename(index, pair.filename, sizeof(pair.filename));
     if ((pair.fd=open(pair.filename, flags, 0644)) < 0) {

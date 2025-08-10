@@ -319,6 +319,7 @@ static int service_deal_service_stat(struct fast_task_info *task)
     FDIRProtoServiceStatResp *stat_resp;
     DASpaceStat space_stat;
     int64_t inode_used_space;
+    char *p;
 
     if ((result=server_expect_body_length(0)) != 0) {
         return result;
@@ -372,9 +373,14 @@ static int service_deal_service_stat(struct fast_task_info *task)
     long2buff(space_stat.trunk.avail, stat_resp->
             storage_engine.space.trunk.avail);
 
-    stat_resp->version.len = sprintf(stat_resp->version.str, "%d.%d.%d",
-            g_fdir_global_vars.version.major, g_fdir_global_vars.
-            version.minor, g_fdir_global_vars.version.patch);
+    p = stat_resp->version.str;
+    p += fc_itoa(g_fdir_global_vars.version.major, p);
+    *p++ = '.';
+    p += fc_itoa(g_fdir_global_vars.version.minor, p);
+    *p++ = '.';
+    p += fc_itoa(g_fdir_global_vars.version.patch, p);
+    *p = '\0';
+    stat_resp->version.len = p - stat_resp->version.str;
 
     int2buff(SF_G_CONN_CURRENT_COUNT, stat_resp->connection.current_count);
     int2buff(SF_G_CONN_MAX_COUNT, stat_resp->connection.max_count);
@@ -475,7 +481,7 @@ static int service_deal_cluster_stat(struct fast_task_info *task)
         body_part->status = FC_ATOMIC_GET(cs->status);
         long2buff(FC_ATOMIC_GET(cs->confirmed_data_version),
                 body_part->confirmed_data_version);
-        snprintf(body_part->ip_addr, sizeof(body_part->ip_addr), "%s",
+        fc_safe_strcpy(body_part->ip_addr,
                 SERVICE_GROUP_ADDRESS_FIRST_IP(cs->server));
         short2buff(SERVICE_GROUP_ADDRESS_FIRST_PORT(cs->server),
                 body_part->port);
@@ -741,8 +747,7 @@ static int service_deal_get_master(struct fast_task_info *task)
                 master->server), task->client_ip);
 
     int2buff(master->server->id, resp->server_id);
-    snprintf(resp->ip_addr, sizeof(resp->ip_addr), "%s",
-            addr->conn.ip_addr);
+    fc_safe_strcpy(resp->ip_addr, addr->conn.ip_addr);
     short2buff(addr->conn.port, resp->port);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);
@@ -821,8 +826,7 @@ static int service_deal_get_slaves(struct fast_task_info *task)
 
         addr = fc_server_get_address_by_peer(&SERVICE_GROUP_ADDRESS_ARRAY(
                 cs->server), task->client_ip);
-        snprintf(body_part->ip_addr, sizeof(body_part->ip_addr),
-                "%s", addr->conn.ip_addr);
+        fc_safe_strcpy(body_part->ip_addr, addr->conn.ip_addr);
         short2buff(addr->conn.port, body_part->port);
 
         body_part++;
@@ -885,8 +889,7 @@ static int service_deal_get_readable_server(struct fast_task_info *task)
                 cs->server), task->client_ip);
 
     int2buff(cs->server->id, resp->server_id);
-    snprintf(resp->ip_addr, sizeof(resp->ip_addr), "%s",
-            addr->conn.ip_addr);
+    fc_safe_strcpy(resp->ip_addr, addr->conn.ip_addr);
     short2buff(addr->conn.port, resp->port);
 
     RESPONSE.header.body_len = sizeof(FDIRProtoGetServerResp);

@@ -45,9 +45,11 @@ extern "C" {
             char *subdir_name, const int server_id)
     {
         if (server_id == CLUSTER_MY_SERVER_ID) {
-            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME_STR);
         } else {
-            sprintf(subdir_name, "%s%d", FDIR_DATA_DUMP_SUBDIR_NAME, server_id);
+            memcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME_STR,
+                    FDIR_DATA_DUMP_SUBDIR_NAME_LEN);
+            fc_ltostr(server_id, subdir_name + FDIR_DATA_DUMP_SUBDIR_NAME_LEN);
         }
         return subdir_name;
     }
@@ -62,19 +64,23 @@ extern "C" {
     static inline const char *fdir_get_dump_mark_filename_ex(
             const char *subdir_name, char *filename, const int size)
     {
+#define MARK_FILENAME_STR  SF_BINLOG_FILE_PREFIX_STR".mark"
+#define MARK_FILENAME_LEN  (sizeof(MARK_FILENAME_STR) - 1)
         char filepath[PATH_MAX];
+
         sf_binlog_writer_get_filepath(DATA_PATH_STR,
                 subdir_name, filepath, sizeof(filepath));
-        snprintf(filename, size, "%s/%s.mark",
-                filepath, SF_BINLOG_FILE_PREFIX);
+        fc_get_full_filename_ex(filepath, strlen(filepath),
+                MARK_FILENAME_STR, MARK_FILENAME_LEN,
+                filename, size);
         return filename;
     }
 
 #define fdir_get_dump_data_filename(filename, size) \
-    fdir_get_dump_data_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
+    fdir_get_dump_data_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME_STR, filename, size)
 
 #define fdir_get_dump_mark_filename(filename, size) \
-    fdir_get_dump_mark_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME, filename, size)
+    fdir_get_dump_mark_filename_ex(FDIR_DATA_DUMP_SUBDIR_NAME_STR, filename, size)
 
     int binlog_dump_load_from_mark_file();
 

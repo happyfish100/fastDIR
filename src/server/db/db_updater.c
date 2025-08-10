@@ -312,12 +312,16 @@ static int unpack_one_dentry(SFSerializerIterator *it,
         FDIRDBUpdaterContext *ctx, BufferInfo *buffer,
         const int rowno)
 {
+#define DENTRY_CAPTION_PREFIX_STR  "dentry #"
+#define DENTRY_CAPTION_PREFIX_LEN  (sizeof(DENTRY_CAPTION_PREFIX_STR) - 1)
+
     int result;
     char caption[32];
     FDIRDBUpdateFieldInfo *entry;
     const SFSerializerFieldValue *fv;
 
-    sprintf(caption, "dentry #%d", rowno);
+    memcpy(caption, DENTRY_CAPTION_PREFIX_STR, DENTRY_CAPTION_PREFIX_LEN);
+    fc_ltostr(rowno, caption + DENTRY_CAPTION_PREFIX_LEN);
     if ((result=unpack_from_file(it, caption, buffer)) != 0) {
         return result;
     }

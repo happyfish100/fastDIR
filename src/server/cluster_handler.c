@@ -1161,7 +1161,7 @@ static int replica_deal_query_binlog_info(struct fast_task_info *task)
         if (STORAGE_ENABLED) {
             binlog_dump_get_subdir_name(subdir_name, server_id);
         } else {
-            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME_STR);
         }
         fdir_get_dump_data_filename_ex(subdir_name,
                 dump_filename, sizeof(dump_filename));
@@ -1266,7 +1266,7 @@ static int replica_deal_sync_binlog_first(struct fast_task_info *task)
         if (STORAGE_ENABLED) {
             binlog_dump_get_subdir_name(subdir_name, server_id);
         } else {
-            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+            strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME_STR);
         }
         fdir_get_dump_data_filename_ex(subdir_name,
                 dump_filename, sizeof(dump_filename));
@@ -1357,7 +1357,7 @@ static int replica_deal_sync_dump_mark(struct fast_task_info *task)
     if (STORAGE_ENABLED) {
         binlog_dump_get_subdir_name(subdir_name, server_id);
     } else {
-        strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME);
+        strcpy(subdir_name, FDIR_DATA_DUMP_SUBDIR_NAME_STR);
     }
     fdir_get_dump_mark_filename_ex(subdir_name,
             mark_filename, sizeof(mark_filename));

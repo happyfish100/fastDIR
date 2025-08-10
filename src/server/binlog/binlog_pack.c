@@ -540,7 +540,7 @@ int binlog_pack_record_ex(BinlogPackContext *context,
         return EOVERFLOW;
     }
 
-    sprintf(buffer->data + old_len, "%0*d", width, record_len);
+    fc_ltostr_ex(record_len, buffer->data + old_len, width);
     /* restore the start char */
     *(buffer->data + old_len + width) = BINLOG_RECORD_START_TAG_CHAR;
     return 0;
@@ -599,7 +599,7 @@ int binlog_repack_buffer(const char *input, const int in_len,
     }
 
     old_dv_len = dv_end - dv_val;
-    new_dv_len = sprintf(new_dv_buff, "%"PRId64, new_data_version);
+    new_dv_len = fc_itoa(new_data_version, new_dv_buff);
     dv_len_sub = new_dv_len - old_dv_len;
     if (dv_len_sub == 0) {
         front_len = dv_val - input;
@@ -607,9 +607,8 @@ int binlog_repack_buffer(const char *input, const int in_len,
         p = output + front_len;
     } else {
         new_record_len = old_record_len + dv_len_sub;
-        p = output + sprintf(output, "%0*d",
-                BINLOG_RECORD_SIZE_MIN_STRLEN,
-                new_record_len);
+        p = output + fc_ltostr_ex(new_record_len, output,
+                BINLOG_RECORD_SIZE_MIN_STRLEN);
 
         front_len = dv_val - rec_start;
         memcpy(p, rec_start, front_len);

@@ -463,8 +463,20 @@ int fdir_client_list_xattr_by_inode(FDIRClientContext *client_ctx,
 static inline void fdir_client_get_node_info_filename(
         char *filename, const int size)
 {
-    snprintf(filename, size, "%s/.fdir-client-node",
-            g_fdir_client_vars.base_path);
+#define FDIR_CLIENT_NODE_FILENAME_STR  "/.fdir-client-node"
+#define FDIR_CLIENT_NODE_FILENAME_LEN  (sizeof(FDIR_CLIENT_NODE_FILENAME_STR) - 1)
+
+    int len;
+
+    len = strlen(g_fdir_client_vars.base_path);
+    if (len >= size) {
+        *filename = '\0';
+        return;
+    }
+    memcpy(filename, g_fdir_client_vars.base_path, len);
+    memcpy(filename + len, FDIR_CLIENT_NODE_FILENAME_STR,
+            FDIR_CLIENT_NODE_FILENAME_LEN);
+    *(filename + len + FDIR_CLIENT_NODE_FILENAME_LEN) = '\0';
 }
 
 static int fdir_client_save_node_info(const int64_t key)

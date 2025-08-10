@@ -13,7 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-#define INODE_ADD_MARK_FILENAME  ".inode_add_mark"
+#define INODE_ADD_MARK_FILENAME_STR  ".inode_add_mark"
+#define INODE_ADD_MARK_FILENAME_LEN  (sizeof(INODE_ADD_MARK_FILENAME_STR) - 1)
 
 #include "sf/sf_binlog_writer.h"
 #include "../server_global.h"
@@ -25,10 +26,11 @@ static inline const char *inode_add_mark_get_filename(
     char filepath[PATH_MAX];
 
     sf_binlog_writer_get_filepath(DATA_PATH_STR,
-            FDIR_DATA_DUMP_SUBDIR_NAME,
+            FDIR_DATA_DUMP_SUBDIR_NAME_STR,
             filepath, sizeof(filepath));
-    snprintf(filename, size, "%s/%s", filepath,
-            INODE_ADD_MARK_FILENAME);
+    fc_get_full_filename_ex(filepath, strlen(filepath),
+            INODE_ADD_MARK_FILENAME_STR, INODE_ADD_MARK_FILENAME_LEN,
+            filename, size);
     return filename;
 }
 
@@ -63,7 +65,7 @@ int inode_add_mark_save(const InodeAddMarkStatus status)
     int len;
 
     inode_add_mark_get_filename(filename, sizeof(filename));
-    len = sprintf(buff, "%d", status);
+    len = fc_itoa(status, buff);
     return safeWriteToFile(filename, buff, len);
 }
 

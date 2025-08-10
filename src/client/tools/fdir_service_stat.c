@@ -232,12 +232,10 @@ static int service_stat_all()
             service_group_index].address_array.addrs[0]->conn;
         conn.sock = -1;
         if ((result=fdir_client_service_stat(&g_fdir_client_vars.client_ctx,
-                        &conn, include_inode_space, &stat)) != 0)
+                        &conn, include_inode_space, &stat)) == 0)
         {
-            return result;
+            output(&stat, &conn);
         }
-
-        output(&stat, &conn);
     }
 
     return 0;

@@ -55,9 +55,8 @@ static int fdir_client_do_init_ex(FDIRClientContext *client_ctx,
     if (pBasePath == NULL) {
         strcpy(g_fdir_client_vars.base_path, "/tmp");
     } else {
-        snprintf(g_fdir_client_vars.base_path,
-                sizeof(g_fdir_client_vars.base_path),
-                "%s", pBasePath);
+        fc_strlcpy(g_fdir_client_vars.base_path, pBasePath,
+                sizeof(g_fdir_client_vars.base_path));
         chopPath(g_fdir_client_vars.base_path);
     }
 

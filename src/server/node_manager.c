@@ -97,7 +97,7 @@ static int create_node(FDIRNodeEntry **bucket, const int id,
 
     entry->id = id;
     entry->key = key;
-    snprintf(entry->ip, sizeof(entry->ip), "%s", ip_addr); 
+    fc_safe_strcpy(entry->ip, ip_addr); 
     entry->next = *bucket;
     *bucket = entry;
     return 0;
@@ -121,7 +121,7 @@ int node_manager_add_node(uint32_t *id, int64_t *key, const char *ip_addr)
         if (entry != NULL) {
             if (*key == entry->key) {
                 if (strcmp(entry->ip, ip_addr) != 0) {
-                    snprintf(entry->ip, sizeof(entry->ip), "%s", ip_addr);
+                    fc_safe_strcpy(entry->ip, ip_addr);
                 }
                 result = 0;
                 break;

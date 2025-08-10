@@ -27,11 +27,19 @@ extern "C" {
 #endif
 
     static inline const char *binlog_sort_get_inodes_filename(
-            char *filename, const int size)
+            char *full_filename, const int size)
     {
-        snprintf(filename, size, "%s/%s/inodes.dat", DATA_PATH_STR,
-                FDIR_DATA_DUMP_SUBDIR_NAME);
-        return filename;
+#define INODES_FILENAME_STR  "inodes.dat"
+#define INODES_FILENAME_LEN  (sizeof(INODES_FILENAME_STR) - 1)
+        char filename[256];
+        int name_len;
+
+        name_len = fc_get_full_filename(FDIR_DATA_DUMP_SUBDIR_NAME_STR,
+                FDIR_DATA_DUMP_SUBDIR_NAME_LEN, INODES_FILENAME_STR,
+                INODES_FILENAME_LEN, filename);
+        fc_get_full_filename_ex(DATA_PATH_STR, DATA_PATH_LEN,
+                filename, name_len, full_filename, size);
+        return full_filename;
     }
 
     int binlog_sort_generate_inodes_file();

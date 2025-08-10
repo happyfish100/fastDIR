@@ -160,11 +160,33 @@ static int dump_namespace(FDIRNamespaceEntry *ns_entry)
 {
     int result;
     DataDumperContext dump_ctx;
+    char *p;
 
     dump_ctx.dentry_count = 0;
-    snprintf(dump_ctx.filename, sizeof(dump_ctx.filename),
-            "%s/dump/%.*s.dat", DATA_PATH_STR,
-            ns_entry->name.len, ns_entry->name.str);
+    if (DATA_PATH_LEN + ns_entry->name.len + 10 >=
+            sizeof(dump_ctx.filename))
+    {
+        snprintf(dump_ctx.filename, sizeof(dump_ctx.filename),
+                "%s/dump/%.*s.dat", DATA_PATH_STR,
+                ns_entry->name.len, ns_entry->name.str);
+    } else {
+        p = dump_ctx.filename;
+        memcpy(p, DATA_PATH_STR, DATA_PATH_LEN);
+        p += DATA_PATH_LEN;
+        *p++ = '/';
+        *p++ = 'd';
+        *p++ = 'u';
+        *p++ = 'm';
+        *p++ = 'p';
+        *p++ = '/';
+        memcpy(p, ns_entry->name.str, ns_entry->name.len);
+        p += ns_entry->name.len;
+        *p++ = '.';
+        *p++ = 'd';
+        *p++ = 'a';
+        *p++ = 't';
+        *p = '\0';
+    }
     if ((dump_ctx.fp=fopen(dump_ctx.filename, "wb")) == NULL) {
         result = (errno != 0 ? errno : EPERM);
         logError("file: "__FILE__", line: %d, "
@@ -213,7 +235,7 @@ int server_dump_init()
     int result;
     char path[PATH_MAX];
 
-    snprintf(path, sizeof(path), "%s/dump", DATA_PATH_STR);
+    fc_get_full_filepath(DATA_PATH_STR, DATA_PATH_LEN, "dump", 4, path);
     if ((result=fc_check_mkdir(path, 0755)) != 0) {
         return result;
     }

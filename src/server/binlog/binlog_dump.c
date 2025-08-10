@@ -24,11 +24,21 @@
 
 #define DUMP_FILE_PREFIX_NAME  "dump"
 
-#define DUMP_MARK_ITEM_DENTRY_COUNT        "dentry_count"
-#define DUMP_MARK_ITEM_LAST_DATA_VERSION   "last_data_version"
-#define DUMP_MARK_ITEM_NEXT_BINLOG_INDEX   "next_binlog_index"
-#define DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET  "next_binlog_offset"
+#define DUMP_MARK_ITEM_DENTRY_COUNT_STR        "dentry_count"
+#define DUMP_MARK_ITEM_DENTRY_COUNT_LEN        \
+    (sizeof(DUMP_MARK_ITEM_DENTRY_COUNT_STR) - 1)
 
+#define DUMP_MARK_ITEM_LAST_DATA_VERSION_STR   "last_data_version"
+#define DUMP_MARK_ITEM_LAST_DATA_VERSION_LEN   \
+    (sizeof(DUMP_MARK_ITEM_LAST_DATA_VERSION_STR) - 1)
+
+#define DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_STR   "next_binlog_index"
+#define DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_LEN   \
+    (sizeof(DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_STR) - 1)
+
+#define DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_STR  "next_binlog_offset"
+#define DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_LEN  \
+    (sizeof(DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_STR) - 1)
 
 typedef struct dentry_chain_node {
     FDIRServerDentry *dentry;
@@ -85,19 +95,39 @@ static int binlog_dump_write_to_mark_file(const char *filename,
         const SFBinlogFilePosition *next_position)
 {
     char buff[256];
+    char *p;
     int result;
-    int len;
 
-    len = sprintf(buff,
-            "%s=%"PRId64"\n"
-            "%s=%"PRId64"\n"
-            "%s=%d\n"
-            "%s=%"PRId64"\n",
-            DUMP_MARK_ITEM_DENTRY_COUNT, dentry_count,
-            DUMP_MARK_ITEM_LAST_DATA_VERSION, last_data_version,
-            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX, next_position->index,
-            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET, next_position->offset);
-    if ((result=safeWriteToFile(filename, buff, len)) != 0) {
+    p = buff;
+    memcpy(p, DUMP_MARK_ITEM_DENTRY_COUNT_STR,
+            DUMP_MARK_ITEM_DENTRY_COUNT_LEN);
+    p += DUMP_MARK_ITEM_DENTRY_COUNT_LEN;
+    *p++ = '=';
+    p += fc_itoa(dentry_count, p);
+    *p++ = '\n';
+
+    memcpy(p, DUMP_MARK_ITEM_LAST_DATA_VERSION_STR,
+            DUMP_MARK_ITEM_LAST_DATA_VERSION_LEN);
+    p += DUMP_MARK_ITEM_LAST_DATA_VERSION_LEN;
+    *p++ = '=';
+    p += fc_itoa(last_data_version, p);
+    *p++ = '\n';
+
+    memcpy(p, DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_STR,
+            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_LEN);
+    p += DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_LEN;
+    *p++ = '=';
+    p += fc_itoa(next_position->index, p);
+    *p++ = '\n';
+
+    memcpy(p, DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_STR,
+            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_LEN);
+    p += DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_LEN;
+    *p++ = '=';
+    p += fc_itoa(next_position->offset, p);
+    *p++ = '\n';
+
+    if ((result=safeWriteToFile(filename, buff, p - buff)) != 0) {
         logError("file: "__FILE__", line: %d, "
                 "write to file \"%s\" fail, errno: %d, error info: %s",
                 __LINE__, filename, result, STRERROR(result));
@@ -126,17 +156,17 @@ int binlog_dump_load_from_mark_file()
     }
 
     DUMP_DENTRY_COUNT = iniGetInt64Value(NULL,
-            DUMP_MARK_ITEM_DENTRY_COUNT,
+            DUMP_MARK_ITEM_DENTRY_COUNT_STR,
             &ini_context, 0);
 
     DUMP_LAST_DATA_VERSION = iniGetInt64Value(NULL,
-            DUMP_MARK_ITEM_LAST_DATA_VERSION,
+            DUMP_MARK_ITEM_LAST_DATA_VERSION_STR,
             &ini_context, 0);
     DUMP_NEXT_POSITION.index = iniGetIntValue(NULL,
-            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX,
+            DUMP_MARK_ITEM_NEXT_BINLOG_INDEX_STR,
             &ini_context, 0);
     DUMP_NEXT_POSITION.offset = iniGetInt64Value(NULL,
-            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET,
+            DUMP_MARK_ITEM_NEXT_BINLOG_OFFSET_STR,
             &ini_context, 0);
 
     iniFreeContext(&ini_context);
