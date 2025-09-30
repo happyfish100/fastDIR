@@ -297,7 +297,6 @@ int main(int argc, char *argv[])
                 binlog_replication_connect_done);
         sf_service_set_connect_need_log_ex(&CLUSTER_SF_CTX, false);
         sf_enable_thread_notify_ex(&CLUSTER_SF_CTX, true);
-        sf_set_remove_from_ready_list_ex(&CLUSTER_SF_CTX, false);
 
         if ((result=binlog_get_max_record_version(&max_data_version)) != 0) {
             break;
@@ -349,7 +348,6 @@ int main(int argc, char *argv[])
             break;
         }
         sf_enable_thread_notify(true);
-        sf_set_remove_from_ready_list(false);
 
         if ((result=cluster_relationship_init()) != 0) {
             break;
