@@ -229,7 +229,7 @@ static int check_and_make_replica_connection(FDIRSlaveReplication *replication)
         return EAGAIN;
     }
 
-    if ((task=sf_alloc_init_task(CLUSTER_NET_HANDLER, -1)) == NULL) {
+    if ((task=sf_alloc_init_client_task(CLUSTER_NET_HANDLER)) == NULL) {
         return ENOMEM;
     }
     task->thread_data = CLUSTER_SF_CTX.thread_data +
