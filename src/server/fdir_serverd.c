@@ -72,7 +72,7 @@ static int setup_mblock_stat_task();
 static bool daemon_mode = true;
 static char g_pid_filename[MAX_PATH_SIZE];
 
-int init_nio_task(struct fast_task_info *task, void *arg)
+static int init_nio_task(struct fast_task_info *task, void *arg)
 {
     sf_proto_init_task_magic(task);
     FC_INIT_LIST_HEAD(FTASK_HEAD_PTR);
