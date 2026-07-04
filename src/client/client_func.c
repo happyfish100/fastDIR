@@ -177,7 +177,7 @@ static inline void fdir_client_common_init(FDIRClientContext *client_ctx,
 {
     client_ctx->conn_manager_type = conn_manager_type;
     client_ctx->cloned = false;
-    srand(time(NULL));
+    set_rand_seed();
 }
 
 int fdir_client_init_ex1(FDIRClientContext *client_ctx,
