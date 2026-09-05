@@ -1585,23 +1585,29 @@ void service_record_deal_error_log_ex1(FDIRBinlogRecord *record,
     }
 
     if ((result == EPERM || result == EACCES) && FDIR_USE_POSIX_ACL) {
-        extra_len += snprintf(extra_buff + extra_len,
-                sizeof(extra_buff) - extra_len,
-                ", oper {uid: %d, gid: %d}"
-                ", additional group count: %d",
-                record->oper.uid, record->oper.gid,
-                record->oper.additional_gids.count);
-        if (record->operation == SERVICE_OP_ACCESS_DENTRY_INT) {
+        if (extra_len < sizeof(extra_buff)) {
             extra_len += snprintf(extra_buff + extra_len,
                     sizeof(extra_buff) - extra_len,
-                    ", access mask: %o", record->mask);
-            if (record->me.dentry != NULL) {
+                    ", oper {uid: %d, gid: %d}"
+                    ", additional group count: %d",
+                    record->oper.uid, record->oper.gid,
+                    record->oper.additional_gids.count);
+        }
+        if (record->operation == SERVICE_OP_ACCESS_DENTRY_INT) {
+            if (extra_len < sizeof(extra_buff)) {
                 extra_len += snprintf(extra_buff + extra_len,
                         sizeof(extra_buff) - extra_len,
-                        ", owner {uid: %d, gid: %d}, mode: %o",
-                        record->me.dentry->stat.uid,
-                        record->me.dentry->stat.gid,
-                        (record->me.dentry->stat.mode & ACCESSPERMS));
+                        ", access mask: %o", record->mask);
+            }
+            if (record->me.dentry != NULL) {
+                if (extra_len < sizeof(extra_buff)) {
+                    extra_len += snprintf(extra_buff + extra_len,
+                            sizeof(extra_buff) - extra_len,
+                            ", owner {uid: %d, gid: %d}, mode: %o",
+                            record->me.dentry->stat.uid,
+                            record->me.dentry->stat.gid,
+                            (record->me.dentry->stat.mode & ACCESSPERMS));
+                }
             }
         }
     }

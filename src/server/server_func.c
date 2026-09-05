@@ -372,12 +372,21 @@ static void binlog_shrink_config_to_string(char *buff, const int size)
     len = snprintf(buff, size, "binlog-shrink {"
             "dedup_enabled: %d", BINLOG_DEDUP_ENABLED);
     if (BINLOG_DEDUP_ENABLED) {
+        if (len >= size) {
+            return;
+        }
         len += snprintf(buff + len, size - len, ", target_dedup_ratio=%.2f%%"
                 ", dedup_time=%02d:%02d", BINLOG_DEDUP_RATIO * 100.00,
                 BINLOG_DEDUP_TIME.hour, BINLOG_DEDUP_TIME.minute);
     }
+    if (len >= size) {
+        return;
+    }
     len += snprintf(buff + len, size - len,
             ", keep_days: %d", BINLOG_KEEP_DAYS);
+    if (len >= size) {
+        return;
+    }
     if (BINLOG_KEEP_DAYS > 0) {
         len += snprintf(buff + len, size - len,
             ", delete_time=%02d:%02d}",
@@ -452,9 +461,12 @@ static void server_log_configs()
             REPLICA_QUORUM_DEACTIVE_ON_FAILURES,
             REPLICA_QUORUM_NEED_MAJORITY, REPLICA_QUORUM_NEED_DETECT,
             STORAGE_ENABLED);
+    if (len > sizeof(sz_server_config)) {
+        len = sizeof(sz_server_config);
+    }
 
     if (STORAGE_ENABLED) {
-        len += snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
+        snprintf(sz_server_config + len, sizeof(sz_server_config) - len,
                 ", library: %s, data_path: %s, inode_binlog_subdirs: %d"
                 ", batch_store_on_modifies: %d, batch_store_interval: %d s"
                 ", index_dump_interval: %d s"
