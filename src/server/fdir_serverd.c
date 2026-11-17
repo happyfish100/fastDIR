@@ -136,6 +136,7 @@ static int process_cmdline(int argc, char *argv[], bool *continue_flag)
     if (CMDLINE_CONFIG_FILENAME == NULL) {
         return 0;
     }
+    SF_G_CONFIG_FILENAME = CMDLINE_CONFIG_FILENAME;
 
     fc_enable_fd_cloexec(true);
     log_init2();
