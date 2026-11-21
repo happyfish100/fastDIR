@@ -1117,17 +1117,28 @@ static inline void service_idempotency_request_finish(
         struct fast_task_info *task, const int result)
 {
     if (IDEMPOTENCY_REQUEST != NULL) {
+        struct idempotency_channel *channel;
+
+        /* use the channel held by the request, NOT the task's channel
+         * which is released and set to NULL on connection close */
+        channel = TASK_CTX.service.idempotency_req_channel;
+
         if (SF_IS_SERVER_RETRIABLE_ERROR(result)) {
-            if (IDEMPOTENCY_CHANNEL != NULL) {
-                idempotency_channel_remove_request(IDEMPOTENCY_CHANNEL,
+            if (channel != NULL) {
+                idempotency_channel_remove_request(channel,
                         IDEMPOTENCY_REQUEST->req_id);
             }
         } else {
             IDEMPOTENCY_REQUEST->finished = true;
             IDEMPOTENCY_REQUEST->output.result = result;
         }
-        idempotency_request_release(IDEMPOTENCY_REQUEST);
 
+        if (channel != NULL) {
+            idempotency_channel_release(channel, false);
+            TASK_CTX.service.idempotency_req_channel = NULL;
+        }
+
+        idempotency_request_release(IDEMPOTENCY_REQUEST);
         /* server task type for channel ONLY, do NOT set task type to NONE!!! */
         IDEMPOTENCY_REQUEST = NULL;
     }
@@ -2371,10 +2382,16 @@ static int service_update_prepare_and_check(struct fast_task_info *task,
             return result;
         }
 
+        IDEMPOTENCY_REQUEST = request;
+
+        /* the request holds its own channel reference so that
+         * finish can remove it even after the connection is closed */
+        idempotency_channel_hold(IDEMPOTENCY_CHANNEL);
+        TASK_CTX.service.idempotency_req_channel = IDEMPOTENCY_CHANNEL;
+
         REQUEST.body += sizeof(SFProtoIdempotencyAdditionalHeader);
         REQUEST.header.body_len -= sizeof(SFProtoIdempotencyAdditionalHeader);
         request->output.flags = 0;
-        IDEMPOTENCY_REQUEST = request;
     }
 
     *deal_done = false;

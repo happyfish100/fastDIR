@@ -377,6 +377,10 @@ typedef struct {
         };
 
         struct idempotency_request *idempotency_request;
+
+        /* channel held by the in-flight update request */
+        struct idempotency_channel *idempotency_req_channel;
+
         struct fdir_binlog_record *record;
         struct server_binlog_record_buffer *rbuffer;
         struct {
