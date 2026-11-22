@@ -8,6 +8,7 @@ PIDFile=/opt/fastcfs/fdir/serverd.pid
 ExecStart=/usr/bin/fdir_serverd /etc/fastcfs/fdir/server.conf start
 ExecStartPost=/bin/sleep 0.1
 ExecStop=/usr/bin/fdir_serverd /etc/fastcfs/fdir/server.conf stop
+ExecReload=/usr/bin/fdir_serverd /etc/fastcfs/fdir/server.conf reload
 
 # No artificial start/stop timeout
 TimeoutSec=0
